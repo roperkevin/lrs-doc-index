@@ -1,27 +1,49 @@
 /**
- * ZipTextExtract v1.5 — OOXML file (pptx/docx) → plain text + rels, one call
+ * ZipTextExtract v1.7 — OOXML file (pptx/docx) → markdown text + rels
+ * --------------------------------------------------------------------
+ * v1.7 = v1.6 plumbing (typed arrays, harness-verified byte-identical
+ * to v1.5) + the sidecar formatting upgrade:
+ *
+ *   pptx: slide title placeholders are promoted into the section
+ *         heading — "## Slide 3 — Locking new routes" — and removed
+ *         from the body so they don't render twice. Speaker notes are
+ *         interleaved under their slide as "### Notes", resolved
+ *         through each slide's .rels (notesSlideM numbering is NOT
+ *         assumed to match slide numbering); unmatched notes parts
+ *         (malformed decks) are appended at the end, never dropped.
+ *         Paragraphs with an explicit outline level (a:pPr lvl>=1) or
+ *         explicit bullet props (a:buChar/a:buAutoNum) render as
+ *         nested "- " markdown list items. Known limitation: lvl-0
+ *         bullets inherited from the layout/master are invisible in
+ *         slide XML at string level, so those stay plain lines —
+ *         nesting, where structure matters, is always preserved.
+ *   docx: Heading1..6 / Title paragraph styles map to markdown
+ *         headings, shifted one level down (Heading1 → "##") so the
+ *         sidecar's H1 stays unique to the flow-composed header.
+ *         Numbered/bulleted paragraphs (w:numPr) render as nested
+ *         "- " list items indented by w:ilvl.
+ *   both: tables render as GFM pipe tables (since v1.3; the fenced-TSV
+ *         wording in older headers was stale). Everything else in the
+ *         validated strip recipe — figure grouping, entity decode,
+ *         HYPERLINK unwrap, geometry digit-strip, whitespace collapse
+ *         — is unchanged.
+ *
+ * Output contract (consumed as the body of the .md sidecar, appended
+ * after the flow's frontmatter + H1 + summary header): nothing above
+ * H2 is ever emitted here.
  * --------------------------------------------------------------------
  * Takes the document's raw bytes as base64 (Get file content $content),
  * parses the zip structure itself, inflates ONLY the parts that matter,
- * applies the validated OOXML strip recipe (markdown-flavored:
- * ## Slide/Notes headers, tables as fenced TSV blocks), and returns:
+ * applies the strip recipe, and returns:
  *
- *   { text, rels, parts, kind }
+ *   { text, rels, parts, kind, media }
  *
  * pptx: ppt/slides/slideN.xml (numeric order) + ppt/slides/_rels/*.rels
  * docx: word/document.xml + word/_rels/document.xml.rels
  * Format auto-detected from entry names.
  *
- * Replaces the whole server-side lane (Create_zip -> Extract folder ->
- * listings -> per-part fetch loops -> TagStrip -> cleanup): SharePoint's
- * Extract action caps archive content and a routine deck holds 100-175
- * entries, so extraction moves in-script where no such limit exists.
- *
- * Power Automate wiring:
- *   Run script against the dummy host workbook (like RegexExtract);
- *   zipBase64 = body('Get_content_pptx')?['$content']   (or _docx)
- *   Keep the call under the Run-script payload cap: gate files bigger
- *   than ~4.5 MB of base64 to Skipped before calling.
+ * Power Automate wiring: unchanged from v1.5/v1.6 (same name, signature
+ * and return shape — the flow's Run-script bindings are untouched).
  * Throws on malformed archives so failed parses surface as run errors
  * (Catch scope -> IndexStatus=Error -> retry-aware gate), never as
  * silently empty text.
@@ -93,13 +115,47 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
   }
 
   const xmlParts: string[] = [];
-  for (const e of contentNames) {
-    const xml = utf8ToString(extractEntry(bytes, e));
-    const imgs = prefix ? slideImages(e.name, xml) : "";
-    if (isPptx) {
-      const label = e.name.indexOf("notesSlide") >= 0 ? "Notes" : "Slide";
-      xmlParts.push("\n## " + label + " " + slideNum(e.name) + "\n" + xml + imgs);
-    } else {
+  if (isPptx) {
+    const slides = contentNames.filter((e) => e.name.indexOf("ppt/slides/") === 0);
+    const notes = contentNames.filter((e) => e.name.indexOf("ppt/notesSlides/") === 0);
+    const noteByName: { [n: string]: ZipEntry } = {};
+    for (const ne of notes) noteByName[ne.name] = ne;
+    const consumed: { [n: string]: boolean } = {};
+    for (const e of slides) {
+      const xml = utf8ToString(extractEntry(bytes, e));
+      const imgs = prefix ? slideImages(e.name, xml) : "";
+      const hit = findTitleShape(xml);
+      const title = hit ? hit.text : "";
+      const heading = "\n## Slide " + slideNum(e.name) + (title ? " — " + title : "") + "\n";
+      const body = hit && title ? xml.slice(0, hit.start) + xml.slice(hit.end) : xml;
+      xmlParts.push(heading + body + imgs);
+      // resolve this slide's notes part through its own rels — the
+      // notesSlideM index is not guaranteed to equal the slide number
+      const rels = relText[e.name.replace(/^ppt\/slides\//, "ppt/slides/_rels/") + ".rels"] || "";
+      const tagRe = /<Relationship\b[^>]*>/g;
+      let tm: RegExpExecArray | null;
+      while ((tm = tagRe.exec(rels)) !== null) {
+        if (tm[0].indexOf("notesSlide") < 0) continue;
+        const tgt = tm[0].match(/Target="[^"]*notesSlides\/(notesSlide\d+\.xml)"/);
+        if (!tgt) continue;
+        const noteName = "ppt/notesSlides/" + tgt[1];
+        const ne = noteByName[noteName];
+        if (ne && !consumed[noteName]) {
+          consumed[noteName] = true;
+          xmlParts.push("\n### Notes\n" + utf8ToString(extractEntry(bytes, ne)));
+        }
+        break;
+      }
+    }
+    for (const ne of notes) {
+      if (!consumed[ne.name]) {
+        xmlParts.push("\n## Notes (unmatched " + slideNum(ne.name) + ")\n" + utf8ToString(extractEntry(bytes, ne)));
+      }
+    }
+  } else {
+    for (const e of contentNames) {
+      const xml = utf8ToString(extractEntry(bytes, e));
+      const imgs = prefix ? slideImages(e.name, xml) : "";
       xmlParts.push(xml + imgs);
     }
   }
@@ -120,9 +176,47 @@ function slideNum(name: string): number {
   return m ? parseInt(m[1], 10) : 0;
 }
 
+// Locate the slide's title placeholder (p:ph type="title"|"ctrTitle")
+// at string level, returning its visible text plus the shape's span so
+// the caller can splice it out of the body. Entities stay encoded here;
+// stripOoxml's entity pass decodes them inside the heading line later.
+// No placeholder (or an empty one) → null → the heading stays a plain
+// "## Slide N"; we deliberately do NOT fall back to the first text line,
+// which would duplicate a body line into the heading.
+interface TitleHit {
+  text: string;
+  start: number;
+  end: number;
+}
+
+function findTitleShape(xml: string): TitleHit | null {
+  const spRe = /<p:sp\b[\s\S]*?<\/p:sp>/g;
+  let m: RegExpExecArray | null;
+  while ((m = spRe.exec(xml)) !== null) {
+    const block = m[0];
+    if (!/<p:ph\b[^>]*type="(?:ctrTitle|title)"/.test(block)) continue;
+    const texts: string[] = [];
+    const tre = /<a:t>([^<]*)<\/a:t>/g;
+    let tm: RegExpExecArray | null;
+    while ((tm = tre.exec(block)) !== null) {
+      const v = tm[1].trim();
+      if (v) texts.push(v);
+    }
+    let title = texts.join(" ").replace(/[|#]/g, " ").replace(/\s+/g, " ").trim();
+    if (title.length > 120) {
+      title = title.slice(0, 120);
+      const cut = title.lastIndexOf(" ");
+      if (cut > 80) title = title.slice(0, cut);
+    }
+    if (title === "") return null;
+    return { text: title, start: m.index, end: m.index + block.length };
+  }
+  return null;
+}
+
 // ------------------------------------------------------------ strip recipe
-// Validated 98%+ token recall on real LRS docs; v1.3 renders tables as
-// tab-separated rows (matching WorkbookDump) before the generic strip.
+// Validated 98%+ token recall on real LRS docs; since v1.3 tables render
+// as GFM pipe tables (escaped pipes, gridSpan padding) before the strip.
 function renderTables(xml: string, ns: string): string {
   // innermost-first so nested tables flatten correctly
   const inner = new RegExp("<" + ns + ":tbl\\b(?:(?!<" + ns + ":tbl\\b)[\\s\\S])*?</" + ns + ":tbl>");
@@ -186,10 +280,43 @@ function stripOoxml(xml: string): string {
       if (v) labels.push(v);
     }
     const keep = d.match(/!\[[^\]]*\]\([^)]*\)/g) || [];
-    return (labels.length > 0 ? "\n[figure: " + labels.join(" \u00b7 ") + "]\n" : "") + keep.join(" ");
+    return (labels.length > 0 ? "\n[figure: " + labels.join(" · ") + "]\n" : "") + keep.join(" ");
   });
   t = renderTables(t, "w");
   t = renderTables(t, "a");
+  // v1.7: paragraph structure prefixes. These run after renderTables
+  // (table-internal paragraphs are already flattened to pipe rows) and
+  // before the tag strip, so each prefix lands at the start of the
+  // paragraph's rendered line (the </w:p>/</a:p> -> \n rule below
+  // terminates the previous line).
+  // docx: Heading1..6/Title styles -> markdown headings shifted one
+  // level down (the sidecar's H1 belongs to the flow-composed header);
+  // numbered/bulleted paragraphs -> nested "- " items by w:ilvl.
+  t = t.replace(/<w:p\b(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g, (p) => {
+    const ppr = (p.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/) || [""])[0];
+    const hs = ppr.match(/<w:pStyle [^>]*w:val="Heading([1-6])"/);
+    if (hs) return "\n" + "######".slice(0, Math.min(parseInt(hs[1], 10) + 1, 6)) + " " + p;
+    if (/<w:pStyle [^>]*w:val="Title"/.test(ppr)) return "\n## " + p;
+    if (ppr.indexOf("<w:numPr>") >= 0) {
+      const il = ppr.match(/<w:ilvl [^>]*w:val="(\d+)"/);
+      let indent = "";
+      for (let i = 0, lvl = il ? parseInt(il[1], 10) : 0; i < lvl; i++) indent += "  ";
+      return "\n" + indent + "- " + p;
+    }
+    return p;
+  });
+  // pptx: explicit outline level (lvl>=1) or explicit bullet props ->
+  // nested "- " items. lvl-0 bullets inherited from the layout/master
+  // are invisible in slide XML, so those paragraphs stay plain lines.
+  t = t.replace(/<a:p\b(?:(?!<a:p\b)[\s\S])*?<\/a:p>/g, (p) => {
+    if (p.indexOf("<a:buNone") >= 0) return p;
+    const lm = p.match(/<a:pPr\b[^>]*\blvl="(\d)"/);
+    const lvl = lm ? parseInt(lm[1], 10) : 0;
+    if (lvl < 1 && p.indexOf("<a:buChar") < 0 && p.indexOf("<a:buAutoNum") < 0) return p;
+    let indent = "";
+    for (let i = 0; i < lvl; i++) indent += "  ";
+    return "\n" + indent + "- " + p;
+  });
   t = t.replace(/<\/w:p>|<\/w:tc>|<\/a:p>|<w:br\b[^>]*>|<w:cr\b[^>]*>|<a:br\b[^>]*>/g, "\n");
   t = t.replace(/<w:tab\/>/g, "\t");
   t = t.replace(/<[^>]+>/g, "");
@@ -210,30 +337,36 @@ function stripOoxml(xml: string): string {
   // - strip glued drawing-geometry digit runs (posOffset etc.); no real
   //   content is a 10+ digit run (issue ids <=6, dates/measures shorter)
   t = t.replace(/\d{10,}/g, "");
+  // v1.7: drop prefix artifacts left by empty paragraphs (an empty
+  // heading- or list-styled paragraph renders as a bare "- " or "##")
+  t = t.replace(/^[ \t]*-[ \t]*$/gm, "").replace(/^#{2,6} *$/gm, "");
   t = t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
   return t.trim();
 }
 
 // ------------------------------------------------------------ base64
-function b64ToBytes(b64: string): number[] {
-  const T: { [c: string]: number } = {};
+// v1.6: Uint8Array + charCode table. Skips '=', CR/LF and any
+// non-alphabet char exactly as v1.5's dictionary miss did.
+function b64ToBytes(b64: string): Uint8Array {
+  const T = new Int32Array(128).fill(-1);
   const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  for (let i = 0; i < alpha.length; i++) T[alpha[i]] = i;
-  const out: number[] = [];
+  for (let i = 0; i < alpha.length; i++) T[alpha.charCodeAt(i)] = i;
+  const out = new Uint8Array(Math.floor((b64.length * 3) / 4) + 3);
+  let n = 0;
   let buf = 0, bits = 0;
   for (let i = 0; i < b64.length; i++) {
-    const c = b64[i];
-    if (c === "=" || c === "\n" || c === "\r") continue;
-    const v = T[c];
-    if (v === undefined) continue;
+    const code = b64.charCodeAt(i);
+    if (code >= 128) continue;
+    const v = T[code];
+    if (v < 0) continue;
     buf = (buf << 6) | v;
     bits += 6;
     if (bits >= 8) {
       bits -= 8;
-      out.push((buf >> bits) & 0xff);
+      out[n++] = (buf >> bits) & 0xff;
     }
   }
-  return out;
+  return n === out.length ? out : out.subarray(0, n);
 }
 
 // ------------------------------------------------------------ zip reader
@@ -245,12 +378,12 @@ interface ZipEntry {
   localOffset: number;
 }
 
-function u16(b: number[], p: number): number { return b[p] | (b[p + 1] << 8); }
-function u32(b: number[], p: number): number {
+function u16(b: Uint8Array, p: number): number { return b[p] | (b[p + 1] << 8); }
+function u32(b: Uint8Array, p: number): number {
   return (b[p] | (b[p + 1] << 8) | (b[p + 2] << 16) | (b[p + 3] << 24)) >>> 0;
 }
 
-function readCentralDirectory(b: number[]): ZipEntry[] {
+function readCentralDirectory(b: Uint8Array): ZipEntry[] {
   // find EOCD (0x06054b50) scanning back from end (max comment 64k)
   let eocd = -1;
   const stop = Math.max(0, b.length - 65558);
@@ -280,13 +413,13 @@ function readCentralDirectory(b: number[]): ZipEntry[] {
   return entries;
 }
 
-function extractEntry(b: number[], e: ZipEntry): number[] {
+function extractEntry(b: Uint8Array, e: ZipEntry): Uint8Array {
   const p = e.localOffset;
   if (u32(b, p) !== 0x04034b50) throw new Error("ZipTextExtract: bad local header for " + e.name);
   const nameLen = u16(b, p + 26);
   const extraLen = u16(b, p + 28); // local extra can differ from central
   const dataStart = p + 30 + nameLen + extraLen;
-  const data = b.slice(dataStart, dataStart + e.compSize);
+  const data = b.subarray(dataStart, dataStart + e.compSize); // v1.6: view, no copy
   if (e.method === 0) return data;                    // stored
   if (e.method === 8) return inflateRaw(data, e.uncompSize); // deflate
   throw new Error("ZipTextExtract: unsupported compression method " + e.method + " for " + e.name);
@@ -314,10 +447,24 @@ function buildHuff(lengths: number[]): Huff {
   return { counts: counts, symbols: symbols };
 }
 
-function inflateRaw(src: number[], outHint: number): number[] {
-  const out: number[] = [];
+// v1.6: output preallocated from outHint (central-directory uncompSize),
+// doubling growth as a safety net; write pointer instead of push. The
+// back-reference copy stays a byte-wise loop — overlapping copies
+// (distance < length) are RLE by definition and forbid block copies.
+function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
+  let out = new Uint8Array(outHint > 0 ? outHint : 1024);
+  let outLen = 0;
   let pos = 0;      // byte position
   let bitBuf = 0, bitCnt = 0;
+
+  function ensure(extra: number): void {
+    if (outLen + extra <= out.length) return;
+    let cap = out.length * 2;
+    while (cap < outLen + extra) cap *= 2;
+    const grown = new Uint8Array(cap);
+    grown.set(out);
+    out = grown;
+  }
 
   function bits(n: number): number {
     while (bitCnt < n) {
@@ -355,7 +502,8 @@ function inflateRaw(src: number[], outHint: number): number[] {
       bitBuf = 0; bitCnt = 0;
       const len = src[pos] | (src[pos + 1] << 8);
       pos += 4; // skip LEN + NLEN
-      for (let i = 0; i < len; i++) out.push(src[pos++]);
+      ensure(len);
+      for (let i = 0; i < len; i++) out[outLen++] = src[pos++];
     } else {
       let lit: Huff, dist: Huff;
       if (type === 1) {
@@ -399,41 +547,50 @@ function inflateRaw(src: number[], outHint: number): number[] {
       }
       while (true) {
         const sym = decodeSym(lit);
-        if (sym < 256) out.push(sym);
+        if (sym < 256) { ensure(1); out[outLen++] = sym; }
         else if (sym === 256) break;
         else {
           const li = sym - 257;
           const length = LEN_BASE[li] + bits(LEN_EXTRA[li]);
           const dsym = decodeSym(dist);
           const distance = DIST_BASE[dsym] + bits(DIST_EXTRA[dsym]);
-          const start = out.length - distance;
+          const start = outLen - distance;
           if (start < 0) throw new Error("inflate: bad distance");
-          for (let i = 0; i < length; i++) out.push(out[start + i]);
+          ensure(length);
+          for (let i = 0; i < length; i++) out[outLen++] = out[start + i];
         }
       }
     }
     if (final) break;
   }
-  return out;
+  return outLen === out.length ? out : out.subarray(0, outLen);
 }
 
 // ------------------------------------------------------------ utf-8 decode
-function utf8ToString(b: number[]): string {
-  let s = "";
+// v1.6: identical decode logic; code units buffered and flushed through
+// String.fromCharCode in 4096-unit chunks instead of per-char concat.
+function utf8ToString(b: Uint8Array): string {
+  const parts: string[] = [];
+  let codes: number[] = [];
   let i = 0;
   while (i < b.length) {
     const c = b[i];
-    if (c < 0x80) { s += String.fromCharCode(c); i += 1; }
-    else if (c < 0xe0) { s += String.fromCharCode(((c & 0x1f) << 6) | (b[i + 1] & 0x3f)); i += 2; }
+    if (c < 0x80) { codes.push(c); i += 1; }
+    else if (c < 0xe0) { codes.push(((c & 0x1f) << 6) | (b[i + 1] & 0x3f)); i += 2; }
     else if (c < 0xf0) {
-      s += String.fromCharCode(((c & 0x0f) << 12) | ((b[i + 1] & 0x3f) << 6) | (b[i + 2] & 0x3f));
+      codes.push(((c & 0x0f) << 12) | ((b[i + 1] & 0x3f) << 6) | (b[i + 2] & 0x3f));
       i += 3;
     } else {
       const cp = ((c & 0x07) << 18) | ((b[i + 1] & 0x3f) << 12) | ((b[i + 2] & 0x3f) << 6) | (b[i + 3] & 0x3f);
       const u = cp - 0x10000;
-      s += String.fromCharCode(0xd800 + (u >> 10), 0xdc00 + (u & 0x3ff));
+      codes.push(0xd800 + (u >> 10), 0xdc00 + (u & 0x3ff));
       i += 4;
     }
+    if (codes.length >= 4096) {
+      parts.push(String.fromCharCode(...codes));
+      codes = [];
+    }
   }
-  return s;
+  if (codes.length > 0) parts.push(String.fromCharCode(...codes));
+  return parts.join("");
 }

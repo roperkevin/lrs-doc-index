@@ -16,14 +16,15 @@ two indexed queries — get a doc's DocKeywords, then get other DocKeywords
 sharing those Keyword lookups. Cheaper, fresher, no explosion. This is
 the right call even where row counts don't force it.
 
-**2. Full extracted text lives as .txt sidecar files, not list columns.**
+**2. Full extracted text lives as .md sidecar files, not list columns.**
 Create a document library **Doc Index Texts**. The flow writes one
-`<DocKey-slug>.txt` per document (full TagStrip/WorkbookDump output) and
-stores only a ~5,000-char TextPreview plus TextFileUrl on the list row.
-Multiline list columns are the wrong home for 60k+ character dumps — and
-the sidecar library is literally the "machine-readable documents"
-artifact from the original project goal: a greppable, Python-able plain
-text corpus that survives independent of any list.
+`{title-slug}__doc{ID}.md` per document (YAML frontmatter + header
+composed by the flow, body from ZipTextExtract/WorkbookDump markdown)
+and stores only a ~5,000-char TextPreview plus TextFileUrl on the list
+row. Multiline list columns are the wrong home for 60k+ character dumps
+— and the sidecar library is literally the "machine-readable documents"
+artifact from the original project goal: a greppable, Python-able
+markdown corpus that survives independent of any list.
 
 **3. Alternate keys become indexed text columns + query-then-write.**
 Dataverse enforced uniqueness at the database; SharePoint doesn't, so

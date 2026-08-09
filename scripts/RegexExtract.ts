@@ -1,5 +1,6 @@
 /**
- * RegexExtract v1.1 — deterministic ID + doc revision extraction
+ * RegexExtract v1.2 — deterministic ID + doc revision extraction,
+ * plus sidecar filename slug
  * ------------------------------------------------------------------
  * Implements the three validated ID sources, in precedence order:
  *
@@ -21,6 +22,12 @@
  * docRevision: [Vv]\d{1,2} at the very end of the base filename —
  * matches TestPlanV1, _V4, _v2; ignores trailing "_1" and "2_35".
  *
+ * slug (v1.2): kebab-case filename stem for the markdown sidecar,
+ * from the AI-derived title when provided, else from the file's base
+ * name, else the literal "doc" (e.g. a fully non-Latin title that
+ * slugifies to empty). Lowercase [a-z0-9-], ~80 char cap cut at a
+ * word boundary.
+ *
  * Power Automate wiring:
  *   Excel Online (Business) "Run script"
  *     Workbook    = any dummy .xlsx (host only)
@@ -28,8 +35,12 @@
  *     content     = joined TagStrip outputs + raw _rels/*.rels text
  *                   (xlsx lane: the WorkbookDump output; rels n/a)
  *     defaultRepo = e.g. "ArcGISPro/ps-location-referencing"
- *   Returns a typed object — ids[] and docRevision surface as
+ *     title       = (v1.2, optional) AI-derived document title; the
+ *                   v2.1-and-earlier flows omit it and still run —
+ *                   the slug then comes from the file's base name.
+ *   Returns a typed object — ids[], docRevision and slug surface as
  *   structured dynamic content in the designer, no Parse JSON needed.
+ *   Older flows simply ignore the extra slug field.
  */
 interface IdRef {
   repo: string;
@@ -41,13 +52,29 @@ interface IdResult {
   ids: IdRef[];
   docRevision: string; // normalized "V<n>", or "" when absent
   idCount: number;
+  slug: string; // kebab-case sidecar filename stem, never empty
+}
+
+function slugify(s: string): string {
+  let t = s.toLowerCase();
+  t = t.replace(/['’‘"“”]/g, ""); // don't -> dont
+  t = t.replace(/[^a-z0-9]+/g, "-");
+  t = t.replace(/^-+|-+$/g, "");
+  if (t.length > 80) {
+    t = t.slice(0, 80);
+    const cut = t.lastIndexOf("-");
+    if (cut > 40) t = t.slice(0, cut);
+    t = t.replace(/-+$/, "");
+  }
+  return t;
 }
 
 function main(
   workbook: ExcelScript.Workbook,
   fileName: string,
   content: string,
-  defaultRepo: string
+  defaultRepo: string,
+  title?: string
 ): IdResult {
   const ids: IdRef[] = [];
   const byKey: { [key: string]: boolean } = {};   // repo|number
@@ -107,5 +134,8 @@ function main(
   const rv = baseName.match(/[Vv](\d{1,2})$/);
   const docRevision = rv ? "V" + rv[1] : "";
 
-  return { ids: ids, docRevision: docRevision, idCount: ids.length };
+  // --- sidecar filename slug (v1.2) -------------------------------
+  const slug = slugify(title || "") || slugify(baseName) || "doc";
+
+  return { ids: ids, docRevision: docRevision, idCount: ids.length, slug: slug };
 }

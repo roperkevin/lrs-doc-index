@@ -1,4 +1,18 @@
-# Local equivalence harness — v1.5/v1.0 vs v1.6/v1.1 script patches
+# Local script harness — equivalence gate + formatting checks
+
+Two independent checks live here:
+
+1. **Equivalence gate** (`run_diff.py`) — the historical v1.5-vs-v1.6 /
+   v1.0-vs-v1.1 byte-diff, recorded below. Note: since the v2.2
+   formatting release, `scripts/ZipTextExtract.ts` is v1.7 — the v1.5
+   source this gate compares against lives in git history
+   (`git show <pre-v2.2>:scripts/ZipTextExtract.ts`).
+2. **Formatting checks** (`check_format.py` + `render_sample.py`) — the
+   gate for the v1.7/v1.1/v1.2 formatting generation, which is an
+   *intentional* format change and therefore can't be validated by
+   equivalence. See "Formatting checks" below.
+
+## Equivalence harness — v1.5/v1.0 vs v1.6/v1.1 script patches
 
 Runs both versions of ZipTextExtract (v1.5 shipped, v1.6 patch) and MediaExtract
 (v1.0 shipped, v1.1 patch) over OOXML fixtures and byte-diffs every output field,
@@ -44,3 +58,44 @@ verified against an independent zip decoder (Python `zipfile`); big-deck timing
 
 Both patches also type-check at ES2017 (`tsc --noEmit --target es2017`), contain
 no lookbehind, no imports, one `main()` each.
+
+## Formatting checks — ZipTextExtract v1.7 / WorkbookDump v1.1 / RegexExtract v1.2
+
+`check_format.py` runs the *current* `scripts/` versions over the fixtures and
+asserts the v2.2 output contract instead of byte-equality:
+
+- pptx: `## Slide N — Title` headings (strictly increasing, planted titles
+  promoted, no title duplicated into the body), notes interleaved as
+  `### Notes` under their slide (zero `## Notes` H2 blocks), planted
+  `lvl=1/2` paragraphs as nested `- ` items, no orphan empty list lines
+- docx: `Heading N` → `N+1` hashes (Title → `##`), no H1 anywhere in body
+  output, `w:numPr`/`w:ilvl` paragraphs as nested `- ` items
+- tables: every GFM block well-formed (separator row, consistent column
+  count, unescaped-pipe splitting); WorkbookDump COLCAP=24 cut with
+  `…(+N more)`, CELLCAP=300 truncation, pipe escaping, `(empty)` marker
+- token recall vs `planted_tokens.json` ≥ 0.97 per fixture (the additions
+  are whitespace-separated, so recall is unaffected)
+- `slugify` unit cases (em-dash title, apostrophes/symbols, 80-char cap at
+  a word boundary, non-Latin → filename fallback, empty → `doc`)
+
+`render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
+v2.2 frontmatter/header mirrored from the flow template — and asserts the
+frontmatter parses with `yaml.safe_load`, the file has exactly one H1, and the
+header/body seam is present. This is the eyeball artifact for the target format.
+
+Usage (from this directory; wrapped runners are regenerated on each run):
+
+```
+python3 make_fixtures.py     # now also plants structure (planted_format.json)
+                             # and the workbook stand-in (sheets.json)
+python3 check_format.py
+python3 render_sample.py && cat sample_sidecar.md
+```
+
+### Last run (2026-08-09, Node 22.22.2)
+
+All 150+ assertions PASS: 18/18 slide titles promoted and deduplicated,
+18+1 notes blocks interleaved, all heading/list mappings exact, all tables
+well-formed, WorkbookDump caps exact, recall 1.0000 on all three fixtures,
+all five slug cases exact. `zte_v17.ts`, `wbd_v11.ts` and `rex_v12.ts` also
+type-check at ES2017 (`tsc --noEmit --target es2017`).
