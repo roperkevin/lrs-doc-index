@@ -1,0 +1,5 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"Flow composes file|keyword",Yes
+Document,Document,Lookup,"Target: Doc Index, show Title; INDEXED",Yes
+Keyword,Keyword,Lookup,"Target: Keywords, show Title; always the CANONICAL row; INDEXED",Yes
+KWKey,KWKey,Single line of text,"{DocItemId}|{KeywordItemId} — INDEXED; dedup key",Yes

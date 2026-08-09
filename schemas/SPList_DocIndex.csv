@@ -1,0 +1,22 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"Document title from prompt; flow truncates to 255",Yes
+DocKey,DocKey,Single line of text,"Server-relative file path lowercased; INDEXED — the identity/dedup key; flag any path over 255 chars",Yes
+FileName,FileName,Single line of text,"File name with extension",Yes
+SourceLink,SourceLink,Hyperlink,"Absolute link to the file (always https — safe for hyperlink type)",No
+Library,Library,Single line of text,"Source library display name",No
+FileType,FileType,Choice,"pptx; docx; xlsx; pdf; msg; txt; html; image; other",No
+DocKind,DocKind,Choice,"Test Plan; User Story; Design Spike; Data Template; Schedule; Doc Review; Other",No
+IndexStatus,IndexStatus,Choice,"Pending; Indexed; Skipped; Error — default Pending",Yes
+SourceETag,SourceETag,Single line of text,"SharePoint ETag at index time — change detection",No
+SourceModified,SourceModified,Date and Time,"Include time",No
+TextPreview,TextPreview,Multiple lines of text,"PLAIN text (not enhanced); first ~5000 chars of extracted text — skim/search aid",No
+TextFileUrl,TextFileUrl,Hyperlink,"Link to the full-text .txt sidecar in Doc Index Texts library",No
+Summary,Summary,Multiple lines of text,"Plain text; from prompt",No
+DocRevision,DocRevision,Single line of text,"From RegexExtract, e.g. V4",No
+TargetRelease,TargetRelease,Single line of text,"e.g. 3.8 / 12.2",No
+PE,PE,Single line of text,,No
+Dev,Dev,Single line of text,,No
+Surface,Surface,Choice,"Pro; Experience Builder; Server; Enterprise; Other",No
+ExtractionLane,ExtractionLane,Choice,"xmlstrip; workbookdump; plaintext; htmltotext; ocr; none",No
+PromptVersion,PromptVersion,Single line of text,"Prompt rev that produced semantic fields — selective re-run lever",No
+IndexedOn,IndexedOn,Date and Time,"Include time",No
