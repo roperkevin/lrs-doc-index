@@ -10,7 +10,7 @@ IndexStatus,IndexStatus,Choice,"Pending; Indexed; Skipped; Error — default Pen
 SourceETag,SourceETag,Single line of text,"SharePoint ETag at index time — change detection",No
 SourceModified,SourceModified,Date and Time,"Include time",No
 TextPreview,TextPreview,Multiple lines of text,"PLAIN text (not enhanced); first ~5000 chars of extracted text — skim/search aid",No
-TextFileUrl,TextFileUrl,Hyperlink,"Link to the full-text .txt sidecar in Doc Index Texts library",No
+TextFileUrl,TextFileUrl,Hyperlink,"Link to the full-text .md sidecar in Doc Index Texts library",No
 Summary,Summary,Multiple lines of text,"Plain text; from prompt",No
 DocRevision,DocRevision,Single line of text,"From RegexExtract, e.g. V4",No
 TargetRelease,TargetRelease,Single line of text,"e.g. 3.8 / 12.2",No
