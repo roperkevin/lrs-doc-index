@@ -79,15 +79,18 @@ asserts the v2.2 output contract instead of byte-equality:
   a word boundary, non-Latin → filename fallback, empty → `doc`)
 
 `render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
-v2.3 frontmatter/header mirrored from the flow template — and asserts the
-frontmatter parses with `yaml.safe_load` (including `related: []`), the file
-has exactly one H1, the header/body seam is present, and the related-section
-marker pair is well-placed. It then runs SidecarPatch v1.0 in set mode with
-three synthetic entries and writes `sample_sidecar_related.md` — the eyeball
-artifact for a POPULATED related list — re-asserting the patched frontmatter
-still parses and the file still has one H1.
+current metadata/header mirrored from the flow template — and asserts the
+metadata block is the fenced ` ```yaml ` frame (the PromptVersion v1.4
+SharePoint-preview-safe form — `---` frontmatter renders in SharePoint's
+preview as one giant setext heading), its inner YAML parses with
+`yaml.safe_load` (including `related: []`), the file has exactly one H1, the
+header/body seam is present, and the related-section marker pair is
+well-placed. It then runs SidecarPatch v1.1 in set mode with three synthetic
+entries and writes `sample_sidecar_related.md` — the eyeball artifact for a
+POPULATED related list — re-asserting the patched metadata still parses and
+the file still has one H1.
 
-## Related-docs checks — RelatedRank v1.0 / SidecarPatch v1.0 (v2.3)
+## Related-docs checks — RelatedRank v1.0 / SidecarPatch v1.1 (v2.3)
 
 `check_related.py` wraps both v2.3 scripts (same appendix pattern as
 `rex_v12.ts`; no fixtures needed) and asserts the v2.3 contract:
@@ -97,16 +100,19 @@ still parses and the file still has one H1.
   self excluded; score ties break to the higher (newer) item id; cap at
   topN; empty or malformed JSON inputs are safe; the why-string caps
   keyword names at 4 + `+k more`
-- SidecarPatch: set mode rewrites ONLY the frontmatter `related:` line and
+- SidecarPatch: set mode rewrites ONLY the metadata `related:` line and
   the begin/end marker region (byte-integrity asserted against planted
   decoy `related:` text and stray `---` seams in the body); idempotence
   (`patch(patch(x)) == patch(x)`, `changed` false); merge inserts/re-sorts,
   replaces an existing doc id (reindex-safe), and evicts the weakest past
   the cap; a pre-v2.3 sidecar without markers gains the section before the
   seam and the `related:` line after `tools:`; begin-without-end is a
-  byte-identical no-op with a note; populated frontmatter still
-  `yaml.safe_load`s
-- both wrapped runners (`rr_v10.ts`, `scp_v10.ts`) type-check at ES2017,
+  byte-identical no-op with a note; populated metadata still
+  `yaml.safe_load`s; both metadata frames parse — fenced ` ```yaml `
+  (v1.4) and legacy `---` frontmatter — and each file keeps the frame it
+  arrived in (set mode stays fenced, a legacy neighbor merge and the
+  pre-v2.3 fallback stay dashed)
+- both wrapped runners (`rr_v10.ts`, `scp_v11.ts`) type-check at ES2017,
   compiled separately (each Office Script is its own global scope)
 
 Usage (from this directory; wrapped runners are regenerated on each run):
@@ -127,9 +133,11 @@ well-formed, WorkbookDump caps exact, recall 1.0000 on all three fixtures,
 all five slug cases exact. `zte_v17.ts`, `wbd_v11.ts` and `rex_v12.ts` also
 type-check at ES2017 (`tsc --noEmit --target es2017`).
 
-`check_related.py` (same date/Node): all 31 assertions PASS — RelatedRank
+`check_related.py` (same date/Node): all 35 assertions PASS — RelatedRank
 precedence/merge/tie/cap/safety and SidecarPatch set/merge/evict/
-idempotence/byte-integrity/fallback/no-op cases — and `rr_v10.ts` /
-`scp_v10.ts` type-check at ES2017. `render_sample.py` PASS in both the
-empty and populated states (see `sample_sidecar.md` /
+idempotence/byte-integrity/fallback/no-op cases, plus the v1.1
+frame cases (fenced set mode, legacy `---` neighbor merge, frame
+preservation both ways) — and `rr_v10.ts` / `scp_v11.ts` type-check at
+ES2017. `render_sample.py` PASS in both the empty and populated states
+with the fenced metadata frame (see `sample_sidecar.md` /
 `sample_sidecar_related.md`).
