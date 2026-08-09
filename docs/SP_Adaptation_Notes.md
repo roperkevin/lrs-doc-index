@@ -16,6 +16,15 @@ two indexed queries — get a doc's DocKeywords, then get other DocKeywords
 sharing those Keyword lookups. Cheaper, fresher, no explosion. This is
 the right call even where row counts don't force it.
 
+*v2.3 clarification:* the "Related documents" lists rendered into
+sidecars do **not** violate this rule. They are a bounded per-doc
+display cache — O(docs × RelatedTopN), computed at index time from
+exactly the two indexed queries above (plus the sparse stored id
+edges) — not an O(k·n²) edge table, and they never round-trip back
+into Doc Links or any other list. Staleness is handled by reciprocal
+patching (a newly indexed doc updates its neighbors' sidecar
+sections), not by materializing edges.
+
 **2. Full extracted text lives as .md sidecar files, not list columns.**
 Create a document library **Doc Index Texts**. The flow writes one
 `{title-slug}__doc{ID}.md` per document (YAML frontmatter + header

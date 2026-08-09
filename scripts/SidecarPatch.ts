@@ -1,0 +1,355 @@
+/**
+ * SidecarPatch v1.0 — surgical "Related documents" patching for
+ * markdown sidecars, batched over every file touched for one doc
+ * ------------------------------------------------------------------
+ * One call patches the current doc's own sidecar ("set" mode: the
+ * related list is fully recomputed) plus up to topN neighbor sidecars
+ * ("merge" mode: upsert one entry — the current doc — into each
+ * neighbor's existing list). Mode is inferred per file: doc === selfId
+ * → set, else merge. Batching keeps the flow at exactly one Run
+ * script call for all reciprocal updates.
+ *
+ * Two regions of a sidecar are ever rewritten, nothing else:
+ *
+ *   frontmatter  the single `related: [...]` line — machine-readable
+ *                cache AND merge state, one line of JSON (valid YAML
+ *                flow style): [{"doc":17,"file":"...__doc17.md","s":1003}]
+ *   body         the first region between the marker lines
+ *                <!-- related:begin --> ... <!-- related:end -->
+ *                rendered as link bullets, each ending in an
+ *                invisible <!-- rel:N --> tag so a later merge can
+ *                re-associate, reorder and evict without parsing prose
+ *
+ * Safety posture: the body seam `---` and any `related:`-lookalike
+ * text in extracted content are never touched (the frontmatter line is
+ * located inside the parsed frontmatter block only; the body edit is
+ * bounded by the first begin/end marker pair). Malformed markers
+ * (begin without end, end before begin) → the file is returned
+ * unchanged with a note — never risk corrupting extracted text.
+ * Markers missing entirely (pre-v2.3 sidecar) → the whole section is
+ * synthesized before the header/body seam. Idempotent by
+ * construction: patch(patch(x)) === patch(x); `changed` is byte
+ * inequality so the flow can skip unchanged writes.
+ *
+ * Merge-mode evidence is symmetric: shared keywords / issue ids
+ * between A and B are identical in both directions, so the ranked
+ * entry the current doc holds for a neighbor (from RelatedRank) is
+ * exactly the score/reason that neighbor needs for the current doc —
+ * no per-neighbor recompute.
+ *
+ * Power Automate wiring:
+ *   Excel Online (Business) "Run script"
+ *     Workbook     = any dummy .xlsx (host only)
+ *     filesJson    = [{doc, name, content}] — self sidecar (composed
+ *                    in memory, byte-identical to what Save_sidecar
+ *                    just wrote) + each neighbor sidecar read back
+ *     selfId       = Doc Index item id of the current doc
+ *     rankedJson   = string(outputs('Run_related_rank')?['body/result/related'])
+ *     docsMetaJson = string(body('Get_related_docs')?['value'])
+ *                    (ID / Title / TextFileUrl used)
+ *     selfMetaJson = {"doc":N,"title":"...","url":"...","file":"...__docN.md"}
+ *     topN         = Config.RelatedTopN (5)
+ *   Returns {files:[{name, content, changed, note}]} — the flow
+ *   rewrites only files with changed === true.
+ */
+interface PatchFile {
+  doc: number;
+  name: string;
+  content: string;
+}
+
+interface PatchedFile {
+  name: string;
+  content: string;
+  changed: boolean;
+  note: string;
+}
+
+interface PatchResult {
+  files: PatchedFile[];
+}
+
+interface RelEntry {
+  doc: number;
+  file: string;
+  s: number;
+}
+
+interface RankedEntry {
+  doc: number;
+  s: number;
+  why: string;
+}
+
+interface DocMeta {
+  title: string;
+  url: string;
+}
+
+const BEGIN = "<!-- related:begin -->";
+const END = "<!-- related:end -->";
+const HEADING = "## Related documents";
+const EMPTY_STATE = "_None yet._";
+
+function parseJson(json: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+}
+
+function asArray(v: unknown): unknown[] {
+  return Array.isArray(v) ? v : [];
+}
+
+function urlString(raw: unknown): string {
+  if (typeof raw === "string") {
+    return raw;
+  }
+  if (raw && typeof raw === "object") {
+    const o = raw as { Url?: unknown; Uri?: unknown };
+    if (typeof o.Url === "string") return o.Url;
+    if (typeof o.Uri === "string") return o.Uri;
+  }
+  return "";
+}
+
+function renderBullet(title: string, url: string, why: string, doc: number): string {
+  const reason = why ? " — " + why : "";
+  return "- [" + title + "](<" + url + ">)" + reason + " <!-- rel:" + doc + " -->";
+}
+
+function renderFmLine(entries: RelEntry[]): string {
+  const slim = entries.map((e) => ({ doc: e.doc, file: e.file, s: e.s }));
+  return "related: " + JSON.stringify(slim);
+}
+
+function renderRegionInner(entries: RelEntry[], bullets: { [doc: number]: string }): string {
+  if (entries.length === 0) {
+    return EMPTY_STATE;
+  }
+  return entries
+    .map((e) => bullets[e.doc] || renderBullet(e.file, e.file, "", e.doc))
+    .join("\n");
+}
+
+function sortAndCap(entries: RelEntry[], cap: number): RelEntry[] {
+  entries.sort((x, y) => (y.s - x.s) || (y.doc - x.doc));
+  return entries.slice(0, cap);
+}
+
+/** Replace/insert the `related:` line inside the frontmatter text. */
+function patchFrontmatter(fm: string, fmLine: string): string {
+  const lines = fm.split("\n");
+  let relIdx = -1;
+  let toolsIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf("related: [") === 0) {
+      if (relIdx < 0) relIdx = i;
+    } else if (lines[i].indexOf("tools: [") === 0) {
+      toolsIdx = i;
+    }
+  }
+  if (relIdx >= 0) {
+    lines[relIdx] = fmLine;
+  } else if (toolsIdx >= 0) {
+    lines.splice(toolsIdx + 1, 0, fmLine);
+  } else {
+    lines.push(fmLine);
+  }
+  return lines.join("\n");
+}
+
+/** Read existing entries from the frontmatter's `related:` line. */
+function readFmEntries(fm: string): RelEntry[] {
+  for (const line of fm.split("\n")) {
+    if (line.indexOf("related: [") === 0) {
+      const out: RelEntry[] = [];
+      for (const raw of asArray(parseJson(line.slice("related: ".length)))) {
+        const o = raw as { doc?: unknown; file?: unknown; s?: unknown };
+        const doc = typeof o.doc === "number" ? o.doc : parseInt(String(o.doc), 10);
+        if (doc > 0) {
+          out.push({
+            doc: doc,
+            file: typeof o.file === "string" ? o.file : "",
+            s: typeof o.s === "number" ? o.s : 0,
+          });
+        }
+      }
+      return out;
+    }
+  }
+  return [];
+}
+
+/** Read existing tagged bullets from a marker-region's inner text. */
+function readBullets(inner: string): { [doc: number]: string } {
+  const out: { [doc: number]: string } = {};
+  for (const line of inner.split("\n")) {
+    const at = line.indexOf("<!-- rel:");
+    if (line.indexOf("- ") === 0 && at > 0) {
+      const doc = parseInt(line.slice(at + 9), 10);
+      if (doc > 0) {
+        out[doc] = line;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Patch one sidecar. Returns the new content plus a note, or the
+ * original content with a diagnostic note when patching is unsafe.
+ */
+function patchOne(
+  content: string,
+  entries: RelEntry[],
+  bullets: { [doc: number]: string },
+  noteOk: string
+): { content: string; note: string } {
+  if (content.indexOf("---\n") !== 0) {
+    return { content: content, note: "not-frontmatter" };
+  }
+  const close = content.indexOf("\n---\n", 3);
+  if (close < 0) {
+    return { content: content, note: "not-frontmatter" };
+  }
+  const fm = content.slice(4, close);
+  let body = content.slice(close + 5);
+
+  const region = BEGIN + "\n" + renderRegionInner(entries, bullets) + "\n" + END;
+
+  const b = body.indexOf(BEGIN);
+  const e = body.indexOf(END);
+  if (b >= 0 && e > b) {
+    body = body.slice(0, b) + region + body.slice(e + END.length);
+  } else if (b >= 0 || e >= 0) {
+    return { content: content, note: "malformed-markers" };
+  } else {
+    // pre-v2.3 sidecar: synthesize the whole section before the
+    // header/body seam (the first '---' line after ## Summary)
+    const sumAt = body.indexOf("## Summary");
+    const seam = body.indexOf("\n---\n", sumAt >= 0 ? sumAt : 0);
+    if (seam < 0) {
+      return { content: content, note: "no-seam" };
+    }
+    body = body.slice(0, seam) + "\n\n" + HEADING + "\n\n" + region + body.slice(seam);
+  }
+
+  const newFm = patchFrontmatter(fm, renderFmLine(entries));
+  return { content: "---\n" + newFm + "\n---\n" + body, note: noteOk };
+}
+
+function main(
+  workbook: ExcelScript.Workbook,
+  filesJson: string,
+  selfId: string,
+  rankedJson: string,
+  docsMetaJson: string,
+  selfMetaJson: string,
+  topN: number
+): PatchResult {
+  const self = parseInt(selfId, 10) || 0;
+  const cap = topN > 0 ? topN : 5;
+
+  const ranked: RankedEntry[] = [];
+  for (const raw of asArray(parseJson(rankedJson))) {
+    const o = raw as { doc?: unknown; s?: unknown; why?: unknown };
+    const doc = typeof o.doc === "number" ? o.doc : parseInt(String(o.doc), 10);
+    if (doc > 0) {
+      ranked.push({
+        doc: doc,
+        s: typeof o.s === "number" ? o.s : 0,
+        why: typeof o.why === "string" ? o.why : "",
+      });
+    }
+  }
+
+  const metaById: { [doc: number]: DocMeta } = {};
+  for (const raw of asArray(parseJson(docsMetaJson))) {
+    const o = raw as { ID?: unknown; Id?: unknown; Title?: unknown; TextFileUrl?: unknown };
+    const idRaw = o.ID !== undefined ? o.ID : o.Id;
+    const id = typeof idRaw === "number" ? idRaw : parseInt(String(idRaw), 10);
+    if (id > 0) {
+      metaById[id] = {
+        title: typeof o.Title === "string" ? o.Title : "",
+        url: urlString(o.TextFileUrl),
+      };
+    }
+  }
+
+  const sm = (parseJson(selfMetaJson) || {}) as {
+    doc?: unknown; title?: unknown; url?: unknown; file?: unknown;
+  };
+  const selfMeta = {
+    doc: typeof sm.doc === "number" ? sm.doc : self,
+    title: typeof sm.title === "string" ? sm.title : "",
+    url: typeof sm.url === "string" ? sm.url : "",
+    file: typeof sm.file === "string" ? sm.file : "",
+  };
+
+  const files: PatchedFile[] = [];
+  for (const raw of asArray(parseJson(filesJson))) {
+    const f = raw as { doc?: unknown; name?: unknown; content?: unknown };
+    const file: PatchFile = {
+      doc: typeof f.doc === "number" ? f.doc : parseInt(String(f.doc), 10) || 0,
+      name: typeof f.name === "string" ? f.name : "",
+      content: typeof f.content === "string" ? f.content : "",
+    };
+
+    let patched: { content: string; note: string };
+    if (file.doc === self) {
+      // ---- set mode: full recompute of the doc's own list --------
+      const entries: RelEntry[] = [];
+      const bullets: { [doc: number]: string } = {};
+      for (const r of ranked) {
+        const meta = metaById[r.doc];
+        if (!meta || !meta.url) {
+          continue; // Doc Index row gone or sidecar never written
+        }
+        const parts = meta.url.split("/");
+        entries.push({ doc: r.doc, file: parts[parts.length - 1], s: r.s });
+        bullets[r.doc] = renderBullet(meta.title || parts[parts.length - 1], meta.url, r.why, r.doc);
+      }
+      patched = patchOne(file.content, sortAndCap(entries, cap), bullets, "set");
+    } else {
+      // ---- merge mode: upsert the current doc into a neighbor ----
+      let pairEvidence: RankedEntry | null = null;
+      for (const r of ranked) {
+        if (r.doc === file.doc) {
+          pairEvidence = r;
+        }
+      }
+      if (!pairEvidence || !selfMeta.url || !selfMeta.file) {
+        patched = { content: file.content, note: "no-pair-evidence" };
+      } else {
+        const close = file.content.indexOf("\n---\n", 3);
+        const fm = file.content.indexOf("---\n") === 0 && close > 0
+          ? file.content.slice(4, close)
+          : "";
+        const body = close > 0 ? file.content.slice(close + 5) : "";
+        const b = body.indexOf(BEGIN);
+        const e = body.indexOf(END);
+        const inner = b >= 0 && e > b ? body.slice(b + BEGIN.length, e) : "";
+
+        const entries = readFmEntries(fm).filter((x) => x.doc !== selfMeta.doc);
+        const bullets = readBullets(inner);
+        entries.push({ doc: selfMeta.doc, file: selfMeta.file, s: pairEvidence.s });
+        bullets[selfMeta.doc] = renderBullet(
+          selfMeta.title || selfMeta.file, selfMeta.url, pairEvidence.why, selfMeta.doc
+        );
+        patched = patchOne(file.content, sortAndCap(entries, cap), bullets, "merged");
+      }
+    }
+
+    files.push({
+      name: file.name,
+      content: patched.content,
+      changed: patched.content !== file.content,
+      note: patched.note,
+    });
+  }
+
+  return { files: files };
+}

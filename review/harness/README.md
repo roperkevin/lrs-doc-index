@@ -79,9 +79,35 @@ asserts the v2.2 output contract instead of byte-equality:
   a word boundary, non-Latin → filename fallback, empty → `doc`)
 
 `render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
-v2.2 frontmatter/header mirrored from the flow template — and asserts the
-frontmatter parses with `yaml.safe_load`, the file has exactly one H1, and the
-header/body seam is present. This is the eyeball artifact for the target format.
+v2.3 frontmatter/header mirrored from the flow template — and asserts the
+frontmatter parses with `yaml.safe_load` (including `related: []`), the file
+has exactly one H1, the header/body seam is present, and the related-section
+marker pair is well-placed. It then runs SidecarPatch v1.0 in set mode with
+three synthetic entries and writes `sample_sidecar_related.md` — the eyeball
+artifact for a POPULATED related list — re-asserting the patched frontmatter
+still parses and the file still has one H1.
+
+## Related-docs checks — RelatedRank v1.0 / SidecarPatch v1.0 (v2.3)
+
+`check_related.py` wraps both v2.3 scripts (same appendix pattern as
+`rex_v12.ts`; no fixtures needed) and asserts the v2.3 contract:
+
+- RelatedRank: an id link (score 1000+) outranks any keyword count; a doc
+  sharing both signals collapses into ONE entry with combined score/why;
+  self excluded; score ties break to the higher (newer) item id; cap at
+  topN; empty or malformed JSON inputs are safe; the why-string caps
+  keyword names at 4 + `+k more`
+- SidecarPatch: set mode rewrites ONLY the frontmatter `related:` line and
+  the begin/end marker region (byte-integrity asserted against planted
+  decoy `related:` text and stray `---` seams in the body); idempotence
+  (`patch(patch(x)) == patch(x)`, `changed` false); merge inserts/re-sorts,
+  replaces an existing doc id (reindex-safe), and evicts the weakest past
+  the cap; a pre-v2.3 sidecar without markers gains the section before the
+  seam and the `related:` line after `tools:`; begin-without-end is a
+  byte-identical no-op with a note; populated frontmatter still
+  `yaml.safe_load`s
+- both wrapped runners (`rr_v10.ts`, `scp_v10.ts`) type-check at ES2017,
+  compiled separately (each Office Script is its own global scope)
 
 Usage (from this directory; wrapped runners are regenerated on each run):
 
@@ -89,7 +115,8 @@ Usage (from this directory; wrapped runners are regenerated on each run):
 python3 make_fixtures.py     # now also plants structure (planted_format.json)
                              # and the workbook stand-in (sheets.json)
 python3 check_format.py
-python3 render_sample.py && cat sample_sidecar.md
+python3 check_related.py     # no fixture prereqs — can run standalone
+python3 render_sample.py && cat sample_sidecar.md sample_sidecar_related.md
 ```
 
 ### Last run (2026-08-09, Node 22.22.2)
@@ -99,3 +126,10 @@ All 150+ assertions PASS: 18/18 slide titles promoted and deduplicated,
 well-formed, WorkbookDump caps exact, recall 1.0000 on all three fixtures,
 all five slug cases exact. `zte_v17.ts`, `wbd_v11.ts` and `rex_v12.ts` also
 type-check at ES2017 (`tsc --noEmit --target es2017`).
+
+`check_related.py` (same date/Node): all 31 assertions PASS — RelatedRank
+precedence/merge/tie/cap/safety and SidecarPatch set/merge/evict/
+idempotence/byte-integrity/fallback/no-op cases — and `rr_v10.ts` /
+`scp_v10.ts` type-check at ES2017. `render_sample.py` PASS in both the
+empty and populated states (see `sample_sidecar.md` /
+`sample_sidecar_related.md`).
