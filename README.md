@@ -11,7 +11,8 @@ images, and cross-links each sidecar to its related documents.
 
 | Path | What | Version |
 |---|---|---|
-| flow/v2_3/definition.json | Flow definition (zip exported post-edits) | v2.3 |
+| flow/v2_3/definition.json | Flow definition | v2.3 |
+| flow/DocIndexSweep_v2_3.zip | Import package (v2.2 package skeleton + the v2.3 definition; designer touch-ups still needed post-import) | v2.3 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels | v1.7 |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
