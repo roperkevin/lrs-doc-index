@@ -1,5 +1,5 @@
 /**
- * SidecarPatch v1.0 — surgical "Related documents" patching for
+ * SidecarPatch v1.1 — surgical "Related documents" patching for
  * markdown sidecars, batched over every file touched for one doc
  * ------------------------------------------------------------------
  * One call patches the current doc's own sidecar ("set" mode: the
@@ -11,7 +11,7 @@
  *
  * Two regions of a sidecar are ever rewritten, nothing else:
  *
- *   frontmatter  the single `related: [...]` line — machine-readable
+ *   metadata     the single `related: [...]` line — machine-readable
  *                cache AND merge state, one line of JSON (valid YAML
  *                flow style): [{"doc":17,"file":"...__doc17.md","s":1003}]
  *   body         the first region between the marker lines
@@ -20,9 +20,17 @@
  *                invisible <!-- rel:N --> tag so a later merge can
  *                re-associate, reorder and evict without parsing prose
  *
+ * v1.1: the metadata block comes in two frames — the PromptVersion
+ * v1.4 fenced form (```yaml ... ```, which SharePoint's markdown
+ * preview renders as a code block; `---` frontmatter renders there as
+ * a giant setext heading) and the legacy `---` frontmatter form still
+ * present until the backfill rewrites a file. Both parse; whichever
+ * frame a file carries is preserved on rewrite — format conversion is
+ * the version-gated backfill's job, not the patcher's.
+ *
  * Safety posture: the body seam `---` and any `related:`-lookalike
- * text in extracted content are never touched (the frontmatter line is
- * located inside the parsed frontmatter block only; the body edit is
+ * text in extracted content are never touched (the metadata line is
+ * located inside the parsed metadata block only; the body edit is
  * bounded by the first begin/end marker pair). Malformed markers
  * (begin without end, end before begin) → the file is returned
  * unchanged with a note — never risk corrupting extracted text.
@@ -90,6 +98,48 @@ const BEGIN = "<!-- related:begin -->";
 const END = "<!-- related:end -->";
 const HEADING = "## Related documents";
 const EMPTY_STATE = "_None yet._";
+const FENCE_OPEN = "```yaml\n";
+const FENCE_CLOSE = "\n```\n";
+const DASH_OPEN = "---\n";
+const DASH_CLOSE = "\n---\n";
+
+interface Frame {
+  open: string;
+  close: string;
+  fm: string;
+  body: string;
+}
+
+/**
+ * Split a sidecar into its metadata block and body. Recognizes the
+ * fenced frame (```yaml, PromptVersion v1.4+) and the legacy `---`
+ * frontmatter frame; returns null when neither opens the file or the
+ * frame never closes. The returned open/close let the caller rebuild
+ * the file in the same frame it arrived in.
+ */
+function splitFrame(content: string): Frame | null {
+  let open = "";
+  let close = "";
+  if (content.indexOf(FENCE_OPEN) === 0) {
+    open = FENCE_OPEN;
+    close = FENCE_CLOSE;
+  } else if (content.indexOf(DASH_OPEN) === 0) {
+    open = DASH_OPEN;
+    close = DASH_CLOSE;
+  } else {
+    return null;
+  }
+  const at = content.indexOf(close, open.length - 1);
+  if (at < 0) {
+    return null;
+  }
+  return {
+    open: open,
+    close: close,
+    fm: content.slice(open.length, at),
+    body: content.slice(at + close.length),
+  };
+}
 
 function parseJson(json: string): unknown {
   try {
@@ -208,15 +258,12 @@ function patchOne(
   bullets: { [doc: number]: string },
   noteOk: string
 ): { content: string; note: string } {
-  if (content.indexOf("---\n") !== 0) {
+  const frame = splitFrame(content);
+  if (!frame) {
     return { content: content, note: "not-frontmatter" };
   }
-  const close = content.indexOf("\n---\n", 3);
-  if (close < 0) {
-    return { content: content, note: "not-frontmatter" };
-  }
-  const fm = content.slice(4, close);
-  let body = content.slice(close + 5);
+  const fm = frame.fm;
+  let body = frame.body;
 
   const region = BEGIN + "\n" + renderRegionInner(entries, bullets) + "\n" + END;
 
@@ -238,7 +285,7 @@ function patchOne(
   }
 
   const newFm = patchFrontmatter(fm, renderFmLine(entries));
-  return { content: "---\n" + newFm + "\n---\n" + body, note: noteOk };
+  return { content: frame.open + newFm + frame.close + body, note: noteOk };
 }
 
 function main(
@@ -324,11 +371,9 @@ function main(
       if (!pairEvidence || !selfMeta.url || !selfMeta.file) {
         patched = { content: file.content, note: "no-pair-evidence" };
       } else {
-        const close = file.content.indexOf("\n---\n", 3);
-        const fm = file.content.indexOf("---\n") === 0 && close > 0
-          ? file.content.slice(4, close)
-          : "";
-        const body = close > 0 ? file.content.slice(close + 5) : "";
+        const frame = splitFrame(file.content);
+        const fm = frame ? frame.fm : "";
+        const body = frame ? frame.body : "";
         const b = body.indexOf(BEGIN);
         const e = body.indexOf(END);
         const inner = b >= 0 && e > b ? body.slice(b + BEGIN.length, e) : "";

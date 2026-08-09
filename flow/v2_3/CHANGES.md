@@ -11,12 +11,48 @@ whenever a new doc is indexed. It ships with two new script pastes:
 |---|---|---|
 | Flow definition | v2.3 | this folder (`DocIndexSweep_v2_3.zip` is exported from the tenant after the designer edits below are applied) |
 | RelatedRank | **v1.0 (new)** | `scripts/RelatedRank.ts` |
-| SidecarPatch | **v1.0 (new)** | `scripts/SidecarPatch.ts` |
+| SidecarPatch | **v1.1 (new — shipped as v1.0, bumped by the addendum below)** | `scripts/SidecarPatch.ts` |
 | AI Builder prompt | v1.2 (unchanged) | `review/patches/DocIndex_Prompt_v1_2.md` |
 
 Supersedes v2.2 as the import target. The `PromptVersion` bump to `v1.3` is
 **format-only** — the prompt text is unchanged and needs no re-paste; the bump
 exists to drive the version-gated backfill (below).
+
+## Addendum (2026-08-09) — preview-safe metadata block, PromptVersion v1.4
+
+The v2.2 smoke checklist expected "the frontmatter renders in SharePoint's
+markdown preview" — it doesn't. SharePoint's renderer has no YAML-frontmatter
+support: a paragraph followed by a `---` line is a *setext heading*, so the
+whole metadata block renders as one giant H2 mess above the title. Fixed by
+reframing the block, not by dropping it:
+
+- **`Sidecar_header`**: the metadata block's delimiters change from
+  `---` / `---` to a fenced code block — ` ```yaml ` / ` ``` `. Every
+  markdown renderer (SharePoint preview included) shows it as a tidy code
+  block; the inner YAML is unchanged, so `yaml.safe_load` over the fence
+  contents round-trips exactly as before, and grep/Python consumers strip
+  one known fence line instead of one known dash line. The `---`
+  header/body seam after the related section is untouched (a thematic
+  break preceded by a blank line renders fine — only the frontmatter
+  position was broken).
+- **`Config.PromptVersion`**: `v1.3` → `v1.4`, format-only again — the
+  prompt text is unchanged, do NOT re-paste. The bump reuses the reindex
+  gate to rewrite every sidecar into the fenced frame, ~150/day until the
+  corpus converges.
+- **SidecarPatch v1.1** (re-paste over v1.0 in Scripts.xlsx): the patcher
+  now recognizes both frames — fenced (v1.4+) and legacy `---`
+  frontmatter — and preserves whichever frame a file arrived in. That
+  keeps reciprocal merges landing on not-yet-rewritten neighbors during
+  the backfill window; frame *conversion* stays the backfill's job, so
+  the patcher remains surgical (the two patch regions only).
+- No other action, script, list, or prompt change. Designer edit if not
+  re-importing: replace `Sidecar_header`'s first line `---` with
+  ` ```yaml `, its closing `---` (the one directly before the blank line
+  and `# ` H1) with ` ``` `, and bump the `Config` literal.
+
+Smoke check for this revision: open any rewritten sidecar in the library
+preview — the metadata shows as a code block, the H1 is the first heading,
+and no giant bold heading of run-together metadata appears.
 
 ## What changed
 
@@ -131,12 +167,13 @@ in v2.0.
 
 ## Install order (paste scripts first)
 
-1. Paste **RelatedRank v1.0** and **SidecarPatch v1.0** as NEW scripts in
+1. Paste **RelatedRank v1.0** and **SidecarPatch v1.1** as NEW scripts in
    Scripts.xlsx (Automate tab), exact names. Harmless to the running v2.2
    flow (nothing references them until the v2.3 import).
 2. Import `DocIndexSweep_v2_3.zip` (as Update), or apply designer edits
    R1–R8 to the live flow.
-3. Prompt: no change — do NOT re-paste; the v1.3 bump is format-only.
+3. Prompt: no change — do NOT re-paste; the v1.3 and v1.4 bumps are
+   format-only.
 
 ## REQUIRED after every import — not optional
 
@@ -239,3 +276,10 @@ SidecarPatch-populated `sample_sidecar_related.md`; frontmatter round-trips
 via `yaml.safe_load` in both states; one H1; marker pair well-placed.
 `check_format.py` remains green (the new heading is H2; all v2.2 body
 invariants unchanged).
+
+Addendum run (2026-08-09): `check_related.py` PASS with the new frame
+assertions — set mode preserves the fence, a legacy `---` neighbor still
+merges with its frame preserved, the pre-v2.3 fallback keeps its `---`
+frame — and `scp_v11.ts` type-checks at ES2017. `render_sample.py` PASS
+rendering the fenced template in both empty and populated states;
+`check_format.py` unaffected (body contract unchanged).

@@ -1,21 +1,24 @@
-"""Render a full sample sidecar — the eyeball artifact for the v2.3 format.
+"""Render a full sample sidecar — the eyeball artifact for the current format.
 
 Mirrors the flow's Sidecar_header template (flow/v2_3/definition.json)
 in Python — same fields, same YAML escaping rules as the WDL
 expressions — over the real_deck.pptx v1.7 extraction, and writes
 sample_sidecar.md. Asserts:
 
-  - the frontmatter parses with yaml.safe_load (title planted with
-    '"' and ':' to exercise the escaping); `related` reads as []
+  - the metadata block is the fenced ```yaml frame (PromptVersion
+    v1.4) — NOT `---` frontmatter, which SharePoint's markdown
+    preview renders as a giant setext heading — and its inner YAML
+    parses with yaml.safe_load (title planted with '"' and ':' to
+    exercise the escaping); `related` reads as []
   - exactly one H1 line in the whole file
   - exactly one <!-- related:begin -->/<!-- related:end --> marker
     pair, in order, between ## Related documents and the seam
   - the '---' header/body seam is present
 
-Then runs SidecarPatch v1.0 in set mode over the rendered sample with
+Then runs SidecarPatch v1.1 in set mode over the rendered sample with
 three synthetic ranked entries and writes sample_sidecar_related.md —
 the eyeball artifact for a POPULATED related list — re-asserting the
-frontmatter still parses (`related` = 3 entry dicts) and the file
+metadata still parses (`related` = 3 entry dicts) and the file
 still has exactly one H1.
 
 Prereqs: make_fixtures.py and check_format.py have run (zte_v17.ts).
@@ -57,7 +60,7 @@ meta = {
     'dev': '',
     'extracted': '2026-08-09',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v1.3',
+    'prompt_version': 'v1.4',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
     'summary': ('Explores how conflict prevention should acquire locks when routes '
@@ -66,7 +69,7 @@ meta = {
                 'user already holds the lock.'),
 }
 
-header = f"""---
+header = f"""```yaml
 title: {wdl_yaml_quote(meta['title'])}
 source_file: {wdl_yaml_quote(meta['source_file'])}
 source_url: "{meta['source_url']}"
@@ -83,7 +86,7 @@ prompt_version: "{meta['prompt_version']}"
 keywords: [{', '.join(kw_quote(k) for k in meta['keywords'])}]
 tools: [{', '.join(kw_quote(t) for t in meta['tools'])}]
 related: []
----
+```
 
 # {meta['title']}
 
@@ -108,13 +111,19 @@ sidecar = header + body
 open('sample_sidecar.md', 'w').write(sidecar)
 
 ok = True
-fm = sidecar.split('---\n')[1]
+if sidecar.startswith('```yaml\n') and not sidecar.startswith('---'):
+    print('ok   metadata block is the fenced frame (SharePoint-preview-safe)')
+else:
+    print('FAIL sidecar does not open with the ```yaml fence')
+    ok = False
+
+fm = sidecar[len('```yaml\n'):sidecar.index('\n```\n')]
 parsed = yaml.safe_load(fm)
 if parsed['title'] != meta['title'] or parsed['keywords'] != meta['keywords']:
-    print('FAIL frontmatter round-trip')
+    print('FAIL metadata round-trip')
     ok = False
 else:
-    print('ok   frontmatter parses and round-trips (quoted/colon title)')
+    print('ok   metadata parses and round-trips (quoted/colon title)')
 
 h1s = [ln for ln in sidecar.split('\n') if re.match(r'^# ', ln)]
 if len(h1s) != 1:
@@ -145,7 +154,7 @@ else:
     print('FAIL related markers missing, duplicated, or misplaced')
     ok = False
 
-# ---- populate via SidecarPatch v1.0 (set mode, synthetic entries) -------
+# ---- populate via SidecarPatch v1.1 (set mode, synthetic entries) -------
 scp = open('../../scripts/SidecarPatch.ts').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 scp += '''
@@ -189,13 +198,15 @@ out = subprocess.run(['node', '--experimental-strip-types', 'scp_render.ts',
 patched = json.loads(out.stdout)['files'][0]
 open('sample_sidecar_related.md', 'w').write(patched['content'])
 
-rel_fm = yaml.safe_load(patched['content'].split('\n---\n')[0][4:])
-if (patched['changed'] and isinstance(rel_fm.get('related'), list) and
+pc = patched['content']
+rel_fm = yaml.safe_load(pc[len('```yaml\n'):pc.index('\n```\n')])
+if (patched['changed'] and pc.startswith('```yaml\n') and
+        isinstance(rel_fm.get('related'), list) and
         len(rel_fm['related']) == 3 and
         all(set(e) == {'doc', 'file', 's'} for e in rel_fm['related'])):
-    print('ok   patched frontmatter parses; related = 3 entry dicts')
+    print('ok   patched metadata parses in the fenced frame; related = 3 entry dicts')
 else:
-    print('FAIL patched related frontmatter wrong:', rel_fm.get('related'))
+    print('FAIL patched related metadata wrong:', rel_fm.get('related'))
     ok = False
 
 h1s = [ln for ln in patched['content'].split('\n') if re.match(r'^# ', ln)]
