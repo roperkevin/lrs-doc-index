@@ -29,6 +29,7 @@ ceilings, and a set of cheap resilience/observability wins.
 | F9 | `Find_sharers` `$top: 200` silently drops ID edges past 200 sharers | **Low silent-failure** | Designer edit (1 number) | Edge minting for hub issues |
 | F10 | `Get_keywords` `$top: 500` truncates the ExistingKeywords spelling reference as vocabulary grows | **Low** | Designer edit (1 number) | Keyword spelling consistency |
 | F11 | No per-run summary (processed / errors / files-seen) | **Observability** | Designer edit (1 variable, 1 increment, 1 Compose) | None |
+| F12 | Zero-arg `createArray()` fallbacks (×5) are invalid WFL, shielded only by coalesce short-circuit → InvalidTemplate the moment the guarded field is null (fired in production on import-reset media binding) | **Silent-failure / resilience** | Designer edit (5 expressions) or v2.1 import | Fallback paths only |
 
 Exact expressions for every designer edit: [`patches/designer-edits.md`](patches/designer-edits.md).
 Script patches (F7): [`patches/ZipTextExtract_v1_6.ts`](patches/ZipTextExtract_v1_6.ts),
@@ -390,6 +391,42 @@ a glance, no new connectors, no new lists. Exact expressions:
 [`patches/designer-edits.md`](patches/designer-edits.md) §F11.
 
 **Test.** Any run: summary values match the loop's visible outcomes.
+
+---
+
+## F12 — Zero-arg `createArray()` fallbacks (found in production, post-review)
+
+**Severity: Silent-failure / resilience.** Added after the review shipped: this one
+fired during the v2.0 rollout.
+
+**Evidence.** Five expressions use `coalesce(<maybe-null>, createArray())` as an
+empty-array fallback: `flow/definition.json:545` and `:690` (image loops), `:1093`
+(Run_regex ids), `:1334` and `:1349` (keywords/tools Selects). Zero-argument
+`createArray()` is invalid WFL — the runtime requires at least one parameter.
+
+**Failure scenario (observed).** The flow package ships `Extract_media_pptx/docx`
+bound to ZipTextExtract as a parseable stand-in (a package cannot carry the
+MediaExtract pick — bundle README install step 6). Importing as Update resets the
+tenant's corrected binding; ZipTextExtract's result has no `images` field; the
+coalesce first argument is null; the runtime evaluates the fallback and throws
+`InvalidTemplate ... 'createArray' ... invoked with no parameters` on
+`For_each_img_pptx`. The same landmine sits under ids/keywords/tools — any future
+script or prompt shape change that nulls those fields detonates it. v1.9 ran clean in
+production only because coalesce short-circuits on the always-non-null first argument.
+
+**Minimal fix.** Replace each `createArray()` with `json('[]')` — a valid empty array
+with no argument requirement, byte-identical semantics whenever the field is present.
+Applied in `flow/v2_1/` (5-line diff against v2.0); or as five designer edits per
+`patches/designer-edits.md` §F12.
+
+**Blast radius.** Fallback paths only — a missing field now yields an empty loop
+instead of a run failure. Note the trade: with v2.1, a forgotten MediaExtract re-pick
+after import no longer errors — it silently saves no images — so the re-pick is
+promoted to a REQUIRED post-import step in `flow/v2_1/CHANGES.md`.
+
+**Test.** Smoke-run with the stand-in binding deliberately left on `Extract_media_pptx`:
+run completes, zero images, text/keywords unaffected. Re-pick MediaExtract, rerun:
+images saved as before.
 
 ---
 
