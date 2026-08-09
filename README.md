@@ -1,37 +1,48 @@
-# Doc Index System — Release v2.2
+# Doc Index System — Release v2.3
 
 Everything the document-indexing pipeline needs, in one bundle.
 Current as of 2026-08-09. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
 in-script, classifies and keywords each doc via AI Builder, mints
-issue-ID rows and doc-to-doc edges, and writes markdown sidecars
-with images.
+issue-ID rows and doc-to-doc edges, writes markdown sidecars with
+images, and cross-links each sidecar to its related documents.
 
 ## Bundle contents
 
 | Path | What | Version |
 |---|---|---|
-| flow/DocIndexSweep_v2_2.zip | Flow package (import as Update) | v2.2 |
+| flow/v2_3/definition.json | Flow definition (zip exported post-edits) | v2.3 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels | v1.7 |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
-| review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (paste with v2.2) | v1.2 |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.0 |
+| scripts/SidecarPatch.ts | Surgical related-section patching | v1.0 |
+| review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (current) | v1.2 |
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
-`flow/v2_1/` and their zips) remain for provenance; see each
-`CHANGES.md`.
+`flow/v2_1/`, `flow/v2_2/` and their zips) remain for provenance;
+see each `CHANGES.md`.
 
 Retired, not included: TagStrip (superseded by ZipTextExtract; the
 script may remain in Excel harmlessly). Issue Refs list is present
 but empty by design — its feeder is flow #2, not yet built.
 
-## Flow v2.2 highlights (cumulative)
+## Flow v2.3 highlights (cumulative)
 
-Rich markdown sidecars named `{title-slug}__doc{ID}.md` (slug from
+Related documents in every sidecar (v2.3): a `## Related documents`
+section plus a machine-readable `related:` frontmatter line — top 5,
+shared-issue-id edges outrank keyword overlap, each entry linked to
+the neighbor's sidecar with the reason for the relation; when a new
+doc is indexed, its neighbors' existing sidecars are reciprocally
+patched (marker-delimited, idempotent) so old docs learn about new
+arrivals; the PromptVersion `v1.3` bump is format-only (no prompt
+re-paste) and drives the converging backfill — see
+`flow/v2_3/CHANGES.md`. Plus the v2.2 base:
+rich markdown sidecars named `{title-slug}__doc{ID}.md` (slug from
 the AI title via RegexExtract v1.2; fallback: slugified source
 name) with YAML frontmatter, clean H1, metadata strip and AI
 summary; pptx bodies with slide-title headings, interleaved
@@ -55,19 +66,21 @@ break nothing.
 2. Media folder: /Document Index Texts/media (manual, once).
 3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
    (RegexExtract v1.2, ZipTextExtract v1.7, WorkbookDump v1.1,
-   MediaExtract v1.0).
+   MediaExtract v1.0, RelatedRank v1.0, SidecarPatch v1.0).
 4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_2.md
    (item/requestv2 keys: FileName, DocText, ExistingKeywords).
-5. Import flow/DocIndexSweep_v2_2.zip, bind SharePoint + Excel
+5. Import the v2.3 flow package, bind SharePoint + Excel
    Online + Dataverse connections.
 6. Designer touch-ups the package cannot carry: re-pick the script
-   on Extract_media_pptx/docx to MediaExtract (ships pointed at
-   ZipTextExtract as a parseable stand-in), and verify the prompt
-   action's model/prompt binding matches your tenant's prompt id.
+   on Extract_media_pptx/docx to MediaExtract, on Run_related_rank
+   to RelatedRank, and on Run_sidecar_patch to SidecarPatch (all
+   ship pointed at other scripts as parseable stand-ins), and
+   verify the prompt action's model/prompt binding matches your
+   tenant's prompt id.
 
-On the EXISTING tenant: only steps 3–4 (paste the v2.2-generation
-scripts and prompt) and 6 apply after importing — full order and
-per-step smoke tests in `flow/v2_2/CHANGES.md`.
+On the EXISTING tenant: only step 3 (paste the two new v2.3
+scripts) and 6 apply after importing — full order and per-step
+smoke tests in `flow/v2_3/CHANGES.md`.
 
 ## Runbook
 
@@ -83,12 +96,21 @@ per-step smoke tests in `flow/v2_2/CHANGES.md`.
   ~150/day until done.
 - **Edges** mint when the LATER doc of an ID-sharing pair
   processes; the graph self-assembles during backfill.
+- **Related documents** (v2.3): each sidecar shows its top 5
+  related docs — id-linked docs first (score 1000+/shared issue),
+  then by shared-keyword count; indexing a doc also reciprocally
+  patches its neighbors' sidecars, so lists stay fresh in both
+  directions and entries self-heal on reindex. Keyword
+  relatedness is still never stored as edges — the lists are a
+  bounded per-doc render (see docs/SP_Adaptation_Notes.md).
 - **Media caps**: 12 images/doc, 350 KB each, 3 MB total, raster
   only; overflow lands in the script's skipped list.
 - **PromptVersion**: bump the Config value whenever the prompt
   text OR the sidecar format changes; rows carry it, and since
   v2.2 a mismatch actively triggers reindexing (~150/day until
   the corpus converges), rewriting sidecars in the new format.
+  The v2.3 bump to `v1.3` is format-only: the prompt text is
+  unchanged and must not be re-pasted.
 
 ## Known limits / queued work
 
