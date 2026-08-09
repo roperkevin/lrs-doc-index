@@ -289,15 +289,20 @@ Expected: several-fold wall-clock reduction and a large memory drop on big decks
 **byte-identical** by construction.
 
 **Pre-validation already performed** (structural, in Node 22 V8 — not a substitute for
-the reference-set harness): both versions run over synthetic-but-structurally-real
-archives exercising deflate + stored entries, dynamic Huffman, tables, gridSpan,
-AlternateContent, drawings, field codes, hex/decimal entities, astral-plane UTF-8, and
-a 2.8 MB / 120-slide deck with 2.4 MB of incompressible media. Results: outputs
-byte-identical in every case; MediaExtract base64 verified against an independent zip
-decoder; both patches type-check clean at ES2017 (`tsc --noEmit --target es2017`); no
-lookbehind, no imports, one `main` each. Timings on the big deck: ZipTextExtract
-1214 ms → 382 ms, MediaExtract 1049 ms → 309 ms (~3.2×; the Office Scripts sandbox is
-slower than bare V8, so absolute headroom gained there is larger).
+the reference-set harness): both versions run over real OOXML produced by
+python-pptx/python-docx (independent zip writer — 18-slide deck with tables/notes/
+images/issue URLs; docx with merged + nested tables, unicode, astral-plane emoji;
+blank/notes-only edge deck) plus synthetic archives exercising stored entries, dynamic
+Huffman, gridSpan, AlternateContent, drawings, field codes, hex/decimal entities, and a
+2.8 MB / 120-slide deck with 2.4 MB of incompressible media. Results: outputs
+**byte-identical on every fixture**; planted-token recall 1.0000 for both versions;
+MediaExtract base64 verified against an independent zip decoder; both patches
+type-check clean at ES2017 (`tsc --noEmit --target es2017`); no lookbehind, no imports,
+one `main` each. Big-deck timings: ZipTextExtract 1231 ms → 191 ms, MediaExtract
+1183 ms → 290 ms (the Office Scripts sandbox is slower than bare V8, so absolute
+headroom gained there is larger). The runnable harness and the full results table live
+in [`harness/`](harness/README.md); to close the gate, drop the reference-set files
+into that directory and re-run — any `DIFF!` row = don't paste.
 
 **Gate (invariant 5 — this is a recommendation, not a green light).** Paste only after
 the existing harness approach confirms the bar on the reference set: token recall
