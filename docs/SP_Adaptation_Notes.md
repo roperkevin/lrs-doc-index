@@ -4,6 +4,21 @@ Six lists + one document library, all on esriis.sharepoint.com/sites/lrsworkspac
 Same data model as the Dataverse spec; this note covers only what changed
 and why, plus build mechanics.
 
+## Current tenant GUIDs
+
+The **LRS Doc Index** library (with its `media` folder) holds the sidecars;
+the six lists resolve to these GUIDs (the flow references every list by GUID,
+except Issue Refs, whose feeder — flow #2 — is not yet built):
+
+| List | GUID |
+|---|---|
+| Doc Index | `245a4082-53c5-49f0-90e1-1abe62698c4a` |
+| Keywords | `e096ab26-27d2-4ef4-ae40-c24e35fa2fb7` |
+| Doc IDs | `87b75cd7-5e84-4a65-adb5-dcd0de08321d` |
+| Issue Refs | `c1f265b5-1fcf-4b28-b6e1-c14289b002cf` |
+| Doc Keywords | `68752782-6d2d-4c65-b4e8-361c0df706ec` |
+| Doc Links | `3c50c3fe-a4e8-4ae2-9668-43987c9bff60` |
+
 ## What changed, and two changes that are upgrades
 
 **1. Keyword edges are never stored — computed on read.**
@@ -26,7 +41,7 @@ patching (a newly indexed doc updates its neighbors' sidecar
 sections), not by materializing edges.
 
 **2. Full extracted text lives as .md sidecar files, not list columns.**
-Create a document library **Doc Index Texts**. The flow writes one
+Create a document library **LRS Doc Index**. The flow writes one
 `{title-slug}__doc{ID}.md` per document (YAML frontmatter + header
 composed by the flow, body from ZipTextExtract/WorkbookDump markdown)
 and stores only a ~5,000-char TextPreview plus TextFileUrl on the list
@@ -58,7 +73,7 @@ Power Automate. One small mercy.
 
 ## Build mechanics (you know most of this — the checklist anyway)
 
-1. Create the **Doc Index Texts** library first, then the six lists as
+1. Create the **LRS Doc Index** library first, then the six lists as
    Blank lists, in this order: Doc Index, Keywords, then Doc IDs,
    Issue Refs, Doc Keywords, Doc Links (lookups target existing lists).
 2. **Create every column with its internal name** (no spaces, exactly as

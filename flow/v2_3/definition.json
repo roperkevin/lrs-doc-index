@@ -76,7 +76,7 @@
           "inputs": {
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
             "SourceSiteUrl": "https://esriis.sharepoint.com/sites/LocationReferencing",
-            "TextsFolder": "/Document Index Texts",
+            "TextsFolder": "/LRS Doc Index",
             "SmokeFile": "",
             "DefaultRepo": "ArcGISPro/ps-location-referencing",
             "PromptVersion": "v1.3",
@@ -215,7 +215,7 @@
           "inputs": {
             "parameters": {
               "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-              "table": "bf82a6df-d3b4-457a-af55-10bc0436aa64",
+              "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
               "$top": 5000
             },
             "host": {
@@ -344,7 +344,7 @@
               "inputs": {
                 "parameters": {
                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                  "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                   "$top": 1,
                   "$filter": "DocKey eq '@{replace(outputs('Doc_key'), '''', '''''')}'"
                 },
@@ -1083,7 +1083,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                                   "item/Title": "@outputs('Doc_title')",
                                   "item/DocKey": "@outputs('Doc_key')",
                                   "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
@@ -1122,7 +1122,7 @@
                                 "inputs": {
                                   "parameters": {
                                     "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                    "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                                    "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                                     "id": "@first(body('Check_indexed')?['value'])?['ID']",
                                     "item/Title": "@outputs('Doc_title')",
                                     "item/DocKey": "@outputs('Doc_key')",
@@ -1194,7 +1194,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "b1c0e4b4-c769-471f-b870-a9b28ff42eb7",
+                                  "table": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
                                   "$top": 1,
                                   "$filter": "IdKey eq '@{outputs('Id_key')}'"
                                 },
@@ -1238,7 +1238,7 @@
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                                       "parameters/method": "POST",
-                                      "parameters/uri": "_api/web/lists(guid'b1c0e4b4-c769-471f-b870-a9b28ff42eb7')/items",
+                                      "parameters/uri": "_api/web/lists(guid'87b75cd7-5e84-4a65-adb5-dcd0de08321d')/items",
                                       "parameters/headers": {
                                         "Accept": "application/json;odata=nometadata",
                                         "Content-Type": "application/json;odata=nometadata"
@@ -1268,7 +1268,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "b1c0e4b4-c769-471f-b870-a9b28ff42eb7",
+                                  "table": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
                                   "$top": 5000,
                                   "$filter": "Repo eq '@{item()?['repo']}' and IssueNumber eq @{item()?['number']}"
                                 },
@@ -1330,7 +1330,7 @@
                                   "inputs": {
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                      "table": "e2cc301d-945c-4be9-bd9a-78b381075edf",
+                                      "table": "3c50c3fe-a4e8-4ae2-9668-43987c9bff60",
                                       "$top": 1,
                                       "$filter": "LinkKey eq '@{outputs('Link_key')}'"
                                     },
@@ -1375,7 +1375,7 @@
                                         "parameters": {
                                           "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                                           "parameters/method": "POST",
-                                          "parameters/uri": "_api/web/lists(guid'e2cc301d-945c-4be9-bd9a-78b381075edf')/items",
+                                          "parameters/uri": "_api/web/lists(guid'3c50c3fe-a4e8-4ae2-9668-43987c9bff60')/items",
                                           "parameters/headers": {
                                             "Accept": "application/json;odata=nometadata",
                                             "Content-Type": "application/json;odata=nometadata"
@@ -1467,7 +1467,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "bf82a6df-d3b4-457a-af55-10bc0436aa64",
+                                  "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
                                   "$top": 1,
                                   "$filter": "Title eq '@{outputs('Kw_clean')}'"
                                 },
@@ -1502,7 +1502,7 @@
                                     "inputs": {
                                       "parameters": {
                                         "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                        "table": "bf82a6df-d3b4-457a-af55-10bc0436aa64",
+                                        "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
                                         "item/Title": "@item()?['val']",
                                         "item/Kind/Value": "@item()?['kind']"
                                       },
@@ -1545,7 +1545,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "d66edfe3-93a4-40e0-bd9e-29f25e1208b2",
+                                  "table": "68752782-6d2d-4c65-b4e8-361c0df706ec",
                                   "$top": 1,
                                   "$filter": "KWKey eq '@{outputs('KW_key')}'"
                                 },
@@ -1587,7 +1587,7 @@
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                                       "parameters/method": "POST",
-                                      "parameters/uri": "_api/web/lists(guid'd66edfe3-93a4-40e0-bd9e-29f25e1208b2')/items",
+                                      "parameters/uri": "_api/web/lists(guid'68752782-6d2d-4c65-b4e8-361c0df706ec')/items",
                                       "parameters/headers": {
                                         "Accept": "application/json;odata=nometadata",
                                         "Content-Type": "application/json;odata=nometadata"
@@ -1670,7 +1670,7 @@
                           "inputs": {
                             "parameters": {
                               "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                              "table": "d66edfe3-93a4-40e0-bd9e-29f25e1208b2",
+                              "table": "68752782-6d2d-4c65-b4e8-361c0df706ec",
                               "$top": 50,
                               "$filter": "DocumentId eq @{outputs('Doc_item_id')}"
                             },
@@ -1692,7 +1692,7 @@
                           "inputs": {
                             "parameters": {
                               "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                              "table": "e2cc301d-945c-4be9-bd9a-78b381075edf",
+                              "table": "3c50c3fe-a4e8-4ae2-9668-43987c9bff60",
                               "$top": 200,
                               "$filter": "(DocAId eq @{outputs('Doc_item_id')} or DocBId eq @{outputs('Doc_item_id')}) and LinkType eq 'id'"
                             },
@@ -1731,7 +1731,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "d66edfe3-93a4-40e0-bd9e-29f25e1208b2",
+                                  "table": "68752782-6d2d-4c65-b4e8-361c0df706ec",
                                   "$top": 500,
                                   "$filter": "@{if(empty(body('Select_kw_filter')), 'KeywordId eq 0', join(body('Select_kw_filter'), ' or '))}"
                                 },
@@ -1800,7 +1800,7 @@
                                   "inputs": {
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                      "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                                      "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                                       "$top": 10,
                                       "$filter": "@{join(body('Select_id_filter'), ' or ')}"
                                     },
@@ -2058,7 +2058,7 @@
                                 "inputs": {
                                   "parameters": {
                                     "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                    "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                                    "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                                     "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
                                     "item/DocKey": "@outputs('Doc_key')",
                                     "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
@@ -2087,7 +2087,7 @@
                                   "inputs": {
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                      "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                                      "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                                       "id": "@first(body('Check_indexed')?['value'])?['ID']",
                                       "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
                                       "item/DocKey": "@outputs('Doc_key')",
@@ -2153,7 +2153,7 @@
                           "inputs": {
                             "parameters": {
                               "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                              "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                               "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
                               "item/DocKey": "@outputs('Doc_key')",
                               "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
@@ -2183,7 +2183,7 @@
                             "inputs": {
                               "parameters": {
                                 "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                "table": "f7298805-f2d7-40be-9573-fc4978bbbb9d",
+                                "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
                                 "id": "@first(body('Check_indexed')?['value'])?['ID']",
                                 "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
                                 "item/DocKey": "@outputs('Doc_key')",
