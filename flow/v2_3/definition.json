@@ -1861,60 +1861,49 @@
                                       "type": "If",
                                       "expression": "@startsWith(outputs('Neighbor_path'), '/')",
                                       "actions": {
-                                        "Try_read_neighbor": {
+                                        "Get_neighbor_md": {
                                           "runAfter": {},
-                                          "type": "Scope",
-                                          "actions": {
-                                            "Get_neighbor_md": {
-                                              "runAfter": {},
-                                              "type": "OpenApiConnection",
-                                              "inputs": {
-                                                "parameters": {
-                                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                                  "path": "@outputs('Neighbor_path')",
-                                                  "inferContentType": false
-                                                },
-                                                "host": {
-                                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                                  "connectionName": "shared_sharepointonline",
-                                                  "operationId": "GetFileContentByPath"
-                                                },
-                                                "authentication": "@parameters('$authentication')"
-                                              }
+                                          "type": "OpenApiConnection",
+                                          "inputs": {
+                                            "parameters": {
+                                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                              "path": "@outputs('Neighbor_path')",
+                                              "inferContentType": false
                                             },
-                                            "Append_neighbor": {
-                                              "runAfter": {
-                                                "Get_neighbor_md": [
-                                                  "Succeeded"
-                                                ]
-                                              },
-                                              "type": "AppendToArrayVariable",
-                                              "inputs": {
-                                                "name": "NeighborFiles",
-                                                "value": {
-                                                  "doc": "@item()?['ID']",
-                                                  "name": "@{last(split(outputs('Neighbor_path'), '/'))}",
-                                                  "content": "@{base64ToString(body('Get_neighbor_md')?['$content'])}"
-                                                }
-                                              }
+                                            "host": {
+                                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                              "connectionName": "shared_sharepointonline",
+                                              "operationId": "GetFileContentByPath"
+                                            },
+                                            "authentication": "@parameters('$authentication')"
+                                          }
+                                        },
+                                        "Append_neighbor": {
+                                          "runAfter": {
+                                            "Get_neighbor_md": [
+                                              "Succeeded"
+                                            ]
+                                          },
+                                          "type": "AppendToArrayVariable",
+                                          "inputs": {
+                                            "name": "NeighborFiles",
+                                            "value": {
+                                              "doc": "@item()?['ID']",
+                                              "name": "@{last(split(outputs('Neighbor_path'), '/'))}",
+                                              "content": "@{base64ToString(body('Get_neighbor_md')?['$content'])}"
                                             }
                                           }
                                         },
-                                        "Catch_read_neighbor": {
+                                        "Neighbor_skipped": {
                                           "runAfter": {
-                                            "Try_read_neighbor": [
+                                            "Append_neighbor": [
                                               "Failed",
+                                              "Skipped",
                                               "TimedOut"
                                             ]
                                           },
-                                          "type": "Scope",
-                                          "actions": {
-                                            "Neighbor_skipped": {
-                                              "runAfter": {},
-                                              "type": "Compose",
-                                              "inputs": "@{concat('sidecar unreadable, skipped: ', outputs('Neighbor_path'))}"
-                                            }
-                                          }
+                                          "type": "Compose",
+                                          "inputs": "@{concat('sidecar unreadable, skipped: ', outputs('Neighbor_path'))}"
                                         }
                                       },
                                       "else": {
