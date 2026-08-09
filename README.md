@@ -63,7 +63,7 @@ break nothing.
 1. Six lists on lrsworkspace per schemas/ — create LOOKUP columns
    via CLASSIC list settings (modern-created lookups are broken:
    silent write drops, spinning pickers).
-2. Media folder: /Document Index Texts/media (manual, once).
+2. Media folder: /LRS Doc Index/media (manual, once).
 3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
    (RegexExtract v1.2, ZipTextExtract v1.7, WorkbookDump v1.1,
    MediaExtract v1.0, RelatedRank v1.0, SidecarPatch v1.0).
