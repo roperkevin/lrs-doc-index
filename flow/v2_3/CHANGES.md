@@ -105,8 +105,8 @@ designer form under "Designer edits" below.
       │    ├─ Select_id_filter → Get_related_docs → Reset_NeighborFiles
       │    ├─ For_each_neighbor (concurrency 1)
       │    │    Neighbor_url → Neighbor_path → If_neighbor_has_url
-      │    │      ├─ Try_read_neighbor: Get_neighbor_md → Append_neighbor
-      │    │      └─ Catch_read_neighbor (drop silently)
+      │    │      Get_neighbor_md → Append_neighbor
+      │    │        → Neighbor_skipped (run-after Failed/Skipped/TimedOut; drop silently)
       │    ├─ Self_meta → Self_file → Files_for_patch → Run_sidecar_patch
       │    └─ For_each_patched → If_patch_changed → Save_patched
       └─ (no signals: the template's empty state stands)
@@ -192,12 +192,15 @@ marked (→ defn).
   (Set variable, `[]`) → **`For_each_neighbor`** (over
   `body('Get_related_docs')?['value']`, concurrency 1) containing:
   `Neighbor_url` / `Neighbor_path` composes, `If_neighbor_has_url`
-  (`startsWith(outputs('Neighbor_path'), '/')`), `Try_read_neighbor` scope
-  with `Get_neighbor_md` (Get file content using path, infer type No) and
+  (`startsWith(outputs('Neighbor_path'), '/')`) whose Yes branch chains
+  `Get_neighbor_md` (Get file content using path, infer type No) →
   `Append_neighbor` (append `{doc, name, content}`; content =
-  `base64ToString(body('Get_neighbor_md')?['$content'])`), and an
-  effectively-empty `Catch_read_neighbor` scope run-after
-  Failed/TimedOut (→ defn).
+  `base64ToString(body('Get_neighbor_md')?['$content'])`) →
+  `Neighbor_skipped` (Compose noting the skip, run-after
+  Failed/Skipped/TimedOut). No Try/Catch scopes here — the branch already
+  sits at the designer's maximum nesting depth of 8, so wrapping these in
+  scopes would push them to level 9 and make the flow fail to save; the
+  run-after chain gives the same swallow-and-continue behavior (→ defn).
 - **R7 — `Self_meta` / `Self_file` / `Files_for_patch`** composes
   (→ defn) → **`Run_sidecar_patch`** (Run script `SidecarPatch`; params
   filesJson / selfId / rankedJson / docsMetaJson / selfMetaJson / topN
