@@ -91,9 +91,11 @@ flow checks the script's `changed` flag before `CreateFile`).
 A neighbor whose sidecar is missing or moved is silently dropped from
 patching (its ranking entry still appears in the new doc's own list; the
 link self-heals when that doc next reindexes). A hard failure anywhere in
-the related block lands inside `Try_index` — the doc goes to Error with
-`LastError` naming the action, and the plain sidecar (empty related state)
-already exists from `Save_sidecar`.
+the related block lands inside `Try_index` — the doc goes to Error (the
+`Err_detail` compose names the failing action in the run history; the
+rebuilt Doc Index list has no `LastError` column, so nothing is written to
+the row), and the plain sidecar (empty related state) already exists from
+`Save_sidecar`.
 
 ### New flow actions
 
@@ -146,7 +148,9 @@ in v2.0.
 - Re-pick `Extract_media_pptx` / `Extract_media_docx` to `MediaExtract`
   (carried from v2.1/v2.2).
 - Re-verify the prompt action's model/prompt binding.
-- `Get_files` pagination threshold 20000; `LastError` column exists.
+- `Get_files` pagination threshold 20000. (The rebuilt Doc Index list has
+  no `LastError` column — the flow no longer writes it; error detail lives
+  in the run history via `Err_detail`.)
 - **Designer-verify `Neighbor_url`** (F2-class check): confirm the
   `TextFileUrl` hyperlink column surfaces as a plain URL string on your
   tenant; if it surfaces as an object, change the expression to

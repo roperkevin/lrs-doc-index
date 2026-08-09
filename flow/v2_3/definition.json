@@ -1102,8 +1102,7 @@
                                   "item/PE": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
                                   "item/Dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
                                   "item/TextPreview": "@outputs('Preview_capped')",
-                                  "item/TextFileUrl": "@outputs('Text_file_url')",
-                                  "item/LastError": "@{string('')}"
+                                  "item/TextFileUrl": "@outputs('Text_file_url')"
                                 },
                                 "host": {
                                   "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
@@ -1142,8 +1141,7 @@
                                     "item/PE": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
                                     "item/Dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
                                     "item/TextPreview": "@outputs('Preview_capped')",
-                                    "item/TextFileUrl": "@outputs('Text_file_url')",
-                                    "item/LastError": "@{string('')}"
+                                    "item/TextFileUrl": "@outputs('Text_file_url')"
                                   },
                                   "host": {
                                     "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
@@ -2152,8 +2150,7 @@
                               "item/SourceModified": "@items('For_each_file')?['Modified']",
                               "item/ExtractionLane/Value": "@variables('LaneUsed')",
                               "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
-                              "item/IndexedOn": "@utcNow()",
-                              "item/LastError": "@{outputs('Err_detail')}"
+                              "item/IndexedOn": "@utcNow()"
                             },
                             "host": {
                               "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
@@ -2178,8 +2175,7 @@
                                 "item/DocKey": "@outputs('Doc_key')",
                                 "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
                                 "item/IndexStatus/Value": "Error",
-                                "item/IndexedOn": "@utcNow()",
-                                "item/LastError": "@{outputs('Err_detail')}"
+                                "item/IndexedOn": "@utcNow()"
                               },
                               "host": {
                                 "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
