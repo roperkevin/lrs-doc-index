@@ -1,0 +1,7 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"Flow composes repo#number",Yes
+Document,Document,Lookup,"Target: Doc Index list, show Title; INDEXED",Yes
+Repo,Repo,Single line of text,"e.g. ArcGISPro/ps-location-referencing",Yes
+IssueNumber,IssueNumber,Number,"0 decimal places; INDEXED",Yes
+Source,Source,Choice,"url; filename; hashtag; titlematch; manual",Yes
+IdKey,IdKey,Single line of text,"{DocItemId}|{repo}#{number} — INDEXED; query-then-write dedup key",Yes

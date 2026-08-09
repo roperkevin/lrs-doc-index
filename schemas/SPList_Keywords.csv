@@ -1,0 +1,5 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"The keyword or alias, lowercase; add index on Title",Yes
+Kind,Kind,Choice,"topic; tool; product",Yes
+CanonicalRef,CanonicalRef,Lookup,"Target: Keywords (this same list), show Title; empty = row IS canonical, set = alias",No
+Notes,Notes,Multiple lines of text,"Plain text; curation notes",No

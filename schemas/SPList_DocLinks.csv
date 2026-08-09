@@ -1,0 +1,8 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"Short edge label for display",Yes
+DocA,DocA,Lookup,"Target: Doc Index, show Title; lower item ID of the pair",Yes
+DocB,DocB,Lookup,"Target: Doc Index, show Title; higher item ID of the pair",Yes
+LinkType,LinkType,Choice,"id; gantt; titlematch; review — NO keyword value (keyword relatedness is computed on read, never stored)",Yes
+SharedValues,SharedValues,Multiple lines of text,"Plain text; semicolon-joined values, e.g. ArcGISPro/ps-location-referencing#4855",No
+Strength,Strength,Number,"0 decimals; count of shared values",No
+LinkKey,LinkKey,Single line of text,"{minItemId}|{maxItemId}|{linktype} — INDEXED; sorted-pair dedup key",Yes

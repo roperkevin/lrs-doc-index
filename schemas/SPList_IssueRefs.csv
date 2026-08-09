@@ -1,0 +1,12 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"Flow composes repo#number",Yes
+Repo,Repo,Single line of text,,Yes
+IssueNumber,IssueNumber,Number,"0 decimals",Yes
+IssueKey,IssueKey,Single line of text,"{repo}#{number} — INDEXED; upsert key (rollover rows dedupe here)",Yes
+IssueTitle,IssueTitle,Single line of text,"Issue name as written in the Gantt row — title-match target",Yes
+PE,PE,Single line of text,,No
+Dev,Dev,Single line of text,,No
+IterationLabel,IterationLabel,Single line of text,"Sheet name, e.g. Iteration 2",No
+StatusSummary,StatusSummary,Single line of text,"e.g. TP=Completed; Dev=Completed; Test=In Progress",No
+DoneFlag,DoneFlag,Yes/No,"Gantt Done? column",No
+SourceDocument,SourceDocument,Lookup,"Target: Doc Index, show Title — the schedule doc these rows came from",No
