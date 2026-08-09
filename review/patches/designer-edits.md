@@ -208,6 +208,34 @@ Test: any run — numbers match the loop's visible outcomes.
 
 ---
 
+## F12 — Replace zero-arg createArray() fallbacks (post-incident hardening)
+
+Five expressions; in each, change only the fallback `createArray()` → `json('[]')`:
+
+| Action | Field |
+|---|---|
+| `For_each_img_pptx` | foreach: `@coalesce(outputs('Extract_media_pptx')?['body/result/images'], json('[]'))` |
+| `For_each_img_docx` | foreach: `@coalesce(outputs('Extract_media_docx')?['body/result/images'], json('[]'))` |
+| `For_each_id` | foreach: `@coalesce(outputs('Run_regex')?['body/result/ids'], json('[]'))` |
+| `Select_kw_topic` | From: `@coalesce(outputs('Parse_prompt_output')?['keywords'], json('[]'))` |
+| `Select_kw_tool` | From: `@coalesce(outputs('Parse_prompt_output')?['tools'], json('[]'))` |
+
+Why: zero-argument `createArray()` is invalid WFL; it survives only while coalesce's
+first argument is non-null. When an import resets the `Extract_media_*` script pick to
+the packaged stand-in, `images` is null and the run dies with
+`InvalidTemplate ... 'createArray' ... invoked with no parameters`. `json('[]')`
+degrades to an empty loop instead. Already applied in the v2.1 package
+(`flow/DocIndexSweep_v2_1.zip`).
+
+Reminder that pairs with this: after ANY import, re-picking MediaExtract on both
+`Extract_media_*` actions is REQUIRED — under v2.1 forgetting it no longer errors, it
+silently skips image extraction (see `flow/v2_1/CHANGES.md`).
+
+Test: smoke-run with the stand-in binding left on → run completes with zero images;
+re-pick MediaExtract → images saved as before.
+
+---
+
 ## F5 (companion Config edit)
 
 After pasting the v1.2 prompt (see `DocIndex_Prompt_v1_2.md`):
