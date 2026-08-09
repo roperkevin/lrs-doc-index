@@ -1,7 +1,7 @@
-# Doc Index System — Release v1.9
+# Doc Index System — Release v2.2
 
 Everything the document-indexing pipeline needs, in one bundle.
-Current as of 2026-08-08. The system: a daily Power Automate flow
+Current as of 2026-08-09. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
 in-script, classifies and keywords each doc via AI Builder, mints
 issue-ID rows and doc-to-doc edges, and writes markdown sidecars
@@ -11,28 +11,41 @@ with images.
 
 | Path | What | Version |
 |---|---|---|
-| DocIndexSweep_v1_9.zip | Flow package (import as Update) | v1.9 |
-| scripts/RegexExtract.ts | ID + revision extraction | v1.1 |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels | v1.5 |
+| flow/DocIndexSweep_v2_2.zip | Flow package (import as Update) | v2.2 |
+| scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels | v1.7 |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
-| scripts/WorkbookDump.ts | xlsx → sheet TSV dump | v1.0 |
-| DocIndex_Prompt.md | AI Builder prompt (grounded keywords) | v1.1 |
+| scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
+| review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (paste with v2.2) | v1.2 |
+| DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
+
+Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
+`flow/v2_1/` and their zips) remain for provenance; see each
+`CHANGES.md`.
 
 Retired, not included: TagStrip (superseded by ZipTextExtract; the
 script may remain in Excel harmlessly). Issue Refs list is present
 but empty by design — its feeder is flow #2, not yet built.
 
-## Flow v1.9 highlights (cumulative)
+## Flow v2.2 highlights (cumulative)
 
-Backfill mode (SmokeFile knob shipped empty, MaxDocsPerRun 150);
-markdown sidecars named {SourceName}__doc{ID}.md with header block;
-media pipeline (inline image links + saved files, safe-degrading);
-OData apostrophe escaping on both free-text filters (the
-what'snew fix); retry-aware gate (Error rows self-heal); hardened
-trim/toLower smoke filter; all GUIDs and script references real —
-zero placeholders, imports break nothing.
+Rich markdown sidecars named `{title-slug}__doc{ID}.md` (slug from
+the AI title via RegexExtract v1.2; fallback: slugified source
+name) with YAML frontmatter, clean H1, metadata strip and AI
+summary; pptx bodies with slide-title headings, interleaved
+`### Notes` and nested lists; docx heading/list structure; xlsx as
+GFM tables; version-gated reindex (PromptVersion mismatch triggers
+a converging backfill — see `flow/v2_2/CHANGES.md`). Plus the
+v1.9–v2.1 base: backfill mode (SmokeFile knob shipped empty,
+MaxDocsPerRun 150); media pipeline (inline image links + saved
+files, safe-degrading); OData apostrophe escaping on both
+free-text filters (the what'snew fix); retry-aware gate (Error
+rows self-heal); hardened trim/toLower smoke filter; the nine
+review designer edits (v2.0) and createArray hardening (v2.1);
+all GUIDs and script references real — zero placeholders, imports
+break nothing.
 
 ## Fresh-tenant install order
 
@@ -40,18 +53,21 @@ zero placeholders, imports break nothing.
    via CLASSIC list settings (modern-created lookups are broken:
    silent write drops, spinning pickers).
 2. Media folder: /Document Index Texts/media (manual, once).
-3. Scripts into the dummy Scripts.xlsx Automate tab, exact names.
-4. AI Builder prompt from DocIndex_Prompt.md (item/requestv2 keys:
-   FileName, DocText, ExistingKeywords).
-5. Import the flow zip, bind SharePoint + Excel Online + Dataverse
-   connections.
+3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
+   (RegexExtract v1.2, ZipTextExtract v1.7, WorkbookDump v1.1,
+   MediaExtract v1.0).
+4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_2.md
+   (item/requestv2 keys: FileName, DocText, ExistingKeywords).
+5. Import flow/DocIndexSweep_v2_2.zip, bind SharePoint + Excel
+   Online + Dataverse connections.
 6. Designer touch-ups the package cannot carry: re-pick the script
    on Extract_media_pptx/docx to MediaExtract (ships pointed at
    ZipTextExtract as a parseable stand-in), and verify the prompt
    action's model/prompt binding matches your tenant's prompt id.
 
-On the EXISTING tenant: only steps 3 (paste v1.5 + v1.1 if not yet
-done, create MediaExtract) and 6 apply after importing.
+On the EXISTING tenant: only steps 3–4 (paste the v2.2-generation
+scripts and prompt) and 6 apply after importing — full order and
+per-step smoke tests in `flow/v2_2/CHANGES.md`.
 
 ## Runbook
 
@@ -60,7 +76,8 @@ done, create MediaExtract) and 6 apply after importing.
   characters must match the library's Name column.
 - **Retry semantics**: Error rows always reprocess next run;
   Skipped rows wait for a source-file change; Indexed rows
-  reprocess only when the file's Modified advances.
+  reprocess when the file's Modified advances OR the row's
+  PromptVersion trails Config's (the v2.2 backfill gate).
 - **Budget**: MaxDocsPerRun (150) counts only docs actually
   processed; the daily 17:00 Mountain trigger walks the corpus
   ~150/day until done.
@@ -69,8 +86,9 @@ done, create MediaExtract) and 6 apply after importing.
 - **Media caps**: 12 images/doc, 350 KB each, 3 MB total, raster
   only; overflow lands in the script's skipped list.
 - **PromptVersion**: bump the Config value whenever the prompt
-  text changes; rows carry it, so promptversion filters find
-  docs needing a re-run.
+  text OR the sidecar format changes; rows carry it, and since
+  v2.2 a mismatch actively triggers reindexing (~150/day until
+  the corpus converges), rewriting sidecars in the new format.
 
 ## Known limits / queued work
 

@@ -1,8 +1,14 @@
-"""Build OOXML fixtures for the v1.5-vs-v1.6 equivalence diff.
+"""Build OOXML fixtures for the harness.
 
 Produces real Office files via python-pptx / python-docx (independent zip
 writer, genuine OOXML), records the planted ground-truth tokens for the
 recall check, and emits .b64 companions for the Node runners.
+
+Since the v1.7 formatting work the fixtures also plant *structure* —
+slide titles, outline-leveled paragraphs, docx headings and numPr list
+items, and a sheets.json workbook stand-in — recorded in
+planted_format.json for check_format.py. run_diff.py (the v1.5/v1.6
+equivalence gate) is unaffected: both versions see the same fixtures.
 """
 import base64
 import io
@@ -13,6 +19,7 @@ import struct
 import zlib
 
 from docx import Document
+from docx.oxml.ns import qn
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -41,20 +48,34 @@ def make_png(w=40, h=40):
 
 
 tokens = {}
+fmt = {}
 
 # fixture 1: realistic test-plan deck (tables, notes, images, issue urls)
 prs = Presentation()
 planted = []
+deck_fmt = {'titles': [], 'notes_count': 0, 'lvl1': [], 'lvl2': []}
 for i in range(18):
     s = prs.slides.add_slide(prs.slide_layouts[5])
     title = f"Slide{i} " + sent(4)
     s.shapes.title.text = title
     planted += title.split()
+    deck_fmt['titles'].append(title)
     tb = s.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(8), Inches(2)).text_frame
     for _ in range(4):
         p = tb.add_paragraph()
         p.text = sent(12)
         planted += p.text.split()
+    # planted outline structure: explicit levels -> nested markdown lists
+    p = tb.add_paragraph()
+    p.text = f"level one item {i} " + sent(3)
+    p.level = 1
+    planted += p.text.split()
+    deck_fmt['lvl1'].append(p.text)
+    p = tb.add_paragraph()
+    p.text = f"level two item {i} " + sent(2)
+    p.level = 2
+    planted += p.text.split()
+    deck_fmt['lvl2'].append(p.text)
     tbl = s.shapes.add_table(4, 3, Inches(0.5), Inches(4), Inches(8), Inches(2)).table
     for r in range(4):
         for c in range(3):
@@ -65,19 +86,50 @@ for i in range(18):
     notes.text = (f"notes{i} PE: Claire Wang Dev: Ito — "
                   f"devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/{4000 + i}")
     planted += notes.text.split()
+    deck_fmt['notes_count'] += 1
     if i % 3 == 0:
         s.shapes.add_picture(io.BytesIO(make_png()), Inches(8.6), Inches(0.2), Inches(0.6), Inches(0.6))
 prs.save('real_deck.pptx')
 tokens['real_deck.pptx'] = planted
+fmt['real_deck.pptx'] = deck_fmt
 
 # fixture 2: docx with headings, nested + merged tables, unicode, issue refs, image
 doc = Document()
 planted = []
+doc_fmt = {'title': None, 'headings': {'1': [], '2': [], '3': []},
+           'lists': {'0': [], '1': [], '2': []}}
 h = doc.add_heading('Merge Centerlines Test Plan V4 — café naïve 中文 🚀', 0)
 planted += h.text.split()
+doc_fmt['title'] = h.text
+
+
+def add_list_item(text, ilvl):
+    """Plant a direct-formatting numPr paragraph (how Word marks list
+    items on the paragraph itself, unlike python-docx's style-only
+    List Bullet)."""
+    p = doc.add_paragraph(text)
+    ppr = p._p.get_or_add_pPr()
+    numpr = ppr.makeelement(qn('w:numPr'), {})
+    ilvl_el = ppr.makeelement(qn('w:ilvl'), {qn('w:val'): str(ilvl)})
+    numid = ppr.makeelement(qn('w:numId'), {qn('w:val'): '1'})
+    numpr.append(ilvl_el)
+    numpr.append(numid)
+    ppr.append(numpr)
+    return p
+
+
 for i in range(60):
     p = doc.add_paragraph(sent(14))
     planted += p.text.split()
+    if i % 20 == 0:
+        for lvl in (1, 2, 3):
+            hh = doc.add_heading(f"Heading {lvl} section {i} " + sent(2), lvl)
+            planted += hh.text.split()
+            doc_fmt['headings'][str(lvl)].append(hh.text)
+        for ilvl in (0, 1, 2):
+            li = add_list_item(f"list item ilvl{ilvl} block {i} " + sent(2), ilvl)
+            planted += li.text.split()
+            doc_fmt['lists'][str(ilvl)].append(li.text)
 t = doc.add_table(rows=5, cols=4)
 t.style = 'Table Grid'
 for r in range(5):
@@ -98,6 +150,7 @@ planted += p.text.split()
 doc.add_picture(io.BytesIO(make_png(60, 60)))
 doc.save('real_doc.docx')
 tokens['real_doc.docx'] = planted
+fmt['real_doc.docx'] = doc_fmt
 
 # fixture 3: edge cases — blank slide, notes-only slide
 prs2 = Presentation()
@@ -106,9 +159,28 @@ s2 = prs2.slides.add_slide(prs2.slide_layouts[6])
 s2.notes_slide.notes_text_frame.text = "only notes here referent"
 prs2.save('edge_deck.pptx')
 tokens['edge_deck.pptx'] = ['only', 'notes', 'here', 'referent']
+fmt['edge_deck.pptx'] = {'titles': [], 'notes_count': 1, 'lvl1': [], 'lvl2': []}
+
+# fixture 4: workbook stand-in for the WorkbookDump mock runner
+# (wrap_workbook.py) — a 30-column row exercising the COLCAP cut, a
+# pipe-bearing cell exercising escaping, a >300-char cell exercising
+# CELLCAP truncation, and an empty sheet.
+wide_header = [f"col{c}" for c in range(30)]
+wide_row = [f"w{c}" for c in range(30)]
+sheets = {
+    'Schedule': [wide_header, wide_row, ['w0', 'w1']],
+    'Notes': [
+        ['Task', 'Detail'],
+        ['pipes | in | cells', 'x' * 320],
+        ['plain', 'referent calibration'],
+    ],
+    'Blank': [],
+}
+json.dump(sheets, open('sheets.json', 'w'))
 
 for f in tokens:
     with open(f, 'rb') as fh:
         open(f + '.b64', 'w').write(base64.b64encode(fh.read()).decode())
 json.dump(tokens, open('planted_tokens.json', 'w'))
+json.dump(fmt, open('planted_format.json', 'w'))
 print({f: os.path.getsize(f) for f in tokens})
