@@ -31,6 +31,10 @@ sidecar to its related documents.
 | curation/KeywordCuration_Prompt_v1_0.md | Keyword curation prompt (AI Builder) | v1.0 |
 | curation/Curation_Setup.md | Curation flow build + deploy guide | v1.0 |
 | curation/CHANGES.md | Curation release notes | v1.0 |
+| testplangen/TestPlanGen_Prompt_v1_0.md | Test-plan generation prompt (AI Builder) | v1.0 |
+| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | v1.0 |
+| testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v1.0 |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/` and their zips) remain for
@@ -123,6 +127,31 @@ Documents** — deliberately outside the LRS Doc Index library so the
 Q&A agent never ingests it. Proposals are validated against real rows
 (hallucinations dropped and counted), and the whole run degrades to
 zero proposals on a malformed model reply.
+
+## Test-plan generation (v1.0)
+
+The catalog drafts test plans now — with a human gate: a third,
+on-demand flow, **TestPlanGen** (built from
+`testplangen/TestPlanGen_Setup.md` — no import package; new flows
+have no skeleton), runs from the Doc Index list's Automate menu on a
+selected **User Story** row. It reads the story's sidecar, follows
+the sidecar's machine-readable `related:` line to gather context
+(adjacent stories as a summary digest; related Test Plans as full
+style/coverage exemplars, with an exact
+`DocKind eq 'Test Plan' and Surface eq ...` query as fallback), and
+makes ONE AI Builder call
+(`testplangen/TestPlanGen_Prompt_v1_0.md`) that returns a complete
+markdown draft — every test case carrying a mandatory Trace line back
+to a story statement or exemplar pattern, every gap surfaced as a
+`[VERIFY]` item instead of an invention. The draft lands timestamped
+in **Shared Documents/Test Plan Drafts/** — deliberately outside the
+LRS Doc Index library so the Q&A agent never ingests unreviewed
+drafts. A PE reviews, finalizes into the team's normal format, and
+uploads to the source library, where the nightly sweep indexes the
+finished plan and RelatedRank links it back to its story — the loop
+closes through the existing pipeline, with zero sweep, script,
+schema, or `Config.PromptVersion` changes. A malformed model reply
+fails closed: no markers, no file.
 
 ## Fresh-tenant install order
 
@@ -224,6 +253,16 @@ smoke tests in `flow/v2_4/CHANGES.md`.
   re-run the curation smoke suite, record in `curation/CHANGES.md`.
   Never bump `Config.PromptVersion` for curation — nothing here
   reindexes the corpus.
+- **TestPlanGenPromptVersion**: bumps the same way — new
+  `testplangen/TestPlanGen_Prompt_vX_Y.md`, re-paste into AI Builder,
+  re-run the generation smoke suite, record in
+  `testplangen/CHANGES.md`. Never bump `Config.PromptVersion` for
+  generation — nothing here changes the sidecar format or reindexes
+  the corpus. Drafts are point-in-time snapshots in
+  `Shared Documents/Test Plan Drafts/` (timestamped, never
+  overwritten by re-runs, deleted by hand after finalize); the Q&A
+  agent never sees them, and a finalized plan enters the catalog only
+  by normal upload to the source library.
 
 ## Known limits / queued work
 
@@ -238,4 +277,7 @@ alias fixes the vocabulary and all future junction rows, but
 historical rows stay on the alias id, and a reindex adds canonical
 rows without deleting stale ones, until the backfill re-points
 them; mechanics specified in `curation/Curation_Setup.md`) are the
-queued follow-ons.
+queued follow-ons. Test-plan generation's own deferred work — a
+Copilot Studio front end for TestPlanGen, docx conversion of drafts,
+and the IssueRefs-driven coverage matrix — is specified in
+`testplangen/TestPlanGen_Setup.md`'s Queued follow-ons.
