@@ -1,0 +1,904 @@
+{
+  "name": "9a5e7c42-8d13-4f6b-a2e9-6b1c3d8f7a54",
+  "id": "/providers/Microsoft.Flow/flows/9a5e7c42-8d13-4f6b-a2e9-6b1c3d8f7a54",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "TestPlanGenCore",
+    "definition": {
+      "metadata": {
+        "workflowEntityId": null,
+        "processAdvisorMetadata": null,
+        "flowChargedByPaygo": null,
+        "flowclientsuspensionreason": "None",
+        "flowclientsuspensiontime": null,
+        "flowclientsuspensionreasondetails": null,
+        "creator": {
+          "id": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+          "type": "User",
+          "tenantId": "aee6e3c9-711e-4c7c-bd27-04f2307db20d"
+        },
+        "provisioningMethod": "FromDefinition",
+        "failureAlertSubscription": true,
+        "clientLastModifiedTime": "2026-08-10T00:00:00.0000000Z",
+        "lastModifiedBy": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+        "connectionKeySavedTimeKey": "2026-08-10T00:00:00.0000000Z",
+        "creationSource": "Portal",
+        "modifiedSources": "Portal"
+      },
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Button",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "title": "StoryId",
+                  "type": "number",
+                  "x-ms-dynamically-added": true,
+                  "description": "Doc Index item id of the user story to draft from",
+                  "x-ms-content-hint": "NUMBER"
+                }
+              },
+              "required": [
+                "number"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Config_gen": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": {
+            "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
+            "DocIndexList": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+            "DraftFolder": "/Shared Documents/Test Plan Drafts",
+            "StoryCap": 30000,
+            "ExemplarCap": 20000,
+            "NeighborCap": 5,
+            "DigestSummaryCap": 400,
+            "TestPlanGenPromptVersion": "v1.0"
+          }
+        },
+        "Init_NeighborDigest": {
+          "runAfter": {
+            "Config_gen": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "NeighborDigest",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_ExemplarText": {
+          "runAfter": {
+            "Init_NeighborDigest": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ExemplarText",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_ExemplarUrls": {
+          "runAfter": {
+            "Init_ExemplarText": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ExemplarUrls",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_ExemplarCount": {
+          "runAfter": {
+            "Init_ExemplarUrls": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ExemplarCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Try_gen": {
+          "runAfter": {
+            "Init_ExemplarCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "Scope",
+          "actions": {
+            "Get_story_row": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                  "id": "@triggerBody()?['number']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItem"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Guard_story": {
+              "runAfter": {
+                "Get_story_row": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "expression": "@and(equals(coalesce(body('Get_story_row')?['DocKind']?['Value'], ''), 'User Story'), equals(coalesce(body('Get_story_row')?['IndexStatus']?['Value'], ''), 'Indexed'), not(empty(coalesce(body('Get_story_row')?['TextFileUrl'], ''))))",
+              "actions": {
+                "Story_url": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": "@{coalesce(body('Get_story_row')?['TextFileUrl'], '')}"
+                },
+                "Story_path": {
+                  "runAfter": {
+                    "Story_url": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@{replace(outputs('Story_url'), outputs('Config_gen')?['SiteUrl'], '')}"
+                },
+                "Get_story_sidecar": {
+                  "runAfter": {
+                    "Story_path": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                      "path": "@outputs('Story_path')",
+                      "inferContentType": false
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetFileContentByPath"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Story_md": {
+                  "runAfter": {
+                    "Get_story_sidecar": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@{base64ToString(body('Get_story_sidecar')?['$content'])}"
+                },
+                "Rel_start": {
+                  "runAfter": {
+                    "Story_md": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@indexOf(outputs('Story_md'), 'related: [')"
+                },
+                "Rel_tail": {
+                  "runAfter": {
+                    "Rel_start": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(greater(outputs('Rel_start'), -1), substring(outputs('Story_md'), add(outputs('Rel_start'), 9)), '[]')"
+                },
+                "Rel_line": {
+                  "runAfter": {
+                    "Rel_tail": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(greater(indexOf(outputs('Rel_tail'), decodeUriComponent('%0A')), -1), substring(outputs('Rel_tail'), 0, indexOf(outputs('Rel_tail'), decodeUriComponent('%0A'))), outputs('Rel_tail'))"
+                },
+                "Rel_json_safe": {
+                  "runAfter": {
+                    "Rel_line": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(and(startsWith(trim(outputs('Rel_line')), '['), endsWith(trim(outputs('Rel_line')), ']')), trim(outputs('Rel_line')), '[]')"
+                },
+                "Rel_entries": {
+                  "runAfter": {
+                    "Rel_json_safe": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@take(json(outputs('Rel_json_safe')), int(outputs('Config_gen')?['NeighborCap']))"
+                },
+                "For_each_rel": {
+                  "foreach": "@outputs('Rel_entries')",
+                  "runAfter": {
+                    "Rel_entries": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Try_neighbor": {
+                      "runAfter": {},
+                      "type": "Scope",
+                      "actions": {
+                        "Get_neighbor_row": {
+                          "runAfter": {},
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                              "id": "@items('For_each_rel')?['doc']"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "GetItem"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Neighbor_summary_capped": {
+                          "runAfter": {
+                            "Get_neighbor_row": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@take(replace(replace(coalesce(body('Get_neighbor_row')?['Summary'], ''), '\"', ''), decodeUriComponent('%0A'), ' '), int(outputs('Config_gen')?['DigestSummaryCap']))"
+                        },
+                        "Append_digest_line": {
+                          "runAfter": {
+                            "Neighbor_summary_capped": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "AppendToStringVariable",
+                          "inputs": {
+                            "name": "NeighborDigest",
+                            "value": "- [@{coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], 'Other')}] \"@{body('Get_neighbor_row')?['Title']}\" — surface @{coalesce(body('Get_neighbor_row')?['Surface']?['Value'], '')}, release @{coalesce(body('Get_neighbor_row')?['TargetRelease'], '')}, PE @{coalesce(body('Get_neighbor_row')?['PE'], '')}: @{outputs('Neighbor_summary_capped')}@{decodeUriComponent('%0A')}"
+                          }
+                        },
+                        "If_testplan_neighbor": {
+                          "runAfter": {
+                            "Append_digest_line": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), less(length(variables('ExemplarUrls')), 2), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))",
+                          "actions": {
+                            "Collect_exemplar_url": {
+                              "runAfter": {},
+                              "type": "AppendToArrayVariable",
+                              "inputs": {
+                                "name": "ExemplarUrls",
+                                "value": "@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Neighbor_done": {
+                      "runAfter": {
+                        "Try_neighbor": [
+                          "Succeeded",
+                          "Failed",
+                          "Skipped",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "ok"
+                    }
+                  }
+                },
+                "If_no_exemplar": {
+                  "runAfter": {
+                    "For_each_rel": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "If",
+                  "expression": "@equals(length(variables('ExemplarUrls')), 0)",
+                  "actions": {
+                    "Surface_escaped": {
+                      "runAfter": {},
+                      "type": "Compose",
+                      "inputs": "@replace(coalesce(body('Get_story_row')?['Surface']?['Value'], 'Other'), '''', '''''')"
+                    },
+                    "Get_exemplars_q": {
+                      "runAfter": {
+                        "Surface_escaped": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                          "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                          "$filter": "DocKind eq 'Test Plan' and IndexStatus eq 'Indexed' and Surface eq '@{outputs('Surface_escaped')}'",
+                          "$orderby": "Modified desc",
+                          "$top": 12
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "GetItems"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Filter_release_match": {
+                      "runAfter": {
+                        "Get_exemplars_q": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Query",
+                      "inputs": {
+                        "from": "@body('Get_exemplars_q')?['value']",
+                        "where": "@equals(coalesce(item()?['TargetRelease'], ''), coalesce(body('Get_story_row')?['TargetRelease'], ''))"
+                      }
+                    },
+                    "Exemplar_rows": {
+                      "runAfter": {
+                        "Filter_release_match": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), 2), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), 2))"
+                    },
+                    "For_each_exemplar_row": {
+                      "foreach": "@outputs('Exemplar_rows')",
+                      "runAfter": {
+                        "Exemplar_rows": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Foreach",
+                      "runtimeConfiguration": {
+                        "concurrency": {
+                          "repetitions": 1
+                        }
+                      },
+                      "actions": {
+                        "Queue_exemplar_url": {
+                          "runAfter": {},
+                          "type": "AppendToArrayVariable",
+                          "inputs": {
+                            "name": "ExemplarUrls",
+                            "value": "@{coalesce(items('For_each_exemplar_row')?['TextFileUrl'], '')}"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "For_each_exemplar": {
+                  "foreach": "@variables('ExemplarUrls')",
+                  "runAfter": {
+                    "If_no_exemplar": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Try_exemplar": {
+                      "runAfter": {},
+                      "type": "Scope",
+                      "actions": {
+                        "Ex_path": {
+                          "runAfter": {},
+                          "type": "Compose",
+                          "inputs": "@{replace(item(), outputs('Config_gen')?['SiteUrl'], '')}"
+                        },
+                        "If_ex_path_ok": {
+                          "runAfter": {
+                            "Ex_path": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@startsWith(outputs('Ex_path'), '/')",
+                          "actions": {
+                            "Get_exemplar_md": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "path": "@outputs('Ex_path')",
+                                  "inferContentType": false
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetFileContentByPath"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_ex_budget": {
+                              "runAfter": {
+                                "Get_exemplar_md": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@less(length(variables('ExemplarText')), int(outputs('Config_gen')?['ExemplarCap']))",
+                              "actions": {
+                                "Append_exemplar": {
+                                  "runAfter": {},
+                                  "type": "AppendToStringVariable",
+                                  "inputs": {
+                                    "name": "ExemplarText",
+                                    "value": "--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), int(outputs('Config_gen')?['ExemplarCap']))}@{decodeUriComponent('%0A%0A')}"
+                                  }
+                                },
+                                "Inc_exemplar": {
+                                  "runAfter": {
+                                    "Append_exemplar": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "IncrementVariable",
+                                  "inputs": {
+                                    "name": "ExemplarCount",
+                                    "value": 1
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Exemplar_done": {
+                      "runAfter": {
+                        "Try_exemplar": [
+                          "Succeeded",
+                          "Failed",
+                          "Skipped",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "ok"
+                    }
+                  }
+                },
+                "Story_meta": {
+                  "runAfter": {
+                    "For_each_exemplar": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "title: @{replace(coalesce(body('Get_story_row')?['Title'], ''), '\"', '')}\nsurface: @{coalesce(body('Get_story_row')?['Surface']?['Value'], 'Other')}\ntarget_release: @{coalesce(body('Get_story_row')?['TargetRelease'], '')}\npe: @{replace(coalesce(body('Get_story_row')?['PE'], ''), '\"', '')}\ndev: @{replace(coalesce(body('Get_story_row')?['Dev'], ''), '\"', '')}\ndoc_id: @{body('Get_story_row')?['ID']}"
+                },
+                "Story_text_capped": {
+                  "runAfter": {
+                    "Story_meta": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@take(outputs('Story_md'), int(outputs('Config_gen')?['StoryCap']))"
+                },
+                "Run_testplangen_prompt": {
+                  "runAfter": {
+                    "Story_text_capped": [
+                      "Succeeded"
+                    ]
+                  },
+                  "metadata": {
+                    "flowSystemMetadata": {
+                      "portalOperationId": "aibuilderpredict_customprompt",
+                      "portalOperationGroup": "aibuilder",
+                      "portalOperationApiDisplayNameOverride": "AI Builder",
+                      "portalOperationIconOverride": "https://content.powerapps.com/resource/makerx/static/pauto/images/designeroperations/aibuilderIcon2026.8e878397.png",
+                      "portalOperationBrandColorOverride": "#0A76C4",
+                      "portalOperationApiTierOverride": "Standard"
+                    }
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "recordId": "00000000-0000-0000-0000-000000000000",
+                      "item/requestv2/StoryMeta": "@{outputs('Story_meta')}",
+                      "item/requestv2/StoryText": "@{outputs('Story_text_capped')}",
+                      "item/requestv2/RelatedDigest": "@{if(empty(variables('NeighborDigest')), '(none)', variables('NeighborDigest'))}",
+                      "item/requestv2/ExemplarText": "@{if(empty(variables('ExemplarText')), '(none)', variables('ExemplarText'))}",
+                      "item/source": {
+                        "consumptionSource": "PowerAutomate",
+                        "partnerSource": "AIBuilder",
+                        "consumptionSourceVersion": "Flow",
+                        "partnerSourceVersion": "bcddf2eb-b03f-49d4-8ac7-e1afa1260034"
+                      }
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                      "connectionName": "shared_commondataserviceforapps",
+                      "operationId": "aibuilderpredict_customprompt"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Gen_text_raw": {
+                  "runAfter": {
+                    "Run_testplangen_prompt": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@coalesce(outputs('Run_testplangen_prompt')?['body/responsev2/predictionOutput/text'], '')"
+                },
+                "Draft_begin": {
+                  "runAfter": {
+                    "Gen_text_raw": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@indexOf(outputs('Gen_text_raw'), '<<<DRAFT BEGIN>>>')"
+                },
+                "Draft_end": {
+                  "runAfter": {
+                    "Draft_begin": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@lastIndexOf(outputs('Gen_text_raw'), '<<<DRAFT END>>>')"
+                },
+                "Draft_body": {
+                  "runAfter": {
+                    "Draft_end": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(and(greater(outputs('Draft_begin'), -1), greater(outputs('Draft_end'), add(outputs('Draft_begin'), 17))), trim(substring(outputs('Gen_text_raw'), add(outputs('Draft_begin'), 17), sub(outputs('Draft_end'), add(outputs('Draft_begin'), 17)))), '')"
+                },
+                "If_draft_ok": {
+                  "runAfter": {
+                    "Draft_body": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "If",
+                  "expression": "@not(empty(outputs('Draft_body')))",
+                  "actions": {
+                    "Draft_banner": {
+                      "runAfter": {},
+                      "type": "Compose",
+                      "inputs": "@{concat('<!-- machine-generated test-plan draft — TestPlanGen prompt ', outputs('Config_gen')?['TestPlanGenPromptVersion'], ' -->', decodeUriComponent('%0A'), '> **DRAFT — machine-generated, unreviewed.** Generated ', utcNow(), ' from user story doc ', body('Get_story_row')?['ID'], ' — \"', replace(coalesce(body('Get_story_row')?['Title'], ''), '\"', ''), '\". Source sidecar: <', outputs('Story_url'), '>', if(greater(length(outputs('Story_md')), int(outputs('Config_gen')?['StoryCap'])), ' [story text truncated at StoryCap]', ''), decodeUriComponent('%0A'), '> Review every case and resolve all [VERIFY] items before use. Do NOT upload this file to the LocationReferencing Documents library or the LRS Doc Index library — finalize into the team test-plan format first (TestPlanGen_Setup.md §4).', decodeUriComponent('%0A%0A'), outputs('Draft_body'), decodeUriComponent('%0A'))}"
+                    },
+                    "Save_draft": {
+                      "runAfter": {
+                        "Draft_name": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                          "folderPath": "@{outputs('Config_gen')?['DraftFolder']}",
+                          "name": "@outputs('Draft_name')",
+                          "body": "@outputs('Draft_banner')"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "CreateFile"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Draft_name": {
+                      "runAfter": {
+                        "Draft_banner": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmm')}.md"
+                    },
+                    "Draft_url": {
+                      "runAfter": {
+                        "Save_draft": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "@{concat(outputs('Config_gen')?['SiteUrl'], outputs('Config_gen')?['DraftFolder'], '/', outputs('Draft_name'))}"
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Respond_nodraft": {
+                        "type": "Response",
+                        "kind": "PowerApp",
+                        "inputs": {
+                          "statusCode": 200,
+                          "body": {
+                            "Status": "nodraft",
+                            "DraftUrl": "",
+                            "GenSummary": "Model reply was missing the DRAFT BEGIN/END markers (or they were misordered); nothing was written. Re-run once; if it repeats, test the prompt in the AI Builder pane — a TestPlanGenPromptVersion concern, see testplangen/CHANGES.md."
+                          },
+                          "schema": {
+                            "type": "object",
+                            "properties": {
+                              "Status": {
+                                "title": "Status",
+                                "x-ms-dynamically-added": true,
+                                "type": "string"
+                              },
+                              "DraftUrl": {
+                                "title": "DraftUrl",
+                                "x-ms-dynamically-added": true,
+                                "type": "string"
+                              },
+                              "GenSummary": {
+                                "title": "GenSummary",
+                                "x-ms-dynamically-added": true,
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "runAfter": {}
+                      },
+                      "Terminate_no_draft": {
+                        "runAfter": {
+                          "Respond_nodraft": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Terminate",
+                        "inputs": {
+                          "runStatus": "Succeeded"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Respond_guard": {
+                    "type": "Response",
+                    "kind": "PowerApp",
+                    "inputs": {
+                      "statusCode": 200,
+                      "body": {
+                        "Status": "guard",
+                        "DraftUrl": "",
+                        "GenSummary": "TestPlanGen runs on Indexed User Story rows only. Select a row with DocKind = User Story and IndexStatus = Indexed (it needs an extracted sidecar to draft from)."
+                      },
+                      "schema": {
+                        "type": "object",
+                        "properties": {
+                          "Status": {
+                            "title": "Status",
+                            "x-ms-dynamically-added": true,
+                            "type": "string"
+                          },
+                          "DraftUrl": {
+                            "title": "DraftUrl",
+                            "x-ms-dynamically-added": true,
+                            "type": "string"
+                          },
+                          "GenSummary": {
+                            "title": "GenSummary",
+                            "x-ms-dynamically-added": true,
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "runAfter": {}
+                  },
+                  "Terminate_not_story": {
+                    "runAfter": {
+                      "Respond_guard": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "Terminate",
+                    "inputs": {
+                      "runStatus": "Succeeded"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Catch_gen": {
+          "runAfter": {
+            "Try_gen": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Scope",
+          "actions": {
+            "Filter_failed_gen": {
+              "runAfter": {},
+              "type": "Query",
+              "inputs": {
+                "from": "@result('Try_gen')",
+                "where": "@or(equals(item()?['status'], 'Failed'), equals(item()?['status'], 'TimedOut'))"
+              }
+            },
+            "Err_detail_gen": {
+              "runAfter": {
+                "Filter_failed_gen": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@take(concat(coalesce(first(body('Filter_failed_gen'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed_gen'))?['error'], first(body('Filter_failed_gen'))?['outputs'], ''))), 4000)"
+            },
+            "Terminate_failed_gen": {
+              "runAfter": {
+                "Err_detail_gen": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Terminate",
+              "inputs": {
+                "runStatus": "Failed",
+                "runError": {
+                  "code": "TestPlanGenFailed",
+                  "message": "@{outputs('Err_detail_gen')}"
+                }
+              }
+            }
+          }
+        },
+        "Gen_summary": {
+          "runAfter": {
+            "Try_gen": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}"
+        },
+        "Respond_ok": {
+          "type": "Response",
+          "kind": "PowerApp",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "Status": "ok",
+              "DraftUrl": "@{outputs('Draft_url')}",
+              "GenSummary": "@{outputs('Gen_summary')}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "Status": {
+                  "title": "Status",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "DraftUrl": {
+                  "title": "DraftUrl",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "GenSummary": {
+                  "title": "GenSummary",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Gen_summary": [
+              "Succeeded"
+            ]
+          }
+        }
+      }
+    },
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "connectionName": "9c9bfea530b9428aa0c7c2a438b2c0a8",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "tier": "NotSpecified",
+        "apiName": "sharepointonline",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      },
+      "shared_commondataserviceforapps": {
+        "connectionName": "shared-commondataser-ebf2bddd-de06-4bb4-a085-3ef4a329003e",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+        "tier": "NotSpecified",
+        "apiName": "commondataserviceforapps",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      }
+    },
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}

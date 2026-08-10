@@ -1,3 +1,32 @@
+# TestPlanGen v1.3 — import package for the child flow (TestPlanGenCore)
+
+`testplangen/TestPlanGenCore_v1_0.zip` packages the agent-ready child
+flow, closing the by-hand gap in `testplangen/agent/Agent_Setup.md`
+§1a. Its payload, `testplangen/flow/core_v1_0/definition.json`, is a
+**programmatic transform of the v1.0 flow definition** (not a second
+authoring): trigger swapped to "Manually trigger a flow" with a
+Number input `StoryId` (`triggerBody()?['number']`), the guard and
+no-draft Terminates converted to Respond-with-Status (`guard` /
+`nodraft`) followed by Terminate Succeeded, the draft filename minted
+once in a `Draft_name` Compose with `Draft_url` derived from it, and
+a success `Respond_ok` returning `Status`/`DraftUrl`/`GenSummary` —
+the contract the agent topic and 1c parent bind to. Catch still
+Terminates Failed (a real failure should fail the caller). 63
+actions; same two connectors; same authored-not-exported caveats and
+I-checks as v1.2 (prompt `recordId` placeholder, list re-pick on
+foreign GUIDs), minus the trigger caveat — a button trigger has no
+list binding. Post-import: add the flow to a solution and set
+embedded run-only connections before wiring 1b/1c (child flows are
+solution-only).
+
+| Piece | Version | Where |
+|---|---|---|
+| Child-flow import package | **v1.0** | `testplangen/TestPlanGenCore_v1_0.zip` |
+| Child-flow definition (payload) | v1.0 | `testplangen/flow/core_v1_0/definition.json` |
+| Everything else | unchanged | — |
+
+---
+
 # TestPlanGen v1.2 — import package for the flow
 
 The flow now ships as an importable package,

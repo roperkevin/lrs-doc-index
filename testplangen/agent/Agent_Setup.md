@@ -72,7 +72,22 @@ directly. Rather than duplicate ~35 actions (drift risk — against the
 repo's no-duplication rule), split once into a child flow with two
 thin parents. All three live in the solution from §0.
 
-**1a — `TestPlanGenCore`** (the child; new solution flow):
+> **Shortcut for 1a (since v1.3):** instead of building the child by
+> hand, import `testplangen/TestPlanGenCore_v1_0.zip` (My flows →
+> Import → Import package (Legacy)) — it is the v1.0 flow body with
+> the 1a substitutions already applied (manual trigger with `StoryId`,
+> guard/no-draft converted to Respond-with-Status, `Draft_name`/
+> `Draft_url` minting, success `Respond_ok`). Then: add the imported
+> flow to your solution (Solutions → Add existing → Automation →
+> Cloud flow), re-pick the AI Builder prompt binding (the I1
+> placeholder rule), re-pick the Doc Index list on the row/query
+> actions if your list GUID differs from the packaged one (you'll
+> know from your first import), set the run-only connections to
+> embedded, and run the 1a check below. Steps 1b and 1c are still
+> built by hand — they're a handful of actions each.
+
+**1a — `TestPlanGenCore`** (the child; new solution flow, if not
+importing the package):
 - Trigger: **Manually trigger a flow**, one input — Number,
   name exactly `StoryId`.
 - Body: G0–G13 from `testplangen/TestPlanGen_Setup.md` §3, with three
