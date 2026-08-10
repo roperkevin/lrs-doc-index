@@ -34,7 +34,9 @@ sidecar to its related documents.
 | testplangen/TestPlanGen_Prompt_v1_0.md | Test-plan generation prompt (AI Builder) | v1.0 |
 | testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | v1.0 |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v1.0 |
+| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.0 |
+| testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v1.1 |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/` and their zips) remain for
@@ -151,7 +153,15 @@ uploads to the source library, where the nightly sweep indexes the
 finished plan and RelatedRank links it back to its story — the loop
 closes through the existing pipeline, with zero sweep, script,
 schema, or `Config.PromptVersion` changes. A malformed model reply
-fails closed: no markers, no file.
+fails closed: no markers, no file. Since v1.1 the flow also has a
+conversational front door: **LRS Test Plan Generator**, a thin
+Copilot Studio agent shipped as an importable file set
+(`testplangen/agent/TestPlanGenAgent/`, wired per
+`testplangen/agent/Agent_Setup.md` — which also splits the flow into
+a child flow so the list menu and the agent share one body). The
+agent takes a story's item id in chat, runs the flow, and relays the
+draft location; it has no knowledge sources and never drafts content
+itself — corpus questions stay with LRS Doc Index Q&A.
 
 ## Fresh-tenant install order
 
@@ -263,6 +273,14 @@ smoke tests in `flow/v2_4/CHANGES.md`.
   overwritten by re-runs, deleted by hand after finalize); the Q&A
   agent never sees them, and a finalized plan enters the catalog only
   by normal upload to the source library.
+- **TestPlanGenAgentVersion**: the generator agent's file set
+  (`testplangen/agent/TestPlanGenAgent/`) bumps like
+  AgentInstructionsVersion — edit, re-import (or re-paste), re-run
+  the agent smoke suite, record in `testplangen/CHANGES.md`.
+  Independent of both TestPlanGenPromptVersion and
+  `Config.PromptVersion`. The flow contract (input `StoryId`,
+  outputs `Status`/`DraftUrl`/`GenSummary`) binds the agent's topic
+  to the flows — change one side, change both.
 
 ## Known limits / queued work
 

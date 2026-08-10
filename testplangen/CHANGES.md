@@ -1,3 +1,56 @@
+# TestPlanGen v1.1 — importable Copilot Studio front-end
+
+The queued "Copilot Studio front-end" follow-on, delivered as an
+**importable agent file set**: `testplangen/agent/TestPlanGenAgent/`
+defines the **LRS Test Plan Generator** agent (identity +
+instructions, settings, connection references, and two adaptive-dialog
+topics) for import via the Copilot Studio VS Code extension —
+clone-overlay-push — with a documented portal-paste fallback for
+schema drift. The agent is a thin front door: it collects a story's
+Doc Index item id in chat, confirms, invokes the generation flow, and
+relays the draft location with the unreviewed/[VERIFY] reminder. NO
+knowledge sources, general knowledge OFF — corpus questions redirect
+to LRS Doc Index Q&A; the agent never drafts content in chat.
+
+Because an agent invokes flows only through an agent-flow trigger and
+a flow has exactly one trigger, v1.1 also specifies the **child-flow
+restructure** (`testplangen/agent/Agent_Setup.md` §1): the v1.0 flow
+body becomes `TestPlanGenCore` (manual trigger, input `StoryId`; the
+two in-Try Terminates become Respond-with-Status so callers can relay
+guard/parse messages), with two thin parents — the existing list-menu
+`TestPlanGen` (Automate-menu entry unchanged) and the new
+`TestPlanGenAgentFlow` (agent trigger → child → Respond
+`Status`/`DraftUrl`/`GenSummary`, error path included). One body, two
+front doors, no duplication.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent definition file set | **v1.0** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent import + wiring guide (incl. child-flow restructure, 6-row smoke suite) | v1.0 | `testplangen/agent/Agent_Setup.md` |
+| Generation prompt / flow guide / smoke suite | unchanged (v1.0) | `testplangen/` |
+| Sweep flow / scripts / prompt / schemas / sidecars / Q&A agent / curation | unchanged | — |
+
+## Runbook deltas (v1.1)
+
+- **TestPlanGenAgentVersion: v1.0** — the agent file set bumps like
+  AgentInstructionsVersion: edit the files under
+  `testplangen/agent/TestPlanGenAgent/`, re-import (or re-paste),
+  re-run the §5 smoke suite, record here. NEVER bump
+  `Config.PromptVersion`; a TestPlanGenPromptVersion bump is
+  independent too (prompt and agent version separately).
+- **The flow contract**: input `StoryId`, outputs
+  `Status`/`DraftUrl`/`GenSummary` bind the topic to the flows —
+  change one side, change both, re-smoke rows 1 and 3.
+
+Live-tenant smoke run (fill in at deployment; suite =
+`testplangen/agent/Agent_Setup.md` §5):
+
+| Date | Tenant | Rows passed (of 6) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.0 |
+
+---
+
 # TestPlanGen v1.0 — user story → reviewed test-plan draft
 
 First release of the test-plan-generation component: an on-demand

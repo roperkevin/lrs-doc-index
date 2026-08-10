@@ -436,13 +436,13 @@ pass/fail per row).
 
 ## Queued follow-ons (documented, not built)
 
-- **Copilot Studio front-end**: a topic (or agent flow) on the
-  existing Q&A agent — "draft a test plan for <story>" resolves the
-  story to a Doc Index row id and invokes TestPlanGen. It rides on
-  the same list-query actions already queued in
-  `agent/QA_Agent_Setup.md`; the two follow-ons merge naturally. The
-  generation stays in this flow either way — the agent is a front
-  door, not a second implementation.
+- **Copilot Studio front-end** — SHIPPED in v1.1 as an importable
+  agent file set: see `testplangen/agent/Agent_Setup.md`. Note its §1
+  restructures this guide's §3 flow into a child flow
+  (`TestPlanGenCore`) with two thin parents once the agent is
+  deployed — the G-step bodies above stay the single source for the
+  core's actions. Title→id resolution via list-query actions remains
+  queued there.
 - **Provenance export**: export the built flow and check in
   `testplangen/flow/v1_0/definition.json`, the way `flow/` versions
   accrete.

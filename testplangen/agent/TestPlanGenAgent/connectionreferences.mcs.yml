@@ -1,0 +1,17 @@
+# LRS Test Plan Generator — connection references
+# TestPlanGenAgentVersion: v1.0
+#
+# The only external dependency is the TestPlanGenAgentFlow agent flow
+# (built in Agent_Setup.md §1). Flow ids are environment-specific —
+# the OneDrive-item-link rule from the sweep's script bindings applies
+# here too — so this file ships a REBIND placeholder: after import,
+# open the GenerateTestPlan topic in the canvas, re-pick the flow on
+# its "Run a flow" node (Agent_Setup.md §3), and the platform rewrites
+# the reference. Do not hand-edit the placeholder id.
+
+kind: ConnectionReferences
+references:
+  - name: testplangen_agentflow
+    kind: Flow
+    displayName: TestPlanGenAgentFlow
+    flowId: REBIND-AT-IMPORT   # re-pick in the topic canvas, §3
