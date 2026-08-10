@@ -14,6 +14,10 @@ as-is), this validates the *intentional* format change:
      column count); WorkbookDump COLCAP/CELLCAP/pipe-escape behavior
   6. token recall vs planted_tokens.json >= 0.97 per fixture
   7. slugify unit cases via RegexExtract v1.2
+  8. core properties (ZipTextExtract v1.8): planted author /
+     lastEditedBy / lastEdited come back from docProps/core.xml with
+     entities decoded; a fixture without core.xml degrades to empty
+     strings, not an error
 
 Prereqs: make_fixtures.py has run in this directory. The wrapped Node
 runners are (re)generated here on every run.
@@ -50,7 +54,7 @@ def toks(s):
 
 
 # ---- regenerate wrapped runners -----------------------------------------
-subprocess.run([sys.executable, 'wrap.py', f'{SCRIPTS}/ZipTextExtract.ts', 'zte_v17.ts'], check=True)
+subprocess.run([sys.executable, 'wrap.py', f'{SCRIPTS}/ZipTextExtract.ts', 'zte_v18.ts'], check=True)
 subprocess.run([sys.executable, 'wrap_workbook.py', f'{SCRIPTS}/WorkbookDump.ts', 'wbd_v11.ts'], check=True)
 
 rex_src = open(f'{SCRIPTS}/RegexExtract.ts').read().replace(
@@ -73,10 +77,17 @@ fmt = json.load(open('planted_format.json'))
 SLIDE_RE = re.compile(r'^## Slide (\d+)( — (.+))?$')
 
 for fixture in ('real_deck.pptx', 'real_doc.docx', 'edge_deck.pptx'):
-    text = run_node('zte_v17.ts', fixture + '.b64', 'media/docX_')['out']['text']
+    out = run_node('zte_v18.ts', fixture + '.b64', 'media/docX_')['out']
+    text = out['text']
     lines = text.split('\n')
     f = fmt[fixture]
     tag = fixture.split('.')[0]
+
+    # ---- 8: core properties (v1.8) --------------------------------------
+    if 'core' in f:
+        for field, want in f['core'].items():
+            check(out.get(field) == want,
+                  f"{tag}: core {field} == {want!r} (got {out.get(field)!r})")
 
     check(not any(re.match(r'^# ', ln) for ln in lines), f'{tag}: no H1 in body output')
 
@@ -159,6 +170,11 @@ for fixture in ('real_deck.pptx', 'real_doc.docx', 'edge_deck.pptx'):
     hit = sum(1 for w in want if w in got or any(w in g for g in got))
     recall = hit / len(want) if want else 1.0
     check(recall >= RECALL_BAR, f'{tag}: token recall {recall:.4f} >= {RECALL_BAR}')
+
+# ---- 8b: no core.xml -> empty strings, no error -------------------------
+noprops = run_node('zte_v18.ts', 'noprops_deck.pptx.b64', 'media/docX_')['out']
+check(noprops['author'] == '' and noprops['lastEditedBy'] == '' and noprops['lastEdited'] == '',
+      'noprops_deck: missing docProps/core.xml degrades to empty strings')
 
 # ---- 5: WorkbookDump v1.1 over sheets.json ------------------------------
 wb = run_node('wbd_v11.ts', 'sheets.json')['out']

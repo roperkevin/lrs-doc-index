@@ -1,6 +1,14 @@
 /**
- * SidecarPatch v1.1 — surgical "Related documents" patching for
+ * SidecarPatch v1.2 — surgical "Related documents" patching for
  * markdown sidecars, batched over every file touched for one doc
+ * ------------------------------------------------------------------
+ * v1.2: each file object may carry a `folder` (the library folder the
+ * sidecar lives in, server-relative — since v2.4 sidecars are routed
+ * into per-DocKind subfolders). The value is passed through untouched
+ * to the output so the flow's Save_patched writes each patched file
+ * back to the folder it was read from. Absent → "" (the flow
+ * coalesces to the library root). Nothing about the patching
+ * logic changed.
  * ------------------------------------------------------------------
  * One call patches the current doc's own sidecar ("set" mode: the
  * related list is fully recomputed) plus up to topN neighbor sidecars
@@ -48,26 +56,30 @@
  * Power Automate wiring:
  *   Excel Online (Business) "Run script"
  *     Workbook     = any dummy .xlsx (host only)
- *     filesJson    = [{doc, name, content}] — self sidecar (composed
- *                    in memory, byte-identical to what Save_sidecar
- *                    just wrote) + each neighbor sidecar read back
+ *     filesJson    = [{doc, name, folder, content}] — self sidecar
+ *                    (composed in memory, byte-identical to what
+ *                    Save_sidecar just wrote) + each neighbor
+ *                    sidecar read back
  *     selfId       = Doc Index item id of the current doc
  *     rankedJson   = string(outputs('Run_related_rank')?['body/result/related'])
  *     docsMetaJson = string(body('Get_related_docs')?['value'])
  *                    (ID / Title / TextFileUrl used)
  *     selfMetaJson = {"doc":N,"title":"...","url":"...","file":"...__docN.md"}
  *     topN         = Config.RelatedTopN (5)
- *   Returns {files:[{name, content, changed, note}]} — the flow
- *   rewrites only files with changed === true.
+ *   Returns {files:[{name, folder, content, changed, note}]} — the
+ *   flow rewrites only files with changed === true, each into its
+ *   own folder.
  */
 interface PatchFile {
   doc: number;
   name: string;
+  folder: string;
   content: string;
 }
 
 interface PatchedFile {
   name: string;
+  folder: string;
   content: string;
   changed: boolean;
   note: string;
@@ -338,10 +350,11 @@ function main(
 
   const files: PatchedFile[] = [];
   for (const raw of asArray(parseJson(filesJson))) {
-    const f = raw as { doc?: unknown; name?: unknown; content?: unknown };
+    const f = raw as { doc?: unknown; name?: unknown; folder?: unknown; content?: unknown };
     const file: PatchFile = {
       doc: typeof f.doc === "number" ? f.doc : parseInt(String(f.doc), 10) || 0,
       name: typeof f.name === "string" ? f.name : "",
+      folder: typeof f.folder === "string" ? f.folder : "",
       content: typeof f.content === "string" ? f.content : "",
     };
 
@@ -390,6 +403,7 @@ function main(
 
     files.push({
       name: file.name,
+      folder: file.folder,
       content: patched.content,
       changed: patched.content !== file.content,
       note: patched.note,

@@ -48,7 +48,11 @@ frontmatter because SharePoint's markdown preview has no frontmatter
 support and renders a leading `---` block as one giant setext
 heading — body from ZipTextExtract/WorkbookDump markdown)
 and stores only a ~5,000-char TextPreview plus TextFileUrl on the list
-row. Multiline list columns are the wrong home for 60k+ character dumps
+row. Since v2.4 the sidecar lands in a per-DocKind subfolder of the
+library (`Test Plans/`, `User Stories/`, … per `Config.KindFolders`;
+`media/` stays shared at the root, so sidecars link images as
+`../media/...`), and a reindex whose path moved recycles the old copy
+— TextFileUrl on the row is always the current location. Multiline list columns are the wrong home for 60k+ character dumps
 — and the sidecar library is literally the "machine-readable documents"
 artifact from the original project goal: a greppable, Python-able
 markdown corpus that survives independent of any list.

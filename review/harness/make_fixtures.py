@@ -9,13 +9,22 @@ slide titles, outline-leveled paragraphs, docx headings and numPr list
 items, and a sheets.json workbook stand-in — recorded in
 planted_format.json for check_format.py. run_diff.py (the v1.5/v1.6
 equivalence gate) is unaffected: both versions see the same fixtures.
+
+Since the v1.8 core-properties work the two "real" fixtures also plant
+authorship core properties (author with an ampersand, last-modified-by
+with a smart apostrophe — both exercise entity decoding — and a fixed
+modified timestamp), recorded under each fixture's 'core' key in
+planted_format.json, plus a noprops_deck.pptx.b64 companion (edge_deck
+with docProps/core.xml stripped) for the degrades-to-empty case.
 """
 import base64
+import datetime
 import io
 import json
 import os
 import random
 import struct
+import zipfile
 import zlib
 
 from docx import Document
@@ -89,8 +98,15 @@ for i in range(18):
     deck_fmt['notes_count'] += 1
     if i % 3 == 0:
         s.shapes.add_picture(io.BytesIO(make_png()), Inches(8.6), Inches(0.2), Inches(0.6), Inches(0.6))
+CORE_MODIFIED = datetime.datetime(2026, 7, 31, 18, 22, 4)
+prs.core_properties.author = 'Claire Wang & Team'
+prs.core_properties.last_modified_by = 'Miguel O’Brien'
+prs.core_properties.modified = CORE_MODIFIED
 prs.save('real_deck.pptx')
 tokens['real_deck.pptx'] = planted
+deck_fmt['core'] = {'author': 'Claire Wang & Team',
+                    'lastEditedBy': 'Miguel O’Brien',
+                    'lastEdited': '2026-07-31T18:22:04Z'}
 fmt['real_deck.pptx'] = deck_fmt
 
 # fixture 2: docx with headings, nested + merged tables, unicode, issue refs, image
@@ -148,8 +164,14 @@ p = doc.add_paragraph("see #4855 and "
                       "devtopia.esri.com/Beijing-R-D-Center/ExperienceBuilder-Web-Extensions/issues/26161")
 planted += p.text.split()
 doc.add_picture(io.BytesIO(make_png(60, 60)))
+doc.core_properties.author = 'Claire Wang & Team'
+doc.core_properties.last_modified_by = 'Miguel O’Brien'
+doc.core_properties.modified = CORE_MODIFIED
 doc.save('real_doc.docx')
 tokens['real_doc.docx'] = planted
+doc_fmt['core'] = {'author': 'Claire Wang & Team',
+                   'lastEditedBy': 'Miguel O’Brien',
+                   'lastEdited': '2026-07-31T18:22:04Z'}
 fmt['real_doc.docx'] = doc_fmt
 
 # fixture 3: edge cases — blank slide, notes-only slide
@@ -160,6 +182,17 @@ s2.notes_slide.notes_text_frame.text = "only notes here referent"
 prs2.save('edge_deck.pptx')
 tokens['edge_deck.pptx'] = ['only', 'notes', 'here', 'referent']
 fmt['edge_deck.pptx'] = {'titles': [], 'notes_count': 1, 'lvl1': [], 'lvl2': []}
+
+# fixture 3b: edge_deck with docProps/core.xml stripped — the v1.8
+# core-properties degrades-to-empty case (b64 companion only; not in
+# the tokens/recall set)
+with zipfile.ZipFile('edge_deck.pptx') as zin, \
+        zipfile.ZipFile('noprops_deck.pptx', 'w', zipfile.ZIP_DEFLATED) as zout:
+    for item in zin.infolist():
+        if item.filename != 'docProps/core.xml':
+            zout.writestr(item, zin.read(item.filename))
+with open('noprops_deck.pptx', 'rb') as fh:
+    open('noprops_deck.pptx.b64', 'w').write(base64.b64encode(fh.read()).decode())
 
 # fixture 4: workbook stand-in for the WorkbookDump mock runner
 # (wrap_workbook.py) — a 30-column row exercising the COLCAP cut, a

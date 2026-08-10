@@ -1,6 +1,19 @@
 /**
- * ZipTextExtract v1.7 — OOXML file (pptx/docx) → markdown text + rels
+ * ZipTextExtract v1.8 — OOXML file (pptx/docx) → markdown text + rels
+ *                       + document core properties
  * --------------------------------------------------------------------
+ * v1.8 = v1.7 + core-properties extraction (additive; nothing about
+ * the text/rels/media pipeline changed):
+ *
+ *   docProps/core.xml is inflated alongside the content parts and its
+ *   dc:creator, cp:lastModifiedBy and dcterms:modified values are
+ *   returned as `author`, `lastEditedBy` and `lastEdited` — the
+ *   document's OWN authorship trail, which survives file copies and
+ *   re-uploads that reset SharePoint's Created By/Modified By columns.
+ *   Entities are decoded (names like "O&#8217;Brien" come out right);
+ *   a missing or unreadable core.xml degrades to empty strings, never
+ *   an error — the flow falls back to library metadata.
+ *
  * v1.7 = v1.6 plumbing (typed arrays, harness-verified byte-identical
  * to v1.5) + the sidecar formatting upgrade:
  *
@@ -36,17 +49,18 @@
  * parses the zip structure itself, inflates ONLY the parts that matter,
  * applies the strip recipe, and returns:
  *
- *   { text, rels, parts, kind, media }
+ *   { text, rels, parts, kind, media, author, lastEditedBy, lastEdited }
  *
  * pptx: ppt/slides/slideN.xml (numeric order) + ppt/slides/_rels/*.rels
  * docx: word/document.xml + word/_rels/document.xml.rels
+ * both: docProps/core.xml (authorship; optional)
  * Format auto-detected from entry names.
  *
- * Power Automate wiring: unchanged from v1.5/v1.6 (same name, signature
- * and return shape — the flow's Run-script bindings are untouched).
- * Throws on malformed archives so failed parses surface as run errors
- * (Catch scope -> IndexStatus=Error -> retry-aware gate), never as
- * silently empty text.
+ * Power Automate wiring: unchanged from v1.5/v1.6/v1.7 (same name and
+ * signature; the return shape only GAINS fields, so existing bindings
+ * are untouched). Throws on malformed archives so failed parses
+ * surface as run errors (Catch scope -> IndexStatus=Error ->
+ * retry-aware gate), never as silently empty text.
  */
 interface ZipTextResult {
   text: string;
@@ -54,6 +68,9 @@ interface ZipTextResult {
   parts: number;
   kind: string; // "pptx" | "docx" | "unknown"
   media: string; // newline list of raster media entry basenames
+  author: string; // docProps/core.xml dc:creator ("" if absent)
+  lastEditedBy: string; // docProps/core.xml cp:lastModifiedBy ("" if absent)
+  lastEdited: string; // docProps/core.xml dcterms:modified, W3CDTF ("" if absent)
 }
 
 function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: string): ZipTextResult {
@@ -162,12 +179,58 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
 
   const mediaNames: string[] = [];
   for (const k in mediaSet) mediaNames.push(k);
+  const core = readCoreProps(bytes, entries);
   return {
     text: stripOoxml(xmlParts.join("\n")),
     rels: relParts.join("\n"),
     parts: contentNames.length + relsNames.length,
     kind: kind,
     media: mediaNames.join("\n"),
+    author: core.author,
+    lastEditedBy: core.lastEditedBy,
+    lastEdited: core.lastEdited,
+  };
+}
+
+// --------------------------------------------------------- core properties
+// docProps/core.xml is optional in the OOXML spec and absent from some
+// generated files, so every failure path degrades to empty strings —
+// authorship is best-effort metadata, never worth failing an extraction.
+interface CoreProps {
+  author: string;
+  lastEditedBy: string;
+  lastEdited: string;
+}
+
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&");
+}
+
+function readCoreProps(bytes: Uint8Array, entries: ZipEntry[]): CoreProps {
+  const empty: CoreProps = { author: "", lastEditedBy: "", lastEdited: "" };
+  const entry = entries.filter((e) => e.name === "docProps/core.xml")[0];
+  if (!entry) return empty;
+  let xml = "";
+  try {
+    xml = utf8ToString(extractEntry(bytes, entry));
+  } catch (e) {
+    return empty;
+  }
+  const grab = (re: RegExp): string => {
+    const m = xml.match(re);
+    return m ? decodeXmlEntities(m[1]).replace(/\s+/g, " ").trim() : "";
+  };
+  return {
+    author: grab(/<dc:creator[^>]*>([\s\S]*?)<\/dc:creator>/),
+    lastEditedBy: grab(/<cp:lastModifiedBy[^>]*>([\s\S]*?)<\/cp:lastModifiedBy>/),
+    lastEdited: grab(/<dcterms:modified[^>]*>([\s\S]*?)<\/dcterms:modified>/),
   };
 }
 

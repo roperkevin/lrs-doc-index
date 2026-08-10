@@ -4,13 +4,15 @@ Two independent checks live here:
 
 1. **Equivalence gate** (`run_diff.py`) — the historical v1.5-vs-v1.6 /
    v1.0-vs-v1.1 byte-diff, recorded below. Note: since the v2.2
-   formatting release, `scripts/ZipTextExtract.ts` is v1.7 — the v1.5
-   source this gate compares against lives in git history
-   (`git show <pre-v2.2>:scripts/ZipTextExtract.ts`).
+   formatting release, `scripts/ZipTextExtract.ts` has moved on (v1.8
+   as of v2.4) — the v1.5 source this gate compares against lives in
+   git history (`git show <pre-v2.2>:scripts/ZipTextExtract.ts`).
 2. **Formatting checks** (`check_format.py` + `render_sample.py`) — the
-   gate for the v1.7/v1.1/v1.2 formatting generation, which is an
+   gate for the v1.7+/v1.1/v1.2 formatting generation, which is an
    *intentional* format change and therefore can't be validated by
-   equivalence. See "Formatting checks" below.
+   equivalence. See "Formatting checks" below. Since v2.4 this also
+   covers ZipTextExtract v1.8's core-properties extraction and the
+   kind-subfolder template.
 
 ## Equivalence harness — v1.5/v1.0 vs v1.6/v1.1 script patches
 
@@ -59,7 +61,7 @@ verified against an independent zip decoder (Python `zipfile`); big-deck timing
 Both patches also type-check at ES2017 (`tsc --noEmit --target es2017`), contain
 no lookbehind, no imports, one `main()` each.
 
-## Formatting checks — ZipTextExtract v1.7 / WorkbookDump v1.1 / RegexExtract v1.2
+## Formatting checks — ZipTextExtract v1.8 / WorkbookDump v1.1 / RegexExtract v1.2
 
 `check_format.py` runs the *current* `scripts/` versions over the fixtures and
 asserts the v2.2 output contract instead of byte-equality:
@@ -77,20 +79,28 @@ asserts the v2.2 output contract instead of byte-equality:
   are whitespace-separated, so recall is unaffected)
 - `slugify` unit cases (em-dash title, apostrophes/symbols, 80-char cap at
   a word boundary, non-Latin → filename fallback, empty → `doc`)
+- core properties (v1.8): planted `dc:creator` / `cp:lastModifiedBy` /
+  `dcterms:modified` come back as `author` / `lastEditedBy` /
+  `lastEdited` from both pptx and docx fixtures with entities decoded
+  (ampersand, smart apostrophe), and `noprops_deck.pptx` (edge_deck
+  with `docProps/core.xml` stripped) degrades to empty strings
 
 `render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
-current metadata/header mirrored from the flow template — and asserts the
-metadata block is the fenced ` ```yaml ` frame (the PromptVersion v1.4
-SharePoint-preview-safe form — `---` frontmatter renders in SharePoint's
-preview as one giant setext heading), its inner YAML parses with
-`yaml.safe_load` (including `related: []`), the file has exactly one H1, the
+current metadata/header mirrored from the flow template (since v2.4:
+authorship lines `author:` / `last_edited_by:` / `last_edited:`, the header
+strip's "Last edited" segment, `../media/` image prefix, and
+kind-subfolder URLs) — and asserts the metadata block is the fenced
+` ```yaml ` frame (the PromptVersion v1.4 SharePoint-preview-safe form —
+`---` frontmatter renders in SharePoint's preview as one giant setext
+heading), its inner YAML parses with `yaml.safe_load` (including
+`related: []` and the authorship fields), the file has exactly one H1, the
 header/body seam is present, and the related-section marker pair is
-well-placed. It then runs SidecarPatch v1.1 in set mode with three synthetic
+well-placed. It then runs SidecarPatch v1.2 in set mode with three synthetic
 entries and writes `sample_sidecar_related.md` — the eyeball artifact for a
-POPULATED related list — re-asserting the patched metadata still parses and
-the file still has one H1.
+POPULATED related list — re-asserting the patched metadata still parses, the
+file still has one H1, and the patched file keeps its `folder`.
 
-## Related-docs checks — RelatedRank v1.1 / SidecarPatch v1.1 (v2.3)
+## Related-docs checks — RelatedRank v1.1 / SidecarPatch v1.2 (v2.3–v2.4)
 
 `check_related.py` wraps both v2.3 scripts (same appendix pattern as
 `rex_v12.ts`; no fixtures needed) and asserts the v2.3 contract:
@@ -114,8 +124,9 @@ the file still has one H1.
   `yaml.safe_load`s; both metadata frames parse — fenced ` ```yaml `
   (v1.4) and legacy `---` frontmatter — and each file keeps the frame it
   arrived in (set mode stays fenced, a legacy neighbor merge and the
-  pre-v2.3 fallback stay dashed)
-- both wrapped runners (`rr_v10.ts`, `scp_v11.ts`) type-check at ES2017,
+  pre-v2.3 fallback stay dashed); the `folder` property passes through
+  verbatim in set and merge modes, `""` when absent (v1.2)
+- both wrapped runners (`rr_v11.ts`, `scp_v12.ts`) type-check at ES2017,
   compiled separately (each Office Script is its own global scope)
 
 Usage (from this directory; wrapped runners are regenerated on each run):
@@ -144,3 +155,17 @@ preservation both ways) — and `rr_v10.ts` / `scp_v11.ts` type-check at
 ES2017. `render_sample.py` PASS in both the empty and populated states
 with the fenced metadata frame (see `sample_sidecar.md` /
 `sample_sidecar_related.md`).
+
+### Last run (2026-08-10, Node 22.22.2) — v2.4 generation
+
+`check_format.py` PASS over ZipTextExtract v1.8 — every v2.2-generation
+assertion unchanged and green, plus the seven new core-properties
+assertions (planted author/lastEditedBy/lastEdited from both real
+fixtures with entities decoded; `noprops_deck` degrades to empty
+strings). `check_related.py` PASS over SidecarPatch v1.2 — all prior
+assertions green, plus folder pass-through in set/merge modes and the
+folder-less `""` default. `render_sample.py` PASS with the v2.4
+template (authorship lines round-trip `yaml.safe_load`, header strip
+carries the "Last edited" segment, patched sample keeps its
+`User Stories` folder). `zte_v18.ts` and `scp_v12.ts` type-check at
+ES2017.
