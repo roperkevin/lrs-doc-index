@@ -1,0 +1,17 @@
+# LRS Test Plan Generator — agent settings
+# TestPlanGenAgentVersion: v1.0
+#
+# Grounding posture mirrors the Q&A agent's, taken further: this agent
+# has NO knowledge sources at all — it is a front door to a flow, not
+# a retrieval agent. General knowledge stays OFF so the agent cannot
+# improvise test-plan content in chat (the §5 smoke suite's redirect
+# row fails while it is on). Orchestration stays classic so the
+# GenerateTestPlan topic's trigger phrases — not generative planning —
+# decide when the flow runs.
+
+kind: AgentSettings
+generativeAIOrchestration: Classic
+useGeneralKnowledge: false
+useWebSearch: false
+knowledgeSources: []
+authenticationMode: IntegratedEntraId

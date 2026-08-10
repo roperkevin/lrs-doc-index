@@ -1,0 +1,119 @@
+# Topic: GenerateTestPlan — collect a story id, confirm, run the flow,
+# report the draft location.
+# TestPlanGenAgentVersion: v1.0
+#
+# Adaptive-dialog YAML (the format behind "Open code editor" in the
+# topic canvas). One REBIND: the InvokeFlowAction node must be
+# re-picked to TestPlanGenAgentFlow after import (Agent_Setup.md §3) —
+# the canvas rewrites the node's flow binding; the input/output names
+# below (StoryId in; Status, DraftUrl, GenSummary out) match §1's
+# "When an agent calls the flow" / "Respond to the agent" parameters
+# and survive the re-pick.
+
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: main
+  intent:
+    displayName: Generate a test plan draft
+    triggerQueries:
+      - draft a test plan
+      - generate a test plan
+      - create a test plan draft
+      - test plan for a user story
+      - make a test plan from a story
+      - start a test plan draft
+      - test plan draft for doc
+  actions:
+    - kind: Question
+      id: askStoryId
+      interruptionPolicy:
+        allowInterruption: true
+      variable: Topic.StoryId
+      entity: NumberPrebuiltEntity
+      prompt: |-
+        Which user story? Give me its Doc Index item id — the number
+        in the list's ID column (also the doc_id in the story's
+        sidecar, and the docNN in the sidecar's filename). To find
+        one: Doc Index list → filter DocKind = User Story.
+      repromptCount: 2
+      unrecognizedPrompt: |-
+        I need the numeric item id (for example: 42). I can't look a
+        story up by title yet — the Doc Index list, filtered to
+        DocKind = User Story, shows the id.
+
+    - kind: Question
+      id: confirmRun
+      variable: Topic.Confirmed
+      entity: BooleanPrebuiltEntity
+      prompt: |-
+        Generate a test-plan draft from user story doc
+        {Topic.StoryId}? The flow reads that story's sidecar, its
+        related documents, and exemplar test plans, and writes a
+        timestamped draft to Shared Documents/Test Plan Drafts. It
+        only accepts Indexed rows with DocKind = User Story.
+
+    - kind: ConditionGroup
+      id: checkConfirmed
+      conditions:
+        - id: confirmedYes
+          condition: =Topic.Confirmed = true
+          actions:
+            - kind: SendActivity
+              id: ackRunning
+              activity: |-
+                Starting generation for doc {Topic.StoryId} — this
+                usually takes a minute or two.
+
+            - kind: InvokeFlowAction
+              id: runTestPlanGen
+              # REBIND-AT-IMPORT: re-pick TestPlanGenAgentFlow here (§3).
+              flowId: REBIND-AT-IMPORT
+              input:
+                binding:
+                  StoryId: =Topic.StoryId
+              output:
+                binding:
+                  Status: Topic.Status
+                  DraftUrl: Topic.DraftUrl
+                  GenSummary: Topic.GenSummary
+
+            - kind: ConditionGroup
+              id: checkStatus
+              conditions:
+                - id: statusOk
+                  condition: =Topic.Status = "ok"
+                  actions:
+                    - kind: SendActivity
+                      id: sendDraftReady
+                      activity: |-
+                        Draft ready: {Topic.DraftUrl}
+
+                        It is machine-generated and UNREVIEWED. Before
+                        the plan is finalized: verify every test
+                        case's Trace line against the story, resolve
+                        every [VERIFY] item, then transfer the
+                        reviewed content into the team test-plan
+                        format and upload it to the LocationReferencing
+                        Documents library (the nightly sweep indexes
+                        it from there).
+
+                        Run detail: {Topic.GenSummary}
+              elseActions:
+                - kind: SendActivity
+                  id: sendFlowMessage
+                  activity: |-
+                    The flow didn't produce a draft. Its message:
+
+                    {Topic.GenSummary}
+
+                    If that's the User-Story/Indexed guard, pick a row
+                    with DocKind = User Story and IndexStatus =
+                    Indexed. Otherwise re-run once; if it repeats, see
+                    testplangen/TestPlanGen_Smoke.md failure triage.
+      elseActions:
+        - kind: SendActivity
+          id: sendCancelled
+          activity: |-
+            Okay, nothing was generated. Tell me a Doc Index item id
+            whenever you want a draft.
