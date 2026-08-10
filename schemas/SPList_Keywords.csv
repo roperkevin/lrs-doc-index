@@ -3,3 +3,5 @@ Title,Title,Single line (native),"The keyword or alias, lowercase; add index on 
 Kind,Kind,Choice,"topic; tool; product",Yes
 CanonicalRef,CanonicalRef,Lookup,"Target: Keywords (this same list), show Title; empty = row IS canonical, set = alias",No
 Notes,Notes,Multiple lines of text,"Plain text; curation notes",No
+CurationStatus,CurationStatus,Choice,"Proposed; Rejected — empty = uncurated. Proposed set by the curation flow; Rejected set by a human; both cleared by the flow once CanonicalRef is set",No
+ProposedCanonical,ProposedCanonical,Single line of text,"Flow-written: proposed canonical Title + ' — ' + short rationale; humans read it, never edit it; cleared with CurationStatus",No

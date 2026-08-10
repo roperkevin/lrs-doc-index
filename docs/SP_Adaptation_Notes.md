@@ -57,6 +57,25 @@ library (`Test Plans/`, `User Stories/`, … per `Config.KindFolders`;
 artifact from the original project goal: a greppable, Python-able
 markdown corpus that survives independent of any list.
 
+*Agent v1.0 addendum:* the sidecar library is now also the knowledge
+source for the **LRS Doc Index Q&A** Copilot Studio agent
+(`agent/QA_Agent_Setup.md`) — a second consumer of the format. The
+agent's instructions describe the metadata fields, so a sidecar format
+change now means the usual PromptVersion-bumped backfill *plus* a
+matching `QA_Agent_Instructions` bump; neither is an ad-hoc edit.
+
+*Curation v1.0 addendum:* the Keywords list gains two flow-owned
+columns, `CurationStatus` (Choice: Proposed/Rejected) and
+`ProposedCanonical` (single line) — see `schemas/SPList_Keywords.csv`.
+Neither is a lookup (modern UI fine) and neither is indexed (the
+curation flow filters them in memory from one `$top 5000` fetch,
+never via OData `$filter`). The column-ownership invariant that keeps
+three writers off each other's fields: the sweep writes `Title`/`Kind`
+and *reads* `CanonicalRef`; humans write `CanonicalRef`,
+`CurationStatus = Rejected`, and `Notes`; the curation flow writes
+only its two columns, via field-scoped REST MERGE. Disjoint writers —
+no locking, no coordination.
+
 **3. Alternate keys become indexed text columns + query-then-write.**
 Dataverse enforced uniqueness at the database; SharePoint doesn't, so
 dedup returns to the Email Links pattern verbatim: single-line key
