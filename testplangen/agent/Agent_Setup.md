@@ -193,15 +193,20 @@ knowledge off, NO knowledge sources, and both topics; the
 GenerateTestPlan topic opens in the canvas without errors (the flow
 node shows unbound — that's §3).
 
-## 3 — Re-bind the flow
+## 3 — Add and bind the flow node
 
-Open the **GenerateTestPlan** topic → the "Run a flow" /
-InvokeFlowAction node → re-pick **TestPlanGenAgentFlow** (the
-REBIND-AT-IMPORT placeholder from `connectionreferences.mcs.yml` and
-the topic file — flow ids are environment-specific, the script-
-rebinding rule). Map input `StoryId` = `Topic.StoryId`; map outputs
-`Status` / `DraftUrl` / `GenSummary` to the same-named Topic
-variables.
+The topic file ships WITHOUT an active flow node — the topic parser
+requires `flowId` to be a real GUID, which is environment-specific,
+so a placeholder would fail paste validation. Add the node in the
+canvas: open the **GenerateTestPlan** topic → in the confirmed-Yes
+branch, between the "Starting generation…" message and the status
+condition, **+ → Call an action** → pick **TestPlanGenAgentFlow**
+(only solution flows with the agent trigger appear — §1's work). Map
+input `StoryId` = `Topic.StoryId`; save the outputs into variables
+named exactly `Topic.Status` / `Topic.DraftUrl` / `Topic.GenSummary`
+— the downstream condition and messages reference those names, so
+rename any auto-created variables to match. The commented block in
+the topic file shows the node's intended final shape.
 
 Check: Test pane → "draft a test plan" → agent asks for the id → give
 `42` → confirm → draft link comes back with the review reminder, and

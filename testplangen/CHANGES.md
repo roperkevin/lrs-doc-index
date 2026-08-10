@@ -38,6 +38,16 @@ Import record (fill in at deployment):
 |---|---|---|---|---|
 | — | — | — | — | — |
 
+Docs note (post-v1.4, live-deployment feedback): the GenerateTestPlan
+topic originally shipped an active `InvokeFlowAction` node with a
+`flowId: REBIND-AT-IMPORT` placeholder — the topic code editor
+validates `flowId` as a GUID and rejects the paste (GuidParseError).
+The topic file now ships the flow node commented out with add-via-
+canvas instructions, and `Agent_Setup.md` §3 is retitled "Add and
+bind the flow node" to match. Found during the first live agent
+deployment; agent file set still pre-first-import on any other
+tenant, so TestPlanGenAgentVersion stays v1.0.
+
 ---
 
 # TestPlanGen v1.3 — import package for the child flow (TestPlanGenCore)
