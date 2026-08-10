@@ -47,128 +47,101 @@ absence.
 - **TestPlanGen v1.0 built and smoked** per
   `testplangen/TestPlanGen_Setup.md` §§1–5. The agent is a front door;
   the flow is the machine.
-- Copilot Studio authoring access in the target environment, and a
-  **Dataverse solution** you can add flows to (§1 requires one — child
-  flows only exist inside solutions; the default CDS solution works,
-  a named `LRS Doc Index` solution is tidier).
+- Copilot Studio authoring access in the target environment (same
+  environment as the flow — the environment picker rule).
 - VS Code with the **Microsoft Copilot Studio** extension, signed in
   to the same environment (§2; the portal-paste fallback needs
   nothing).
 - Agent users need what flow users need: read on Doc Index and the
-  sidecar library, write on `Shared Documents/Test Plan Drafts` — the
-  child-flow connection choice in §1 decides whose identity the flow
-  runs under; the default (flow-owner connections, embedded) is the
-  simplest and matches the list-menu behavior.
+  sidecar library, write on `Shared Documents/Test Plan Drafts` —
+  both flows run on the maker's embedded connections (§1), so chat
+  identity gates who can invoke, and the flow's work runs under the
+  owner regardless of caller.
 
 Check: run TestPlanGen from the Doc Index Automate menu on doc 42 —
 a draft lands. If that fails, stop; nothing below can work.
 
-## 1 — Restructure the flow for two front doors
+## 1 — Two front doors, two self-contained flows
 
-A flow has exactly one trigger, and an agent invokes flows through an
-**agent flow** trigger ("When an agent calls the flow") — so the
-v1.0 "For a selected item" flow cannot be called from the agent
-directly. Rather than duplicate ~35 actions (drift risk — against the
-repo's no-duplication rule), split once into a child flow with two
-thin parents. All three live in the solution from §0.
+> **Architecture note (v1.5 — supersedes the v1.1–v1.4 child-flow
+> design).** The platform enforces a billing boundary the child-flow
+> split cannot cross: flows created through Copilot Studio's
+> agent-flow designer are **Copilot Studio-billed**, flows created or
+> imported in Power Automate are **standard-billed**, and a parent
+> and its child flow must share a billing type — a mixed call fails
+> at run time with `McsChildFlowTypeViolation` ("uses Copilot Studio
+> billing and cannot be called as a child flow"). Only
+> Copilot-Studio-created agent flows register as agent tools, so the
+> agent front door MUST be CS-billed while the list front door stays
+> standard — meaning **no shared child is possible**. The design is
+> therefore two self-contained flows built from one spec: the
+> G0–G13 steps in `testplangen/TestPlanGen_Setup.md` §3 are the
+> single source both are built from — a change to the generation
+> logic is applied to both, and the smoke suites are the drift gate.
+> `TestPlanGenCore` (and its v1.3 package) is RETIRED; the zip stays
+> in the bundle as a shape reference only. No Dataverse solution is
+> required anymore — nothing calls a child flow.
 
-> **Shortcut for 1a (since v1.3):** instead of building the child by
-> hand, import `testplangen/TestPlanGenCore_v1_0.zip` (My flows →
-> Import → Import package (Legacy)) — it is the v1.0 flow body with
-> the 1a substitutions already applied (manual trigger with `StoryId`,
-> guard/no-draft converted to Respond-with-Status, `Draft_name`/
-> `Draft_url` minting, success `Respond_ok`). Then: add the imported
-> flow to your solution (Solutions → Add existing → Automation →
-> Cloud flow), re-pick the AI Builder prompt binding (the I1
-> placeholder rule), re-pick the Doc Index list on the row/query
-> actions if your list GUID differs from the packaged one (you'll
-> know from your first import), set the run-only connections to
-> embedded, and run the 1a check below. Steps 1b and 1c are still
-> built by hand — they're a handful of actions each.
+**1a — the list front door**: the standalone v1.0 **TestPlanGen**
+flow from `TestPlanGen_Setup.md` §3, unchanged — full body, "For a
+selected item" trigger, Automate-menu entry. If you previously
+thinned it to call TestPlanGenCore (the retired 1b step), restore it
+by re-importing `testplangen/TestPlanGen_v1_0.zip` and re-doing the
+I1–I4 checks; then delete TestPlanGenCore.
 
-**1a — `TestPlanGenCore`** (the child; new solution flow, if not
-importing the package):
-- Trigger: **Manually trigger a flow**, one input — Number,
-  name exactly `StoryId`.
-- Body: G0–G13 from `testplangen/TestPlanGen_Setup.md` §3, with three
-  mechanical substitutions:
-  1. Both `@{triggerBody()?['entity']?['ID']}` references (G1 and
-     G11's filename) become the trigger input:
-     `@{triggerBody()?['number']}`.
-     > Designer-verify: peek at the manual trigger's raw output on a
-     > test run — single-input manual triggers surface the value as
-     > `number` (or `number_1`); use whatever your tenant shows.
-  2. The two Terminates inside `Try_gen` (`Terminate_not_story`,
-     `Terminate_no_draft`) each become a **Respond to a PowerApp or
-     flow** action FOLLOWED BY the Terminate (now status
-     **Succeeded**): outputs `Status` = `guard` / `nodraft`,
-     `DraftUrl` = empty, `GenSummary` = the same message text the
-     Terminate carried. The parent, not a Failed run, now carries the
-     message to the human — the list-menu path lost nothing (run
-     history still shows it), and the agent path can finally relay it.
-  3. After `G13 Gen_summary`, add the success **Respond to a PowerApp
-     or flow**: `Status` = `ok`, `DraftUrl` = the G11 file's link —
-     compose it as
-     `@{concat(outputs('Config_gen')?['SiteUrl'], outputs('Config_gen')?['DraftFolder'], '/', <the G11 name expression>)}`
-     stored in a `Draft_url` Compose at G11 time so the name is
-     minted once — and `GenSummary` = `@{outputs('Gen_summary')}`.
-     `Catch_gen` keeps its Terminate Failed (a real failure should
-     fail the child; parents handle it below).
-- Child-flow run settings: keep **embedded connections** (Run only
-  users → each connection → "Use this connection") — required for
-  child flows, and it pins the flow identity regardless of caller.
+**1b — the agent front door**: a self-contained agent flow built in
+Copilot Studio.
 
-**1b — thin the existing `TestPlanGen`** (the list-menu parent):
-delete everything after the trigger; add **Run a Child Flow** →
-`TestPlanGenCore`, `StoryId` = `@{triggerBody()?['entity']?['ID']}`.
-The Automate-menu entry, name, and connections stay untouched. (The
-flow must be in the §0 solution for the child-flow action to appear —
-add it to the solution first if it was created standalone.)
-
-> **Build 1c from inside Copilot Studio (the primary path since the
-> v1.4 live deployment):** in your agent, **Tools** (older UI:
-> Actions) → **+ Add a tool** → **New agent flow**. The designer
-> opens with the "When an agent calls the flow" trigger and "Respond
-> to the agent" action pre-loaded — guaranteed-recognized cards,
-> which also auto-registers the flow as a tool on this agent (no
-> "flow not listed" failure mode). Build the four-action body: add a
-> Number input `StoryId` to the trigger; insert **Run a Child Flow**
-> → TestPlanGenCore (`StoryId` passthrough); on the respond, three
-> Text outputs named exactly `Status` / `DraftUrl` / `GenSummary`
-> mapped from the child's response; add a second respond configured
-> to run after the child **has failed / timed out** (`Status` =
-> `error`, `GenSummary` = the child's error detail). Rename the flow
-> `TestPlanGenAgentFlow`, save, and run the 1c check below.
->
-> `testplangen/TestPlanGenAgentFlow_v1_0.zip` remains in the bundle
-> as a SHAPE REFERENCE only — on the first live tenant its imported
-> trigger/respond did not surface as recognized agent-flow cards, so
-> Copilot Studio never listed the flow (CHANGES v1.4 record). Its
-> payload definition still documents the exact contract to build.
-
-**1c — `TestPlanGenAgentFlow`** (the agent parent; new solution
-flow, if not importing the package):
-- Trigger: **When an agent calls the flow**, one input — Number,
-  name exactly `StoryId`.
-- **Run a Child Flow** → `TestPlanGenCore`, `StoryId` passthrough.
-- **Respond to the agent**, three Text outputs, names exactly
-  `Status`, `DraftUrl`, `GenSummary`, mapped from the child's
-  response.
-- A second **Respond to the agent** configured to run after the
-  child-flow action has **Failed / Timed out**: `Status` = `error`,
-  `DraftUrl` empty, `GenSummary` =
-  `@{take(string(coalesce(outputs('Run_a_Child_Flow')?['body'], 'child flow failed')), 1000)}`
-  — the agent relays it verbatim (the topic's else branch).
+1. In your agent: **Tools** (older UI: Actions) → **+ Add a tool** →
+   **New agent flow**. The designer opens with "When an agent calls
+   the flow" and "Respond to the agent" pre-placed —
+   guaranteed-recognized cards, auto-registered as a tool on this
+   agent.
+2. On the trigger: **+ Add an input** → Number → name exactly
+   `StoryId`.
+3. Fill the body from the working list flow with the designer
+   clipboard — no hand rebuild: open **TestPlanGen** (1a) in another
+   tab; on each top-level node — `Config_gen`, the four Initialize
+   variable actions, the `Try_gen` scope (one copy carries its whole
+   nested body), `Catch_gen`, `Gen_summary` — use **⋯ → Copy to my
+   clipboard**; in the agent flow, insert each in the same order
+   between the trigger and the respond via **+ → My clipboard**.
+   Pasted cards keep their expressions; re-pick the AI Builder
+   prompt binding if that card loses it, and confirm the SharePoint
+   cards kept your connections.
+4. Four adjustments after pasting:
+   - `Get_story_row`'s Id: replace the
+     `triggerBody()?['entity']?['ID']` expression with the trigger's
+     `StoryId` token (`triggerBody()?['number']`).
+   - The two Terminates inside `Try_gen` (`Terminate_not_story`,
+     `Terminate_no_draft`): insert a **Respond to the agent** BEFORE
+     each — `Status` = `guard` / `nodraft`, `DraftUrl` empty,
+     `GenSummary` = the same message text — then set the Terminate's
+     status to **Succeeded**. The agent relays the message instead
+     of seeing a failed run.
+   - Mint the draft link once: add a `Draft_name` Compose before
+     `Save_draft` holding the name expression, point `Save_draft`'s
+     name at it, and add a `Draft_url` Compose after —
+     `@{concat(outputs('Config_gen')?['SiteUrl'], outputs('Config_gen')?['DraftFolder'], '/', outputs('Draft_name'))}`.
+   - The pre-placed **Respond to the agent** (after `Gen_summary`):
+     three Text outputs named exactly `Status` / `DraftUrl` /
+     `GenSummary` — values `ok`, `@{outputs('Draft_url')}`,
+     `@{outputs('Gen_summary')}`. Add a second respond configured to
+     run after `Try_gen` **has failed / timed out**: `Status` =
+     `error`, `GenSummary` = the error detail (`Catch_gen`'s
+     `Err_detail_gen` output, or the scope's error body).
+5. Rename the flow **TestPlanGenAgentFlow**, save/publish.
 
 The output names `Status` / `DraftUrl` / `GenSummary` and the input
 name `StoryId` are a CONTRACT with
 `topics/GenerateTestPlan.mcs.yml` — change one, change both.
 
-Check: run `TestPlanGenCore` directly (Test → Manually) with StoryId
-= 42 → draft lands, response shows `Status: ok` and a resolving
-`DraftUrl`. Run it with a Test Plan row's id → `Status: guard`, no
-file. Run the list-menu parent on doc 42 → same draft behavior as
-before the split.
+Check: the flow appears under the agent's Tools; after §3's topic
+binding, a Test-pane run on a real User Story id returns `Status: ok`
+with a resolving `DraftUrl` and a new draft file; a Test Plan row's
+id returns the guard message and writes nothing; the list front door
+(1a) still drafts from the Automate menu exactly as it did in the
+flow smoke suite.
 
 ## 2 — Import the agent files
 

@@ -467,12 +467,13 @@ pass/fail per row).
 ## Queued follow-ons (documented, not built)
 
 - **Copilot Studio front-end** — SHIPPED in v1.1 as an importable
-  agent file set: see `testplangen/agent/Agent_Setup.md`. Note its §1
-  restructures this guide's §3 flow into a child flow
-  (`TestPlanGenCore`) with two thin parents once the agent is
-  deployed — the G-step bodies above stay the single source for the
-  core's actions. Title→id resolution via list-query actions remains
-  queued there.
+  agent file set: see `testplangen/agent/Agent_Setup.md`. Since v1.5
+  the agent runs its own self-contained agent flow beside this
+  guide's flow (the platform's billing boundary forbids a shared
+  child flow — `McsChildFlowTypeViolation`); this guide's §3 G-steps
+  remain the single SPEC both flows are built from, and a logic
+  change is applied to both. Title→id resolution via list-query
+  actions remains queued there.
 - **Provenance export** — CLOSED in v1.2, inverted:
   `testplangen/flow/v1_0/definition.json` is now checked in as the
   authored source (the §3 Path A package carries it byte-identical);

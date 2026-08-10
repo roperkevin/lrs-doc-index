@@ -36,8 +36,8 @@ sidecar to its related documents.
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |
 | testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v1.0 |
 | testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v1.0 |
-| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v1.0 |
-| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v1.0 |
+| testplangen/TestPlanGenCore_v1_0.zip | Child-flow package — retired (billing boundary, CHANGES v1.5); shape reference | v1.0 |
+| testplangen/flow/core_v1_0/definition.json | Child-flow definition (shape reference) | v1.0 |
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.0 |
@@ -165,8 +165,10 @@ fails closed: no markers, no file. Since v1.1 the flow also has a
 conversational front door: **LRS Test Plan Generator**, a thin
 Copilot Studio agent shipped as an importable file set
 (`testplangen/agent/TestPlanGenAgent/`, wired per
-`testplangen/agent/Agent_Setup.md` — which also splits the flow into
-a child flow so the list menu and the agent share one body). The
+`testplangen/agent/Agent_Setup.md` — the agent runs its own
+self-contained agent flow beside the list-menu flow; the platform's
+billing boundary forbids a shared child flow, so the two front doors
+are two flows built from the one §3 spec, per CHANGES v1.5). The
 agent takes a story's item id in chat, runs the flow, and relays the
 draft location; it has no knowledge sources and never drafts content
 itself — corpus questions stay with LRS Doc Index Q&A (optional and

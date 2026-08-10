@@ -1,3 +1,42 @@
+# TestPlanGen v1.5 — child-flow architecture retired (billing boundary)
+
+Live-tenant result that supersedes the v1.1–v1.4 child-flow design:
+Power Automate enforces `McsChildFlowTypeViolation` — flows created
+through Copilot Studio's agent-flow designer are Copilot
+Studio-billed, Power-Automate-created/imported flows are
+standard-billed, and a parent/child pair must share a billing type.
+Since only CS-created agent flows register as agent tools (the v1.4
+finding), the agent front door must be CS-billed while the list
+front door stays standard — so **no shared child flow is possible**,
+in either build order.
+
+New architecture (Agent_Setup §1, rewritten): **two self-contained
+flows, one spec** — the list front door is the standalone v1.0
+TestPlanGen flow, unchanged; the agent front door is a
+self-contained agent flow built in Copilot Studio, its body filled
+from the working list flow via the designer clipboard (copy
+Config/vars/Try/Catch/summary nodes, paste, four documented
+adjustments: trigger token, Terminates→Respond-to-the-agent +
+Terminate Succeeded, Draft_name/Draft_url minting, contract
+responds). `TestPlanGen_Setup.md` §3's G-steps are the single spec
+both are built from; the two smoke suites are the drift gate.
+
+Retired: **TestPlanGenCore** and its v1.3 package
+(`TestPlanGenCore_v1_0.zip` stays in the bundle as a shape reference,
+like the v1.4 agent-flow zip); the old §1b "thin the list flow" step
+(a thinned flow is restored by re-importing `TestPlanGen_v1_0.zip`);
+the Dataverse-solution prerequisite (nothing calls a child flow
+anymore).
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent import + wiring guide (§0/§1 rewritten) | v1.0 (amended) | `testplangen/agent/Agent_Setup.md` |
+| TestPlanGenCore package | retired — shape reference | `testplangen/TestPlanGenCore_v1_0.zip` |
+| Standalone flow package (now the list front door, again primary) | v1.0 | `testplangen/TestPlanGen_v1_0.zip` |
+| Prompt / smoke suites / agent file set / everything else | unchanged | — |
+
+---
+
 # TestPlanGen v1.4 — import package for the agent flow (TestPlanGenAgentFlow)
 
 `testplangen/TestPlanGenAgentFlow_v1_0.zip` packages the §1c agent
