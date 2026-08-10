@@ -698,7 +698,7 @@
                                       "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
                                       "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
                                       "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
-                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZIEEGZVFDTYSRHIEYGHUY2ZADVP",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOFC7PKHHZ4JBF3FRRA7SOX77PF",
                                       "ScriptParameters/zipBase64": "@{body('Get_content_pptx')?['$content']}"
                                     },
                                     "host": {
@@ -889,7 +889,7 @@
                                       "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
                                       "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
                                       "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
-                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZIEEGZVFDTYSRHIEYGHUY2ZADVP",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOFC7PKHHZ4JBF3FRRA7SOX77PF",
                                       "ScriptParameters/zipBase64": "@{body('Get_content_docx')?['$content']}"
                                     },
                                     "host": {
@@ -1998,7 +1998,7 @@
                                   "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
                                   "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
                                   "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
-                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOV25BH4K5KOBFIEGOQR6GHSCOP",
+                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOYCUREQER2OVD3MOWC62Y3DGNV",
                                   "ScriptParameters/selfId": "@{outputs('Doc_item_id')}",
                                   "ScriptParameters/myKwsJson": "@{string(coalesce(body('Get_my_kws')?['value'], json('[]')))}",
                                   "ScriptParameters/sharersJson": "@{string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))}",
@@ -2205,7 +2205,7 @@
                                       "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
                                       "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
                                       "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
-                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOV25BH4K5KOBFIEGOQR6GHSCOP",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZM5MIGLQGRYUFDIJ3YMRLUJJJPC",
                                       "ScriptParameters/filesJson": "@{string(outputs('Files_for_patch'))}",
                                       "ScriptParameters/selfId": "@{outputs('Doc_item_id')}",
                                       "ScriptParameters/rankedJson": "@{string(coalesce(outputs('Run_related_rank')?['body/result/related'], json('[]')))}",

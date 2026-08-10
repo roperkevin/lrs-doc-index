@@ -14,7 +14,7 @@ sidecar to its related documents.
 | Path | What | Version |
 |---|---|---|
 | flow/v2_4/definition.json | Flow definition | v2.4 |
-| flow/DocIndexSweep_v2_4.zip | Import package (v2.3 package skeleton + the v2.4 definition; designer touch-ups still needed post-import) | v2.4 |
+| flow/DocIndexSweep_v2_4.zip | Import package (v2.3 package skeleton + the v2.4 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.4 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.8 |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
@@ -101,18 +101,22 @@ break nothing.
    (item/requestv2 keys: FileName, DocText, ExistingKeywords).
 5. Import the v2.4 flow package, bind SharePoint + Excel
    Online + Dataverse connections.
-6. Designer touch-ups the package cannot carry: re-pick the script
-   on Extract_media_pptx/docx to MediaExtract, on Run_related_rank
-   to RelatedRank, and on Run_sidecar_patch to SidecarPatch (all
-   ship pointed at other scripts as parseable stand-ins), and
-   verify the prompt action's model/prompt binding matches your
-   tenant's prompt id.
+6. Designer touch-ups after import: the Run-script actions ship
+   with the origin tenant's real script bindings (captured from the
+   live flow's 2026-08-10 export — the old MediaExtract/RelatedRank/
+   SidecarPatch stand-ins are gone), but script IDs are OneDrive
+   item links, so on a fresh tenant re-pick each of the six
+   Run-script actions to your pasted scripts; then verify the
+   prompt action's model/prompt binding matches your tenant's
+   prompt id.
 
 On the EXISTING tenant: steps 2 (the seven kind subfolders), 3
 (paste the two revised v2.4 scripts), the three new Doc Index
 columns (SourceAuthor / SourceEditor / SourceEdited per
-schemas/SPList_DocIndex.csv) and 6 apply after importing — full
-order and per-step smoke tests in `flow/v2_4/CHANGES.md`.
+schemas/SPList_DocIndex.csv) and 6 apply after importing — though
+on the home tenant the script bindings already resolve, so step 6
+reduces to the prompt-binding check — full order and per-step
+smoke tests in `flow/v2_4/CHANGES.md`.
 
 ## Runbook
 
