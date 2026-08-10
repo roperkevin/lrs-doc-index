@@ -16,6 +16,9 @@ DocRevision,DocRevision,Single line of text,"From RegexExtract, e.g. V4",No
 TargetRelease,TargetRelease,Single line of text,"e.g. 3.8 / 12.2",No
 PE,PE,Single line of text,,No
 Dev,Dev,Single line of text,,No
+SourceAuthor,SourceAuthor,Single line of text,"Document author — OOXML core property dc:creator when the file carries one, else the library's Created By display name",No
+SourceEditor,SourceEditor,Single line of text,"Last editor — OOXML core property cp:lastModifiedBy when the file carries one, else the library's Modified By display name",No
+SourceEdited,SourceEdited,Date and Time,"Include time; document-property last-edit (dcterms:modified) when present, else the library's Modified — NOT the reindex gate (SourceModified keeps that job)",No
 Surface,Surface,Choice,"Pro; Experience Builder; Server; Enterprise; Other",No
 ExtractionLane,ExtractionLane,Choice,"xmlstrip; workbookdump; plaintext; htmltotext; ocr; none",No
 PromptVersion,PromptVersion,Single line of text,"Prompt rev that produced semantic fields — selective re-run lever",No

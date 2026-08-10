@@ -1,40 +1,61 @@
-# Doc Index System — Release v2.3
+# Doc Index System — Release v2.4
 
 Everything the document-indexing pipeline needs, in one bundle.
-Current as of 2026-08-09. The system: a daily Power Automate flow
+Current as of 2026-08-10. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
 in-script, classifies and keywords each doc via AI Builder, mints
 issue-ID rows and doc-to-doc edges, writes markdown sidecars with
-images, and cross-links each sidecar to its related documents.
+images — filed into per-kind subfolders, stamped with the source
+document's author/editor/last-edited trail — and cross-links each
+sidecar to its related documents.
 
 ## Bundle contents
 
 | Path | What | Version |
 |---|---|---|
-| flow/v2_3/definition.json | Flow definition | v2.3 |
-| flow/DocIndexSweep_v2_3.zip | Import package (v2.2 package skeleton + the v2.3 definition; designer touch-ups still needed post-import) | v2.3 |
+| flow/v2_4/definition.json | Flow definition | v2.4 |
+| flow/DocIndexSweep_v2_4.zip | Import package (v2.3 package skeleton + the v2.4 definition; designer touch-ups still needed post-import) | v2.4 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels | v1.7 |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.8 |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.0 |
-| scripts/SidecarPatch.ts | Surgical related-section patching | v1.1 |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.1 |
+| scripts/SidecarPatch.ts | Surgical related-section patching | v1.2 |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (current) | v1.2 |
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
-`flow/v2_1/`, `flow/v2_2/` and their zips) remain for provenance;
-see each `CHANGES.md`.
+`flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/` and their zips) remain for
+provenance; see each `CHANGES.md`.
 
 Retired, not included: TagStrip (superseded by ZipTextExtract; the
 script may remain in Excel harmlessly). Issue Refs list is present
 but empty by design — its feeder is flow #2, not yet built.
 
-## Flow v2.3 highlights (cumulative)
+## Flow v2.4 highlights (cumulative)
 
-Related documents in every sidecar (v2.3): a `## Related documents`
+Kind-routed sidecars + source authorship (v2.4): every sidecar now
+lands in a per-DocKind subfolder of the library (`Test Plans/`,
+`User Stories/`, `Design Spikes/`, `Data Templates/`, `Schedules/`,
+`Doc Reviews/`, `Other/` — the `Config.KindFolders` map is the source
+of truth), the row's `TextFileUrl` follows, a reindex that changes a
+sidecar's path recycles the old copy, and reciprocal related-list
+patches write each neighbor back to its own folder (SidecarPatch v1.2
+passes the folder through); inline image links are minted as
+`../media/...` since sidecars sit one level below the shared media
+folder. Each document's authorship trail — author, last editor,
+last-edited time — is read from the file's own OOXML core properties
+(ZipTextExtract v1.8; survives re-uploads that reset SharePoint's
+Created/Modified By) with library metadata as fallback, and stored as
+`author:`/`last_edited_by:`/`last_edited:` metadata lines, a header
+"Last edited" strip segment, and three new Doc Index columns
+(`SourceAuthor`/`SourceEditor`/`SourceEdited`). The PromptVersion bump
+(now `v1.6`) is format-only (no prompt re-paste) and drives the
+converging backfill that migrates the corpus into the subfolders — see
+`flow/v2_4/CHANGES.md`. Plus the v2.3 base:
+related documents in every sidecar: a `## Related documents`
 section plus a machine-readable `related:` metadata line — top 5,
 shared-issue-id edges outrank keyword overlap, each entry linked to
 the neighbor's sidecar with the reason for the relation; when a new
@@ -69,13 +90,16 @@ break nothing.
 1. Six lists on lrsworkspace per schemas/ — create LOOKUP columns
    via CLASSIC list settings (modern-created lookups are broken:
    silent write drops, spinning pickers).
-2. Media folder: /LRS Doc Index/media (manual, once).
+2. Folders in the LRS Doc Index library (manual, once):
+   /LRS Doc Index/media plus the seven kind subfolders — Test Plans,
+   User Stories, Design Spikes, Data Templates, Schedules,
+   Doc Reviews, Other.
 3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
-   (RegexExtract v1.2, ZipTextExtract v1.7, WorkbookDump v1.1,
-   MediaExtract v1.0, RelatedRank v1.0, SidecarPatch v1.1).
+   (RegexExtract v1.2, ZipTextExtract v1.8, WorkbookDump v1.1,
+   MediaExtract v1.0, RelatedRank v1.1, SidecarPatch v1.2).
 4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_2.md
    (item/requestv2 keys: FileName, DocText, ExistingKeywords).
-5. Import the v2.3 flow package, bind SharePoint + Excel
+5. Import the v2.4 flow package, bind SharePoint + Excel
    Online + Dataverse connections.
 6. Designer touch-ups the package cannot carry: re-pick the script
    on Extract_media_pptx/docx to MediaExtract, on Run_related_rank
@@ -84,9 +108,11 @@ break nothing.
    verify the prompt action's model/prompt binding matches your
    tenant's prompt id.
 
-On the EXISTING tenant: only step 3 (paste the two new v2.3
-scripts) and 6 apply after importing — full order and per-step
-smoke tests in `flow/v2_3/CHANGES.md`.
+On the EXISTING tenant: steps 2 (the seven kind subfolders), 3
+(paste the two revised v2.4 scripts), the three new Doc Index
+columns (SourceAuthor / SourceEditor / SourceEdited per
+schemas/SPList_DocIndex.csv) and 6 apply after importing — full
+order and per-step smoke tests in `flow/v2_4/CHANGES.md`.
 
 ## Runbook
 
@@ -114,6 +140,19 @@ smoke tests in `flow/v2_3/CHANGES.md`.
   (see docs/SP_Adaptation_Notes.md). Rarity is sampled from the
   sharers query's top-500 rows — the `$top` ceiling is the knob
   if the corpus outgrows it.
+- **Kind routing** (v2.4): sidecars file into the subfolder named by
+  `Config.KindFolders[DocKind]`; when a reindex changes the path
+  (kind reclassified, title slug changed, or the v1.6 backfill
+  migrating a root-level file), the new copy is written first and
+  the old one is recycled — check the site recycle bin before
+  suspecting data loss. Reciprocal patches always write a neighbor
+  back to whatever folder it currently lives in.
+- **Authorship** (v2.4): `author` / `last_edited_by` / `last_edited`
+  come from the document's own core properties for pptx/docx and
+  fall back to the library's Created By / Modified By / Modified
+  (always the fallback for xlsx/txt). `SourceEdited` on the row is
+  that document-property time — it can differ from `SourceModified`
+  (upload time), which alone drives the reindex gate.
 - **Media caps**: 12 images/doc, 350 KB each, 3 MB total, raster
   only; overflow lands in the script's skipped list.
 - **PromptVersion**: bump the Config value whenever the prompt
@@ -121,9 +160,10 @@ smoke tests in `flow/v2_3/CHANGES.md`.
   v2.2 a mismatch actively triggers reindexing (~150/day until
   the corpus converges), rewriting sidecars in the new format.
   The v2.3 bump to `v1.3` (related documents), the addendum
-  bump to `v1.4` (fenced metadata block for SharePoint preview)
-  and the addendum bump to `v1.5` (rarity-weighted related
-  scoring) are all format-only: the prompt text is unchanged
+  bump to `v1.4` (fenced metadata block for SharePoint preview),
+  the addendum bump to `v1.5` (rarity-weighted related scoring)
+  and the v2.4 bump to `v1.6` (kind subfolders + authorship
+  fields) are all format-only: the prompt text is unchanged
   and must not be re-pasted.
 
 ## Known limits / queued work

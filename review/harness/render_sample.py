@@ -1,9 +1,10 @@
 """Render a full sample sidecar — the eyeball artifact for the current format.
 
-Mirrors the flow's Sidecar_header template (flow/v2_3/definition.json)
+Mirrors the flow's Sidecar_header template (flow/v2_4/definition.json)
 in Python — same fields, same YAML escaping rules as the WDL
-expressions — over the real_deck.pptx v1.7 extraction, and writes
-sample_sidecar.md. Asserts:
+expressions, including the v2.4 authorship lines (author /
+last_edited_by / last_edited) and the subfolder-routed URLs — over the
+real_deck.pptx v1.8 extraction, and writes sample_sidecar.md. Asserts:
 
   - the metadata block is the fenced ```yaml frame (PromptVersion
     v1.4) — NOT `---` frontmatter, which SharePoint's markdown
@@ -15,13 +16,13 @@ sample_sidecar.md. Asserts:
     pair, in order, between ## Related documents and the seam
   - the '---' header/body seam is present
 
-Then runs SidecarPatch v1.1 in set mode over the rendered sample with
+Then runs SidecarPatch v1.2 in set mode over the rendered sample with
 three synthetic ranked entries and writes sample_sidecar_related.md —
 the eyeball artifact for a POPULATED related list — re-asserting the
 metadata still parses (`related` = 3 entry dicts) and the file
 still has exactly one H1.
 
-Prereqs: make_fixtures.py and check_format.py have run (zte_v17.ts).
+Prereqs: make_fixtures.py and check_format.py have run (zte_v18.ts).
 """
 import json
 import re
@@ -42,8 +43,8 @@ def kw_quote(s):
     return '"' + s.replace('\\', '').replace('"', '') + '"'
 
 
-out = subprocess.run(['node', '--experimental-strip-types', 'zte_v17.ts',
-                      'real_deck.pptx.b64', 'media/doc42_'],
+out = subprocess.run(['node', '--experimental-strip-types', 'zte_v18.ts',
+                      'real_deck.pptx.b64', '../media/doc42_'],
                      capture_output=True, text=True, check=True)
 body = json.loads(out.stdout)['out']['text']
 
@@ -58,9 +59,12 @@ meta = {
     'target_release': '3.8',
     'pe': 'Claire Wang',
     'dev': '',
-    'extracted': '2026-08-09',
+    'author': 'Claire Wang & Team',
+    'last_edited_by': 'Miguel O’Brien',
+    'last_edited': '2026-07-31T18:22:04Z',
+    'extracted': '2026-08-10',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v1.4',
+    'prompt_version': 'v1.6',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
     'summary': ('Explores how conflict prevention should acquire locks when routes '
@@ -68,6 +72,9 @@ meta = {
                 'Extend, Realign, and Reassign Route and the behavior when another '
                 'user already holds the lock.'),
 }
+
+# mirrors the header strip's Last edited segment (formatDateTime yyyy-MM-dd HH:mm)
+last_edited_disp = meta['last_edited'][:10] + ' ' + meta['last_edited'][11:16]
 
 header = f"""```yaml
 title: {wdl_yaml_quote(meta['title'])}
@@ -80,6 +87,9 @@ doc_revision: "{meta['doc_revision']}"
 target_release: "{meta['target_release']}"
 pe: "{meta['pe']}"
 dev: "{meta['dev']}"
+author: "{meta['author'].replace('"', '')}"
+last_edited_by: "{meta['last_edited_by'].replace('"', '')}"
+last_edited: "{meta['last_edited']}"
 extracted: {meta['extracted']}
 extraction_lane: {meta['extraction_lane']}
 prompt_version: "{meta['prompt_version']}"
@@ -90,7 +100,7 @@ related: []
 
 # {meta['title']}
 
-**{meta['doc_kind']}** · **Surface:** {meta['surface']} · **Extracted:** {meta['extracted']} · **Lane:** {meta['extraction_lane']}{'  '}
+**{meta['doc_kind']}** · **Surface:** {meta['surface']} · **Extracted:** {meta['extracted']} · **Lane:** {meta['extraction_lane']} · **Last edited:** {last_edited_disp} by {meta['last_edited_by']}{'  '}
 [Source: {meta['source_file']}](<{meta['source_url']}>)
 
 ## Summary
@@ -125,6 +135,15 @@ if parsed['title'] != meta['title'] or parsed['keywords'] != meta['keywords']:
 else:
     print('ok   metadata parses and round-trips (quoted/colon title)')
 
+if (parsed['author'] == meta['author'] and
+        parsed['last_edited_by'] == meta['last_edited_by'] and
+        parsed['last_edited'] == meta['last_edited']):
+    print('ok   authorship fields round-trip (author / last_edited_by / last_edited)')
+else:
+    print('FAIL authorship fields wrong:', parsed.get('author'),
+          parsed.get('last_edited_by'), parsed.get('last_edited'))
+    ok = False
+
 h1s = [ln for ln in sidecar.split('\n') if re.match(r'^# ', ln)]
 if len(h1s) != 1:
     print(f'FAIL expected exactly one H1, got {len(h1s)}')
@@ -154,7 +173,7 @@ else:
     print('FAIL related markers missing, duplicated, or misplaced')
     ok = False
 
-# ---- populate via SidecarPatch v1.1 (set mode, synthetic entries) -------
+# ---- populate via SidecarPatch v1.2 (set mode, synthetic entries) -------
 scp = open('../../scripts/SidecarPatch.ts').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 scp += '''
@@ -168,9 +187,10 @@ console.log(JSON.stringify(main(null as unknown, JSON.stringify(p.files), p.self
 '''
 open('scp_render.ts', 'w').write(scp)
 
-texts = 'https://esriis.sharepoint.com/sites/lrsworkspace/Document Index Texts'
+texts = 'https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index'
 payload = {
-    'files': [{'doc': meta['doc_id'], 'name': 'sample_sidecar.md', 'content': sidecar}],
+    'files': [{'doc': meta['doc_id'], 'name': 'sample_sidecar.md',
+               'folder': '/LRS Doc Index/User Stories', 'content': sidecar}],
     'selfId': str(meta['doc_id']),
     'ranked': [
         {'doc': 17, 's': 1003, 'why': 'shared issue ArcGISPro/ps-location-referencing#4855 · '
@@ -180,14 +200,14 @@ payload = {
     ],
     'docsMeta': [
         {'ID': 17, 'Title': 'Lock Acquisition Test Plan',
-         'TextFileUrl': f'{texts}/lock-acquisition-test-plan__doc17.md'},
+         'TextFileUrl': f'{texts}/Test Plans/lock-acquisition-test-plan__doc17.md'},
         {'ID': 23, 'Title': 'Route Editing Design Spike',
-         'TextFileUrl': f'{texts}/route-editing-design-spike__doc23.md'},
+         'TextFileUrl': f'{texts}/Design Spikes/route-editing-design-spike__doc23.md'},
         {'ID': 9, 'Title': 'Route Creation Overview',
-         'TextFileUrl': f'{texts}/route-creation-overview__doc9.md'},
+         'TextFileUrl': f'{texts}/Other/route-creation-overview__doc9.md'},
     ],
     'selfMeta': {'doc': meta['doc_id'], 'title': meta['title'],
-                 'url': f"{texts}/conflict-prevention-acquire-locks-for-new-routes__doc42.md",
+                 'url': f"{texts}/User Stories/conflict-prevention-acquire-locks-for-new-routes__doc42.md",
                  'file': 'conflict-prevention-acquire-locks-for-new-routes__doc42.md'},
     'topN': 5,
 }
@@ -207,6 +227,12 @@ if (patched['changed'] and pc.startswith('```yaml\n') and
     print('ok   patched metadata parses in the fenced frame; related = 3 entry dicts')
 else:
     print('FAIL patched related metadata wrong:', rel_fm.get('related'))
+    ok = False
+
+if patched['folder'] == '/LRS Doc Index/User Stories':
+    print('ok   patched file keeps its kind subfolder (v1.2 folder pass-through)')
+else:
+    print(f"FAIL patched folder wrong: {patched.get('folder')!r}")
     ok = False
 
 h1s = [ln for ln in patched['content'].split('\n') if re.match(r'^# ', ln)]

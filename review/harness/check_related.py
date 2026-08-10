@@ -35,6 +35,10 @@ v2.3 contract:
        PromptVersion v1.4 SharePoint-preview-safe form) and the
        legacy `---` frontmatter — and each file keeps the frame it
        arrived in (v1.1)
+    9. the `folder` property on each file object passes through to
+       the output verbatim (set and merge alike), and a folder-less
+       file comes back with folder "" (v1.2 — lets the flow save
+       patched files back into their own kind subfolders)
 
 Both wrapped runners must type-check at ES2017.
 
@@ -75,7 +79,7 @@ SCP_ARGS = ("null as unknown, JSON.stringify(p.files), p.selfId, "
             "JSON.stringify(p.selfMeta), p.topN")
 
 for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_v11.ts', RR_ARGS),
-                          (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v11.ts', SCP_ARGS)):
+                          (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v12.ts', SCP_ARGS)):
     body = open(src).read().replace(
         'workbook: ExcelScript.Workbook', 'workbook: unknown')
     open(runner, 'w').write(body + APPENDIX % args)
@@ -232,7 +236,7 @@ SELF_META = {'doc': 42, 'title': 'Conflict "Prevention": Acquire Locks for New R
 
 
 def patch(files, ranked=RANKED, meta=META, top=5):
-    return run('scp_v11.ts', {'files': files, 'selfId': '42', 'ranked': ranked,
+    return run('scp_v12.ts', {'files': files, 'selfId': '42', 'ranked': ranked,
                               'docsMeta': meta, 'selfMeta': SELF_META,
                               'topN': top})['files']
 
@@ -403,9 +407,23 @@ check(not out['changed'] and out['note'] == 'malformed-markers' and
 check(not out['changed'] and out['note'] == 'not-frontmatter',
       'non-frontmatter content -> no-op, noted')
 
+# -- v1.2: folder pass-through (kind-subfolder routing) --------------------
+fa, fb = patch([
+    {'doc': 42, 'name': 'self.md', 'folder': '/LRS Doc Index/User Stories',
+     'content': sidecar()},
+    {'doc': 17, 'name': 'n.md', 'folder': '/LRS Doc Index/Test Plans',
+     'content': neighbor},
+])
+check(fa['folder'] == '/LRS Doc Index/User Stories' and
+      fb['folder'] == '/LRS Doc Index/Test Plans' and
+      fa['note'] == 'set' and fb['note'] == 'merged',
+      'folder passes through verbatim in set and merge modes')
+[fc] = patch([{'doc': 42, 'name': 'self.md', 'content': sidecar()}])
+check(fc['folder'] == '', 'folder-less file object comes back with folder ""')
+
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
-for runner in ('rr_v11.ts', 'scp_v11.ts'):
+for runner in ('rr_v11.ts', 'scp_v12.ts'):
     tsc = subprocess.run(['npx', '--yes', 'tsc', '--noEmit', '--target', 'es2017',
                           '--lib', 'es2017,dom', runner],
                          capture_output=True, text=True)
