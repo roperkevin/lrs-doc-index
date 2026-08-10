@@ -10,7 +10,7 @@ whenever a new doc is indexed. It ships with two new script pastes:
 | Piece | Version | Where |
 |---|---|---|
 | Flow definition | v2.3 | this folder (`DocIndexSweep_v2_3.zip` is exported from the tenant after the designer edits below are applied) |
-| RelatedRank | **v1.0 (new)** | `scripts/RelatedRank.ts` |
+| RelatedRank | **v1.1 (new — shipped as v1.0, bumped by the rarity addendum below)** | `scripts/RelatedRank.ts` |
 | SidecarPatch | **v1.1 (new — shipped as v1.0, bumped by the addendum below)** | `scripts/SidecarPatch.ts` |
 | AI Builder prompt | v1.2 (unchanged) | `review/patches/DocIndex_Prompt_v1_2.md` |
 
@@ -53,6 +53,52 @@ reframing the block, not by dropping it:
 Smoke check for this revision: open any rewritten sidecar in the library
 preview — the metadata shows as a code block, the H1 is the first heading,
 and no giant bold heading of run-together metadata appears.
+
+## Addendum (2026-08-10) — rarity-weighted keywords, PromptVersion v1.5
+
+v1.0's flat count made every shared keyword worth 1, so generic terms
+("testing", "esri" — the prompt's negative list, which legacy rows still
+carry) linked docs as strongly as rare, specific ones ("conflict
+prevention"). Fixed inside the script — no schema, no new query:
+
+- **RelatedRank v1.1** (paste over v1.0 in Scripts.xlsx — same script, no
+  re-pick needed): each shared keyword now weighs
+  `w = 1 / log2(1 + df)`, where `df` counts the *other* docs carrying it
+  in the sharers rows. Those rows — every Doc Keywords row for every
+  keyword the current doc has — were already fetched by `Get_kw_sharers`
+  and double as a local document-frequency sample, so the flow passes
+  nothing new. A keyword shared with exactly one other doc weighs 1.0
+  (the old count's unit; sparse cases score identically to v1.0), while a
+  corpus-wide term fades toward 0.1. One rare keyword now outranks two
+  common ones. The keyword component caps at 999 and rounds to 3
+  decimals: any id link still structurally outranks any keyword overlap,
+  and scores stay byte-stable for SidecarPatch's changed-detection.
+  `why` and `sharedKeywords` list keywords rarest (most informative)
+  first instead of alphabetically; the `why` format itself is unchanged.
+  df is a property of the keyword, not of which doc queried, so scores
+  stay symmetric and merge mode reuses them as-is.
+- **`Config.PromptVersion`**: `v1.4` → `v1.5`, format-only again — the
+  prompt text is unchanged, do NOT re-paste. The bump reuses the reindex
+  gate to recompute every sidecar's related list under the new weights,
+  ~150/day until the corpus converges (~4 days at ~600 docs). During the
+  window, merges may land fractional scores next to old integer ones —
+  ordering stays valid for id links and self-heals for keywords as each
+  doc reindexes.
+- **SidecarPatch: no change** — its comparator and metadata round-trip
+  already handle fractional scores (asserted in the harness).
+- No other action, script, list, or prompt change. Designer edit if not
+  re-importing: bump the `Config` literal only.
+
+Known limit: df is sampled from the sharers query's top-500 rows, so a
+doc whose keywords collectively exceed 500 carrier rows undercounts df
+for its most common terms (slightly overweighting them). That truncation
+already bounds which sharers are seen at all; the `$top` ceiling is the
+knob if the corpus outgrows it.
+
+Smoke check for this revision: pick a doc sharing one rare keyword with
+doc A and two negative-list-style keywords with doc B — after its
+reindex, A ranks above B and the bullet's keyword list names the rare
+term first.
 
 ## What changed
 
@@ -167,13 +213,13 @@ in v2.0.
 
 ## Install order (paste scripts first)
 
-1. Paste **RelatedRank v1.0** and **SidecarPatch v1.1** as NEW scripts in
+1. Paste **RelatedRank v1.1** and **SidecarPatch v1.1** as NEW scripts in
    Scripts.xlsx (Automate tab), exact names. Harmless to the running v2.2
    flow (nothing references them until the v2.3 import).
 2. Import `DocIndexSweep_v2_3.zip` (as Update), or apply designer edits
    R1–R8 to the live flow.
-3. Prompt: no change — do NOT re-paste; the v1.3 and v1.4 bumps are
-   format-only.
+3. Prompt: no change — do NOT re-paste; the v1.3, v1.4 and v1.5 bumps
+   are format-only.
 
 ## REQUIRED after every import — not optional
 
@@ -283,3 +329,10 @@ merges with its frame preserved, the pre-v2.3 fallback keeps its `---`
 frame — and `scp_v11.ts` type-checks at ES2017. `render_sample.py` PASS
 rendering the fenced template in both empty and populated states;
 `check_format.py` unaffected (body contract unchanged).
+
+Addendum run (2026-08-10): `check_related.py` PASS with the rarity
+assertions — one rare keyword outranks two common ones, exact 3-decimal
+scores, rarest-first `why` ordering, keyword totals under the 1000
+floor, and SidecarPatch round-tripping/merging fractional scores
+(idempotent, stale-integer replacement) — all v1.0 assertions unchanged
+and still green; `rr_v11.ts` type-checks at ES2017.

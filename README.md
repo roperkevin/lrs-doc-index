@@ -104,21 +104,27 @@ smoke tests in `flow/v2_3/CHANGES.md`.
   processes; the graph self-assembles during backfill.
 - **Related documents** (v2.3): each sidecar shows its top 5
   related docs — id-linked docs first (score 1000+/shared issue),
-  then by shared-keyword count; indexing a doc also reciprocally
-  patches its neighbors' sidecars, so lists stay fresh in both
-  directions and entries self-heal on reindex. Keyword
-  relatedness is still never stored as edges — the lists are a
-  bounded per-doc render (see docs/SP_Adaptation_Notes.md).
+  then by rarity-weighted keyword overlap (a local IDF computed
+  from rows the flow already fetches: common terms fade, specific
+  terms dominate, and one rare shared keyword outranks two
+  generic ones); indexing a doc also reciprocally patches its
+  neighbors' sidecars, so lists stay fresh in both directions and
+  entries self-heal on reindex. Keyword relatedness is still
+  never stored as edges — the lists are a bounded per-doc render
+  (see docs/SP_Adaptation_Notes.md). Rarity is sampled from the
+  sharers query's top-500 rows — the `$top` ceiling is the knob
+  if the corpus outgrows it.
 - **Media caps**: 12 images/doc, 350 KB each, 3 MB total, raster
   only; overflow lands in the script's skipped list.
 - **PromptVersion**: bump the Config value whenever the prompt
   text OR the sidecar format changes; rows carry it, and since
   v2.2 a mismatch actively triggers reindexing (~150/day until
   the corpus converges), rewriting sidecars in the new format.
-  The v2.3 bump to `v1.3` (related documents) and the addendum
+  The v2.3 bump to `v1.3` (related documents), the addendum
   bump to `v1.4` (fenced metadata block for SharePoint preview)
-  are both format-only: the prompt text is unchanged and must
-  not be re-pasted.
+  and the addendum bump to `v1.5` (rarity-weighted related
+  scoring) are all format-only: the prompt text is unchanged
+  and must not be re-pasted.
 
 ## Known limits / queued work
 
