@@ -18,7 +18,7 @@ It ships with two script pastes:
 
 | Piece | Version | Where |
 |---|---|---|
-| Flow definition | v2.4 | this folder (`DocIndexSweep_v2_4.zip` is the v2.3 package skeleton + this definition; designer touch-ups still needed post-import) |
+| Flow definition | v2.4 | this folder (`DocIndexSweep_v2_4.zip` is the v2.3 package skeleton + this definition; real script bindings as of 2026-08-10, post-import verification below still applies) |
 | ZipTextExtract | **v1.8 (paste over v1.7)** | `scripts/ZipTextExtract.ts` |
 | SidecarPatch | **v1.2 (paste over v1.1)** | `scripts/SidecarPatch.ts` |
 | RelatedRank | v1.1 (unchanged) | `scripts/RelatedRank.ts` |
@@ -136,11 +136,15 @@ always current.
 
 ## REQUIRED after every import — not optional
 
-- Re-pick the script on `Run_related_rank` → `RelatedRank`, on
-  `Run_sidecar_patch` → `SidecarPatch`, and on `Extract_media_pptx` /
-  `Extract_media_docx` → `MediaExtract` (carried from v2.1–v2.3; the
-  package cannot hold those bindings and ships them pointed at other
-  scripts as parseable stand-ins).
+- Script bindings: as of 2026-08-10 the definition and package carry
+  the live flow's real bindings for all six Run-script actions —
+  `Run_related_rank` → `RelatedRank`, `Run_sidecar_patch` →
+  `SidecarPatch`, `Extract_media_pptx`/`Extract_media_docx` →
+  `MediaExtract` (captured from the tenant export; the v2.1–v2.3
+  stand-in re-picks are retired). On the home tenant no re-pick is
+  needed; on a fresh tenant the script IDs are OneDrive item links
+  that won't resolve, so re-pick every Run-script action to your
+  pasted scripts.
 - Re-verify the prompt action's model/prompt binding.
 - `Get_files` pagination threshold 20000.
 - **Designer-verify `Old_sidecar_url`** (F2-class check, same as
