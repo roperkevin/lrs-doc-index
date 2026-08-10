@@ -90,16 +90,19 @@ entries and writes `sample_sidecar_related.md` — the eyeball artifact for a
 POPULATED related list — re-asserting the patched metadata still parses and
 the file still has one H1.
 
-## Related-docs checks — RelatedRank v1.0 / SidecarPatch v1.1 (v2.3)
+## Related-docs checks — RelatedRank v1.1 / SidecarPatch v1.1 (v2.3)
 
 `check_related.py` wraps both v2.3 scripts (same appendix pattern as
 `rex_v12.ts`; no fixtures needed) and asserts the v2.3 contract:
 
-- RelatedRank: an id link (score 1000+) outranks any keyword count; a doc
-  sharing both signals collapses into ONE entry with combined score/why;
-  self excluded; score ties break to the higher (newer) item id; cap at
-  topN; empty or malformed JSON inputs are safe; the why-string caps
-  keyword names at 4 + `+k more`
+- RelatedRank: an id link (score 1000+) outranks any keyword overlap; a
+  doc sharing both signals collapses into ONE entry with combined
+  score/why; self excluded; score ties break to the higher (newer) item
+  id; cap at topN; empty or malformed JSON inputs are safe; the
+  why-string caps keyword names at 4 + `+k more`; keywords weigh by
+  rarity (`w = 1/log2(1+df)` from the sharers rows, 3-decimal rounding,
+  totals under 1000) so one rare keyword outranks two common ones, and
+  `why`/`sharedKeywords` list rarest first (v1.1)
 - SidecarPatch: set mode rewrites ONLY the metadata `related:` line and
   the begin/end marker region (byte-integrity asserted against planted
   decoy `related:` text and stray `---` seams in the body); idempotence

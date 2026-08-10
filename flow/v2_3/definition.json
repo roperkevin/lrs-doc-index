@@ -79,7 +79,7 @@
             "TextsFolder": "/LRS Doc Index",
             "SmokeFile": "",
             "DefaultRepo": "ArcGISPro/ps-location-referencing",
-            "PromptVersion": "v1.4",
+            "PromptVersion": "v1.5",
             "TextCap": 100000,
             "PreviewCap": 5000,
             "MaxDocsPerRun": 150,

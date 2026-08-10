@@ -5,13 +5,17 @@ standalone Node runners (same pattern as rex_v12.ts) and asserts the
 v2.3 contract:
 
   RelatedRank:
-    1. an id link (score 1000+) outranks any keyword count
+    1. an id link (score 1000+) outranks any keyword overlap
     2. a doc sharing both signals is a SINGLE entry, combined score/why
     3. self is excluded
     4. score tie -> higher item id (newer doc) first
     5. cap at topN
     6. empty inputs -> count 0; malformed JSON params -> [] not throw
     7. why keyword names cap at 4 + "+k more"
+    8. keywords weigh by rarity — w = 1/log2(1+df) from the sharers
+       rows — so one rare keyword outranks two common ones; scores
+       round to 3 decimals; keyword totals stay < 1000 (v1.1)
+    9. why/sharedKeywords list rarest first, ties alphabetical (v1.1)
 
   SidecarPatch:
     1. set mode renders N tagged bullets and rewrites ONLY the
@@ -70,7 +74,7 @@ SCP_ARGS = ("null as unknown, JSON.stringify(p.files), p.selfId, "
             "JSON.stringify(p.ranked), JSON.stringify(p.docsMeta), "
             "JSON.stringify(p.selfMeta), p.topN")
 
-for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_v10.ts', RR_ARGS),
+for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_v11.ts', RR_ARGS),
                           (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v11.ts', SCP_ARGS)):
     body = open(src).read().replace(
         'workbook: ExcelScript.Workbook', 'workbook: unknown')
@@ -98,7 +102,7 @@ def idlink(a, b, shared):
 
 
 # ==== RelatedRank =========================================================
-print('== RelatedRank v1.0 ==')
+print('== RelatedRank v1.1 ==')
 
 KW = [(1, 'locks'), (2, 'routes'), (3, 'conflict prevention'), (4, 'route editing'),
       (5, 'events'), (6, 'calibration'), (7, 'gaps'), (8, 'measures')]
@@ -109,7 +113,7 @@ sharers = ([kwrow(10, kid, t) for kid, t in KW]
            + [kwrow(42, 1, 'locks')])          # self rows must be ignored
 links = [idlink(11, 42, 'ArcGISPro/ps-location-referencing#4855')]
 
-r = run('rr_v10.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
                       'idLinks': links, 'topN': 5})
 check(r['count'] == 2 and r['docIds'][0] == 11 and r['docIds'][1] == 10,
       'id link (1 issue) outranks 8 shared keywords')
@@ -121,7 +125,7 @@ check('+4 more' in r['related'][1]['why'] and
       'why caps keyword names at 4 + "+k more"')
 
 # doc 10 with BOTH signals -> one merged entry
-r = run('rr_v10.ts', {'selfId': '42', 'myKws': my_kws,
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': my_kws,
                       'sharers': [kwrow(10, 1, 'locks'), kwrow(10, 2, 'routes')],
                       'idLinks': [idlink(10, 42, 'a#1;b#2')], 'topN': 5})
 check(r['count'] == 1 and r['related'][0]['s'] == 2002,
@@ -133,11 +137,32 @@ check('shared issue a#1, b#2' in r['related'][0]['why'] and
 
 # tie -> higher item id first; cap at topN
 sharers = [kwrow(d, 1, 'locks') for d in (20, 21, 22, 23, 24, 25, 26)]
-r = run('rr_v10.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
                       'idLinks': [], 'topN': 5})
 check(r['docIds'] == [26, 25, 24, 23, 22], 'tie-break newer id first, cap at 5')
 
-r = run('rr_v10.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+# rarity weighting: df('conflict prevention')=1 -> w=1.0,
+# df('routes')=2 -> w~0.631, df('testing')=16 -> w~0.245
+rarity_kws = [kwrow(42, 1, 'testing'), kwrow(42, 2, 'routes'),
+              kwrow(42, 3, 'conflict prevention')]
+rarity_sharers = ([kwrow(30, 3, 'conflict prevention')]
+                  + [kwrow(31, 1, 'testing'), kwrow(31, 2, 'routes')]
+                  + [kwrow(32, 2, 'routes')]
+                  + [kwrow(d, 1, 'testing') for d in range(100, 115)])
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': rarity_kws,
+                      'sharers': rarity_sharers, 'idLinks': [], 'topN': 5})
+check(r['docIds'] == [30, 31, 32, 114, 113],
+      'one rare keyword outranks two common ones (rarity ranking + ties)')
+by_doc = {e['doc']: e for e in r['related']}
+check(by_doc[30]['s'] == 1 and by_doc[31]['s'] == 0.876,
+      'weights: df=1 -> 1.0; testing+routes -> 0.876 (3-decimal rounding)')
+check(by_doc[31]['why'] == '2 shared keywords: routes, testing' and
+      by_doc[31]['sharedKeywords'] == ['routes', 'testing'],
+      'why lists rarest keyword first, not alphabetical')
+check(all(e['s'] < 1000 for e in r['related']),
+      'keyword-only scores stay below the id-link floor (1000)')
+
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
                       'idLinks': [], 'topN': 5})
 check(r['count'] == 0 and r['related'] == [], 'empty inputs -> count 0')
 
@@ -145,7 +170,7 @@ check(r['count'] == 0 and r['related'] == [], 'empty inputs -> count 0')
 # by the appendix, so ship raw junk through a direct wrapper call)
 open('rr_junk_payload.json', 'w').write(
     '{"selfId":"42","myKws":"not json","sharers":42,"idLinks":null,"topN":5}')
-out = subprocess.run(['node', '--experimental-strip-types', 'rr_v10.ts',
+out = subprocess.run(['node', '--experimental-strip-types', 'rr_v11.ts',
                       'rr_junk_payload.json'], capture_output=True, text=True)
 check(out.returncode == 0 and json.loads(out.stdout)['count'] == 0,
       'malformed JSON params -> empty result, no throw')
@@ -288,6 +313,30 @@ check([e for e in nfm2['related'] if e['doc'] == 42][0]['s'] == 1003 and
       len([e for e in nfm2['related'] if e['doc'] == 42]) == 1,
       'merge of an existing doc id replaces it (reindex-safe)')
 
+# -- fractional scores (RelatedRank v1.1 rarity weighting) -----------------
+FRAC_RANKED = [{'doc': 17, 's': 0.876, 'why': '2 shared keywords: routes, testing',
+                'sharedIds': [], 'sharedKeywords': ['routes', 'testing']}]
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': sidecar()}],
+              ranked=FRAC_RANKED)
+frac_fm = yaml.safe_load(fm_of(out['content']))
+check(frac_fm['related'] == [{'doc': 17, 's': 0.876,
+                              'file': 'lock-acquisition-test-plan__doc17.md'}],
+      'set mode round-trips a fractional score through the metadata line')
+[again] = patch([{'doc': 42, 'name': 'self.md', 'content': out['content']}],
+                ranked=FRAC_RANKED)
+check(not again['changed'] and again['content'] == out['content'],
+      'idempotent with fractional scores (byte-stable float rendering)')
+frac_neighbor = sidecar(
+    related_line='related: [{"doc":42,"file":"conflict-prevention__doc42.md","s":2},'
+                 '{"doc":99,"file":"other__doc99.md","s":1}]',
+    region='- [Self](<https://x/s.md>) <!-- rel:42 -->\n'
+           '- [Other](<https://x/o.md>) <!-- rel:99 -->')
+[out] = patch([{'doc': 17, 'name': 'n.md', 'content': frac_neighbor}],
+              ranked=FRAC_RANKED)
+frac_nfm = yaml.safe_load(fm_of(out['content']))
+check([(e['doc'], e['s']) for e in frac_nfm['related']] == [(99, 1), (42, 0.876)],
+      'merge replaces a stale integer score with the fractional one, re-sorts')
+
 # -- merge: eviction past the cap -----------------------------------------
 five = ','.join(f'{{"doc":{d},"file":"d{d}__doc{d}.md","s":{s}}}'
                 for d, s in ((60, 50), (61, 40), (62, 30), (63, 20), (64, 10)))
@@ -356,7 +405,7 @@ check(not out['changed'] and out['note'] == 'not-frontmatter',
 
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
-for runner in ('rr_v10.ts', 'scp_v11.ts'):
+for runner in ('rr_v11.ts', 'scp_v11.ts'):
     tsc = subprocess.run(['npx', '--yes', 'tsc', '--noEmit', '--target', 'es2017',
                           '--lib', 'es2017,dom', runner],
                          capture_output=True, text=True)
