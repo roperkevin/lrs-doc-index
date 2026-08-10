@@ -99,38 +99,45 @@ Copilot Studio.
    agent.
 2. On the trigger: **+ Add an input** → Number → name exactly
    `StoryId`.
-3. Fill the body from the working list flow with the designer
-   clipboard — no hand rebuild: open **TestPlanGen** (1a) in another
-   tab; on each top-level node — `Config_gen`, the four Initialize
-   variable actions, the `Try_gen` scope (one copy carries its whole
-   nested body), `Catch_gen`, `Gen_summary` — use **⋯ → Copy to my
-   clipboard**; in the agent flow, insert each in the same order
-   between the trigger and the respond via **+ → My clipboard**.
-   Pasted cards keep their expressions; re-pick the AI Builder
-   prompt binding if that card loses it, and confirm the SharePoint
-   cards kept your connections.
-4. Four adjustments after pasting:
-   - `Get_story_row`'s Id: replace the
-     `triggerBody()?['entity']?['ID']` expression with the trigger's
-     `StoryId` token (`triggerBody()?['number']`).
-   - The two Terminates inside `Try_gen` (`Terminate_not_story`,
-     `Terminate_no_draft`): insert a **Respond to the agent** BEFORE
-     each — `Status` = `guard` / `nodraft`, `DraftUrl` empty,
-     `GenSummary` = the same message text — then set the Terminate's
-     status to **Succeeded**. The agent relays the message instead
+3. Build the body from `TestPlanGen_Setup.md` §3 — the G-steps are
+   the spec; every action name and expression comes from there
+   (G0–G11 in order, then Catch/summary), with five agent-flow
+   deltas:
+   - **Trigger reference (G1)**: `Get_story_row`'s Id is the
+     trigger's `StoryId` token — `@{triggerBody()?['number']}`
+     (designer-verify on a test run; some tenants surface it as
+     `number_1`). The only trigger reference in the flow.
+   - **Guard (G2 No branch)**: a **Respond to the agent**
+     (`Status` = `guard`, `DraftUrl` empty, `GenSummary` = the §3
+     guard message) BEFORE `Terminate_not_story`, whose status
+     becomes **Succeeded** — the agent relays the message instead
      of seeing a failed run.
-   - Mint the draft link once: add a `Draft_name` Compose before
-     `Save_draft` holding the name expression, point `Save_draft`'s
-     name at it, and add a `Draft_url` Compose after —
+   - **No-draft (G9 No branch)**: same shape — `Respond_nodraft`
+     (`Status` = `nodraft`) before `Terminate_no_draft`, status
+     **Succeeded**.
+   - **Draft link minted once (G11)**: a `Draft_name` Compose
+     before `Save_draft` holding the §3 name expression;
+     `Save_draft`'s name = `@{outputs('Draft_name')}`; a
+     `Draft_url` Compose after —
      `@{concat(outputs('Config_gen')?['SiteUrl'], outputs('Config_gen')?['DraftFolder'], '/', outputs('Draft_name'))}`.
-   - The pre-placed **Respond to the agent** (after `Gen_summary`):
-     three Text outputs named exactly `Status` / `DraftUrl` /
-     `GenSummary` — values `ok`, `@{outputs('Draft_url')}`,
-     `@{outputs('Gen_summary')}`. Add a second respond configured to
-     run after `Try_gen` **has failed / timed out**: `Status` =
-     `error`, `GenSummary` = the error detail (`Catch_gen`'s
-     `Err_detail_gen` output, or the scope's error body).
-5. Rename the flow **TestPlanGenAgentFlow**, save/publish.
+   - **Contract responds (top level)**: the pre-placed **Respond to
+     the agent** becomes `Respond_ok` (after a `Gen_summary` that
+     runs only when `Try_gen` **Succeeded**): outputs `Status` =
+     `ok`, `DraftUrl` = `@{outputs('Draft_url')}`, `GenSummary` =
+     `@{outputs('Gen_summary')}`. Inside `Catch_gen` (run after
+     `Try_gen` Failed/Timed out), a `Respond_error` (`Status` =
+     `error`, `GenSummary` = `@{outputs('Err_detail_gen')}`) goes
+     before `Terminate_failed_gen`, which stays **Failed**
+     (designer-verify: if the Test pane shows a generic error
+     instead of the GenSummary text, flip it to Succeeded).
+   > Faster alternative when a working list flow (1a) exists in the
+   > same environment: fill the body with the designer clipboard —
+   > **⋯ → Copy to my clipboard** on `Config_gen`, the four
+   > Initialize variables, `Try_gen` (one copy carries the nested
+   > body), `Catch_gen`, `Gen_summary`; paste in order via
+   > **+ → My clipboard**; then apply the five deltas above.
+   > Re-pick the AI Builder prompt binding if that card loses it.
+4. Rename the flow **TestPlanGenAgentFlow**, save/publish.
 
 The output names `Status` / `DraftUrl` / `GenSummary` and the input
 name `StoryId` are a CONTRACT with
