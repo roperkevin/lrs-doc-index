@@ -25,6 +25,9 @@ sidecar to its related documents.
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
+| agent/QA_Agent_Instructions_v1_0.md | Q&A agent instructions (Copilot Studio) | v1.0 |
+| agent/QA_Agent_Setup.md | Q&A agent deployment guide | v1.0 |
+| agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/` and their zips) remain for
@@ -84,6 +87,21 @@ rows self-heal); hardened trim/toLower smoke filter; the nine
 review designer edits (v2.0) and createArray hardening (v2.1);
 all GUIDs and script references real — zero placeholders, imports
 break nothing.
+
+## Q&A agent (v1.0)
+
+The corpus answers questions now: a Copilot Studio agent, **LRS Doc
+Index Q&A**, grounded on the sidecar library and published to Teams
+(`agent/QA_Agent_Setup.md`). It grounds on the sidecars, not the raw
+source library — clean markdown with AI summaries and metadata beats
+binary decks for retrieval, and every sidecar carries `source_url`,
+so answers cite the original file through it. Read-only over the
+corpus: no flow, script, schema, or prompt changes, and instruction
+bumps (`agent/QA_Agent_Instructions_v1_0.md`) never touch
+`Config.PromptVersion`. Deployment is portal work in the
+designer-edits mold — numbered steps, a check after each, then the
+smoke suite (`agent/QA_Smoke_Questions.md`), recorded in
+`agent/CHANGES.md`.
 
 ## Fresh-tenant install order
 
@@ -165,6 +183,12 @@ order and per-step smoke tests in `flow/v2_4/CHANGES.md`.
   and the v2.4 bump to `v1.6` (kind subfolders + authorship
   fields) are all format-only: the prompt text is unchanged
   and must not be re-pasted.
+- **AgentInstructionsVersion**: the Q&A agent's instructions bump
+  like the prompt — new `agent/QA_Agent_Instructions_vX_Y.md`,
+  re-paste into Copilot Studio, re-run the smoke suite, record in
+  `agent/CHANGES.md`. Independent of PromptVersion — but a sidecar
+  format change that adds/renames metadata fields needs a matching
+  instructions bump (the agent describes those fields).
 
 ## Known limits / queued work
 
