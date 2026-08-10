@@ -86,11 +86,39 @@ ExemplarText → the reply is wrapped in the two markers, contains all
 five draft sections, every test case carries a **Trace:** line, and
 Open Questions is non-empty.
 
-## 3 — Build the flow
+## 3 — The flow: import the package, or build by hand
 
-New flow **TestPlanGen**, same environment and SharePoint connection
-as the sweep. Actions in order (names exactly as written — later
-expressions reference them):
+Since v1.2 there are two ways to get the flow. Either way, finish
+with the designer-verify cautions in the build steps (choice-column
+`.Value` and hyperlink surfacing) and the §5 smoke suite.
+
+**Path A — import `testplangen/TestPlanGen_v1_0.zip`** (My flows →
+Import → Import package (Legacy)), then the post-import checks:
+
+- **I1 — prompt binding.** The AI Builder action ships with a
+  placeholder `recordId` (all zeros) because the `LRS Test Plan
+  Generation` prompt is minted per-tenant in §2 — open
+  `Run_testplangen_prompt` and re-pick your prompt (the sweep
+  package's script-rebinding rule, applied to a prompt). The flow
+  will not run until this is done.
+- **I2 — trigger binding.** Open the trigger and confirm site
+  `lrsworkspace` / list **Doc Index** resolved on your tenant; on a
+  fresh tenant re-pick both. The package's trigger is authored (see
+  the CHANGES v1.2 note) — if import rejects the package outright,
+  fall back to Path B and report the import error in
+  `testplangen/CHANGES.md`.
+- **I3 — connections.** During import, map the SharePoint and
+  Dataverse connections to yours (Select during import), same as the
+  sweep package.
+- **I4 — menu label.** Confirm the flow appears under Automate on the
+  Doc Index list; rename the menu label to
+  `Generate test plan draft` if the default shows the flow name.
+
+Check: the flow saves with no expression errors and §5's row 1 passes.
+
+**Path B — build by hand.** New flow **TestPlanGen**, same
+environment and SharePoint connection as the sweep. Actions in order
+(names exactly as written — later expressions reference them):
 
 **Trigger — For a selected item** (SharePoint): site
 `https://esriis.sharepoint.com/sites/lrsworkspace`, list **Doc Index**
@@ -443,9 +471,11 @@ pass/fail per row).
   deployed — the G-step bodies above stay the single source for the
   core's actions. Title→id resolution via list-query actions remains
   queued there.
-- **Provenance export**: export the built flow and check in
-  `testplangen/flow/v1_0/definition.json`, the way `flow/` versions
-  accrete.
+- **Provenance export** — CLOSED in v1.2, inverted:
+  `testplangen/flow/v1_0/definition.json` is now checked in as the
+  authored source (the §3 Path A package carries it byte-identical);
+  when the built flow next diverges, export and re-cut per the
+  CHANGES v1.2 mechanics instead of re-authoring.
 - **docx handoff**: convert the reviewed draft to a Word file on the
   team template (premium Word connector, or OneDrive convert-file)
   to shave the finalize step — deliberately deferred until the

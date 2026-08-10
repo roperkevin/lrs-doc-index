@@ -34,9 +34,11 @@ sidecar to its related documents.
 | testplangen/TestPlanGen_Prompt_v1_0.md | Test-plan generation prompt (AI Builder) | v1.0 |
 | testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | v1.0 |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |
+| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v1.0 |
+| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.0 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v1.1 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v1.2 |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/` and their zips) remain for
@@ -133,9 +135,11 @@ zero proposals on a malformed model reply.
 ## Test-plan generation (v1.0)
 
 The catalog drafts test plans now — with a human gate: a third,
-on-demand flow, **TestPlanGen** (built from
-`testplangen/TestPlanGen_Setup.md` — no import package; new flows
-have no skeleton), runs from the Doc Index list's Automate menu on a
+on-demand flow, **TestPlanGen** (import
+`testplangen/TestPlanGen_v1_0.zip` with post-import checks I1–I4, or
+build from `testplangen/TestPlanGen_Setup.md` §3 — the package is an
+authored re-cut, so import validation plus the smoke suite is its
+real gate), runs from the Doc Index list's Automate menu on a
 selected **User Story** row. It reads the story's sidecar, follows
 the sidecar's machine-readable `related:` line to gather context
 (adjacent stories as a summary digest; related Test Plans as full

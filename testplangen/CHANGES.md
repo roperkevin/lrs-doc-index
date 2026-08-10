@@ -1,3 +1,54 @@
+# TestPlanGen v1.2 — import package for the flow
+
+The flow now ships as an importable package,
+`testplangen/TestPlanGen_v1_0.zip` (My flows → Import → Import
+package (Legacy)), alongside the build guide. The package payload,
+`testplangen/flow/v1_0/definition.json`, is checked in beside it —
+byte-identical to the zip's copy, the `flow/` provenance convention —
+implementing `TestPlanGen_Setup.md` §3's G0–G13 exactly (58 actions:
+trigger + Config/variables + Try scope with guard, sidecar fetch,
+related-line slice, neighbor digest loop, exemplar fallback query,
+exemplar fetch loop, prompt call, fail-closed marker slice, banner,
+draft write + Catch scope + Gen_summary).
+
+**Authored, not exported.** Like the `flow/` zips, this package is a
+re-cut of the sweep's package skeleton (manifest/maps minus the Excel
+connector — this flow runs no Office Scripts), but its
+`definition.json` was written from the setup guide rather than
+exported from a built flow, and two bindings intentionally need
+post-import work (guide §3 Path A, checks I1–I4): the AI Builder
+`recordId` ships as a placeholder (the prompt is minted per-tenant),
+and the "For a selected item" trigger shape should be
+designer-verified on first import — if the portal rejects the package,
+Path B (build by hand) is the unchanged fallback and the rejection
+gets recorded here. Once a tenant has imported and smoked it, an
+export from the live flow supersedes the authored file (re-cut
+mechanics: swap `definition.json` into the zip's
+`Microsoft.Flow/flows/<guid>/` entry; manifest and maps are stable).
+
+Import validation and the §5 smoke suite are the real gate — record
+the first import here:
+
+| Date | Tenant | Imported cleanly | I1–I4 done | Smoke rows passed (of 8) |
+|---|---|---|---|---|
+| — | — | — | — | — |
+
+| Piece | Version | Where |
+|---|---|---|
+| Flow import package | **v1.0** | `testplangen/TestPlanGen_v1_0.zip` |
+| Flow definition (provenance) | v1.0 | `testplangen/flow/v1_0/definition.json` |
+| Prompt / setup guide / smoke / agent file set | unchanged (v1.0 / v1.1) | `testplangen/` |
+| Everything else in the bundle | unchanged | — |
+
+Scope note: the package carries the **standalone v1.0 flow** (list-
+menu trigger, full body). The v1.1 child-flow trio cannot ship in a
+legacy flow package — child flows exist only inside Dataverse
+solutions — so agent deployments still apply
+`testplangen/agent/Agent_Setup.md` §1 after importing, exactly as
+after a hand build.
+
+---
+
 # TestPlanGen v1.1 — importable Copilot Studio front-end
 
 The queued "Copilot Studio front-end" follow-on, delivered as an
