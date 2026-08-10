@@ -125,18 +125,26 @@ The Automate-menu entry, name, and connections stay untouched. (The
 flow must be in the §0 solution for the child-flow action to appear —
 add it to the solution first if it was created standalone.)
 
-> **Shortcut for 1c (since v1.4):** import
-> `testplangen/TestPlanGenAgentFlow_v1_0.zip` (My flows → Import →
-> Import package (Legacy)) instead of building by hand. Then: add the
-> imported flow to your solution (same as Core), open the **Run a
-> Child Flow** node and **re-pick TestPlanGenCore** — the packaged
-> child reference is the Core *package's* id, which never matches the
-> id your import minted — confirm the input maps `StoryId`, and
-> designer-verify the trigger renders as "When an agent calls the
-> flow" with the Number input (the trigger shape is authored; if
-> import rejects the package outright, build 1c by hand below — it's
-> four actions — and record the rejection in `testplangen/CHANGES.md`).
-> No connections to fix: this flow uses only built-ins.
+> **Build 1c from inside Copilot Studio (the primary path since the
+> v1.4 live deployment):** in your agent, **Tools** (older UI:
+> Actions) → **+ Add a tool** → **New agent flow**. The designer
+> opens with the "When an agent calls the flow" trigger and "Respond
+> to the agent" action pre-loaded — guaranteed-recognized cards,
+> which also auto-registers the flow as a tool on this agent (no
+> "flow not listed" failure mode). Build the four-action body: add a
+> Number input `StoryId` to the trigger; insert **Run a Child Flow**
+> → TestPlanGenCore (`StoryId` passthrough); on the respond, three
+> Text outputs named exactly `Status` / `DraftUrl` / `GenSummary`
+> mapped from the child's response; add a second respond configured
+> to run after the child **has failed / timed out** (`Status` =
+> `error`, `GenSummary` = the child's error detail). Rename the flow
+> `TestPlanGenAgentFlow`, save, and run the 1c check below.
+>
+> `testplangen/TestPlanGenAgentFlow_v1_0.zip` remains in the bundle
+> as a SHAPE REFERENCE only — on the first live tenant its imported
+> trigger/respond did not surface as recognized agent-flow cards, so
+> Copilot Studio never listed the flow (CHANGES v1.4 record). Its
+> payload definition still documents the exact contract to build.
 
 **1c — `TestPlanGenAgentFlow`** (the agent parent; new solution
 flow, if not importing the package):

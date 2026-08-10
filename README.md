@@ -38,8 +38,8 @@ sidecar to its related documents.
 | testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v1.0 |
 | testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v1.0 |
 | testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v1.0 |
-| testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow (front door) import package | v1.0 |
-| testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (package payload) | v1.0 |
+| testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
+| testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.0 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v1.4 |
