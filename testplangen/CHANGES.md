@@ -1,3 +1,45 @@
+# TestPlanGen v1.4 — import package for the agent flow (TestPlanGenAgentFlow)
+
+`testplangen/TestPlanGenAgentFlow_v1_0.zip` packages the §1c agent
+parent, completing the import-driven set: v1.2 the standalone flow,
+v1.3 the child, v1.4 the agent front door. Payload:
+`testplangen/flow/agent_v1_0/definition.json` — a 3-action flow with
+zero connectors (built-ins only; the package carries no connector
+resources and its maps are empty): "When an agent calls the flow"
+trigger (Number input `StoryId`), Run a Child Flow → TestPlanGenCore,
+and two Respond-to-the-agent actions (success path relaying the
+child's `Status`/`DraftUrl`/`GenSummary`; failure path responding
+`Status: error` with the child's error detail). Only §1b — thinning
+the user's already-bound list flow in place — remains a hand edit, by
+design.
+
+Two caveats beyond the standing authored-not-exported convention:
+
+- **The child reference always needs a re-pick.** Run a Child Flow
+  binds by environment-specific workflow id; the package ships the
+  Core package's id, which never matches the id minted when Core was
+  imported. Post-import: open the node, re-pick TestPlanGenCore,
+  confirm `StoryId` maps.
+- **The trigger shape is the least-verified in the set.** "When an
+  agent calls the flow" is authored as a `Request`/`kind: Skills`
+  trigger (its documented peek-code sources were unreachable at
+  authoring time). If import rejects the package, §1c's four-action
+  hand build is the fallback; record the rejection here.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent-flow import package | **v1.0** | `testplangen/TestPlanGenAgentFlow_v1_0.zip` |
+| Agent-flow definition (payload) | v1.0 | `testplangen/flow/agent_v1_0/definition.json` |
+| Everything else | unchanged | — |
+
+Import record (fill in at deployment):
+
+| Date | Tenant | Imported cleanly | Child re-picked | Trigger verified |
+|---|---|---|---|---|
+| — | — | — | — | — |
+
+---
+
 # TestPlanGen v1.3 — import package for the child flow (TestPlanGenCore)
 
 `testplangen/TestPlanGenCore_v1_0.zip` packages the agent-ready child

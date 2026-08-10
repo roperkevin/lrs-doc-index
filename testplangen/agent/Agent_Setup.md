@@ -125,8 +125,21 @@ The Automate-menu entry, name, and connections stay untouched. (The
 flow must be in the §0 solution for the child-flow action to appear —
 add it to the solution first if it was created standalone.)
 
+> **Shortcut for 1c (since v1.4):** import
+> `testplangen/TestPlanGenAgentFlow_v1_0.zip` (My flows → Import →
+> Import package (Legacy)) instead of building by hand. Then: add the
+> imported flow to your solution (same as Core), open the **Run a
+> Child Flow** node and **re-pick TestPlanGenCore** — the packaged
+> child reference is the Core *package's* id, which never matches the
+> id your import minted — confirm the input maps `StoryId`, and
+> designer-verify the trigger renders as "When an agent calls the
+> flow" with the Number input (the trigger shape is authored; if
+> import rejects the package outright, build 1c by hand below — it's
+> four actions — and record the rejection in `testplangen/CHANGES.md`).
+> No connections to fix: this flow uses only built-ins.
+
 **1c — `TestPlanGenAgentFlow`** (the agent parent; new solution
-flow):
+flow, if not importing the package):
 - Trigger: **When an agent calls the flow**, one input — Number,
   name exactly `StoryId`.
 - **Run a Child Flow** → `TestPlanGenCore`, `StoryId` passthrough.
