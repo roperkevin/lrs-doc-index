@@ -3,7 +3,9 @@
 #
 # This agent has no knowledge sources and general knowledge is off
 # (settings.mcs.yml), so the fallback's job is the redirect: corpus
-# questions belong to the LRS Doc Index Q&A agent. Overrides the
+# questions belong to the LRS Doc Index Q&A agent — an OPTIONAL,
+# independent component (agent/QA_Agent_Setup.md); the message
+# tolerates it not being deployed. Overrides the
 # system fallback topic on import; if the overlay doesn't take on your
 # extension version, paste the message into the built-in Fallback
 # topic's message node instead (Agent_Setup.md §2 check).
@@ -21,5 +23,7 @@ beginDialog:
         ready.
 
         For questions about document content — what a story says,
-        which test plans cover a feature, releases, PEs — ask the
-        LRS Doc Index Q&A agent instead.
+        which test plans cover a feature, releases, PEs — use the
+        LRS Doc Index Q&A agent if your team has deployed it;
+        otherwise browse the Doc Index list and its sidecar files
+        directly.

@@ -57,7 +57,9 @@ digest — NOT the LRS Doc Index library), create the folder
 > entire LRS Doc Index library (`agent/QA_Agent_Setup.md` §2) and must
 > never ingest machine-generated, unreviewed test plans as document
 > knowledge. Shared Documents is outside its one knowledge source, and
-> outside the sweep's source library too.
+> outside the sweep's source library too. The rule holds whether or
+> not the (optional) Q&A agent is deployed yet — the placement costs
+> nothing now and protects the corpus the day it is.
 
 Check: `/Shared Documents/Test Plan Drafts` exists and is empty.
 

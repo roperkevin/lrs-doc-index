@@ -165,7 +165,9 @@ Copilot Studio agent shipped as an importable file set
 a child flow so the list menu and the agent share one body). The
 agent takes a story's item id in chat, runs the flow, and relays the
 draft location; it has no knowledge sources and never drafts content
-itself — corpus questions stay with LRS Doc Index Q&A.
+itself — corpus questions stay with LRS Doc Index Q&A (optional and
+independent: nothing in test-plan generation requires the Q&A agent
+to be deployed).
 
 ## Fresh-tenant install order
 

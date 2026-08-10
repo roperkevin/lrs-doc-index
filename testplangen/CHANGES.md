@@ -47,6 +47,17 @@ solutions — so agent deployments still apply
 `testplangen/agent/Agent_Setup.md` §1 after importing, exactly as
 after a hand build.
 
+Docs note (post-v1.2, pre-first-deployment): the Q&A agent
+(`agent/QA_Agent_Setup.md`) is OPTIONAL and independent of this
+component — nothing in TestPlanGen depends on it. All Q&A-agent
+references across `testplangen/` were made conditional to match: the
+generator agent's redirect messages tolerate its absence, flow-smoke
+row 7 is marked skip-until-deployed (the non-ingestion guarantee is
+structural — drafts sit outside the sidecar library regardless), and
+agent-smoke row 5 is clarified to test this agent's refusal, not the
+Q&A agent. The agent file set was amended before any tenant imported
+it, so TestPlanGenAgentVersion stays v1.0.
+
 ---
 
 # TestPlanGen v1.1 — importable Copilot Studio front-end
