@@ -32,11 +32,22 @@ Two caveats beyond the standing authored-not-exported convention:
 | Agent-flow definition (payload) | v1.0 | `testplangen/flow/agent_v1_0/definition.json` |
 | Everything else | unchanged | — |
 
-Import record (fill in at deployment):
+Import record:
 
 | Date | Tenant | Imported cleanly | Child re-picked | Trigger verified |
 |---|---|---|---|---|
-| — | — | — | — | — |
+| 2026-08-10 | esriis (lrsworkspace) | yes | yes — child node rebuilt, responds re-linked | **no** — flow never surfaced as an addable agent flow/tool in Copilot Studio |
+
+Docs note (post-v1.4, live-deployment result): the authored
+trigger/respond shapes did not render as recognized "When an agent
+calls the flow" / "Respond to the agent" cards on the live tenant, so
+Copilot Studio never listed the imported flow — the documented risk
+realized. **The package is superseded as a deployment path**: §1c is
+now built from inside Copilot Studio (Tools → New agent flow →
+pre-loaded recognized cards → four-action body), which also
+auto-registers the flow as a tool. The zip and its payload stay in
+the bundle as a shape/contract reference, per the provenance
+convention.
 
 Docs note (post-v1.4, live-deployment feedback): the GenerateTestPlan
 topic originally shipped an active `InvokeFlowAction` node with a
