@@ -28,6 +28,9 @@ sidecar to its related documents.
 | agent/QA_Agent_Instructions_v1_0.md | Q&A agent instructions (Copilot Studio) | v1.0 |
 | agent/QA_Agent_Setup.md | Q&A agent deployment guide | v1.0 |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
+| curation/KeywordCuration_Prompt_v1_0.md | Keyword curation prompt (AI Builder) | v1.0 |
+| curation/Curation_Setup.md | Curation flow build + deploy guide | v1.0 |
+| curation/CHANGES.md | Curation release notes | v1.0 |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/` and their zips) remain for
@@ -102,6 +105,24 @@ bumps (`agent/QA_Agent_Instructions_v1_0.md`) never touch
 designer-edits mold — numbered steps, a check after each, then the
 smoke suite (`agent/QA_Smoke_Questions.md`), recorded in
 `agent/CHANGES.md`.
+
+## Keyword curation (v1.0)
+
+The vocabulary curates itself — with a human veto: a second, tiny
+flow, **KeywordCuration** (built from `curation/Curation_Setup.md` —
+no import package; new flows have no skeleton), runs Saturdays 08:00
+Mountain, makes ONE AI Builder call over the full canonical
+vocabulary (`curation/KeywordCuration_Prompt_v1_0.md`), and writes
+merge proposals onto the Keywords rows via two new flow-owned columns
+(`CurationStatus`, `ProposedCanonical` — see the updated
+`schemas/SPList_Keywords.csv`). It never writes `CanonicalRef`: a
+human approves from the **Curation queue** view by setting the lookup,
+rejects by setting `Rejected` (never re-proposed), and the flow clears
+approved rows' state on its next run. A digest lands in **Shared
+Documents** — deliberately outside the LRS Doc Index library so the
+Q&A agent never ingests it. Proposals are validated against real rows
+(hallucinations dropped and counted), and the whole run degrades to
+zero proposals on a malformed model reply.
 
 ## Fresh-tenant install order
 
@@ -189,13 +210,28 @@ order and per-step smoke tests in `flow/v2_4/CHANGES.md`.
   `agent/CHANGES.md`. Independent of PromptVersion — but a sidecar
   format change that adds/renames metadata fields needs a matching
   instructions bump (the agent describes those fields).
+- **CurationStatus** (Keywords list): empty = uncurated, `Proposed` =
+  awaiting review, `Rejected` = never re-proposed. Approving = setting
+  `CanonicalRef`; the curation flow clears the curation columns on its
+  next run. The flow writes only its two columns; the sweep never
+  reads them.
+- **CurationPromptVersion**: bumps like AgentInstructionsVersion — new
+  `curation/KeywordCuration_Prompt_vX_Y.md`, re-paste into AI Builder,
+  re-run the curation smoke suite, record in `curation/CHANGES.md`.
+  Never bump `Config.PromptVersion` for curation — nothing here
+  reindexes the corpus.
 
 ## Known limits / queued work
 
 Run-script payload caps files at roughly 3.5 MB (oversized docs
 Error visibly; an OCR fallback lane is designed if ever needed).
 html/pdf/msg extensions land as Skipped rows awaiting future
-lanes. Flow #2 (Gantt → Issue Refs + title-matching), keyword
-alias curation, and the librarian backfill pass (junction lookups
-from KWKey, retro-illustration of early docs) are the queued
-follow-ons.
+lanes. Flow #2 (Gantt → Issue Refs + title-matching) and the
+librarian backfill pass (junction lookups from KWKey,
+retro-illustration of early docs — now also carrying the
+DocKeywords re-point after approved keyword merges: an approved
+alias fixes the vocabulary and all future junction rows, but
+historical rows stay on the alias id, and a reindex adds canonical
+rows without deleting stale ones, until the backfill re-points
+them; mechanics specified in `curation/Curation_Setup.md`) are the
+queued follow-ons.
