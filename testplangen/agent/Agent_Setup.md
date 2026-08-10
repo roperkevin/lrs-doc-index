@@ -72,7 +72,22 @@ directly. Rather than duplicate ~35 actions (drift risk — against the
 repo's no-duplication rule), split once into a child flow with two
 thin parents. All three live in the solution from §0.
 
-**1a — `TestPlanGenCore`** (the child; new solution flow):
+> **Shortcut for 1a (since v1.3):** instead of building the child by
+> hand, import `testplangen/TestPlanGenCore_v1_0.zip` (My flows →
+> Import → Import package (Legacy)) — it is the v1.0 flow body with
+> the 1a substitutions already applied (manual trigger with `StoryId`,
+> guard/no-draft converted to Respond-with-Status, `Draft_name`/
+> `Draft_url` minting, success `Respond_ok`). Then: add the imported
+> flow to your solution (Solutions → Add existing → Automation →
+> Cloud flow), re-pick the AI Builder prompt binding (the I1
+> placeholder rule), re-pick the Doc Index list on the row/query
+> actions if your list GUID differs from the packaged one (you'll
+> know from your first import), set the run-only connections to
+> embedded, and run the 1a check below. Steps 1b and 1c are still
+> built by hand — they're a handful of actions each.
+
+**1a — `TestPlanGenCore`** (the child; new solution flow, if not
+importing the package):
 - Trigger: **Manually trigger a flow**, one input — Number,
   name exactly `StoryId`.
 - Body: G0–G13 from `testplangen/TestPlanGen_Setup.md` §3, with three
@@ -110,8 +125,21 @@ The Automate-menu entry, name, and connections stay untouched. (The
 flow must be in the §0 solution for the child-flow action to appear —
 add it to the solution first if it was created standalone.)
 
+> **Shortcut for 1c (since v1.4):** import
+> `testplangen/TestPlanGenAgentFlow_v1_0.zip` (My flows → Import →
+> Import package (Legacy)) instead of building by hand. Then: add the
+> imported flow to your solution (same as Core), open the **Run a
+> Child Flow** node and **re-pick TestPlanGenCore** — the packaged
+> child reference is the Core *package's* id, which never matches the
+> id your import minted — confirm the input maps `StoryId`, and
+> designer-verify the trigger renders as "When an agent calls the
+> flow" with the Number input (the trigger shape is authored; if
+> import rejects the package outright, build 1c by hand below — it's
+> four actions — and record the rejection in `testplangen/CHANGES.md`).
+> No connections to fix: this flow uses only built-ins.
+
 **1c — `TestPlanGenAgentFlow`** (the agent parent; new solution
-flow):
+flow, if not importing the package):
 - Trigger: **When an agent calls the flow**, one input — Number,
   name exactly `StoryId`.
 - **Run a Child Flow** → `TestPlanGenCore`, `StoryId` passthrough.
@@ -165,15 +193,20 @@ knowledge off, NO knowledge sources, and both topics; the
 GenerateTestPlan topic opens in the canvas without errors (the flow
 node shows unbound — that's §3).
 
-## 3 — Re-bind the flow
+## 3 — Add and bind the flow node
 
-Open the **GenerateTestPlan** topic → the "Run a flow" /
-InvokeFlowAction node → re-pick **TestPlanGenAgentFlow** (the
-REBIND-AT-IMPORT placeholder from `connectionreferences.mcs.yml` and
-the topic file — flow ids are environment-specific, the script-
-rebinding rule). Map input `StoryId` = `Topic.StoryId`; map outputs
-`Status` / `DraftUrl` / `GenSummary` to the same-named Topic
-variables.
+The topic file ships WITHOUT an active flow node — the topic parser
+requires `flowId` to be a real GUID, which is environment-specific,
+so a placeholder would fail paste validation. Add the node in the
+canvas: open the **GenerateTestPlan** topic → in the confirmed-Yes
+branch, between the "Starting generation…" message and the status
+condition, **+ → Call an action** → pick **TestPlanGenAgentFlow**
+(only solution flows with the agent trigger appear — §1's work). Map
+input `StoryId` = `Topic.StoryId`; save the outputs into variables
+named exactly `Topic.Status` / `Topic.DraftUrl` / `Topic.GenSummary`
+— the downstream condition and messages reference those names, so
+rename any auto-created variables to match. The commented block in
+the topic file shows the node's intended final shape.
 
 Check: Test pane → "draft a test plan" → agent asks for the id → give
 `42` → confirm → draft link comes back with the review reminder, and

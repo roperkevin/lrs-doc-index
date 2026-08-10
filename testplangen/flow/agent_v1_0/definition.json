@@ -1,0 +1,157 @@
+{
+  "name": "e2b6d914-7a35-4c88-9f10-8d4b5a2c7e61",
+  "id": "/providers/Microsoft.Flow/flows/e2b6d914-7a35-4c88-9f10-8d4b5a2c7e61",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "TestPlanGenAgentFlow",
+    "definition": {
+      "metadata": {
+        "workflowEntityId": null,
+        "processAdvisorMetadata": null,
+        "flowChargedByPaygo": null,
+        "flowclientsuspensionreason": "None",
+        "flowclientsuspensiontime": null,
+        "flowclientsuspensionreasondetails": null,
+        "creator": {
+          "id": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+          "type": "User",
+          "tenantId": "aee6e3c9-711e-4c7c-bd27-04f2307db20d"
+        },
+        "provisioningMethod": "FromDefinition",
+        "failureAlertSubscription": true,
+        "clientLastModifiedTime": "2026-08-10T00:00:00.0000000Z",
+        "lastModifiedBy": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+        "connectionKeySavedTimeKey": "2026-08-10T00:00:00.0000000Z",
+        "creationSource": "Portal",
+        "modifiedSources": "Portal"
+      },
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Skills",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "title": "StoryId",
+                  "type": "number",
+                  "x-ms-dynamically-added": true,
+                  "description": "Doc Index item id of the user story to draft from"
+                }
+              },
+              "required": [
+                "number"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Run_TestPlanGenCore": {
+          "runAfter": {},
+          "type": "Workflow",
+          "inputs": {
+            "host": {
+              "workflowReferenceName": "9a5e7c42-8d13-4f6b-a2e9-6b1c3d8f7a54"
+            },
+            "body": {
+              "number": "@triggerBody()?['number']"
+            }
+          }
+        },
+        "Respond_to_agent": {
+          "runAfter": {
+            "Run_TestPlanGenCore": [
+              "Succeeded"
+            ]
+          },
+          "type": "Response",
+          "kind": "Skills",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "Status": "@{coalesce(body('Run_TestPlanGenCore')?['Status'], 'error')}",
+              "DraftUrl": "@{coalesce(body('Run_TestPlanGenCore')?['DraftUrl'], '')}",
+              "GenSummary": "@{coalesce(body('Run_TestPlanGenCore')?['GenSummary'], '')}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "Status": {
+                  "title": "Status",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "DraftUrl": {
+                  "title": "DraftUrl",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "GenSummary": {
+                  "title": "GenSummary",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "Respond_error": {
+          "runAfter": {
+            "Run_TestPlanGenCore": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Response",
+          "kind": "Skills",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "Status": "error",
+              "DraftUrl": "",
+              "GenSummary": "@{take(string(coalesce(body('Run_TestPlanGenCore'), 'child flow failed')), 1000)}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "Status": {
+                  "title": "Status",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "DraftUrl": {
+                  "title": "DraftUrl",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "GenSummary": {
+                  "title": "GenSummary",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "connectionReferences": {},
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}

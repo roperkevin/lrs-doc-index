@@ -1,3 +1,84 @@
+# TestPlanGen v1.4 — import package for the agent flow (TestPlanGenAgentFlow)
+
+`testplangen/TestPlanGenAgentFlow_v1_0.zip` packages the §1c agent
+parent, completing the import-driven set: v1.2 the standalone flow,
+v1.3 the child, v1.4 the agent front door. Payload:
+`testplangen/flow/agent_v1_0/definition.json` — a 3-action flow with
+zero connectors (built-ins only; the package carries no connector
+resources and its maps are empty): "When an agent calls the flow"
+trigger (Number input `StoryId`), Run a Child Flow → TestPlanGenCore,
+and two Respond-to-the-agent actions (success path relaying the
+child's `Status`/`DraftUrl`/`GenSummary`; failure path responding
+`Status: error` with the child's error detail). Only §1b — thinning
+the user's already-bound list flow in place — remains a hand edit, by
+design.
+
+Two caveats beyond the standing authored-not-exported convention:
+
+- **The child reference always needs a re-pick.** Run a Child Flow
+  binds by environment-specific workflow id; the package ships the
+  Core package's id, which never matches the id minted when Core was
+  imported. Post-import: open the node, re-pick TestPlanGenCore,
+  confirm `StoryId` maps.
+- **The trigger shape is the least-verified in the set.** "When an
+  agent calls the flow" is authored as a `Request`/`kind: Skills`
+  trigger (its documented peek-code sources were unreachable at
+  authoring time). If import rejects the package, §1c's four-action
+  hand build is the fallback; record the rejection here.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent-flow import package | **v1.0** | `testplangen/TestPlanGenAgentFlow_v1_0.zip` |
+| Agent-flow definition (payload) | v1.0 | `testplangen/flow/agent_v1_0/definition.json` |
+| Everything else | unchanged | — |
+
+Import record (fill in at deployment):
+
+| Date | Tenant | Imported cleanly | Child re-picked | Trigger verified |
+|---|---|---|---|---|
+| — | — | — | — | — |
+
+Docs note (post-v1.4, live-deployment feedback): the GenerateTestPlan
+topic originally shipped an active `InvokeFlowAction` node with a
+`flowId: REBIND-AT-IMPORT` placeholder — the topic code editor
+validates `flowId` as a GUID and rejects the paste (GuidParseError).
+The topic file now ships the flow node commented out with add-via-
+canvas instructions, and `Agent_Setup.md` §3 is retitled "Add and
+bind the flow node" to match. Found during the first live agent
+deployment; agent file set still pre-first-import on any other
+tenant, so TestPlanGenAgentVersion stays v1.0.
+
+---
+
+# TestPlanGen v1.3 — import package for the child flow (TestPlanGenCore)
+
+`testplangen/TestPlanGenCore_v1_0.zip` packages the agent-ready child
+flow, closing the by-hand gap in `testplangen/agent/Agent_Setup.md`
+§1a. Its payload, `testplangen/flow/core_v1_0/definition.json`, is a
+**programmatic transform of the v1.0 flow definition** (not a second
+authoring): trigger swapped to "Manually trigger a flow" with a
+Number input `StoryId` (`triggerBody()?['number']`), the guard and
+no-draft Terminates converted to Respond-with-Status (`guard` /
+`nodraft`) followed by Terminate Succeeded, the draft filename minted
+once in a `Draft_name` Compose with `Draft_url` derived from it, and
+a success `Respond_ok` returning `Status`/`DraftUrl`/`GenSummary` —
+the contract the agent topic and 1c parent bind to. Catch still
+Terminates Failed (a real failure should fail the caller). 63
+actions; same two connectors; same authored-not-exported caveats and
+I-checks as v1.2 (prompt `recordId` placeholder, list re-pick on
+foreign GUIDs), minus the trigger caveat — a button trigger has no
+list binding. Post-import: add the flow to a solution and set
+embedded run-only connections before wiring 1b/1c (child flows are
+solution-only).
+
+| Piece | Version | Where |
+|---|---|---|
+| Child-flow import package | **v1.0** | `testplangen/TestPlanGenCore_v1_0.zip` |
+| Child-flow definition (payload) | v1.0 | `testplangen/flow/core_v1_0/definition.json` |
+| Everything else | unchanged | — |
+
+---
+
 # TestPlanGen v1.2 — import package for the flow
 
 The flow now ships as an importable package,
