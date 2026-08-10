@@ -11,7 +11,7 @@ whenever a new doc is indexed. It ships with two new script pastes:
 |---|---|---|
 | Flow definition | v2.3 | this folder (`DocIndexSweep_v2_3.zip` is exported from the tenant after the designer edits below are applied) |
 | RelatedRank | **v1.0 (new)** | `scripts/RelatedRank.ts` |
-| SidecarPatch | **v1.1 (new — shipped as v1.0, bumped by the addendum below)** | `scripts/SidecarPatch.ts` |
+| SidecarPatch | **v1.2 (new — shipped as v1.0, bumped by the addenda below)** | `scripts/SidecarPatch.ts` |
 | AI Builder prompt | v1.2 (unchanged) | `review/patches/DocIndex_Prompt_v1_2.md` |
 
 Supersedes v2.2 as the import target. The `PromptVersion` bump to `v1.3` is
@@ -53,6 +53,49 @@ reframing the block, not by dropping it:
 Smoke check for this revision: open any rewritten sidecar in the library
 preview — the metadata shows as a code block, the H1 is the first heading,
 and no giant bold heading of run-together metadata appears.
+
+## Addendum 2 (2026-08-10) — hidden machine metadata + visible table, v1.5
+
+The v1.4 code fence rendered *correctly* but not *nicely* — a gray
+scrolling block of raw YAML at the top of every doc. v1.5 splits the two
+jobs the block was doing:
+
+- **Machine metadata moves inside an HTML comment** — `Sidecar_header`
+  opens with `<!--` and closes the block with `-->` in place of the
+  ```` ```yaml ```` fence. SharePoint's preview hides HTML comments
+  (the `<!-- related:begin/end -->` and `<!-- rel:N -->` markers have
+  relied on that since v2.3), so the preview now starts cleanly at the
+  H1. The inner YAML is byte-unchanged — same lines, same escaping,
+  same `related:` merge state — so grep/Python consumers strip the two
+  comment delimiter lines instead of the two fence lines.
+- **Humans get a real metadata table** — between the source link and
+  `## Summary` the template now renders a `| Field | Value |` GFM
+  table: Doc ID, Revision, Target release, PE, Dev, Keywords, Tools
+  (doc kind / surface / extracted / lane were already in the bold
+  strip). Display-only duplication of the hidden block, written by the
+  same template in the same run — it can't drift, and SidecarPatch
+  never touches it (the pretty related view stays the
+  `## Related documents` section).
+- **`Config.PromptVersion`**: `v1.4` → `v1.5`, format-only again — do
+  NOT re-paste the prompt. Rows still at v1.3 *or* v1.4 both mismatch
+  and reindex, so the in-flight v1.4 backfill simply re-targets v1.5.
+- **SidecarPatch v1.2** (re-paste over v1.1): `splitFrame` gains the
+  comment frame — three frames now parse (`<!--` v1.5, ```` ```yaml ````
+  v1.4, legacy `---`) and each file keeps the frame it arrived in.
+  The body markers start `<!-- ` (with a space), so they can never be
+  mistaken for the frame open; the frame close requires a bare `-->`
+  line, so `-->` inside a metadata *value* can't truncate the parse.
+  (A value containing `-->` could still end the comment early in a
+  *renderer* — cosmetic only, and no real title/keyword carries it;
+  accepted edge.)
+- Designer edits if not re-importing: in `Sidecar_header` replace the
+  opening ```` ```yaml ```` line with `<!--`, the closing ```` ``` ````
+  line with `-->`, insert the table block after the `[Source: ...]`
+  line (→ defn for the exact string), and bump the `Config` literal.
+
+Smoke check: library preview shows title → bold strip → source link →
+metadata table → summary, with no gray YAML block and no giant heading;
+`grep -A17 '^<!--$' any-sidecar.md` still yields the machine YAML.
 
 ## What changed
 
@@ -167,12 +210,12 @@ in v2.0.
 
 ## Install order (paste scripts first)
 
-1. Paste **RelatedRank v1.0** and **SidecarPatch v1.1** as NEW scripts in
+1. Paste **RelatedRank v1.0** and **SidecarPatch v1.2** as NEW scripts in
    Scripts.xlsx (Automate tab), exact names. Harmless to the running v2.2
    flow (nothing references them until the v2.3 import).
 2. Import `DocIndexSweep_v2_3.zip` (as Update), or apply designer edits
    R1–R8 to the live flow.
-3. Prompt: no change — do NOT re-paste; the v1.3 and v1.4 bumps are
+3. Prompt: no change — do NOT re-paste; the v1.3, v1.4 and v1.5 bumps are
    format-only.
 
 ## REQUIRED after every import — not optional
@@ -283,3 +326,11 @@ merges with its frame preserved, the pre-v2.3 fallback keeps its `---`
 frame — and `scp_v11.ts` type-checks at ES2017. `render_sample.py` PASS
 rendering the fenced template in both empty and populated states;
 `check_format.py` unaffected (body contract unchanged).
+
+Addendum 2 run (2026-08-10): `check_related.py` PASS with the
+three-frame assertions — set mode preserves the hidden-comment frame,
+v1.4 fenced and legacy `---` neighbors each merge with their frame
+preserved — and `scp_v12.ts` type-checks at ES2017. `render_sample.py`
+PASS: comment frame invisible-metadata assertions, the visible
+`| Field | Value |` table rows, and yaml round-trips in both empty and
+populated states; `check_format.py` unaffected.

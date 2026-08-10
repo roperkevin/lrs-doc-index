@@ -5,17 +5,20 @@ in Python — same fields, same YAML escaping rules as the WDL
 expressions — over the real_deck.pptx v1.7 extraction, and writes
 sample_sidecar.md. Asserts:
 
-  - the metadata block is the fenced ```yaml frame (PromptVersion
-    v1.4) — NOT `---` frontmatter, which SharePoint's markdown
-    preview renders as a giant setext heading — and its inner YAML
+  - the metadata block is the hidden-comment frame (PromptVersion
+    v1.5: <!-- ... -->, invisible in SharePoint's markdown preview —
+    `---` frontmatter renders there as a giant setext heading, and
+    the v1.4 code fence rendered as a gray block) and its inner YAML
     parses with yaml.safe_load (title planted with '"' and ':' to
     exercise the escaping); `related` reads as []
+  - the visible metadata table (| Field | Value |) is present with
+    the Doc ID / Keywords rows populated
   - exactly one H1 line in the whole file
   - exactly one <!-- related:begin -->/<!-- related:end --> marker
     pair, in order, between ## Related documents and the seam
   - the '---' header/body seam is present
 
-Then runs SidecarPatch v1.1 in set mode over the rendered sample with
+Then runs SidecarPatch v1.2 in set mode over the rendered sample with
 three synthetic ranked entries and writes sample_sidecar_related.md —
 the eyeball artifact for a POPULATED related list — re-asserting the
 metadata still parses (`related` = 3 entry dicts) and the file
@@ -60,7 +63,7 @@ meta = {
     'dev': '',
     'extracted': '2026-08-09',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v1.4',
+    'prompt_version': 'v1.5',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
     'summary': ('Explores how conflict prevention should acquire locks when routes '
@@ -69,7 +72,7 @@ meta = {
                 'user already holds the lock.'),
 }
 
-header = f"""```yaml
+header = f"""<!--
 title: {wdl_yaml_quote(meta['title'])}
 source_file: {wdl_yaml_quote(meta['source_file'])}
 source_url: "{meta['source_url']}"
@@ -86,12 +89,22 @@ prompt_version: "{meta['prompt_version']}"
 keywords: [{', '.join(kw_quote(k) for k in meta['keywords'])}]
 tools: [{', '.join(kw_quote(t) for t in meta['tools'])}]
 related: []
-```
+-->
 
 # {meta['title']}
 
 **{meta['doc_kind']}** · **Surface:** {meta['surface']} · **Extracted:** {meta['extracted']} · **Lane:** {meta['extraction_lane']}{'  '}
 [Source: {meta['source_file']}](<{meta['source_url']}>)
+
+| Field | Value |
+|---|---|
+| Doc ID | {meta['doc_id']} |
+| Revision | {meta['doc_revision']} |
+| Target release | {meta['target_release']} |
+| PE | {meta['pe']} |
+| Dev | {meta['dev']} |
+| Keywords | {', '.join(meta['keywords'])} |
+| Tools | {', '.join(meta['tools'])} |
 
 ## Summary
 
@@ -111,13 +124,20 @@ sidecar = header + body
 open('sample_sidecar.md', 'w').write(sidecar)
 
 ok = True
-if sidecar.startswith('```yaml\n') and not sidecar.startswith('---'):
-    print('ok   metadata block is the fenced frame (SharePoint-preview-safe)')
+if sidecar.startswith('<!--\n') and '\n-->\n' in sidecar:
+    print('ok   metadata block is the hidden-comment frame (invisible in preview)')
 else:
-    print('FAIL sidecar does not open with the ```yaml fence')
+    print('FAIL sidecar does not open with the <!-- comment frame')
     ok = False
 
-fm = sidecar[len('```yaml\n'):sidecar.index('\n```\n')]
+if ('| Field | Value |' in sidecar and f"| Doc ID | {meta['doc_id']} |" in sidecar
+        and f"| Keywords | {', '.join(meta['keywords'])} |" in sidecar):
+    print('ok   visible metadata table present (Doc ID / Keywords rows)')
+else:
+    print('FAIL visible metadata table missing or wrong')
+    ok = False
+
+fm = sidecar[len('<!--\n'):sidecar.index('\n-->\n')]
 parsed = yaml.safe_load(fm)
 if parsed['title'] != meta['title'] or parsed['keywords'] != meta['keywords']:
     print('FAIL metadata round-trip')
@@ -154,7 +174,7 @@ else:
     print('FAIL related markers missing, duplicated, or misplaced')
     ok = False
 
-# ---- populate via SidecarPatch v1.1 (set mode, synthetic entries) -------
+# ---- populate via SidecarPatch v1.2 (set mode, synthetic entries) -------
 scp = open('../../scripts/SidecarPatch.ts').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 scp += '''
@@ -199,12 +219,12 @@ patched = json.loads(out.stdout)['files'][0]
 open('sample_sidecar_related.md', 'w').write(patched['content'])
 
 pc = patched['content']
-rel_fm = yaml.safe_load(pc[len('```yaml\n'):pc.index('\n```\n')])
-if (patched['changed'] and pc.startswith('```yaml\n') and
+rel_fm = yaml.safe_load(pc[len('<!--\n'):pc.index('\n-->\n')])
+if (patched['changed'] and pc.startswith('<!--\n') and
         isinstance(rel_fm.get('related'), list) and
         len(rel_fm['related']) == 3 and
         all(set(e) == {'doc', 'file', 's'} for e in rel_fm['related'])):
-    print('ok   patched metadata parses in the fenced frame; related = 3 entry dicts')
+    print('ok   patched metadata parses in the comment frame; related = 3 entry dicts')
 else:
     print('FAIL patched related metadata wrong:', rel_fm.get('related'))
     ok = False

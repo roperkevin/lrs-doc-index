@@ -27,10 +27,11 @@ v2.3 contract:
     5. begin-without-end -> no-op, changed false, note, byte-identical
     6. empty set mode renders `_None yet._` / `related: []`
     7. populated metadata still parses with yaml.safe_load
-    8. both metadata frames parse — the fenced ```yaml block (the
-       PromptVersion v1.4 SharePoint-preview-safe form) and the
-       legacy `---` frontmatter — and each file keeps the frame it
-       arrived in (v1.1)
+    8. all three metadata frames parse — the hidden <!-- --> comment
+       block (PromptVersion v1.5, invisible in SharePoint preview),
+       the fenced ```yaml block (v1.4), and the legacy `---`
+       frontmatter — and each file keeps the frame it arrived in
+       (v1.2)
 
 Both wrapped runners must type-check at ES2017.
 
@@ -71,7 +72,7 @@ SCP_ARGS = ("null as unknown, JSON.stringify(p.files), p.selfId, "
             "JSON.stringify(p.selfMeta), p.topN")
 
 for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_v10.ts', RR_ARGS),
-                          (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v11.ts', SCP_ARGS)):
+                          (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v12.ts', SCP_ARGS)):
     body = open(src).read().replace(
         'workbook: ExcelScript.Workbook', 'workbook: unknown')
     open(runner, 'w').write(body + APPENDIX % args)
@@ -151,17 +152,19 @@ check(out.returncode == 0 and json.loads(out.stdout)['count'] == 0,
       'malformed JSON params -> empty result, no throw')
 
 # ==== SidecarPatch ========================================================
-print('== SidecarPatch v1.1 ==')
+print('== SidecarPatch v1.2 ==')
 
 BEGIN = '<!-- related:begin -->'
 END = '<!-- related:end -->'
+FRAMES = {'comment': ('<!--', '-->'), 'fence': ('```yaml', '```'),
+          'dash': ('---', '---')}
 
 
 def sidecar(related_line='related: []', region='_None yet._', markers=True,
-            frame='fence'):
+            frame='comment'):
     rel_section = (f'## Related documents\n\n{BEGIN}\n{region}\n{END}\n\n'
                    if markers else '')
-    fm_open, fm_close = ('```yaml', '```') if frame == 'fence' else ('---', '---')
+    fm_open, fm_close = FRAMES[frame]
     return f'''{fm_open}
 title: "Conflict \\"Prevention\\": Acquire Locks for New Routes"
 doc_id: 42
@@ -207,16 +210,23 @@ SELF_META = {'doc': 42, 'title': 'Conflict "Prevention": Acquire Locks for New R
 
 
 def patch(files, ranked=RANKED, meta=META, top=5):
-    return run('scp_v11.ts', {'files': files, 'selfId': '42', 'ranked': ranked,
+    return run('scp_v12.ts', {'files': files, 'selfId': '42', 'ranked': ranked,
                               'docsMeta': meta, 'selfMeta': SELF_META,
                               'topN': top})['files']
 
 
+def frame_of(text):
+    if text.startswith('<!--\n'):
+        return '<!--\n', '\n-->\n'
+    if text.startswith('```yaml\n'):
+        return '```yaml\n', '\n```\n'
+    return '---\n', '\n---\n'
+
+
 def fm_of(text):
     """Inner YAML of the metadata block, whichever frame the file carries."""
-    if text.startswith('```yaml\n'):
-        return text[len('```yaml\n'):text.index('\n```\n')]
-    return text[4:text.index('\n---\n', 3)]
+    fm_open, fm_close = frame_of(text)
+    return text[len(fm_open):text.index(fm_close, 3)]
 
 
 def strip_patchable(text):
@@ -224,8 +234,7 @@ def strip_patchable(text):
     b, e = text.find(BEGIN), text.find(END)
     if b >= 0 and e > b:
         text = text[:b] + text[e + len(END):]
-    close = '\n```\n' if text.startswith('```yaml\n') else '\n---\n'
-    fm_close = text.find(close, 3)
+    fm_close = text.find(frame_of(text)[1], 3)
     head, tail = text[:fm_close], text[fm_close:]
     head = '\n'.join(ln for ln in head.split('\n') if not ln.startswith('related: ['))
     return head + tail
@@ -238,8 +247,8 @@ content = out['content']
 fm = fm_of(content)
 parsed = yaml.safe_load(fm)
 check(out['changed'] and out['note'] == 'set', 'set mode reports changed')
-check(content.startswith('```yaml\n') and not content.startswith('---'),
-      'set mode preserves the fenced frame (no --- frontmatter emitted)')
+check(content.startswith('<!--\n') and '\n-->\n' in content,
+      'set mode preserves the hidden-comment frame (v1.5)')
 check(parsed['related'] == [{'doc': 17, 'file': 'lock-acquisition-test-plan__doc17.md', 's': 1003},
                             {'doc': 23, 'file': 'route-editing-spike__doc23.md', 's': 2},
                             {'doc': 9, 'file': 'locks-overview__doc9.md', 's': 1}],
@@ -305,18 +314,20 @@ check([e['doc'] for e in ffm['related']] == [42, 60, 61, 62, 63] and
 check(not out['changed'] and out['note'] == 'no-pair-evidence',
       'merge without symmetric evidence is a no-op')
 
-# -- merge into a legacy --- neighbor: patched, frame preserved ------------
-dash_neighbor = sidecar(
-    related_line='related: [{"doc":99,"file":"other__doc99.md","s":1}]',
-    region='- [Other](<https://x/o.md>) — 1 shared keyword: locks <!-- rel:99 -->',
-    frame='dash')
-[out] = patch([{'doc': 17, 'name': 'n.md', 'content': dash_neighbor}])
-check(out['changed'] and out['note'] == 'merged' and
-      out['content'].startswith('---\n') and '```' not in out['content'],
-      'legacy --- neighbor still merges; dash frame preserved')
-dfm = yaml.safe_load(fm_of(out['content']))
-check([e['doc'] for e in dfm['related']] == [42, 99],
-      'legacy-frame merge inserts doc 42 above the existing entry')
+# -- merge into legacy fence / dash neighbors: patched, frame preserved ----
+for frm, want_open, label in (('fence', '```yaml\n', 'v1.4 fenced'),
+                              ('dash', '---\n', 'legacy ---')):
+    old_neighbor = sidecar(
+        related_line='related: [{"doc":99,"file":"other__doc99.md","s":1}]',
+        region='- [Other](<https://x/o.md>) — 1 shared keyword: locks <!-- rel:99 -->',
+        frame=frm)
+    [out] = patch([{'doc': 17, 'name': 'n.md', 'content': old_neighbor}])
+    check(out['changed'] and out['note'] == 'merged' and
+          out['content'].startswith(want_open),
+          f'{label} neighbor still merges; frame preserved')
+    ofm = yaml.safe_load(fm_of(out['content']))
+    check([e['doc'] for e in ofm['related']] == [42, 99],
+          f'{label} merge inserts doc 42 above the existing entry')
 
 # -- marker-missing fallback (pre-v2.3 sidecar, legacy --- frame) ---------
 legacy = sidecar(markers=True, frame='dash').replace(
@@ -356,7 +367,7 @@ check(not out['changed'] and out['note'] == 'not-frontmatter',
 
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
-for runner in ('rr_v10.ts', 'scp_v11.ts'):
+for runner in ('rr_v10.ts', 'scp_v12.ts'):
     tsc = subprocess.run(['npx', '--yes', 'tsc', '--noEmit', '--target', 'es2017',
                           '--lib', 'es2017,dom', runner],
                          capture_output=True, text=True)

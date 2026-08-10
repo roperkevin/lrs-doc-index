@@ -18,7 +18,7 @@ images, and cross-links each sidecar to its related documents.
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.0 |
-| scripts/SidecarPatch.ts | Surgical related-section patching | v1.1 |
+| scripts/SidecarPatch.ts | Surgical related-section patching | v1.2 |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (current) | v1.2 |
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
@@ -40,18 +40,20 @@ shared-issue-id edges outrank keyword overlap, each entry linked to
 the neighbor's sidecar with the reason for the relation; when a new
 doc is indexed, its neighbors' existing sidecars are reciprocally
 patched (marker-delimited, idempotent) so old docs learn about new
-arrivals; the PromptVersion bump (now `v1.4`) is format-only (no
+arrivals; the PromptVersion bump (now `v1.5`) is format-only (no
 prompt re-paste) and drives the converging backfill — see
-`flow/v2_3/CHANGES.md`. Preview-safe metadata (v2.3 addendum): the
-sidecar's YAML metadata block is framed as a fenced ` ```yaml ` code
-block instead of `---` frontmatter — SharePoint's markdown preview
-has no frontmatter support and rendered the old block as one giant
-heading; SidecarPatch v1.1 parses both frames and preserves each
-file's frame while the `v1.4` backfill converts the corpus. Plus the
-v2.2 base: rich markdown sidecars named `{title-slug}__doc{ID}.md`
-(slug from the AI title via RegexExtract v1.2; fallback: slugified
-source name) with a fenced YAML metadata block, clean H1, metadata
-strip and AI summary; pptx bodies with slide-title headings, interleaved
+`flow/v2_3/CHANGES.md`. Preview-safe metadata (v2.3 addenda): the
+machine YAML metadata block is hidden in an HTML comment
+(`<!-- ... -->`) and a visible `| Field | Value |` table renders the
+human-facing fields under the title — SharePoint's markdown preview
+has no frontmatter support and rendered the original `---` block as
+one giant heading (an interim `v1.4` used a ` ```yaml ` code fence);
+SidecarPatch v1.2 parses all three frames and preserves each file's
+frame while the `v1.5` backfill converts the corpus. Plus the v2.2
+base: rich markdown sidecars named `{title-slug}__doc{ID}.md` (slug
+from the AI title via RegexExtract v1.2; fallback: slugified source
+name) with clean H1, metadata strip and AI
+summary; pptx bodies with slide-title headings, interleaved
 `### Notes` and nested lists; docx heading/list structure; xlsx as
 GFM tables; version-gated reindex (PromptVersion mismatch triggers
 a converging backfill — see `flow/v2_2/CHANGES.md`). Plus the
@@ -72,7 +74,7 @@ break nothing.
 2. Media folder: /LRS Doc Index/media (manual, once).
 3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
    (RegexExtract v1.2, ZipTextExtract v1.7, WorkbookDump v1.1,
-   MediaExtract v1.0, RelatedRank v1.0, SidecarPatch v1.1).
+   MediaExtract v1.0, RelatedRank v1.0, SidecarPatch v1.2).
 4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_2.md
    (item/requestv2 keys: FileName, DocText, ExistingKeywords).
 5. Import the v2.3 flow package, bind SharePoint + Excel
@@ -115,10 +117,10 @@ smoke tests in `flow/v2_3/CHANGES.md`.
   text OR the sidecar format changes; rows carry it, and since
   v2.2 a mismatch actively triggers reindexing (~150/day until
   the corpus converges), rewriting sidecars in the new format.
-  The v2.3 bump to `v1.3` (related documents) and the addendum
-  bump to `v1.4` (fenced metadata block for SharePoint preview)
-  are both format-only: the prompt text is unchanged and must
-  not be re-pasted.
+  The v2.3 bump to `v1.3` (related documents) and the addenda
+  bumps to `v1.4`/`v1.5` (SharePoint-preview-safe metadata:
+  hidden machine block + visible table) are all format-only:
+  the prompt text is unchanged and must not be re-pasted.
 
 ## Known limits / queued work
 

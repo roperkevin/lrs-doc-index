@@ -80,17 +80,19 @@ asserts the v2.2 output contract instead of byte-equality:
 
 `render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
 current metadata/header mirrored from the flow template — and asserts the
-metadata block is the fenced ` ```yaml ` frame (the PromptVersion v1.4
-SharePoint-preview-safe form — `---` frontmatter renders in SharePoint's
-preview as one giant setext heading), its inner YAML parses with
-`yaml.safe_load` (including `related: []`), the file has exactly one H1, the
-header/body seam is present, and the related-section marker pair is
-well-placed. It then runs SidecarPatch v1.1 in set mode with three synthetic
-entries and writes `sample_sidecar_related.md` — the eyeball artifact for a
-POPULATED related list — re-asserting the patched metadata still parses and
-the file still has one H1.
+machine metadata block is the hidden `<!-- ... -->` comment frame (the
+PromptVersion v1.5 form, invisible in SharePoint's preview — `---`
+frontmatter renders there as one giant setext heading, and the interim v1.4
+code fence showed as a gray block), the visible `| Field | Value |` metadata
+table is present, the comment's inner YAML parses with `yaml.safe_load`
+(including `related: []`), the file has exactly one H1, the header/body seam
+is present, and the related-section marker pair is well-placed. It then runs
+SidecarPatch v1.2 in set mode with three synthetic entries and writes
+`sample_sidecar_related.md` — the eyeball artifact for a POPULATED related
+list — re-asserting the patched metadata still parses and the file still has
+one H1.
 
-## Related-docs checks — RelatedRank v1.0 / SidecarPatch v1.1 (v2.3)
+## Related-docs checks — RelatedRank v1.0 / SidecarPatch v1.2 (v2.3)
 
 `check_related.py` wraps both v2.3 scripts (same appendix pattern as
 `rex_v12.ts`; no fixtures needed) and asserts the v2.3 contract:
@@ -108,11 +110,12 @@ the file still has one H1.
   the cap; a pre-v2.3 sidecar without markers gains the section before the
   seam and the `related:` line after `tools:`; begin-without-end is a
   byte-identical no-op with a note; populated metadata still
-  `yaml.safe_load`s; both metadata frames parse — fenced ` ```yaml `
-  (v1.4) and legacy `---` frontmatter — and each file keeps the frame it
-  arrived in (set mode stays fenced, a legacy neighbor merge and the
-  pre-v2.3 fallback stay dashed)
-- both wrapped runners (`rr_v10.ts`, `scp_v11.ts`) type-check at ES2017,
+  `yaml.safe_load`s; all three metadata frames parse — hidden
+  `<!-- ... -->` comment (v1.5), fenced ` ```yaml ` (v1.4), and legacy
+  `---` frontmatter — and each file keeps the frame it arrived in (set
+  mode stays commented, fenced/dashed neighbor merges and the pre-v2.3
+  fallback keep their frames)
+- both wrapped runners (`rr_v10.ts`, `scp_v12.ts`) type-check at ES2017,
   compiled separately (each Office Script is its own global scope)
 
 Usage (from this directory; wrapped runners are regenerated on each run):
@@ -133,11 +136,11 @@ well-formed, WorkbookDump caps exact, recall 1.0000 on all three fixtures,
 all five slug cases exact. `zte_v17.ts`, `wbd_v11.ts` and `rex_v12.ts` also
 type-check at ES2017 (`tsc --noEmit --target es2017`).
 
-`check_related.py` (same date/Node): all 35 assertions PASS — RelatedRank
-precedence/merge/tie/cap/safety and SidecarPatch set/merge/evict/
-idempotence/byte-integrity/fallback/no-op cases, plus the v1.1
-frame cases (fenced set mode, legacy `---` neighbor merge, frame
-preservation both ways) — and `rr_v10.ts` / `scp_v11.ts` type-check at
+`check_related.py` (2026-08-10, Node 22.22.2): all 36 assertions PASS —
+RelatedRank precedence/merge/tie/cap/safety and SidecarPatch set/merge/
+evict/idempotence/byte-integrity/fallback/no-op cases, plus the v1.2
+three-frame cases (comment set mode; fenced and dashed neighbor merges
+with frame preservation) — and `rr_v10.ts` / `scp_v12.ts` type-check at
 ES2017. `render_sample.py` PASS in both the empty and populated states
-with the fenced metadata frame (see `sample_sidecar.md` /
-`sample_sidecar_related.md`).
+with the hidden-comment frame and the visible metadata table (see
+`sample_sidecar.md` / `sample_sidecar_related.md`).

@@ -42,11 +42,12 @@ sections), not by materializing edges.
 
 **2. Full extracted text lives as .md sidecar files, not list columns.**
 Create a document library **LRS Doc Index**. The flow writes one
-`{title-slug}__doc{ID}.md` per document (fenced ` ```yaml ` metadata
-block + header composed by the flow — fenced rather than `---`
-frontmatter because SharePoint's markdown preview has no frontmatter
-support and renders a leading `---` block as one giant setext
-heading — body from ZipTextExtract/WorkbookDump markdown)
+`{title-slug}__doc{ID}.md` per document (machine YAML metadata hidden
+in an `<!-- ... -->` comment plus a visible metadata table + header
+composed by the flow — not `---` frontmatter, because SharePoint's
+markdown preview has no frontmatter support and renders a leading
+`---` block as one giant setext heading — body from
+ZipTextExtract/WorkbookDump markdown)
 and stores only a ~5,000-char TextPreview plus TextFileUrl on the list
 row. Multiline list columns are the wrong home for 60k+ character dumps
 — and the sidecar library is literally the "machine-readable documents"

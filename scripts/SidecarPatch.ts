@@ -1,5 +1,5 @@
 /**
- * SidecarPatch v1.1 — surgical "Related documents" patching for
+ * SidecarPatch v1.2 — surgical "Related documents" patching for
  * markdown sidecars, batched over every file touched for one doc
  * ------------------------------------------------------------------
  * One call patches the current doc's own sidecar ("set" mode: the
@@ -20,13 +20,15 @@
  *                invisible <!-- rel:N --> tag so a later merge can
  *                re-associate, reorder and evict without parsing prose
  *
- * v1.1: the metadata block comes in two frames — the PromptVersion
- * v1.4 fenced form (```yaml ... ```, which SharePoint's markdown
- * preview renders as a code block; `---` frontmatter renders there as
- * a giant setext heading) and the legacy `---` frontmatter form still
- * present until the backfill rewrites a file. Both parse; whichever
- * frame a file carries is preserved on rewrite — format conversion is
- * the version-gated backfill's job, not the patcher's.
+ * The metadata block comes in three frames: the PromptVersion v1.5
+ * hidden form (<!-- ... --> HTML comment — invisible in SharePoint's
+ * markdown preview, which instead shows the template's visible
+ * metadata table), the v1.4 fenced form (```yaml ... ```, rendered as
+ * a code block), and the legacy `---` frontmatter form (which
+ * SharePoint renders as a giant setext heading — the reason the
+ * frames moved). All three parse; whichever frame a file carries is
+ * preserved on rewrite — format conversion is the version-gated
+ * backfill's job, not the patcher's.
  *
  * Safety posture: the body seam `---` and any `related:`-lookalike
  * text in extracted content are never touched (the metadata line is
@@ -98,6 +100,8 @@ const BEGIN = "<!-- related:begin -->";
 const END = "<!-- related:end -->";
 const HEADING = "## Related documents";
 const EMPTY_STATE = "_None yet._";
+const COMMENT_OPEN = "<!--\n";
+const COMMENT_CLOSE = "\n-->\n";
 const FENCE_OPEN = "```yaml\n";
 const FENCE_CLOSE = "\n```\n";
 const DASH_OPEN = "---\n";
@@ -112,15 +116,20 @@ interface Frame {
 
 /**
  * Split a sidecar into its metadata block and body. Recognizes the
- * fenced frame (```yaml, PromptVersion v1.4+) and the legacy `---`
- * frontmatter frame; returns null when neither opens the file or the
- * frame never closes. The returned open/close let the caller rebuild
- * the file in the same frame it arrived in.
+ * hidden-comment frame (<!--, PromptVersion v1.5+), the fenced frame
+ * (```yaml, v1.4), and the legacy `---` frontmatter frame; returns
+ * null when none opens the file or the frame never closes. The
+ * returned open/close let the caller rebuild the file in the same
+ * frame it arrived in. (The related-section markers in the body
+ * start "<!-- " with a space, so they can never match COMMENT_OPEN.)
  */
 function splitFrame(content: string): Frame | null {
   let open = "";
   let close = "";
-  if (content.indexOf(FENCE_OPEN) === 0) {
+  if (content.indexOf(COMMENT_OPEN) === 0) {
+    open = COMMENT_OPEN;
+    close = COMMENT_CLOSE;
+  } else if (content.indexOf(FENCE_OPEN) === 0) {
     open = FENCE_OPEN;
     close = FENCE_CLOSE;
   } else if (content.indexOf(DASH_OPEN) === 0) {
