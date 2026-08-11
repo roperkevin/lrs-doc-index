@@ -257,8 +257,12 @@ retrieval samples):
 - **`Filter_release_match`** (Filter array) — release preference is
   applied in memory from the one fetch (the curation §1 rule: no
   OData filter on a non-indexed column that a small sample can sort
-  out): from `@body('Get_exemplars_q')?['value']`, where
-  `@equals(coalesce(item()?['TargetRelease'], ''), coalesce(body('Get_story_row')?['TargetRelease'], ''))`
+  out), and only when the STORY actually has a release — a blank
+  story release must fall through to the newest-two default, not
+  "match" every release-less plan (typically the oldest, least
+  curated ones; REVIEW_v2_5 DX-7): from
+  `@body('Get_exemplars_q')?['value']`, where
+  `@and(not(empty(coalesce(body('Get_story_row')?['TargetRelease'], ''))), equals(coalesce(item()?['TargetRelease'], ''), coalesce(body('Get_story_row')?['TargetRelease'], '')))`
 - **`Exemplar_rows`** (Compose) — release-matched rows win outright,
   else the two newest for the surface:
   `@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), 2), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), 2))`

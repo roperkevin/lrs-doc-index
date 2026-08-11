@@ -104,9 +104,12 @@ importing the package):
      flow** action FOLLOWED BY the Terminate (now status
      **Succeeded**): outputs `Status` = `guard` / `nodraft`,
      `DraftUrl` = empty, `GenSummary` = the same message text the
-     Terminate carried. The parent, not a Failed run, now carries the
-     message to the human — the list-menu path lost nothing (run
-     history still shows it), and the agent path can finally relay it.
+     Terminate carried. The parent, not the child, now carries the
+     message to the human — the agent path relays it conversationally,
+     and the list-menu parent's `If_child_ok` (1b below) restores the
+     visible Failed run the pre-split flow had. (Without 1b's
+     condition the menu path silently "succeeds" with no draft —
+     REVIEW_v2_5 DX-12.)
   3. After `G13 Gen_summary`, add the success **Respond to a PowerApp
      or flow**: `Status` = `ok`, `DraftUrl` = the G11 file's link —
      compose it as
@@ -122,7 +125,14 @@ importing the package):
 **1b — thin the existing `TestPlanGen`** (the list-menu parent):
 delete everything after the trigger; add **Run a Child Flow** →
 `TestPlanGenCore`, `StoryId` = `@{triggerBody()?['entity']?['ID']}`.
-The Automate-menu entry, name, and connections stay untouched. (The
+Then add a Condition **`If_child_ok`** after it (REVIEW_v2_5 DX-12):
+the child's `Status` output **is equal to** `ok` — Yes branch empty;
+No branch a **Terminate** with Status **Failed**, Code = the child's
+`Status` (`guard`/`nodraft`), Message = the child's `GenSummary`.
+This restores the pre-split behavior for the menu path: a PE running
+the entry on a non-story row sees a Failed run carrying the guidance
+message instead of a silent "success" with no draft. The
+Automate-menu entry, name, and connections stay untouched. (The
 flow must be in the §0 solution for the child-flow action to appear —
 add it to the solution first if it was created standalone.)
 

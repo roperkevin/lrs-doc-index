@@ -1,3 +1,16 @@
+# Curation v1.1 — an emptied queue overwrites the digest (DX-11)
+
+Review fix (`review/REVIEW_v2_5.md` DX-11), applied to the live flow
+2026-08-11. `Save_digest` ran only when `ProposalLines` was non-empty,
+so a week in which every proposal was approved or rejected left LAST
+week's digest in Shared Documents showing already-resolved rows as
+pending — and the runbook tells the librarian to work from the digest
+Monday morning. C11's `If_any_lines` gains a No branch
+(`Digest_body_empty` + `Save_digest_empty`, same fixed name) that
+overwrites the file with an explicit empty-queue state. Build steps in
+`Curation_Setup.md` C11; no schema, prompt, or
+`CurationPromptVersion` change (the digest body is not the prompt).
+
 # Curation v1.0 — propose-then-approve keyword alias curation
 
 First release of the curation component: a weekly Power Automate flow,

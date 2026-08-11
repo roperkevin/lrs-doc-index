@@ -403,7 +403,7 @@
                       "type": "Query",
                       "inputs": {
                         "from": "@body('Get_exemplars_q')?['value']",
-                        "where": "@equals(coalesce(item()?['TargetRelease'], ''), coalesce(body('Get_story_row')?['TargetRelease'], ''))"
+                        "where": "@and(not(empty(coalesce(body('Get_story_row')?['TargetRelease'], ''))), equals(coalesce(item()?['TargetRelease'], ''), coalesce(body('Get_story_row')?['TargetRelease'], '')))"
                       }
                     },
                     "Exemplar_rows": {
