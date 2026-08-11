@@ -1,6 +1,6 @@
 # Topic: GenerateTestPlan — collect a story id, confirm, run the flow,
 # report the draft location.
-# TestPlanGenAgentVersion: v1.0
+# TestPlanGenAgentVersion: v1.1
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
 # topic canvas). This file ships WITHOUT an active flow node: the

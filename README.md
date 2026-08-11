@@ -22,6 +22,7 @@ sidecar to its related documents.
 | scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.1 |
 | scripts/SidecarPatch.ts | Surgical related-section patching | v1.2 |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (current) | v1.2 |
+| review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (PROPOSED — pending paste + PromptVersion → v1.8; see REVIEW_v2_5.md DX-2/DX-14) | v1.3 |
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
@@ -40,7 +41,7 @@ sidecar to its related documents.
 | testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v1.0 |
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
-| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.0 |
+| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.1 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v1.5 |
 
@@ -93,9 +94,9 @@ shared-issue-id edges outrank keyword overlap, each entry linked to
 the neighbor's sidecar with the reason for the relation; when a new
 doc is indexed, its neighbors' existing sidecars are reciprocally
 patched (marker-delimited, idempotent) so old docs learn about new
-arrivals; the PromptVersion bump (now `v1.4`) is format-only (no
-prompt re-paste) and drives the converging backfill — see
-`flow/v2_3/CHANGES.md`. Preview-safe metadata (v2.3 addendum): the
+arrivals; the PromptVersion bump (`v1.3`, with addendum bumps
+`v1.4`/`v1.5`) is format-only (no prompt re-paste) and drives the
+converging backfill — see `flow/v2_3/CHANGES.md`. Preview-safe metadata (v2.3 addendum): the
 sidecar's YAML metadata block is framed as a fenced ` ```yaml ` code
 block instead of `---` frontmatter — SharePoint's markdown preview
 has no frontmatter support and rendered the old block as one giant

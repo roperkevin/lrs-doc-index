@@ -79,8 +79,9 @@ Overview → Instructions: paste the delimited block from
 `agent/QA_Agent_Instructions_v1_1.md` verbatim — everything between
 `INSTRUCTIONS TEXT BEGINS` and `INSTRUCTIONS TEXT ENDS`, exclusive.
 
-Record `AgentInstructionsVersion: v1.0` in `agent/CHANGES.md` (the
-runbook convention: instructions re-verify like prompt bumps).
+Record `AgentInstructionsVersion: v1.1` — the version of the file you
+just pasted — in `agent/CHANGES.md` (the runbook convention:
+instructions re-verify like prompt bumps).
 
 Check: in the Test pane, ask a known-answer question (first row of
 `agent/QA_Smoke_Questions.md`) — the answer must cite the sidecar AND

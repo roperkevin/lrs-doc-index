@@ -192,7 +192,7 @@ with zipfile.ZipFile('edge_deck.pptx') as zin, \
         if item.filename != 'docProps/core.xml':
             zout.writestr(item, zin.read(item.filename))
 with open('noprops_deck.pptx', 'rb') as fh:
-    open('noprops_deck.pptx.b64', 'w').write(base64.b64encode(fh.read()).decode())
+    open('noprops_deck.pptx.b64', 'w', encoding='utf-8').write(base64.b64encode(fh.read()).decode())
 
 # fixture 4: workbook stand-in for the WorkbookDump mock runner
 # (wrap_workbook.py) — a 30-column row exercising the COLCAP cut, a
@@ -209,11 +209,11 @@ sheets = {
     ],
     'Blank': [],
 }
-json.dump(sheets, open('sheets.json', 'w'))
+json.dump(sheets, open('sheets.json', 'w', encoding='utf-8'))
 
 for f in tokens:
     with open(f, 'rb') as fh:
-        open(f + '.b64', 'w').write(base64.b64encode(fh.read()).decode())
-json.dump(tokens, open('planted_tokens.json', 'w'))
-json.dump(fmt, open('planted_format.json', 'w'))
+        open(f + '.b64', 'w', encoding='utf-8').write(base64.b64encode(fh.read()).decode())
+json.dump(tokens, open('planted_tokens.json', 'w', encoding='utf-8'))
+json.dump(fmt, open('planted_format.json', 'w', encoding='utf-8'))
 print({f: os.path.getsize(f) for f in tokens})

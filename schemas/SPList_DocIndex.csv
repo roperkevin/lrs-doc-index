@@ -3,11 +3,11 @@ Title,Title,Single line (native),"Document title from prompt; flow truncates to 
 DocKey,DocKey,Single line of text,"Server-relative file path lowercased; INDEXED — the identity/dedup key; flag any path over 255 chars",Yes
 FileName,FileName,Single line of text,"File name with extension",Yes
 SourceLink,SourceLink,Hyperlink,"Absolute link to the file (always https — safe for hyperlink type)",No
-Library,Library,Single line of text,"Source library display name",No
+Library,Library,Single line of text,"RESERVED — no flow version reads or writes this; safe to omit on a fresh tenant",No
 FileType,FileType,Choice,"pptx; docx; xlsx; pdf; msg; txt; html; image; other",No
 DocKind,DocKind,Choice,"Test Plan; User Story; Design Spike; Data Template; Schedule; Doc Review; Other",No
 IndexStatus,IndexStatus,Choice,"Pending; Indexed; Skipped; Error — default Pending",Yes
-SourceETag,SourceETag,Single line of text,"SharePoint ETag at index time — change detection",No
+SourceETag,SourceETag,Single line of text,"RESERVED — no flow version reads or writes this; change detection is SourceModified; safe to omit on a fresh tenant",No
 SourceModified,SourceModified,Date and Time,"Include time",No
 TextPreview,TextPreview,Multiple lines of text,"PLAIN text (not enhanced); first ~5000 chars of extracted text — skim/search aid",No
 TextFileUrl,TextFileUrl,Hyperlink,"Link to the full-text .md sidecar in Doc Index Texts library",No

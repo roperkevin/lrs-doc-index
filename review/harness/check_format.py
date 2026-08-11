@@ -43,7 +43,7 @@ def check(cond, label):
 
 def run_node(script, *args):
     out = subprocess.run(['node', '--experimental-strip-types', script, *args],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding='utf-8')
     if out.returncode != 0:
         raise RuntimeError(f"{script} failed:\n{out.stderr[:2000]}")
     return json.loads(out.stdout)
@@ -57,7 +57,7 @@ def toks(s):
 subprocess.run([sys.executable, 'wrap.py', f'{SCRIPTS}/ZipTextExtract.ts', 'zte_v18.ts'], check=True)
 subprocess.run([sys.executable, 'wrap_workbook.py', f'{SCRIPTS}/WorkbookDump.ts', 'wbd_v11.ts'], check=True)
 
-rex_src = open(f'{SCRIPTS}/RegexExtract.ts').read().replace(
+rex_src = open(f'{SCRIPTS}/RegexExtract.ts', encoding='utf-8').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 rex_src += '''
 // ---- harness appendix ----
@@ -68,10 +68,10 @@ const cases: { file: string, title: string }[] = JSON.parse(fs.readFileSync(whic
 console.log(JSON.stringify(cases.map((c) =>
   main(null as unknown, c.file, '', 'ArcGISPro/ps-location-referencing', c.title).slug)));
 '''
-open('rex_v12.ts', 'w').write(rex_src)
+open('rex_v12.ts', 'w', encoding='utf-8').write(rex_src)
 
-planted = json.load(open('planted_tokens.json'))
-fmt = json.load(open('planted_format.json'))
+planted = json.load(open('planted_tokens.json', encoding='utf-8'))
+fmt = json.load(open('planted_format.json', encoding='utf-8'))
 
 # ---- 1-4, 6: ZipTextExtract v1.7 over the OOXML fixtures ----------------
 SLIDE_RE = re.compile(r'^## Slide (\d+)( — (.+))?$')
@@ -115,9 +115,17 @@ for fixture in ('real_deck.pptx', 'real_doc.docx', 'edge_deck.pptx'):
               f"{tag}: {f['notes_count']} interleaved ### Notes blocks (got {len(note_blocks)})")
         check(not any(ln.startswith('## Notes') for ln in lines),
               f'{tag}: zero ## Notes H2 blocks remain')
-        # every ### Notes belongs to the slide heading immediately before it
-        owned = all(any(j < i for j, _ in heads) for i in note_blocks)
-        check(owned, f'{tag}: every ### Notes sits under a slide heading')
+        # every ### Notes belongs to the slide heading immediately before
+        # it: a slide heading precedes it, with no other notes block in
+        # between (i.e. at most one notes block per slide segment —
+        # notes clumped after the last slide would fail this)
+        owned = True
+        for i in note_blocks:
+            prev_heads = [j for j, _ in heads if j < i]
+            if not prev_heads or any(prev_heads[-1] < k < i
+                                     for k in note_blocks if k != i):
+                owned = False
+        check(owned, f'{tag}: every ### Notes sits under its own slide heading')
 
         for want in f['lvl1']:
             check(any(ln.rstrip() == '  - ' + want for ln in lines),
@@ -205,7 +213,7 @@ cases = [
     {'file': 'My Fallback File.docx', 'title': '中文标题'},
     {'file': '中文.docx', 'title': ''},
 ]
-json.dump(cases, open('slug_cases.json', 'w'))
+json.dump(cases, open('slug_cases.json', 'w', encoding='utf-8'))
 slugs = run_node('rex_v12.ts', 'slug_cases.json')
 check(slugs[0] == 'conflict-prevention-acquire-locks-for-new-routes', f'slug: em-dash title -> {slugs[0]}')
 check(slugs[1] == 'dont-cant-wont-5', f'slug: apostrophes/symbols -> {slugs[1]}')

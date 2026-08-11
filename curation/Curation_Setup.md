@@ -179,8 +179,11 @@ using a prompt / `aibuilderpredict_customprompt`): pick
 - **`Parse_proposals`** (Compose): `@json(outputs('Cur_json_slice'))`
 - **`Proposals`** (Compose):
   `@take(coalesce(outputs('Parse_proposals')?['proposals'], json('[]')), outputs('Config_cur')?['MaxProposals'])`
-  — a fence-wrapped, prose-wrapped, or malformed reply degrades to a
-  zero-proposal run, never an error.
+  — a fence-wrapped or prose-wrapped reply degrades to a
+  zero-proposal run. (A reply whose outermost-brace slice is still
+  invalid JSON — e.g. truncated output — throws in `Parse_proposals`
+  and fails the run visibly; the Saturday schedule retries it. Only
+  the *wrapping* failure modes degrade silently.)
 
 **C9 — pending carryover** (still-unreviewed proposals stay visible in
 every digest) —
@@ -310,9 +313,11 @@ the view; clear it → gone.
    (The `zz-` prefix keeps them visibly synthetic in
    `ExistingKeywords` if a sweep runs before cleanup — delete them
    the same day, step 7.)
-2. **Manual run** (Test → Manually). Check: exactly the plural pair
-   gets `CurationStatus = Proposed` and `ProposedCanonical` starting
-   `zz-test centerline — `; the route/event pair untouched;
+2. **Manual run** (Test → Manually). Check: exactly the plural ALIAS
+   row (`zz-test centerlines`) gets `CurationStatus = Proposed` and
+   `ProposedCanonical` starting `zz-test centerline — ` — the
+   canonical `zz-test centerline` row itself stays untouched by
+   design (§1 ownership invariant); the route/event pair untouched;
    `Cur_summary` counts add up; the digest file exists in Shared
    Documents and lists the pair; the pair shows in the Curation queue
    view.

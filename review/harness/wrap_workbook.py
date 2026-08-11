@@ -11,7 +11,7 @@ Usage: python3 wrap_workbook.py ../../scripts/WorkbookDump.ts wbd_v11.ts
 import sys
 
 src_path, out_path = sys.argv[1], sys.argv[2]
-src = open(src_path).read()
+src = open(src_path, encoding='utf-8').read()
 mock_type = ('{ getWorksheets: () => { getName: () => string; getUsedRange: () => '
              '{ getRowCount: () => number; getColumnCount: () => number; '
              'getTexts: () => string[][] } | null }[] }')
@@ -37,4 +37,4 @@ function mockSheet(name: string, grid: string[][]) {
 const mock = { getWorksheets: () => Object.keys(sheets).map((n) => mockSheet(n, sheets[n])) };
 console.log(JSON.stringify({ out: main(mock, 60000) }));
 '''
-open(out_path, 'w').write(src + test)
+open(out_path, 'w', encoding='utf-8').write(src + test)

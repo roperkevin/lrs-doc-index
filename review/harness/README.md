@@ -31,11 +31,17 @@ Usage (from this directory):
 ```
 python3 make_fixtures.py     # builds real_deck.pptx / real_doc.docx / edge_deck.pptx
                              # (+ planted_tokens.json ground truth) and .b64 files
-python3 wrap.py ../../scripts/ZipTextExtract.ts zte_v15.ts
-python3 wrap.py ../patches/ZipTextExtract_v1_6.ts zte_v16.ts
+# ZTE half — HISTORICAL RECORD ONLY. scripts/ZipTextExtract.ts is v1.8 now
+# (intentional format changes since v2.2), so wrapping it as "v1.5" yields
+# spurious DIFF! rows. To re-run the historical gate, fetch v1.5 from git:
+#   git show fd9d1c2:scripts/ZipTextExtract.ts > zte_v15_src.ts
+#   python3 wrap.py zte_v15_src.ts zte_v15.ts
+#   python3 wrap.py ../patches/ZipTextExtract_v1_6.ts zte_v16.ts
+# MediaExtract half — STILL LIVE: the shipped script is v1.0, the patch v1.1,
+# and this gate is the paste precondition for promoting it.
 python3 wrap.py ../../scripts/MediaExtract.ts me_v10.ts
 python3 wrap.py ../patches/MediaExtract_v1_1.ts me_v11.ts
-python3 run_diff.py          # runs all four over all fixtures, prints the table
+python3 run_diff.py          # runs the wrapped pairs over all fixtures, prints the table
 ```
 
 To use it against the real reference set instead of generated fixtures: drop the
