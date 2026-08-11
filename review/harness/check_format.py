@@ -1,7 +1,10 @@
-"""Formatting assertions for the v1.7/v1.1/v1.2 script generation.
+"""Formatting assertions for the current scripts/ generation.
 
-Unlike run_diff.py (the v1.5-vs-v1.6 byte-equivalence gate, which stays
-as-is), this validates the *intentional* format change:
+Runners are (re)generated as version-neutral *_cur.ts files from
+whatever HARNESS_SCRIPTS points at (default ../../scripts), so these
+labels never go stale when a batch is promoted. Unlike run_diff.py
+(the historical byte-equivalence gate, which stays as-is), this
+validates the *intentional* format contract:
 
   1. pptx slide headings: "## Slide N — Title", strictly increasing,
      planted titles promoted and NOT duplicated as the first body line
@@ -13,8 +16,9 @@ as-is), this validates the *intentional* format change:
   5. every GFM table block well-formed (separator row, consistent
      column count); WorkbookDump COLCAP/CELLCAP/pipe-escape behavior
   6. token recall vs planted_tokens.json >= 0.97 per fixture
-  7. slugify unit cases via RegexExtract v1.2
-  8. core properties (ZipTextExtract v1.8): planted author /
+  7. slugify unit cases via RegexExtract (ids/docRevision live in
+     check_regex.py)
+  8. core properties: planted author /
      lastEditedBy / lastEdited come back from docProps/core.xml with
      entities decoded; a fixture without core.xml degrades to empty
      strings, not an error
@@ -63,8 +67,8 @@ def toks(s):
 
 
 # ---- regenerate wrapped runners -----------------------------------------
-subprocess.run([sys.executable, 'wrap.py', f'{SCRIPTS}/ZipTextExtract.ts', 'zte_v18.ts'], check=True)
-subprocess.run([sys.executable, 'wrap_workbook.py', f'{SCRIPTS}/WorkbookDump.ts', 'wbd_v11.ts'], check=True)
+subprocess.run([sys.executable, 'wrap.py', f'{SCRIPTS}/ZipTextExtract.ts', 'zte_cur.ts'], check=True)
+subprocess.run([sys.executable, 'wrap_workbook.py', f'{SCRIPTS}/WorkbookDump.ts', 'wbd_cur.ts'], check=True)
 
 rex_src = open(f'{SCRIPTS}/RegexExtract.ts', encoding='utf-8').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
@@ -77,16 +81,16 @@ const cases: { file: string, title: string }[] = JSON.parse(fs.readFileSync(whic
 console.log(JSON.stringify(cases.map((c) =>
   main(null as unknown, c.file, '', 'ArcGISPro/ps-location-referencing', c.title).slug)));
 '''
-open('rex_v12.ts', 'w', encoding='utf-8').write(rex_src)
+open('rex_cur.ts', 'w', encoding='utf-8').write(rex_src)
 
 planted = json.load(open('planted_tokens.json', encoding='utf-8'))
 fmt = json.load(open('planted_format.json', encoding='utf-8'))
 
-# ---- 1-4, 6: ZipTextExtract v1.7 over the OOXML fixtures ----------------
+# ---- 1-4, 6: ZipTextExtract over the OOXML fixtures ----------------
 SLIDE_RE = re.compile(r'^## Slide (\d+)( — (.+))?$')
 
 for fixture in ('real_deck.pptx', 'real_doc.docx', 'edge_deck.pptx'):
-    out = run_node('zte_v18.ts', fixture + '.b64', 'media/docX_')['out']
+    out = run_node('zte_cur.ts', fixture + '.b64', 'media/docX_')['out']
     text = out['text']
     lines = text.split('\n')
     f = fmt[fixture]
@@ -189,12 +193,12 @@ for fixture in ('real_deck.pptx', 'real_doc.docx', 'edge_deck.pptx'):
     check(recall >= RECALL_BAR, f'{tag}: token recall {recall:.4f} >= {RECALL_BAR}')
 
 # ---- 8b: no core.xml -> empty strings, no error -------------------------
-noprops = run_node('zte_v18.ts', 'noprops_deck.pptx.b64', 'media/docX_')['out']
+noprops = run_node('zte_cur.ts', 'noprops_deck.pptx.b64', 'media/docX_')['out']
 check(noprops['author'] == '' and noprops['lastEditedBy'] == '' and noprops['lastEdited'] == '',
       'noprops_deck: missing docProps/core.xml degrades to empty strings')
 
-# ---- 5: WorkbookDump v1.1 over sheets.json ------------------------------
-wb = run_node('wbd_v11.ts', 'sheets.json')['out']
+# ---- 5: WorkbookDump over sheets.json ------------------------------
+wb = run_node('wbd_cur.ts', 'sheets.json')['out']
 wlines = wb.split('\n')
 check('## Sheet: Schedule' in wlines and '## Sheet: Notes' in wlines and '## Sheet: Blank' in wlines,
       'workbook: all sheet headings present')
@@ -223,7 +227,7 @@ cases = [
     {'file': '中文.docx', 'title': ''},
 ]
 json.dump(cases, open('slug_cases.json', 'w', encoding='utf-8'))
-slugs = run_node('rex_v12.ts', 'slug_cases.json')
+slugs = run_node('rex_cur.ts', 'slug_cases.json')
 check(slugs[0] == 'conflict-prevention-acquire-locks-for-new-routes', f'slug: em-dash title -> {slugs[0]}')
 check(slugs[1] == 'dont-cant-wont-5', f'slug: apostrophes/symbols -> {slugs[1]}')
 check(len(slugs[2]) <= 80 and not slugs[2].endswith('-') and slugs[2].startswith('word-word'),
@@ -244,7 +248,7 @@ def run_node_fail(script, *args):
 
 
 # SC-2: presentation-order slides
-text = run_node('zte_v18.ts', 'reordered_deck.pptx.b64', '')['out']['text']
+text = run_node('zte_cur.ts', 'reordered_deck.pptx.b64', '')['out']['text']
 heads = [ln for ln in text.split('\n') if ln.startswith('## Slide ')]
 check(len(heads) == 4 and heads[0] == '## Slide 1 — OrderTitle3',
       'reversed sldIdLst: first section is "## Slide 1 — OrderTitle3"')
@@ -253,7 +257,7 @@ check(all(a >= 0 for a in order) and order == sorted(order),
       'sections appear in presentation order')
 
 # SC-3: hMerge continuation cells skipped
-text = run_node('zte_v18.ts', 'merged_deck.pptx.b64', '')['out']['text']
+text = run_node('zte_cur.ts', 'merged_deck.pptx.b64', '')['out']['text']
 mrows = [ln for ln in text.split('\n') if ln.startswith('| ')]
 check(len(mrows) >= 4 and all(len(cells(r)) == 3 for r in mrows),
       'hMerge table keeps width 3 on every row')
@@ -263,7 +267,7 @@ with zipfile.ZipFile('bigimg_deck.pptx') as z:
     sizes = {n.split('/')[-1]: z.getinfo(n).file_size for n in z.namelist() if '/media/' in n}
 small = [n for n, sz in sizes.items() if sz <= 350 * 1024][0]
 big = [n for n, sz in sizes.items() if sz > 350 * 1024][0]
-zout = run_node('zte_v18.ts', 'bigimg_deck.pptx.b64', 'media/docX_')['out']
+zout = run_node('zte_cur.ts', 'bigimg_deck.pptx.b64', 'media/docX_')['out']
 mout = run_node('me_cur.ts', 'bigimg_deck.pptx.b64')['out']
 check(f'](media/docX_{small})' in zout['text'] and big not in zout['text'] and zout['media'] == small,
       'only the under-cap image is linked / listed')
@@ -271,14 +275,14 @@ check(mout['count'] == 1 and mout['images'][0]['name'] == small and big in mout[
       'MediaExtract saves the same set; over-cap lands in skipped')
 
 # SC-6 / SC-7: rels attr order + link-safe digit strip
-zr = run_node('zte_v18.ts', 'relswap_deck.pptx.b64', 'media/docX_')['out']
+zr = run_node('zte_cur.ts', 'relswap_deck.pptx.b64', 'media/docX_')['out']
 check('](media/docX_image1.png)' in zr['text'], 'Target-before-Id rels still resolve')
-zr = run_node('zte_v18.ts', 'relswap_deck.pptx.b64', 'media/doc12345678901_')['out']
+zr = run_node('zte_cur.ts', 'relswap_deck.pptx.b64', 'media/doc12345678901_')['out']
 check('](media/doc12345678901_image1.png)' in zr['text'],
       '10+ digit prefix survives inside the generated link')
 
 # SC-5 / SC-10 / SC-7 / FL-5: edgecase deck
-ze = run_node('zte_v18.ts', 'edgecase2_deck.pptx.b64', '')['out']
+ze = run_node('zte_cur.ts', 'edgecase2_deck.pptx.b64', '')['out']
 check('😀' in ze['text'], 'astral entity decodes to the emoji')
 check('\\# Roadmap pasted markdown' in ze['text'] and
       not any(re.match(r'^# ', ln) for ln in ze['text'].split('\n')),
@@ -287,12 +291,12 @@ check('12345678901234' not in ze['text'], 'long digit run stripped from plain co
 check(ze['lastEdited'] == '', 'malformed dcterms:modified degrades to ""')
 
 # SC-14 / SC-8 / SC-11: throw paths
-r = run_node_fail('zte_v18.ts', 'encrypted_deck.pptx.b64', '')
+r = run_node_fail('zte_cur.ts', 'encrypted_deck.pptx.b64', '')
 check(r.returncode != 0 and 'encrypted' in r.stderr, 'ZTE throws on encrypted entries')
 r = run_node_fail('me_cur.ts', 'encrypted_img_deck.pptx.b64')
 check(r.returncode != 0 and 'MediaExtract:' in r.stderr and 'ZipTextExtract' not in r.stderr,
       'MediaExtract throws on encrypted entries under its own name')
-r = run_node_fail('zte_v18.ts', 'truncstored.docx.b64', '')
+r = run_node_fail('zte_cur.ts', 'truncstored.docx.b64', '')
 check(r.returncode != 0 and 'stored block out of input' in r.stderr,
       'truncated stored block throws instead of zero-padding')
 

@@ -1,18 +1,29 @@
-# Local script harness — equivalence gate + formatting checks
+# Local script harness — standing suites + gates
 
-Two independent checks live here:
+The standing suites always run against the **current `scripts/`
+versions** (or whatever `HARNESS_SCRIPTS` points at) and generate
+version-neutral `*_cur.ts` runners, so their labels never go stale
+when a batch is promoted:
 
-1. **Equivalence gate** (`run_diff.py`) — the historical v1.5-vs-v1.6 /
-   v1.0-vs-v1.1 byte-diff, recorded below. Note: since the v2.2
-   formatting release, `scripts/ZipTextExtract.ts` has moved on (v1.8
-   as of v2.4) — the v1.5 source this gate compares against lives in
-   git history (`git show <pre-v2.2>:scripts/ZipTextExtract.ts`).
-2. **Formatting checks** (`check_format.py` + `render_sample.py`) — the
-   gate for the v1.7+/v1.1/v1.2 formatting generation, which is an
-   *intentional* format change and therefore can't be validated by
-   equivalence. See "Formatting checks" below. Since v2.4 this also
-   covers ZipTextExtract v1.8's core-properties extraction and the
-   kind-subfolder template.
+1. **Formatting checks** (`check_format.py` + `render_sample.py`) —
+   the intentional-format contract for ZipTextExtract / WorkbookDump
+   (+ RegexExtract's slug cases). See "Formatting checks" below.
+2. **Related-docs checks** (`check_related.py`) — RelatedRank +
+   SidecarPatch; runs standalone (no binary fixtures; needs PyYAML).
+3. **Id/revision checks** (`check_regex.py`) — RegexExtract's full
+   `IdResult` contract (ids, precedence, EXB routing, docRevision);
+   cases inline, no fixtures — CI-friendly.
+4. **Equivalence gate** (`run_diff.py`) — the HISTORICAL v1.5-vs-v1.6 /
+   v1.0-vs-v1.1 byte-diff, recorded below; both halves now skip
+   gracefully unless their wraps are deliberately regenerated from git
+   history. `scripts/ZipTextExtract.ts` has long since moved on (v1.9
+   as of the 2026-08-11 promotion).
+5. **Batch gates** (`check_batch.py`, historical) — the template any
+   future script batch clones before its patches may be pasted.
+
+Prereqs: Node 22+ (`--experimental-strip-types`) and
+`pip install -r requirements.txt` (python-pptx / python-docx for
+fixture generation, PyYAML for the sidecar round-trips).
 
 ## Equivalence harness — v1.5/v1.0 vs v1.6/v1.1 script patches
 
@@ -70,7 +81,7 @@ verified against an independent zip decoder (Python `zipfile`); big-deck timing
 Both patches also type-check at ES2017 (`tsc --noEmit --target es2017`), contain
 no lookbehind, no imports, one `main()` each.
 
-## Formatting checks — ZipTextExtract v1.8 / WorkbookDump v1.1 / RegexExtract v1.2
+## Formatting checks — current ZipTextExtract / WorkbookDump / RegexExtract
 
 `check_format.py` runs the *current* `scripts/` versions over the fixtures and
 asserts the v2.2 output contract instead of byte-equality:
@@ -104,15 +115,15 @@ kind-subfolder URLs) — and asserts the metadata block is the fenced
 heading), its inner YAML parses with `yaml.safe_load` (including
 `related: []` and the authorship fields), the file has exactly one H1, the
 header/body seam is present, and the related-section marker pair is
-well-placed. It then runs SidecarPatch v1.2 in set mode with three synthetic
+well-placed. It then runs the current SidecarPatch in set mode with three synthetic
 entries and writes `sample_sidecar_related.md` — the eyeball artifact for a
 POPULATED related list — re-asserting the patched metadata still parses, the
 file still has one H1, and the patched file keeps its `folder`.
 
-## Related-docs checks — RelatedRank v1.1 / SidecarPatch v1.2 (v2.3–v2.4)
+## Related-docs checks — current RelatedRank / SidecarPatch
 
-`check_related.py` wraps both v2.3 scripts (same appendix pattern as
-`rex_v12.ts`; no fixtures needed) and asserts the v2.3 contract:
+`check_related.py` wraps both scripts (same appendix pattern as
+`rex_cur.ts`; no fixtures needed) and asserts the v2.3+ contract:
 
 - RelatedRank: an id link (score 1000+) outranks any keyword overlap; a
   doc sharing both signals collapses into ONE entry with combined
@@ -135,7 +146,7 @@ file still has one H1, and the patched file keeps its `folder`.
   arrived in (set mode stays fenced, a legacy neighbor merge and the
   pre-v2.3 fallback stay dashed); the `folder` property passes through
   verbatim in set and merge modes, `""` when absent (v1.2)
-- both wrapped runners (`rr_v11.ts`, `scp_v12.ts`) type-check at ES2017,
+- both wrapped runners (`rr_cur.ts`, `scp_cur.ts`) type-check at ES2017,
   compiled separately (each Office Script is its own global scope)
 
 Usage (from this directory; wrapped runners are regenerated on each run):
@@ -145,6 +156,7 @@ python3 make_fixtures.py     # now also plants structure (planted_format.json)
                              # and the workbook stand-in (sheets.json)
 python3 check_format.py
 python3 check_related.py     # no fixture prereqs — can run standalone
+python3 check_regex.py       # no fixture prereqs — can run standalone
 python3 render_sample.py && cat sample_sidecar.md sample_sidecar_related.md
 ```
 
@@ -210,3 +222,19 @@ template (authorship lines round-trip `yaml.safe_load`, header strip
 carries the "Last edited" segment, patched sample keeps its
 `User Stories` folder). `zte_v18.ts` and `scp_v12.ts` type-check at
 ES2017.
+
+### Last run (2026-08-11, Node 22.22.2) — post-v1.9-promotion baseline + r2 rename
+
+Convention (r2): every promotion appends a dated run record here — the
+run record IS the audit trail for a system whose only gate is this
+harness.
+
+Baseline before any r2 change, against the promoted v1.9-generation
+scripts (ZipTextExtract v1.9 / MediaExtract v1.2 / RelatedRank v1.2 /
+SidecarPatch v1.3 / WorkbookDump v1.1 / RegexExtract v1.2):
+`check_format.py` PASS, `check_related.py` PASS, `check_batch.py` PASS
+(staged patches still equal the shipped scripts). Re-run after the r2
+harness changes (version-neutral `*_cur.ts` runners, new
+`check_regex.py`, `run_diff.py` media-half skip guard): all suites
+PASS — `check_regex.py`'s 34 assertions green on RegexExtract v1.2,
+and `run_diff.py` now degrades gracefully on both historical halves.
