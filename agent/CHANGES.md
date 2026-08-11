@@ -1,3 +1,32 @@
+# Agent v1.1 — doc_id described truthfully
+
+Instructions-only bump (`agent/QA_Agent_Instructions_v1_1.md`,
+supersedes v1.0): the SIDECAR STRUCTURE identity bullet now says what
+`doc_id` actually is — the document's Doc Index list row id for
+sidecars extracted at `prompt_version` v1.7 or later, a *different*
+number (the source library file's item id) for older extractions —
+and tells the agent to point people at the Doc Index list's ID column
+when they need a row id (e.g. for test-plan generation), rather than
+quoting an old sidecar's `doc_id`. Companion to the flow v2.5 identity
+fix (`flow/v2_5/CHANGES.md`); the caveat can be dropped in a future
+bump once the v1.7 backfill has converged.
+
+Runbook per v1.0 conventions: re-paste the delimited block into the
+agent's Instructions field, record `AgentInstructionsVersion: v1.1`,
+re-run `agent/QA_Smoke_Questions.md`. No flow, script, schema, or
+prompt changes; no PromptVersion touch; no backfill.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent instructions | **v1.1** | `agent/QA_Agent_Instructions_v1_1.md` |
+| Everything else | unchanged | — |
+
+Re-paste record:
+
+| Date | Tenant | Pasted | Smoke re-run |
+|---|---|---|---|
+| — | — | pending | pending |
+
 # Agent v1.0 — Q&A over the sidecar corpus
 
 First release of the Q&A component: a Copilot Studio agent,

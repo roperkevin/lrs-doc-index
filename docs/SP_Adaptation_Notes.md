@@ -48,7 +48,13 @@ frontmatter because SharePoint's markdown preview has no frontmatter
 support and renders a leading `---` block as one giant setext
 heading — body from ZipTextExtract/WorkbookDump markdown)
 and stores only a ~5,000-char TextPreview plus TextFileUrl on the list
-row. Since v2.4 the sidecar lands in a per-DocKind subfolder of the
+row. Since v2.5 the `{ID}` (and the sidecar's `doc_id:` line) is the
+document's **Doc Index row id** — the number in the list's ID column,
+the id the edges, `related:` entries, and TestPlanGen key on; v2.2–v2.4
+minted it from the source library file's item id, a different number,
+and pre-migration sidecars keep that old id until the v1.7 backfill
+renames them (the media `doc{N}_` prefixes deliberately stay
+file-id-keyed). Since v2.4 the sidecar lands in a per-DocKind subfolder of the
 library (`Test Plans/`, `User Stories/`, … per `Config.KindFolders`;
 `media/` stays shared at the root, so sidecars link images as
 `../media/...`), and a reindex whose path moved recycles the old copy

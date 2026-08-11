@@ -38,9 +38,11 @@ beginDialog:
       entity: NumberPrebuiltEntity
       prompt: |-
         Which user story? Give me its Doc Index item id — the number
-        in the list's ID column (also the doc_id in the story's
-        sidecar, and the docNN in the sidecar's filename). To find
-        one: Doc Index list → filter DocKind = User Story.
+        in the list's ID column. To find one: Doc Index list → filter
+        DocKind = User Story. (Sidecars extracted at prompt_version
+        v1.7+ carry the same number as their doc_id and filename
+        docNN; older sidecars stamped a different id, so when in
+        doubt trust the list's ID column, not the sidecar.)
       repromptCount: 2
       unrecognizedPrompt: |-
         I need the numeric item id (for example: 42). I can't look a
