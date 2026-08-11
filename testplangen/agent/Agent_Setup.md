@@ -1,4 +1,6 @@
-# Test Plan Generator Agent Setup — import and wire (v1.0)
+# Test Plan Generator Agent Setup — import and wire
+
+Current versions: agent file set **v1.1**, component **v1.7** (see `../CHANGES.md`).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story's Doc Index item

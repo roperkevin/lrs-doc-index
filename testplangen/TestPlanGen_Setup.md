@@ -1,4 +1,6 @@
-# Test Plan Generation Setup — build and deploy (v1.0)
+# Test Plan Generation Setup — build and deploy
+
+Current component version: **v1.7** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -14,12 +16,14 @@ nightly sweep indexes the finished plan like any other document. The
 loop closes through the existing pipeline: no sweep, script, schema,
 or `Config.PromptVersion` change anywhere in this component.
 
-This component ships as a build guide, not a `definition.json` — the
+This component originally shipped as a build guide only (the
 curation precedent: a brand-new flow has no package skeleton to
 import, and the flow is ~35 actions, buildable from §3 in about an
-hour. Once built, exporting it and checking in
-`testplangen/flow/v1_0/definition.json` for provenance is a queued
-follow-on.
+hour). Since v1.2 the flow definitions ARE checked in —
+`testplangen/flow/v1_0/definition.json` and
+`testplangen/flow/core_v1_0/definition.json` — with authored re-cut
+import packages alongside; see "Queued follow-ons" for the closure
+record.
 
 Everything below is manual portal/designer work in the
 `designer-edits.md` mold: apply in order, check after each step. All

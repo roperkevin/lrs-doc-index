@@ -1,4 +1,6 @@
-# Keyword Curation Setup — build and deploy (v1.0)
+# Keyword Curation Setup — build and deploy
+
+Current component version: **v1.1** (see `CHANGES.md`).
 
 A new, separate Power Automate flow, **KeywordCuration**: weekly, one
 AI Builder call over the full canonical vocabulary, proposing

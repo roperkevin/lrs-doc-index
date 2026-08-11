@@ -86,7 +86,12 @@ no locking, no coordination.
 Dataverse enforced uniqueness at the database; SharePoint doesn't, so
 dedup returns to the Email Links pattern verbatim: single-line key
 column (DocKey, IdKey, KWKey, LinkKey, IssueKey), **indexed**, flow
-queries by key before writing, trigger concurrency 1. LinkKey uses
+queries by key before writing, all loops serialized (every Foreach
+sets concurrency 1; the v2.5 Recurrence trigger itself carries no
+concurrency block — the daily cadence makes overlapping runs
+unlikely, and pinning trigger concurrency to 1 in the designer is an
+optional hardening, see `review/patches/designer-edits.md` §r2).
+LinkKey uses
 sorted *item IDs* (`{minId}|{maxId}|{type}`) — shorter than paths, same
 sorted-pair collapse.
 
@@ -123,8 +128,10 @@ Power Automate. One small mercy.
 
 ## Known tradeoffs accepted
 
-- No database-enforced uniqueness → concurrency-1 + indexed key queries
-  (proven pattern, known residual race ≈ zero at this volume).
+- No database-enforced uniqueness → serialized loops + indexed key
+  queries (proven pattern, known residual race ≈ zero at this volume;
+  overlapping *runs* are fenced only by the daily cadence — trigger
+  concurrency is not set in the v2.5 definition).
 - Title caps at 255 chars → flow truncates.
 - 600 docs ≈ Doc Index 600 rows, Doc IDs ~1,500, Doc Keywords ~4,000,
   Doc Links (sparse types only) a few hundred — all comfortably inside
