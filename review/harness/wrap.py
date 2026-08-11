@@ -1,6 +1,6 @@
 import sys, re
 src_path, out_path = sys.argv[1], sys.argv[2]
-src = open(src_path).read()
+src = open(src_path, encoding='utf-8').read()
 # neutralize the ExcelScript type for Node runs
 src = src.replace('workbook: ExcelScript.Workbook', 'workbook: unknown')
 test = '''
@@ -15,4 +15,4 @@ const res = main(null as unknown, b64, label);
 const t1 = Date.now();
 console.log(JSON.stringify({ms: t1 - t0, out: res}));
 '''
-open(out_path, 'w').write(src + test)
+open(out_path, 'w', encoding='utf-8').write(src + test)

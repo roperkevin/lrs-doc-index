@@ -22,13 +22,21 @@ already used the row id correctly end to end (`Get_story_row`, the
 Deploy: re-import or hand-edit the agent's Instructions and the
 topic's question text in Copilot Studio; re-run smoke row 1
 (`TestPlanGen_Smoke.md`) plus one deliberate wrong-id probe (feed a
-pre-migration sidecar's `doc_id`; expect the guard message, then
-success with the list's ID).
+pre-migration sidecar's `doc_id`; expect EITHER the guard message OR
+a draft whose banner names the wrong story — both prove the id was
+misdirected, since the stale id can also collide with a different
+Indexed User Story row — then success with the list's ID).
 
 | Piece | Version | Where |
 |---|---|---|
-| Agent instructions + topic text | **v1.5** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent instructions + topic text | **TestPlanGenAgentVersion v1.1** | `testplangen/agent/TestPlanGenAgent/` |
 | Everything else | unchanged | — |
+
+(Recorded post-release: this edit shipped without bumping the
+`TestPlanGenAgentVersion` headers in the file set — they still read
+v1.0 while the text had changed. The headers, this table, and the
+README row now all say v1.1; tenants deployed from the v1.0 file set
+should re-paste per the deploy note above.)
 
 # TestPlanGen v1.4 — import package for the agent flow (TestPlanGenAgentFlow)
 

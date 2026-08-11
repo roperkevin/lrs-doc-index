@@ -21,7 +21,7 @@ RECALL_BAR = 0.97
 def run(script, b64file, prefix=''):
     out = subprocess.run(
         ['node', '--experimental-strip-types', script, b64file, prefix],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding='utf-8')
     if out.returncode != 0:
         raise RuntimeError(f"{script} failed on {b64file}:\n{out.stderr[:2000]}")
     return json.loads(out.stdout)
@@ -31,11 +31,17 @@ def toks(s):
     return [t for t in re.split(r'\s+', s.lower()) if t]
 
 
-planted = json.load(open('planted_tokens.json')) if os.path.exists('planted_tokens.json') else {}
+planted = json.load(open('planted_tokens.json', encoding='utf-8')) if os.path.exists('planted_tokens.json') else {}
 ok = True
 
+# The ZTE pair is a historical gate (see README) — current scripts/ is v1.8,
+# whose format changes make a "v1.5" wrap diff by design. Run it only when
+# both wraps were deliberately generated (from git history).
+zte_pair = os.path.exists('zte_v15.ts') and os.path.exists('zte_v16.ts')
+if not zte_pair:
+    print('zte_v15.ts / zte_v16.ts not present — skipping the historical ZTE gate (see README).')
 print(f"{'fixture':<22} {'equal':<10} {'v1.5 ms':>8} {'v1.6 ms':>8} {'recall v1.5':>12} {'recall v1.6':>12}")
-for f in FILES:
+for f in FILES if zte_pair else []:
     a = run('zte_v15.ts', f, 'media/docX_')
     b = run('zte_v16.ts', f, 'media/docX_')
     same = a['out'] == b['out']
@@ -66,10 +72,13 @@ for f in MEDIA_FILES:
         cands = [n for n in z.namelist() if n.endswith('/' + img['name'])]
         if not cands or base64.b64encode(z.read(cands[0])).decode() != img['b64']:
             gt = False
-    ok &= gt
+    # both fixtures plant images — zero extracted means the ground-truth
+    # loop above proved nothing (a shared regression would look like PASS)
+    nonzero = a['out']['count'] > 0
+    ok &= gt and nonzero
     print(f"media {src:<22} {('IDENTICAL' if same else 'DIFF!'):<10} "
           f"v1.0={a['ms']}ms v1.1={b['ms']}ms images={a['out']['count']} "
-          f"ground-truth={'OK' if gt else 'MISMATCH'}")
+          f"ground-truth={'OK' if gt and nonzero else ('VACUOUS (0 images)' if gt else 'MISMATCH')}")
 
 print()
 print('RESULT:', 'PASS — safe to paste (after reference-set run)' if ok else 'FAIL — DO NOT PASTE')

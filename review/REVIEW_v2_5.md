@@ -525,6 +525,35 @@ add the re-paste record row.
   MediaExtract (SC-11/DX); QA instructions v1.0→v1.1 diff matches its claim; action
   counts in TestPlanGen CHANGES match the definitions exactly.
 
+## Repo-side fixes applied (this branch)
+
+The findings fixable in repository files alone were applied alongside this
+review; all harness gates re-run green afterward, and the HA-1 fix was
+teeth-tested (guard removed from a script copy → the new assertion fails, as
+it must). Applied: **HA-1** (raw-param injection wired through the wrapper
+appendix; dead `raw_params` removed; wrong-type case kept as a second
+assertion), **HA-2** (README recipe marks the ZTE gate historical with the
+`git show fd9d1c2:` fetch; `run_diff.py` now skips the ZTE pair gracefully
+when not wrapped), **HA-3** (zero-image media runs now fail as VACUOUS),
+**HA-4** (`encoding='utf-8'` on every text `open()`/subprocess across all six
+files), **HA-5** (sample renders `v1.7`, docstring cites v2_5), **HA-6**
+(vacuous `+ len(body)` bound removed), **HA-7** (notes-ownership now asserts
+one notes block per slide segment), **DX-3** (record v1.1), **DX-4** (five
+yml headers, CHANGES table, and README row aligned at
+TestPlanGenAgentVersion v1.1, with a post-release correction note), **DX-5**
+(README bump chain corrected), **DX-6** (prompt header v1.1; wiring note now
+says never hand-set PromptVersion), **DX-9** (both degrade claims scoped to
+what the expressions actually guarantee), **DX-10** (single-G1 substitution),
+**DX-13** (wrong-id probe accepts either outcome), **DX-15** (`Library`/
+`SourceETag` marked RESERVED), **DX-16** (alias-row-only wording), and the
+SC-11/DX-7 header stamp (`MediaExtract v1.0`). **DX-2 + DX-14** are authored
+as `patches/DocIndex_Prompt_v1_3.md` (PROPOSED — takes effect only when
+pasted, with Config → PromptVersion `v1.8`).
+
+Still requiring tenant-side action (designer edits / Automate-tab pastes /
+list settings): FL-1..FL-6, SC-1..SC-10, SC-12..SC-14, DX-1, DX-7, DX-8,
+DX-11, DX-12, HA-8/HA-9 (optional), and the v1.3 prompt paste itself.
+
 ## Recommended order of work
 
 1. **With the v2.5 rollout (designer edits, minutes):** FL-1 (`PromptVersion` on

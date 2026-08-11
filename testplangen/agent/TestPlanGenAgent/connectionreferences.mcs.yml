@@ -1,5 +1,5 @@
 # LRS Test Plan Generator — connection references
-# TestPlanGenAgentVersion: v1.0
+# TestPlanGenAgentVersion: v1.1
 #
 # The only external dependency is the TestPlanGenAgentFlow agent flow
 # (built in Agent_Setup.md §1). Flow ids are environment-specific —

@@ -92,9 +92,10 @@ importing the package):
   name exactly `StoryId`.
 - Body: G0–G13 from `testplangen/TestPlanGen_Setup.md` §3, with three
   mechanical substitutions:
-  1. Both `@{triggerBody()?['entity']?['ID']}` references (G1 and
-     G11's filename) become the trigger input:
-     `@{triggerBody()?['number']}`.
+  1. The single `@{triggerBody()?['entity']?['ID']}` reference (G1)
+     becomes the trigger input: `@{triggerBody()?['number']}`.
+     (G11's filename already reads `body('Get_story_row')?['ID']` —
+     no second reference to substitute.)
      > Designer-verify: peek at the manual trigger's raw output on a
      > test run — single-input manual triggers surface the value as
      > `number` (or `number_1`); use whatever your tenant shows.

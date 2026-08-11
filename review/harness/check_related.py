@@ -72,25 +72,30 @@ const p = JSON.parse(fs.readFileSync(which, 'utf8'));
 console.log(JSON.stringify(main(%s)));
 '''
 
-RR_ARGS = ("null as unknown, p.selfId, JSON.stringify(p.myKws), "
-           "JSON.stringify(p.sharers), JSON.stringify(p.idLinks), p.topN")
+# *Raw fields (when present) bypass the appendix's JSON.stringify so a
+# payload can ship genuinely invalid JSON into the script's parse guards.
+RR_ARGS = ("null as unknown, p.selfId, "
+           "p.myKwsRaw !== undefined ? p.myKwsRaw : JSON.stringify(p.myKws), "
+           "p.sharersRaw !== undefined ? p.sharersRaw : JSON.stringify(p.sharers), "
+           "p.idLinksRaw !== undefined ? p.idLinksRaw : JSON.stringify(p.idLinks), "
+           "p.topN")
 SCP_ARGS = ("null as unknown, JSON.stringify(p.files), p.selfId, "
             "JSON.stringify(p.ranked), JSON.stringify(p.docsMeta), "
             "JSON.stringify(p.selfMeta), p.topN")
 
 for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_v11.ts', RR_ARGS),
                           (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v12.ts', SCP_ARGS)):
-    body = open(src).read().replace(
+    body = open(src, encoding='utf-8').read().replace(
         'workbook: ExcelScript.Workbook', 'workbook: unknown')
-    open(runner, 'w').write(body + APPENDIX % args)
+    open(runner, 'w', encoding='utf-8').write(body + APPENDIX % args)
 
 
-def run(runner, payload, raw_params=None):
+def run(runner, payload):
     path = runner.replace('.ts', '_payload.json')
-    with open(path, 'w') as f:
+    with open(path, 'w', encoding='utf-8') as f:
         json.dump(payload, f)
     out = subprocess.run(['node', '--experimental-strip-types', runner, path],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding='utf-8')
     if out.returncode != 0:
         raise RuntimeError(f'{runner} failed:\n{out.stderr[:2000]}')
     return json.loads(out.stdout)
@@ -170,14 +175,19 @@ r = run('rr_v11.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
                       'idLinks': [], 'topN': 5})
 check(r['count'] == 0 and r['related'] == [], 'empty inputs -> count 0')
 
-# malformed params must not throw (payload strings are double-encoded
-# by the appendix, so ship raw junk through a direct wrapper call)
-open('rr_junk_payload.json', 'w').write(
-    '{"selfId":"42","myKws":"not json","sharers":42,"idLinks":null,"topN":5}')
-out = subprocess.run(['node', '--experimental-strip-types', 'rr_v11.ts',
-                      'rr_junk_payload.json'], capture_output=True, text=True)
-check(out.returncode == 0 and json.loads(out.stdout)['count'] == 0,
-      'malformed JSON params -> empty result, no throw')
+# malformed params must not throw — the *Raw fields skip the appendix's
+# JSON.stringify, so genuinely invalid JSON reaches parseRows' try/catch
+# (a stringified junk string would arrive as VALID JSON and never hit it)
+r = run('rr_v11.ts', {'selfId': '42', 'myKwsRaw': 'not json',
+                      'sharersRaw': '[{"Document":', 'idLinksRaw': 'null',
+                      'topN': 5})
+check(r['count'] == 0 and r['related'] == [],
+      'malformed JSON params -> empty result, no throw (parse guard exercised)')
+# valid-JSON-but-wrong-type params degrade the same way
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': 'not json', 'sharers': 42,
+                      'idLinks': None, 'topN': 5})
+check(r['count'] == 0 and r['related'] == [],
+      'wrong-type params -> empty result, no throw')
 
 # ==== SidecarPatch ========================================================
 print('== SidecarPatch v1.1 ==')
@@ -390,7 +400,7 @@ check(lfm.split('\n').index('related: ' + json.dumps(
       [i for i, ln in enumerate(lfm.split('\n')) if ln.startswith('tools:')][0] + 1,
       'fallback inserts the related-line right after tools:')
 body = out['content'][out['content'].find('\n---\n', 3) + 5:]
-check(body.find('## Summary') < body.find('## Related documents') < body.find('\n---\n', body.find('## Summary')) + len(body),
+check(body.find('## Summary') < body.find('## Related documents') < body.find('\n---\n', body.find('## Summary')),
       'fallback section lands between ## Summary and the seam')
 check(body.find(END) < body.find('\n---\n', body.find('## Summary')),
       'fallback section sits before the header/body seam')
@@ -426,7 +436,7 @@ check(fc['folder'] == '', 'folder-less file object comes back with folder ""')
 for runner in ('rr_v11.ts', 'scp_v12.ts'):
     tsc = subprocess.run(['npx', '--yes', 'tsc', '--noEmit', '--target', 'es2017',
                           '--lib', 'es2017,dom', runner],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True, encoding='utf-8')
     check(tsc.returncode == 0, f'{runner} type-checks at ES2017'
           + ('' if tsc.returncode == 0 else '\n' + tsc.stdout[-1500:]))
 

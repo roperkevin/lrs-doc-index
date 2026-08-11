@@ -203,8 +203,11 @@ every sidecar):
   `@if(greater(outputs('Rel_start'), -1), substring(outputs('Story_md'), add(outputs('Rel_start'), 9)), '[]')`
 - **`Rel_line`** (Compose):
   `@if(greater(indexOf(outputs('Rel_tail'), decodeUriComponent('%0A')), -1), substring(outputs('Rel_tail'), 0, indexOf(outputs('Rel_tail'), decodeUriComponent('%0A'))), outputs('Rel_tail'))`
-- **`Rel_json_safe`** (Compose) — a mangled line degrades to no
-  neighbors, never an error:
+- **`Rel_json_safe`** (Compose) — a missing or bracket-less line
+  degrades to no neighbors. (A line that passes the bracket test but
+  is internally invalid JSON — a hand-edited sidecar — still throws
+  in `Rel_entries`' `json()` and fails the run via the Catch; that
+  residual is accepted, since only out-of-band edits produce it.)
   `@if(and(startsWith(trim(outputs('Rel_line')), '['), endsWith(trim(outputs('Rel_line')), ']')), trim(outputs('Rel_line')), '[]')`
 - **`Rel_entries`** (Compose):
   `@take(json(outputs('Rel_json_safe')), int(outputs('Config_gen')?['NeighborCap']))`

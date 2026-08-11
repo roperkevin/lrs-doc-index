@@ -1,5 +1,5 @@
 # Topic: Fallback — everything that isn't a generation request.
-# TestPlanGenAgentVersion: v1.0
+# TestPlanGenAgentVersion: v1.1
 #
 # This agent has no knowledge sources and general knowledge is off
 # (settings.mcs.yml), so the fallback's job is the redirect: corpus

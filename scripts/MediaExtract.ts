@@ -1,5 +1,5 @@
 /**
- * MediaExtract — pull raster images out of a pptx/docx, bounded
+ * MediaExtract v1.0 — pull raster images out of a pptx/docx, bounded
  * ------------------------------------------------------------
  * Companion to ZipTextExtract. Takes the same base64 file content,
  * returns raster media entries (png/jpg/jpeg/gif/bmp) as base64 so

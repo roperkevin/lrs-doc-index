@@ -1,10 +1,11 @@
 """Render a full sample sidecar — the eyeball artifact for the current format.
 
-Mirrors the flow's Sidecar_header template (flow/v2_4/definition.json)
+Mirrors the flow's Sidecar_header template (flow/v2_5/definition.json)
 in Python — same fields, same YAML escaping rules as the WDL
 expressions, including the v2.4 authorship lines (author /
-last_edited_by / last_edited) and the subfolder-routed URLs — over the
-real_deck.pptx v1.8 extraction, and writes sample_sidecar.md. Asserts:
+last_edited_by / last_edited), the subfolder-routed URLs, and the v2.5
+row-id `doc_id` — over the real_deck.pptx v1.8 extraction, and writes
+sample_sidecar.md. Asserts:
 
   - the metadata block is the fenced ```yaml frame (PromptVersion
     v1.4) — NOT `---` frontmatter, which SharePoint's markdown
@@ -45,7 +46,7 @@ def kw_quote(s):
 
 out = subprocess.run(['node', '--experimental-strip-types', 'zte_v18.ts',
                       'real_deck.pptx.b64', '../media/doc42_'],
-                     capture_output=True, text=True, check=True)
+                     capture_output=True, text=True, encoding='utf-8', check=True)
 body = json.loads(out.stdout)['out']['text']
 
 meta = {
@@ -64,7 +65,7 @@ meta = {
     'last_edited': '2026-07-31T18:22:04Z',
     'extracted': '2026-08-10',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v1.6',
+    'prompt_version': 'v1.7',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
     'summary': ('Explores how conflict prevention should acquire locks when routes '
@@ -118,7 +119,7 @@ _None yet._
 """
 
 sidecar = header + body
-open('sample_sidecar.md', 'w').write(sidecar)
+open('sample_sidecar.md', 'w', encoding='utf-8').write(sidecar)
 
 ok = True
 if sidecar.startswith('```yaml\n') and not sidecar.startswith('---'):
@@ -174,7 +175,7 @@ else:
     ok = False
 
 # ---- populate via SidecarPatch v1.2 (set mode, synthetic entries) -------
-scp = open('../../scripts/SidecarPatch.ts').read().replace(
+scp = open('../../scripts/SidecarPatch.ts', encoding='utf-8').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 scp += '''
 // ---- harness appendix ----
@@ -185,7 +186,7 @@ const p = JSON.parse(fs.readFileSync(which, 'utf8'));
 console.log(JSON.stringify(main(null as unknown, JSON.stringify(p.files), p.selfId,
   JSON.stringify(p.ranked), JSON.stringify(p.docsMeta), JSON.stringify(p.selfMeta), p.topN)));
 '''
-open('scp_render.ts', 'w').write(scp)
+open('scp_render.ts', 'w', encoding='utf-8').write(scp)
 
 texts = 'https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index'
 payload = {
@@ -211,12 +212,12 @@ payload = {
                  'file': 'conflict-prevention-acquire-locks-for-new-routes__doc42.md'},
     'topN': 5,
 }
-json.dump(payload, open('scp_render_payload.json', 'w'))
+json.dump(payload, open('scp_render_payload.json', 'w', encoding='utf-8'))
 out = subprocess.run(['node', '--experimental-strip-types', 'scp_render.ts',
                       'scp_render_payload.json'],
-                     capture_output=True, text=True, check=True)
+                     capture_output=True, text=True, encoding='utf-8', check=True)
 patched = json.loads(out.stdout)['files'][0]
-open('sample_sidecar_related.md', 'w').write(patched['content'])
+open('sample_sidecar_related.md', 'w', encoding='utf-8').write(patched['content'])
 
 pc = patched['content']
 rel_fm = yaml.safe_load(pc[len('```yaml\n'):pc.index('\n```\n')])
