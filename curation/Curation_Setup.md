@@ -250,6 +250,19 @@ every digest) —
   `@{outputs('Digest_body')}`. Fixed name = idempotent overwrite; the
   digest always shows the full current queue (pending + new).
 
+  **No branch** (REVIEW_v2_5 DX-11 — without it, an emptied queue
+  leaves LAST week's digest showing already-resolved proposals as
+  pending, and the librarian works Monday from stale rows):
+  - **`Digest_body_empty`** (Compose):
+
+    ```
+    @concat('# Keyword curation digest', decodeUriComponent('%0A%0A'), 'Run: ', utcNow(), '  ·  CurationPromptVersion: ', outputs('Config_cur')?['CurationPromptVersion'], decodeUriComponent('%0A%0A'), 'The queue is EMPTY — no pending proposals. All previously proposed merges have been approved or rejected; the next Saturday run may propose new ones.')
+    ```
+
+  - **`Save_digest_empty`** (Create file): identical fields to
+    `Save_digest`, content `@{outputs('Digest_body_empty')}`. Same
+    fixed name — the overwrite is what retires the stale queue.
+
   > The digest deliberately lives in **Shared Documents**, NOT the LRS
   > Doc Index library — the Q&A agent grounds on that entire library
   > (`agent/QA_Agent_Setup.md` §2) and must not ingest curation

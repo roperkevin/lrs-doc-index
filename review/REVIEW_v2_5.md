@@ -583,17 +583,23 @@ are folded into the standing suites (`check_format.py` §9,
 `check_batch.py` is marked historical, and R12 in
 `flow/v2_5/CHANGES.md` records the bump (definition + zip carry it).
 
-**FL-3 is fixed in the repo** (2026-08-11, R13 in the v2.5 CHANGES):
-the `LastError` column is back in the schema, both catch writes carry
+**FL-3 is fixed** (2026-08-11, R13 in the v2.5 CHANGES): the
+`LastError` column is back in the schema, both catch writes carry
 `outputs('Err_detail')`, and `Set_text_url`/`Update_doc_skipped` clear
-it on recovery — apply live as the column-create + four designer edits
-documented there.
+it on recovery — applied live as the column-create + four designer
+edits documented there.
 
-Still requiring tenant-side action: the FL-3 edits above (R13), FL-6
-(informational), DX-7 (empty-release exemplar match), DX-11
-(empty-queue digest), DX-12 (menu-path guard visibility), and
-HA-8/HA-9 (optional). Everything else in this review is applied and
-recorded.
+**DX-7, DX-11, and DX-12 are fixed** (2026-08-11): the empty-release
+guard on `Filter_release_match` (TestPlanGen v1.7 — both definitions +
+packages), the empty-queue digest overwrite (Curation v1.1 —
+`Curation_Setup.md` C11), and the thin parent's `If_child_ok` visible
+failure (`Agent_Setup.md` §1b + smoke row 2). All applied live.
+
+**Every actionable finding in this review is now applied and
+recorded.** Remaining by choice: FL-6 (informational residual-risk
+note), SC-9 (documented known limitation), HA-8/HA-9 (optional
+harness rigor), and the verify-list oddities carried from the v1.9
+review.
 
 ## Recommended order of work
 

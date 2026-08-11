@@ -1,3 +1,35 @@
+# TestPlanGen v1.7 — empty-release exemplar fix + visible menu-path guard
+
+Two review fixes (`review/REVIEW_v2_5.md` DX-7, DX-12), both applied to
+the live flows 2026-08-11.
+
+**DX-7 — a blank story release no longer "matches" release-less plans.**
+`Filter_release_match` treated empty-equals-empty as a release match, so
+a story with no `TargetRelease` release-matched every same-surface plan
+that also lacked one — typically the oldest, least-curated plans — and
+those won outright over newer exemplars. The filter now requires the
+STORY release to be non-empty; a blank release falls through to
+`Exemplar_rows`' newest-two default. Both definitions carry it
+(`flow/core_v1_0/`, `flow/v1_0/`), both packages re-cut, Setup §3
+updated.
+
+**DX-12 — a guard rejection from the list menu fails visibly again.**
+Post-split, the child Responds `Status: guard` and Terminates Succeeded,
+so a PE running the Automate entry on a non-story row saw a successful
+run and no draft — no failure signal, no alert. The thinned parent (a
+hand edit, no package — Agent_Setup §1b) gains `If_child_ok`: child
+`Status` ≠ `ok` → Terminate Failed with the child's `GenSummary` as the
+message, restoring pre-split behavior for the menu path only. The agent
+path is untouched (its topic relays non-ok statuses conversationally).
+Agent_Setup §1a/§1b and smoke row 2 updated to match.
+
+| Piece | Version | Where |
+|---|---|---|
+| Core child flow + package | **v1.7** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Standalone flow + package | **v1.7** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Agent_Setup §1a/§1b + smoke row 2 | updated | `testplangen/agent/Agent_Setup.md`, `TestPlanGen_Smoke.md` |
+| Everything else | unchanged | — |
+
 # TestPlanGen v1.6 — encode the DraftUrl so the chat link survives Teams
 
 One-expression fix from the full-codebase review (`review/REVIEW_v2_5.md`
