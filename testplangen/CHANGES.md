@@ -32,16 +32,21 @@ untouched. `Agent_Setup.md`'s §1b check and smoke row 1 now require
 clicking the link from the Teams chat — the check that would have caught
 this at deploy time.
 
-Known limit noted, not fixed here: draft filenames are still
-minute-granular (`yyyyMMdd-HHmm`) — two runs on the same story inside one
-minute overwrite (REVIEW_v2_5.md DX-8; the fix is `HHmmss` in
-`Draft_name`, `flow/v1_0`'s `Save_draft` name, and Setup §3 G11, plus a
-package re-cut).
+Also in v1.6 — second-granular draft names (REVIEW_v2_5.md DX-8):
+draft filenames were minute-granular (`yyyyMMdd-HHmm`), so two runs on
+the same story inside one minute silently overwrote — a PE
+double-clicking the menu entry, or the menu and agent paths racing,
+violated the "a re-run must never clobber a draft" rule. The timestamp
+is now `yyyyMMdd-HHmmss` in all three sites: `Draft_name` (core),
+`Save_draft`'s inline filename (`flow/v1_0`), and Setup §3 G11.
+Applied to the live `TestPlanGenCore` flow 2026-08-11 alongside the
+URL fix; both packages re-cut.
 
 | Piece | Version | Where |
 |---|---|---|
 | Core child flow + package | **v1.6** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
-| Agent_Setup smoke wording | updated | `testplangen/agent/Agent_Setup.md` |
+| Standalone flow + package | **v1.6** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` (HHmmss only — it builds no URL) |
+| Agent_Setup smoke wording + Setup G11 | updated | `testplangen/agent/Agent_Setup.md`, `testplangen/TestPlanGen_Setup.md` |
 | Everything else | unchanged | — |
 
 # TestPlanGen v1.5 — stop equating sidecar doc_id with the item id

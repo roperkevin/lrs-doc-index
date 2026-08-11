@@ -555,14 +555,14 @@ pasted, with Config → PromptVersion `v1.8`).
 `flow/v2_5/definition.json` and the re-cut `DocIndexSweep_v2_5.zip` —
 apply to the live flow as the three designer edits documented there.
 
-**DX-1 is fixed** (applied to the live TestPlanGenCore flow 2026-08-11 and
-recorded as TestPlanGen v1.6: `core_v1_0/definition.json`, the re-cut
-`TestPlanGenCore_v1_0.zip`, and the Teams-click smoke check in
-`Agent_Setup.md`).
+**DX-1 and DX-8 are fixed** (applied to the live TestPlanGenCore flow
+2026-08-11 and recorded as TestPlanGen v1.6: the space-encoded `Draft_url`
+and `HHmmss` draft names in both flow definitions, both packages re-cut,
+and the Teams-click smoke check in `Agent_Setup.md`).
 
 Still requiring tenant-side action (designer edits / Automate-tab pastes /
 list settings): the FL-1/FL-2 designer edits (R9–R11), FL-3..FL-6,
-SC-1..SC-10, SC-12..SC-14, DX-7, DX-8, DX-11, DX-12, HA-8/HA-9
+SC-1..SC-10, SC-12..SC-14, DX-7, DX-11, DX-12, HA-8/HA-9
 (optional), and the v1.3 prompt paste itself.
 
 ## Recommended order of work

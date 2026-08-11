@@ -676,7 +676,7 @@
                         ]
                       },
                       "type": "Compose",
-                      "inputs": "TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmm')}.md"
+                      "inputs": "TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmmss')}.md"
                     },
                     "Draft_url": {
                       "runAfter": {
