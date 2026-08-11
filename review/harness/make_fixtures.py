@@ -382,3 +382,87 @@ for sig, off in ((b'PK\x03\x04', 6), (b'PK\x01\x02', 8)):
         i = j + 4
 open('encrypted_img_deck.pptx', 'wb').write(bytes(enc2))
 _b64('encrypted_img_deck.pptx')
+
+# ---- r2 batch fixtures (check_batch_r2.py) -------------------------------
+# New-behavior fixtures for the SB-1..SB-9 batch (REVIEW_v2_5_r2.md).
+# check_batch_r2.py owns their assertions until the batch is promoted.
+
+# SB-6: hashheading_deck — content lines opening with ##/###/#### plus
+# the v1.9 H1 case, in both slide body and speaker notes
+prs_h = Presentation()
+s_h = prs_h.slides.add_slide(prs_h.slide_layouts[5])
+s_h.shapes.title.text = "HashTitle"
+tf_h = s_h.shapes.add_textbox(Inches(0.5), Inches(2), Inches(8), Inches(3)).text_frame
+tf_h.text = "plain line before"
+tf_h.add_paragraph().text = "## Fake section pasted"
+tf_h.add_paragraph().text = "### Fake notes pasted"
+tf_h.add_paragraph().text = "#### deep heading pasted"
+tf_h.add_paragraph().text = "# Roadmap pasted markdown"
+tf_h.add_paragraph().text = "plain line after"
+s_h.notes_slide.notes_text_frame.text = "## Fake heading inside notes"
+prs_h.save('hashheading_deck.pptx')
+_b64('hashheading_deck.pptx')
+
+# SB-5: storednlen.docx — stored block with LEN correct and in-bounds
+# but NLEN wrong (truncstored.docx covers the truncation leg)
+_name2 = b'word/document.xml'
+_raw2 = b'\x01' + struct.pack('<HH', 10, 0x1234) + b'0123456789'
+_local2 = struct.pack('<IHHHHHIIIHH', 0x04034b50, 20, 0, 8, 0, 0, 0,
+                      len(_raw2), 10, len(_name2), 0) + _name2 + _raw2
+_cdo2 = len(_local2)
+_central2 = struct.pack('<IHHHHHHIIIHHHHHII', 0x02014b50, 20, 20, 0, 8, 0, 0,
+                        0, len(_raw2), 10, len(_name2), 0, 0, 0, 0, 0, 0) + _name2
+_eocd2 = struct.pack('<IHHHHIIH', 0x06054b50, 0, 0, 1, 1, len(_central2), _cdo2, 0)
+open('storednlen.docx', 'wb').write(_local2 + _central2 + _eocd2)
+_b64('storednlen.docx')
+
+# SB-8: lyingcd_deck — one referenced small png whose CENTRAL-directory
+# uncompressed-size claim is patched 1000 bytes short of the truth
+prs_l = Presentation()
+s_l = prs_l.slides.add_slide(prs_l.slide_layouts[6])
+s_l.shapes.add_picture(io.BytesIO(make_png()), Inches(0.5), Inches(0.5), Inches(1), Inches(1))
+prs_l.save('lyingcd_deck.pptx')
+_ly = bytearray(open('lyingcd_deck.pptx', 'rb').read())
+_p = bytes(_ly).find(struct.pack('<I', 0x06054b50))
+_cd = struct.unpack('<I', _ly[_p + 16:_p + 20])[0]
+while _cd < _p:
+    assert struct.unpack('<I', _ly[_cd:_cd + 4])[0] == 0x02014b50
+    _nl, _xl, _cl = struct.unpack('<HHH', _ly[_cd + 28:_cd + 34])
+    _nm = bytes(_ly[_cd + 46:_cd + 46 + _nl])
+    if _nm.startswith(b'ppt/media/') and _nm.endswith(b'.png'):
+        _usz = struct.unpack('<I', _ly[_cd + 24:_cd + 28])[0]
+        _ly[_cd + 24:_cd + 28] = struct.pack('<I', _usz - 1000)
+    _cd += 46 + _nl + _xl + _cl
+open('lyingcd_deck.pptx', 'wb').write(bytes(_ly))
+_b64('lyingcd_deck.pptx')
+
+# SB-7: manytables.docx — hand-assembled document.xml with 205 tiny
+# tables (past the 200-table rendering guard)
+_tbls = ''.join('<w:tbl><w:tr><w:tc><w:p><w:r><w:t>tbl%dcell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>' % i
+                for i in range(205))
+_doc = ('<?xml version="1.0"?><w:document><w:body>' + _tbls +
+        '<w:p><w:r><w:t>after the tables</w:t></w:r></w:p></w:body></w:document>')
+with zipfile.ZipFile('manytables.docx', 'w', zipfile.ZIP_DEFLATED) as _z:
+    _z.writestr('word/document.xml', _doc)
+    _z.writestr('word/_rels/document.xml.rels',
+                '<?xml version="1.0"?><Relationships/>')
+_b64('manytables.docx')
+
+print('r2 fixtures:', {f: os.path.getsize(f) for f in
+                       ('hashheading_deck.pptx', 'storednlen.docx',
+                        'lyingcd_deck.pptx', 'manytables.docx')})
+
+# SB-5 (MediaExtract leg): storednlen_img.pptx — a single media entry
+# whose deflate stream is a stored block with a wrong NLEN. MediaExtract
+# only inflates media entries, so the docx variant never reaches its
+# inflate; this one does. (Not a real png — the zip reader never checks.)
+_name3 = b'ppt/media/image1.png'
+_raw3 = b'\x01' + struct.pack('<HH', 10, 0x1234) + b'0123456789'
+_local3 = struct.pack('<IHHHHHIIIHH', 0x04034b50, 20, 0, 8, 0, 0, 0,
+                      len(_raw3), 10, len(_name3), 0) + _name3 + _raw3
+_cdo3 = len(_local3)
+_central3 = struct.pack('<IHHHHHHIIIHHHHHII', 0x02014b50, 20, 20, 0, 8, 0, 0,
+                        0, len(_raw3), 10, len(_name3), 0, 0, 0, 0, 0, 0) + _name3
+_eocd3 = struct.pack('<IHHHHIIH', 0x06054b50, 0, 0, 1, 1, len(_central3), _cdo3, 0)
+open('storednlen_img.pptx', 'wb').write(_local3 + _central3 + _eocd3)
+_b64('storednlen_img.pptx')

@@ -28,3 +28,14 @@ me_v12.ts
 *_cur.ts
 rex_cases.json
 stage_r2/
+# r2 gate generated runners/cases
+*_old.ts
+*_new.ts
+*_tsc.ts
+rex_eq_cases.json
+rex_sb1_cases.json
+sheets_empty.json
+storednlen*
+lyingcd_deck*
+hashheading_deck*
+manytables*
