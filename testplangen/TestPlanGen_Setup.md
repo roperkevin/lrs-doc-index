@@ -349,7 +349,7 @@ warning, prepended to the draft (note the truncation flag):
 **G11 — `Save_draft`** (Create file — the `Save_sidecar` shape): site
 `Config_gen.SiteUrl`, folder
 `@{outputs('Config_gen')?['DraftFolder']}`, name
-`TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmm')}.md`,
+`TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmmss')}.md`,
 content `@{outputs('Draft_banner')}`.
 
 Timestamped names, NOT the digest's fixed-name overwrite: the digest

@@ -1,3 +1,54 @@
+# TestPlanGen v1.6 — encode the DraftUrl so the chat link survives Teams
+
+One-expression fix from the full-codebase review (`review/REVIEW_v2_5.md`
+DX-1). `TestPlanGenCore`'s `Draft_url` compose concatenated
+`SiteUrl + DraftFolder + '/' + Draft_name` with `DraftFolder`'s literal
+spaces (`/Shared Documents/Test Plan Drafts`) left unencoded. The agent
+relays `DraftUrl` verbatim (`Draft ready: {Topic.DraftUrl}`), and Teams
+auto-linking terminates a URL at the first space — so the agent's primary
+deliverable rendered as a clickable `.../lrsworkspace/Shared` (404) plus
+trailing text.
+
+`Draft_url` is now wrapped in a space-encode:
+
+    replace(concat(outputs('Config_gen')?['SiteUrl'],
+      outputs('Config_gen')?['DraftFolder'], '/',
+      outputs('Draft_name')), ' ', '%20')
+
+Whole-string encoding is safe: `SiteUrl` and `Draft_name`
+(`TestPlanDraft__doc{N}__{timestamp}.md`) cannot contain spaces — the
+folder's are the only ones.
+
+Scope: the CORE child flow only. The monolithic list-menu flow
+(`flow/v1_0`) never builds a URL — its PE finds the draft in the folder —
+and the thin parent and Copilot topic relay the child's output untouched,
+so nothing else changes. The `Status`/`DraftUrl`/`GenSummary` contract is
+unchanged (same field, encoded value).
+
+Applied to the live `TestPlanGenCore` flow 2026-08-11 (designer edit, one
+expression). `flow/core_v1_0/definition.json` and
+`TestPlanGenCore_v1_0.zip` carry the fix; `TestPlanGen_v1_0.zip` is
+untouched. `Agent_Setup.md`'s §1b check and smoke row 1 now require
+clicking the link from the Teams chat — the check that would have caught
+this at deploy time.
+
+Also in v1.6 — second-granular draft names (REVIEW_v2_5.md DX-8):
+draft filenames were minute-granular (`yyyyMMdd-HHmm`), so two runs on
+the same story inside one minute silently overwrote — a PE
+double-clicking the menu entry, or the menu and agent paths racing,
+violated the "a re-run must never clobber a draft" rule. The timestamp
+is now `yyyyMMdd-HHmmss` in all three sites: `Draft_name` (core),
+`Save_draft`'s inline filename (`flow/v1_0`), and Setup §3 G11.
+Applied to the live `TestPlanGenCore` flow 2026-08-11 alongside the
+URL fix; both packages re-cut.
+
+| Piece | Version | Where |
+|---|---|---|
+| Core child flow + package | **v1.6** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Standalone flow + package | **v1.6** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` (HHmmss only — it builds no URL) |
+| Agent_Setup smoke wording + Setup G11 | updated | `testplangen/agent/Agent_Setup.md`, `testplangen/TestPlanGen_Setup.md` |
+| Everything else | unchanged | — |
+
 # TestPlanGen v1.5 — stop equating sidecar doc_id with the item id
 
 Text-only release, companion to flow v2.5 (`flow/v2_5/CHANGES.md`).

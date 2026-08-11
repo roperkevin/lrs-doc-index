@@ -657,7 +657,7 @@
                         "parameters": {
                           "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                           "folderPath": "@{outputs('Config_gen')?['DraftFolder']}",
-                          "name": "TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmm')}.md",
+                          "name": "TestPlanDraft__doc@{body('Get_story_row')?['ID']}__@{formatDateTime(utcNow(), 'yyyyMMdd-HHmmss')}.md",
                           "body": "@outputs('Draft_banner')"
                         },
                         "host": {

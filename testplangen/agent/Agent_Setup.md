@@ -167,7 +167,8 @@ name `StoryId` are a CONTRACT with
 
 Check: run `TestPlanGenCore` directly (Test → Manually) with StoryId
 = 42 → draft lands, response shows `Status: ok` and a resolving
-`DraftUrl`. Run it with a Test Plan row's id → `Status: guard`, no
+`DraftUrl` with its spaces encoded as `%20` (the drafts folder path
+contains spaces; an unencoded URL dies at the first one in Teams). Run it with a Test Plan row's id → `Status: guard`, no
 file. Run the list-menu parent on doc 42 → same draft behavior as
 before the split.
 
@@ -238,7 +239,7 @@ pass/fail per row).
 
 | # | Action | Expected | Check |
 |---|---|---|---|
-| 1 | "Draft a test plan" → give id 42 → confirm | Draft generated | Reply carries the draft URL, the unreviewed/[VERIFY] reminder, and the Gen_summary line; file exists in the drafts folder |
+| 1 | "Draft a test plan" → give id 42 → confirm | Draft generated | Reply carries the draft URL **as one clickable link — click it in the Teams chat and confirm it opens the draft** (the path has spaces; an unencoded URL truncates at `…/Shared` — this click is the check that catches it), the unreviewed/[VERIFY] reminder, and the Gen_summary line; file exists in the drafts folder |
 | 2 | "Draft a test plan for the conflict prevention story" (title, no id) | Id coaching, no invocation | Agent explains where to find the item id; flow does NOT run (no new file) |
 | 3 | Give a *pick: Test Plan row's* id → confirm | Guard relayed | Reply carries the child's guard message (User Story + Indexed required); `Status: guard`; no file |
 | 4 | Decline at the confirm step | Clean cancel | "Nothing was generated" reply; no flow run in history |
