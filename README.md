@@ -231,7 +231,12 @@ from v2.3 or earlier, do the v2.4 steps first
   PromptVersion trails Config's (the v2.2 backfill gate).
 - **Budget**: MaxDocsPerRun (150) counts only docs actually
   processed; the daily 17:00 Mountain trigger walks the corpus
-  ~150/day until done.
+  ~150/day until done. Since the v2.5 addendum the walk is
+  newest-first (`Get_files` orders by the library's Modified desc),
+  so fresh uploads and just-edited docs index on the next run and
+  backfills migrate the recently touched part of the corpus first
+  — if the library ever passes ~5,000 items, index the Modified
+  column (see `flow/v2_5/CHANGES.md`).
 - **Edges** mint when the LATER doc of an ID-sharing pair
   processes; the graph self-assembles during backfill.
 - **Related documents** (v2.3): each sidecar shows its top 5
