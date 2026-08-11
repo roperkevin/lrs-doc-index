@@ -19,3 +19,8 @@ scp_render.ts
 *_payload.json
 sample_sidecar_related.md
 media/
+stage_v19/
+rr_v12*
+scp_v13*
+zte_v19.ts
+me_v12.ts

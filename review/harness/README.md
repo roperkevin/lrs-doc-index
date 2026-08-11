@@ -148,6 +148,31 @@ python3 check_related.py     # no fixture prereqs — can run standalone
 python3 render_sample.py && cat sample_sidecar.md sample_sidecar_related.md
 ```
 
+## Batch gate — the v1.9 script batch (`check_batch.py`)
+
+The paste gate for the REVIEW_v2_5 script batch
+(`../patches/ZipTextExtract_v1_9.ts`, `MediaExtract_v1_2.ts`,
+`RelatedRank_v1_2.ts`, `SidecarPatch_v1_3.ts` — SC-2..SC-14 + FL-5).
+It stages the four patches under canonical names, re-runs the FULL
+`check_format.py` + `check_related.py` suites over them via the
+`HARNESS_SCRIPTS` env override (the entire existing contract must stay
+green — the batch's behavior changes only fire on new inputs),
+byte-diffs MediaExtract v1.1 vs v1.2 on the valid fixtures, then
+asserts each new behavior on the batch fixtures `make_fixtures.py`
+plants (reordered sldIdLst, hMerge table, over-cap image, Target-first
+rels, astral entity + pasted-markdown H1 + digit-run + bad
+core-property date, encrypted archives, truncated stored block, and
+the RelatedRank/SidecarPatch defensive cases).
+
+```
+python3 make_fixtures.py     # builds the batch fixtures too
+python3 check_batch.py       # any FAIL = do not paste
+```
+
+On promotion (paste all four into the Automate tab + copy the patches
+over `scripts/`), fold the new assertions into `check_format.py` /
+`check_related.py` and mark this gate historical here.
+
 ### Last run (2026-08-09, Node 22.22.2)
 
 All 150+ assertions PASS: 18/18 slide titles promoted and deduplicated,

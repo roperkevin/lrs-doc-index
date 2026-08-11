@@ -572,11 +572,23 @@ historical (`git show 86f016c:` fetches v1.0). Residual: the SC-11
 Documents library (LocationReferencing site) while the list was still
 small; recorded in the v2.5 CHANGES R8 addendum.
 
+**The script batch is authored and fixture-gated** (2026-08-11):
+`patches/ZipTextExtract_v1_9.ts` (SC-2, SC-3, SC-4, SC-5, SC-6, SC-7,
+SC-9 documented, SC-10, SC-14, FL-5), `patches/MediaExtract_v1_2.ts`
+(SC-8, SC-11, SC-14), `patches/RelatedRank_v1_2.ts` (SC-12), and
+`patches/SidecarPatch_v1_3.ts` (SC-13), gated by the new
+`harness/check_batch.py` — which re-runs the FULL existing suites over
+the staged batch (all green), byte-diffs MediaExtract v1.1 vs v1.2
+(identical on valid archives), and asserts every new behavior on new
+fixtures. All four type-check at ES2017. Pending: the Automate-tab paste
+of all four (then promote the patches over `scripts/` and fold the new
+assertions into the standing suites).
+
 Still requiring tenant-side action (designer edits / Automate-tab pastes /
-list settings): FL-3, FL-5, FL-6, the script batch SC-2..SC-14 (SC-11's
-error prefixes included), DX-7, DX-11, DX-12, HA-8/HA-9 (optional), and
-the v1.3 prompt paste itself. (FL-1/FL-2 R9–R11, SC-1, DX-1, DX-8, and
-FL-4 are applied live and recorded.)
+list settings): FL-3, FL-6, the script-batch paste above, DX-7, DX-11,
+DX-12, HA-8/HA-9 (optional), and the v1.3 prompt paste. (FL-1/FL-2
+R9–R11, SC-1, DX-1, DX-8, and FL-4 are applied live and recorded; FL-5
+rides the batch.)
 
 ## Recommended order of work
 

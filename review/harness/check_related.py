@@ -46,12 +46,15 @@ Prereqs: none beyond Node 22+ and pyyaml (fixtures not needed).
 Exit code: non-zero on any failed assertion.
 """
 import json
+import os
 import subprocess
 import sys
 
 import yaml
 
-SCRIPTS = '../../scripts'
+# check_batch.py points this at a staged patch set to gate a script
+# batch with the full suite before pasting; default is the shipped set.
+SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../../scripts')
 
 failures = []
 
