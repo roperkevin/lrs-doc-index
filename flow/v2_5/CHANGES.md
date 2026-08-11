@@ -199,3 +199,59 @@ Smoke check: run history → `Get_files` raw outputs — the first items
 in `value` are the library's most recently modified files; a
 just-uploaded smoke file indexes on the immediately following full
 sweep even with a large Pending backlog.
+
+## Addendum (2026-08-11) — review fixes FL-1/FL-2 (R9–R11)
+
+Two fixes from the full-codebase review (`review/REVIEW_v2_5.md`),
+both in the PromptVersion plumbing. No format change — the sidecars
+are byte-identical — so **no PromptVersion bump**; no script, schema,
+or prompt changes.
+
+**FL-1 — Skipped rows never received a bumped PromptVersion.** The
+`Needs_index` gate reprocesses ANY row whose PromptVersion trails
+Config's, Skipped included — but only `Create_doc_skipped` wrote the
+version; `Update_doc_skipped` didn't. So every version bump turned
+every existing Skipped row (pdf/html/msg + F2-oversize files) into a
+permanent daily `MaxDocsPerRun` slot burn: reconsidered every run,
+never converging, jumping the queue under the R8 newest-first order.
+R9 makes each bump reconsider each Skipped doc exactly once.
+
+**FL-2 — the R4 upsert reorder opened a crash window.** With the row
+upsert moved before the sidecar write, `Create_doc`/`Update_doc`
+stamped `Indexed` + the current PromptVersion before the sidecar
+existed. A run abort in that window (cancellation, outage — nothing
+`Catch_index` sees) left the row satisfying all four `Needs_index`
+legs: permanently done, sidecar stale or missing — and if the abort
+landed after the recycle, `TextFileUrl` pointed into the recycle bin.
+R10 moves the stamp to `Set_text_url`, the last write of the pipeline:
+an aborted run now leaves the version empty (create path) or stale
+(update path), so the row regates next run and self-heals. R11 closes
+the residual sliver by patching the row's URL before recycling the old
+copy. The documented "seconds of empty TextFileUrl" window is
+unchanged; what's gone is the *unrecoverable* state.
+
+- **R9 — `Update_doc_skipped`** (If_has_text → else → If_skip_exists):
+  add field `PromptVersion` = `outputs('Config')?['PromptVersion']`
+  (the same value `Create_doc_skipped` already writes).
+- **R10 — move the stamp**: delete the `PromptVersion` field from both
+  `Create_doc` and `Update_doc`; add field `PromptVersion` =
+  `outputs('Config')?['PromptVersion']` to `Set_text_url`.
+- **R11 — recycle after the URL patch** (optional hardening): drag
+  `Set_text_url` to run directly after `Text_file_url` (before
+  `Old_sidecar_url`), giving `... → Text_file_url → Set_text_url →
+  Old_sidecar_url → If_sidecar_moved → For_each_id`. Safe because
+  `Old_sidecar_url` reads the OLD url from the run-start
+  `Check_indexed` snapshot, not the live row.
+
+Smoke checks:
+- R9: SmokeFile a pdf, run twice. Run 1 stamps the Skipped row with
+  the current PromptVersion; run 2 must not enter `If_process` for it.
+  Expect a one-time budget dip on the first full run after a bump
+  while existing Skipped rows reconcile (one slot each, once).
+- R10/R11: smoke a normal deck — row ends Indexed + current version +
+  valid TextFileUrl (stamp now visible in `Set_text_url`'s payload,
+  absent from the upsert's). Optionally cancel a run mid-`Try_index`
+  after the upsert: the next run must reprocess and heal the doc.
+
+The definition and `DocIndexSweep_v2_5.zip` in this folder carry
+R9–R11.
