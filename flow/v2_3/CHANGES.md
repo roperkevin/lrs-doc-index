@@ -336,3 +336,13 @@ scores, rarest-first `why` ordering, keyword totals under the 1000
 floor, and SidecarPatch round-tripping/merging fractional scores
 (idempotent, stale-integer replacement) — all v1.0 assertions unchanged
 and still green; `rr_v11.ts` type-checks at ES2017.
+
+---
+
+**Addendum (2026-08-11, r2 PV-1):** the sibling import zip was re-cut
+with the connection `displayName` (a personal work email) scrubbed
+from its `manifest.json`. The `definition.json` payload is
+byte-identical to the pre-scrub zip; only the manifest changed, so
+the zip is no longer the byte-exact export artifact (git history
+holds the original). Import behavior is unaffected — connections are
+re-mapped at import time.

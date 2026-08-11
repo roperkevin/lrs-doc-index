@@ -1,5 +1,8 @@
 # Doc Index System — Release v2.5
 
+> Deployed-version questions? `STATUS.md` is the single
+> source-of-truth table (scripts, prompts, components, open actions).
+
 Everything the document-indexing pipeline needs, in one bundle.
 Current as of 2026-08-11. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
@@ -27,16 +30,16 @@ sidecar to its related documents.
 | review/patches/MediaExtract_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/RelatedRank_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
-| DocIndex_Prompt.md | AI Builder prompt (superseded by v1.3) | v1.1 |
+| prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
+| prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
+| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy) | v1.0 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio) | v1.1 |
-| agent/QA_Agent_Setup.md | Q&A agent deployment guide | v1.0 |
+| agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
-| curation/KeywordCuration_Prompt_v1_0.md | Keyword curation prompt (AI Builder) | v1.0 |
-| curation/Curation_Setup.md | Curation flow build + deploy guide | v1.0 |
+| curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/CHANGES.md | Curation release notes | v1.1 |
-| testplangen/TestPlanGen_Prompt_v1_0.md | Test-plan generation prompt (AI Builder) | v1.0 |
 | testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v1.7) |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |
 | testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v1.7 (filename frozen at v1_0) |
@@ -49,9 +52,13 @@ sidecar to its related documents.
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v1.7 |
 
-Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
+Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
+`flow/definition.json` in review round r2 — `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/`, `flow/v2_4/` and their
-zips) remain for provenance; see each `CHANGES.md`.
+zips) remain for provenance; see each `CHANGES.md`. All import zips
+were re-cut 2026-08-11 with the connection display name (a personal
+email) scrubbed from their manifests — payloads byte-identical, see
+the r2 PV-1 addenda.
 
 Retired, not included: TagStrip (superseded by ZipTextExtract; the
 script may remain in Excel harmlessly). Issue Refs list is present
@@ -144,7 +151,7 @@ The vocabulary curates itself — with a human veto: a second, tiny
 flow, **KeywordCuration** (built from `curation/Curation_Setup.md` —
 no import package; new flows have no skeleton), runs Saturdays 08:00
 Mountain, makes ONE AI Builder call over the full canonical
-vocabulary (`curation/KeywordCuration_Prompt_v1_0.md`), and writes
+vocabulary (`prompts/KeywordCuration_Prompt.md`), and writes
 merge proposals onto the Keywords rows via two new flow-owned columns
 (`CurationStatus`, `ProposedCanonical` — see the updated
 `schemas/SPList_Keywords.csv`). It never writes `CanonicalRef`: a
@@ -170,7 +177,7 @@ the sidecar's machine-readable `related:` line to gather context
 style/coverage exemplars, with an exact
 `DocKind eq 'Test Plan' and Surface eq ...` query as fallback), and
 makes ONE AI Builder call
-(`testplangen/TestPlanGen_Prompt_v1_0.md`) that returns a complete
+(`prompts/TestPlanGen_Prompt.md`) that returns a complete
 markdown draft — every test case carrying a mandatory Trace line back
 to a story statement or exemplar pattern, every gap surfaced as a
 `[VERIFY]` item instead of an invention. The draft lands timestamped
@@ -313,12 +320,14 @@ from v2.3 or earlier, do the v2.4 steps first
   next run. The flow writes only its two columns; the sweep never
   reads them.
 - **CurationPromptVersion**: bumps like AgentInstructionsVersion — new
-  `curation/KeywordCuration_Prompt_vX_Y.md`, re-paste into AI Builder,
+  `review/patches/KeywordCuration_Prompt_vX_Y.md`, re-paste into AI
+  Builder, promote to `prompts/KeywordCuration_Prompt.md`,
   re-run the curation smoke suite, record in `curation/CHANGES.md`.
   Never bump `Config.PromptVersion` for curation — nothing here
   reindexes the corpus.
 - **TestPlanGenPromptVersion**: bumps the same way — new
-  `testplangen/TestPlanGen_Prompt_vX_Y.md`, re-paste into AI Builder,
+  `review/patches/TestPlanGen_Prompt_vX_Y.md`, re-paste into AI
+  Builder, promote to `prompts/TestPlanGen_Prompt.md`,
   re-run the generation smoke suite, record in
   `testplangen/CHANGES.md`. Never bump `Config.PromptVersion` for
   generation — nothing here changes the sidecar format or reindexes

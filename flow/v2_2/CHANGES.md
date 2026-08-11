@@ -140,3 +140,13 @@ fixtures — slide-title promotion/dedup, notes interleaving, nested lists,
 docx heading shift, GFM table well-formedness, WorkbookDump caps, token
 recall 1.0000 (bar ≥ 0.97), slugify unit cases — and the wrapped scripts
 type-check at ES2017.
+
+---
+
+**Addendum (2026-08-11, r2 PV-1):** the sibling import zip was re-cut
+with the connection `displayName` (a personal work email) scrubbed
+from its `manifest.json`. The `definition.json` payload is
+byte-identical to the pre-scrub zip; only the manifest changed, so
+the zip is no longer the byte-exact export artifact (git history
+holds the original). Import behavior is unaffected — connections are
+re-mapped at import time.

@@ -63,7 +63,7 @@ returns both with the exact internal names.
 
 Create a custom prompt named `LRS Keyword Curation`. Two input
 parameters, exact names: **Vocabulary**, **DoNotPropose**. Paste the
-delimited block from `curation/KeywordCuration_Prompt_v1_0.md`
+delimited block from `prompts/KeywordCuration_Prompt.md`
 verbatim. Record `CurationPromptVersion: v1.0` in
 `curation/CHANGES.md`.
 

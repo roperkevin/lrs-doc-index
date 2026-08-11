@@ -72,7 +72,7 @@ Check: `/Shared Documents/Test Plan Drafts` exists and is empty.
 Create a custom prompt named `LRS Test Plan Generation`. Four input
 parameters, exact names: **StoryMeta**, **StoryText**,
 **RelatedDigest**, **ExemplarText**. Paste the delimited block from
-`testplangen/TestPlanGen_Prompt_v1_0.md` verbatim. Record
+`prompts/TestPlanGen_Prompt.md` verbatim. Record
 `TestPlanGenPromptVersion: v1.0` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches

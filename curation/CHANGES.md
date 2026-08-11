@@ -1,7 +1,15 @@
 # Curation v1.1 — an emptied queue overwrites the digest (DX-11)
 
 Review fix (`review/REVIEW_v2_5.md` DX-11), applied to the live flow
-2026-08-11. `Save_digest` ran only when `ProposalLines` was non-empty,
+2026-08-11.
+
+Deployment record (added in r2 — this entry originally shipped
+without one; the apply date comes from the sentence above, the
+verification is still open and tracked in `STATUS.md`):
+
+| Date | Tenant | Applied | Verified |
+|---|---|---|---|
+| 2026-08-11 | live flow (per above) | `If_any_lines` No branch (C11) | pending — confirm the next all-resolved Saturday run overwrites the digest | `Save_digest` ran only when `ProposalLines` was non-empty,
 so a week in which every proposal was approved or rejected left LAST
 week's digest in Shared Documents showing already-resolved rows as
 pending — and the runbook tells the librarian to work from the digest

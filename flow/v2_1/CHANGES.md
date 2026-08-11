@@ -60,3 +60,13 @@ oversize gate, F3 JSON slice, F4 Get_files 20000, F6 LastError, F8
 media-present gate, F9/F10 ceilings, F11 run summary — see
 `flow/v2_0/CHANGES.md`), plus this F12 hardening. PromptVersion remains
 `v1.1` — bump only together with pasting the v1.2 prompt.
+
+---
+
+**Addendum (2026-08-11, r2 PV-1):** the sibling import zip was re-cut
+with the connection `displayName` (a personal work email) scrubbed
+from its `manifest.json`. The `definition.json` payload is
+byte-identical to the pre-scrub zip; only the manifest changed, so
+the zip is no longer the byte-exact export artifact (git history
+holds the original). Import behavior is unaffected — connections are
+re-mapped at import time.
