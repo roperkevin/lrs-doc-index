@@ -65,7 +65,7 @@ meta = {
     'last_edited': '2026-07-31T18:22:04Z',
     'extracted': '2026-08-10',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v1.7',
+    'prompt_version': 'v1.8',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
     'summary': ('Explores how conflict prevention should acquire locks when routes '

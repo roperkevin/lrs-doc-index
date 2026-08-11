@@ -1,7 +1,56 @@
 /**
- * ZipTextExtract v1.8 — OOXML file (pptx/docx) → markdown text + rels
+ * ZipTextExtract v1.9 — OOXML file (pptx/docx) → markdown text + rels
  *                       + document core properties
  * --------------------------------------------------------------------
+ * Gate passed and pasted 2026-08-11 (check_batch.py: full v1.8
+ * regression suites green over the batch + every new-behavior fixture;
+ * ES2017 type-check clean). Sidecar-format changes ride the
+ * Config.PromptVersion v1.8 backfill (with DocIndex_Prompt v1.3).
+ *
+ * v1.9 = v1.8 + the REVIEW_v2_5 script batch (SC-2..SC-10, SC-14, FL-5):
+ *
+ *   SC-2  slides are ordered and numbered by ppt/presentation.xml's
+ *         sldIdLst (true presentation order), not by part filename —
+ *         reordered decks index in display order; pruned decks number
+ *         1..N. Falls back to the old numeric part sort when
+ *         presentation.xml or its rels are missing/unresolvable, and
+ *         never drops a slide part that isn't in the list.
+ *   SC-3  pptx merged table cells: <a:tc hMerge="1"> continuation
+ *         cells are skipped (DrawingML keeps them in the markup;
+ *         rendering them plus gridSpan padding column-shifted every
+ *         other row). docx (w:tbl) is untouched — WordprocessingML
+ *         omits covered cells, so padding alone is correct there.
+ *   SC-4  image links are minted only for images MediaExtract will
+ *         actually save: the same 12 / 350 KB / 3 MB caps are applied
+ *         here (central-directory uncompSize, same selection order),
+ *         so sidecars never carry dead image links. The `media` output
+ *         filters the same way — a deck whose referenced images are
+ *         all over-cap now returns empty media and the flow skips the
+ *         MediaExtract call entirely.
+ *   SC-5  numeric character entities above the BMP decode via
+ *         fromCodePoint (astral emoji no longer truncate to garbage).
+ *   SC-6  .rels parsing no longer assumes Id precedes Target in
+ *         attribute order (third-party OOXML writers).
+ *   SC-7  the 10+ digit geometry strip runs line-wise and skips lines
+ *         carrying a markdown link ("](") so generated image links and
+ *         unwrapped HYPERLINK urls are never corrupted.
+ *   SC-10 a content line that would render as an H1 (leading "# ") is
+ *         escaped to "\#" — the sidecar's H1 stays unique to the
+ *         flow-composed header even when documents contain pasted
+ *         markdown.
+ *   SC-14 encrypted zip entries (GP bit 0) throw with a clear message
+ *         instead of inflating ciphertext; truncated stored blocks
+ *         throw instead of zero-padding silently (SC-8, also fixed in
+ *         MediaExtract v1.2).
+ *   FL-5  dcterms:modified is returned only when it parses as a date —
+ *         a malformed value degrades to "" (library fallback) instead
+ *         of poisoning the flow's formatDateTime call every run.
+ *
+ *   Known limitation (SC-9, documented not changed): docx heading
+ *   detection matches the English style ids Heading1..6/Title only;
+ *   non-English Word documents lose heading structure (paragraphs
+ *   render flat). Fine for this corpus.
+ *
  * v1.8 = v1.7 + core-properties extraction (additive; nothing about
  * the text/rels/media pipeline changed):
  *
@@ -83,10 +132,12 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
 
   let contentNames: ZipEntry[] = [];
   let relsNames: ZipEntry[] = [];
+  // v1.9 (SC-2): slide display order/numbers come from presentation.xml
+  const slideDisplay: { [name: string]: number } = {};
   if (isPptx) {
-    const slides = entries
-      .filter((e) => /^ppt\/slides\/slide\d+\.xml$/.test(e.name))
-      .sort((a, b) => slideNum(a.name) - slideNum(b.name));
+    const slideParts = entries.filter((e) => /^ppt\/slides\/slide\d+\.xml$/.test(e.name));
+    const slides = orderSlides(bytes, entries, slideParts);
+    for (let i = 0; i < slides.length; i++) slideDisplay[slides[i].name] = i + 1;
     const notes = entries
       .filter((e) => /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(e.name))
       .sort((a, b) => slideNum(a.name) - slideNum(b.name));
@@ -108,6 +159,8 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
     relText[e.name] = t;
   }
 
+  // v1.9 (SC-4): only link images MediaExtract will actually save
+  const savedSet = mediaSaveSet(entries);
   const mediaSet: { [n: string]: boolean } = {};
   function slideImages(slideName: string, xml: string): string {
     // find r:embed ids in the slide, resolve via its rels to ../media targets
@@ -115,15 +168,21 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
       ? slideName.replace(/^ppt\/slides\//, "ppt/slides/_rels/") + ".rels"
       : "word/_rels/document.xml.rels";
     const rels = relText[relName] || "";
+    // v1.9 (SC-6): attribute-order-independent rels parsing
     const idToMedia: { [id: string]: string } = {};
-    const rre = /Id="([^"]+)"[^>]*Target="[^"]*media\/([^"]+)"/g;
+    const tagRe = /<Relationship\b[^>]*>/g;
     let m: RegExpExecArray | null;
-    while ((m = rre.exec(rels)) !== null) idToMedia[m[1]] = m[2];
+    while ((m = tagRe.exec(rels)) !== null) {
+      const idm = m[0].match(/\bId="([^"]+)"/);
+      const tgm = m[0].match(/\bTarget="[^"]*media\/([^"]+)"/);
+      if (idm && tgm) idToMedia[idm[1]] = tgm[1];
+    }
     const links: string[] = [];
     const bre = /r:embed="([^"]+)"/g;
     while ((m = bre.exec(xml)) !== null) {
       const f = idToMedia[m[1]];
-      if (f && /\.(png|jpe?g|gif|bmp)$/i.test(f) && !links.some((l) => l.indexOf("(" + prefix + f + ")") >= 0)) {
+      if (f && /\.(png|jpe?g|gif|bmp)$/i.test(f) && savedSet[f] &&
+          !links.some((l) => l.indexOf("(" + prefix + f + ")") >= 0)) {
         links.push("![" + f + "](" + prefix + f + ")");
         mediaSet[f] = true;
       }
@@ -143,7 +202,8 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
       const imgs = prefix ? slideImages(e.name, xml) : "";
       const hit = findTitleShape(xml);
       const title = hit ? hit.text : "";
-      const heading = "\n## Slide " + slideNum(e.name) + (title ? " — " + title : "") + "\n";
+      // v1.9 (SC-2): display number = position in presentation order
+      const heading = "\n## Slide " + (slideDisplay[e.name] || slideNum(e.name)) + (title ? " — " + title : "") + "\n";
       const body = hit && title ? xml.slice(0, hit.start) + xml.slice(hit.end) : xml;
       xmlParts.push(heading + body + imgs);
       // resolve this slide's notes part through its own rels — the
@@ -202,10 +262,17 @@ interface CoreProps {
   lastEdited: string;
 }
 
+// v1.9 (SC-5): astral-safe code point -> string (fromCharCode truncates
+// to 16 bits; &#x1F600; must come out as the emoji, not U+F600 junk)
+function codePointStr(cp: number): string {
+  if (!isFinite(cp) || cp < 0 || cp > 0x10ffff) return "";
+  return cp <= 0xffff ? String.fromCharCode(cp) : String.fromCodePoint(cp);
+}
+
 function decodeXmlEntities(s: string): string {
   return s
-    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16)))
-    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(parseInt(d, 10)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => codePointStr(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d: string) => codePointStr(parseInt(d, 10)))
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&lt;/g, "<")
@@ -227,16 +294,88 @@ function readCoreProps(bytes: Uint8Array, entries: ZipEntry[]): CoreProps {
     const m = xml.match(re);
     return m ? decodeXmlEntities(m[1]).replace(/\s+/g, " ").trim() : "";
   };
+  // v1.9 (FL-5): a malformed dcterms:modified would make the flow's
+  // formatDateTime throw on EVERY run of this doc (a deterministic
+  // poison loop) — keep the value only when it parses as a date.
+  const le = grab(/<dcterms:modified[^>]*>([\s\S]*?)<\/dcterms:modified>/);
   return {
     author: grab(/<dc:creator[^>]*>([\s\S]*?)<\/dc:creator>/),
     lastEditedBy: grab(/<cp:lastModifiedBy[^>]*>([\s\S]*?)<\/cp:lastModifiedBy>/),
-    lastEdited: grab(/<dcterms:modified[^>]*>([\s\S]*?)<\/dcterms:modified>/),
+    lastEdited: le !== "" && !isNaN(Date.parse(le)) ? le : "",
   };
 }
 
 function slideNum(name: string): number {
   const m = name.match(/[sS]lide(\d+)\.xml$/);
   return m ? parseInt(m[1], 10) : 0;
+}
+
+// v1.9 (SC-2): true presentation order from ppt/presentation.xml's
+// sldIdLst, resolved through ppt/_rels/presentation.xml.rels.
+// PowerPoint does not renumber slide parts on reorder/delete, so part
+// filenames are creation order, not display order. Fallback: the old
+// numeric part sort when either part is missing or resolves to zero
+// slides; parts absent from the list are appended (never dropped).
+function orderSlides(bytes: Uint8Array, entries: ZipEntry[], slides: ZipEntry[]): ZipEntry[] {
+  const fallback = slides.slice().sort((a, b) => slideNum(a.name) - slideNum(b.name));
+  const presEntry = entries.filter((e) => e.name === "ppt/presentation.xml")[0];
+  const presRels = entries.filter((e) => e.name === "ppt/_rels/presentation.xml.rels")[0];
+  if (!presEntry || !presRels) return fallback;
+  let presXml = "";
+  let relsXml = "";
+  try {
+    presXml = utf8ToString(extractEntry(bytes, presEntry));
+    relsXml = utf8ToString(extractEntry(bytes, presRels));
+  } catch (e) {
+    return fallback;
+  }
+  const idToSlide: { [id: string]: string } = {};
+  const tagRe = /<Relationship\b[^>]*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(relsXml)) !== null) {
+    const idm = m[0].match(/\bId="([^"]+)"/);
+    const tgm = m[0].match(/\bTarget="[^"]*?(slides\/slide\d+\.xml)"/);
+    if (idm && tgm) idToSlide[idm[1]] = "ppt/" + tgm[1];
+  }
+  const lst = presXml.match(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/);
+  if (!lst) return fallback;
+  const byName: { [n: string]: ZipEntry } = {};
+  for (const s of slides) byName[s.name] = s;
+  const ordered: ZipEntry[] = [];
+  const used: { [n: string]: boolean } = {};
+  const rid = /r:id="([^"]+)"/g;
+  while ((m = rid.exec(lst[0])) !== null) {
+    const n = idToSlide[m[1]];
+    if (n && byName[n] && !used[n]) {
+      used[n] = true;
+      ordered.push(byName[n]);
+    }
+  }
+  if (ordered.length === 0) return fallback;
+  for (const s of fallback) {
+    if (!used[s.name]) ordered.push(s);
+  }
+  return ordered;
+}
+
+// v1.9 (SC-4): replicate MediaExtract's selection exactly (same regex,
+// same caps, same central-directory order, sizes from uncompSize) so
+// the links minted here name only files that will actually exist.
+function mediaSaveSet(entries: ZipEntry[]): { [base: string]: boolean } {
+  const MAX_IMAGES = 12;
+  const MAX_ONE = 350 * 1024;
+  const MAX_TOTAL = 3 * 1024 * 1024;
+  const set: { [b: string]: boolean } = {};
+  let count = 0;
+  let total = 0;
+  for (const e of entries) {
+    if (!/^(ppt|word)\/media\/[^/]+\.(png|jpe?g|gif|bmp)$/i.test(e.name)) continue;
+    if (count >= MAX_IMAGES || e.uncompSize > MAX_ONE || total + e.uncompSize > MAX_TOTAL) continue;
+    set[e.name.replace(/^.*\//, "")] = true;
+    count++;
+    total += e.uncompSize;
+  }
+  return set;
 }
 
 // Locate the slide's title placeholder (p:ph type="title"|"ctrTitle")
@@ -295,6 +434,11 @@ function renderTables(xml: string, ns: string): string {
         for (let j = 1; j < cells.length; j++) {
           const raw = cells[j];
           const opener = (raw.match(/^[^>]*/) || [""])[0];
+          // v1.9 (SC-3): DrawingML keeps horizontally-merged-away cells
+          // in the markup as <a:tc hMerge="1"/>; rendering them AND
+          // padding gridSpan double-counts and column-shifts the table.
+          // (WordprocessingML omits covered cells — w path unchanged.)
+          if (ns === "a" && /\bhMerge="(1|true)"/.test(opener)) continue;
           let span = 1;
           const gs = opener.match(/gridSpan="(\d+)"/) ||
                      raw.match(new RegExp("<" + ns + ':gridSpan [^>]*val="(\\d+)"'));
@@ -383,8 +527,9 @@ function stripOoxml(xml: string): string {
   t = t.replace(/<\/w:p>|<\/w:tc>|<\/a:p>|<w:br\b[^>]*>|<w:cr\b[^>]*>|<a:br\b[^>]*>/g, "\n");
   t = t.replace(/<w:tab\/>/g, "\t");
   t = t.replace(/<[^>]+>/g, "");
-  t = t.replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => String.fromCharCode(parseInt(h, 16)));
-  t = t.replace(/&#(\d+);/g, (_m, d: string) => String.fromCharCode(parseInt(d, 10)));
+  // v1.9 (SC-5): astral-safe entity decode (same helper as core props)
+  t = t.replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => codePointStr(parseInt(h, 16)));
+  t = t.replace(/&#(\d+);/g, (_m, d: string) => codePointStr(parseInt(d, 10)));
   t = t
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
@@ -398,11 +543,25 @@ function stripOoxml(xml: string): string {
   t = t.replace(/\bHYPERLINK\s+"([^"]+)"/g, "$1");
   t = t.replace(/\\[olt]\s+"[^"]*"/g, "");
   // - strip glued drawing-geometry digit runs (posOffset etc.); no real
-  //   content is a 10+ digit run (issue ids <=6, dates/measures shorter)
-  t = t.replace(/\d{10,}/g, "");
+  //   content is a 10+ digit run (issue ids <=6, dates/measures shorter).
+  //   v1.9 (SC-7): applied line-wise, skipping lines that carry a
+  //   markdown link ("](") — generated image links and unwrapped
+  //   HYPERLINK urls are never corrupted by the strip.
+  {
+    const lines = t.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf("](") < 0) lines[i] = lines[i].replace(/\d{10,}/g, "");
+    }
+    t = lines.join("\n");
+  }
   // v1.7: drop prefix artifacts left by empty paragraphs (an empty
   // heading- or list-styled paragraph renders as a bare "- " or "##")
   t = t.replace(/^[ \t]*-[ \t]*$/gm, "").replace(/^#{2,6} *$/gm, "");
+  // v1.9 (SC-10): a content line that would render as an H1 breaks the
+  // "H1 unique to the flow header" contract (pasted markdown in decks
+  // is common) — escape it. Generated headings are always ##..######,
+  // never a single #, so only document content can match here.
+  t = t.replace(/^#(?=[ \t]|$)/gm, "\\#");
   t = t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
   return t.trim();
 }
@@ -436,6 +595,7 @@ function b64ToBytes(b64: string): Uint8Array {
 interface ZipEntry {
   name: string;
   method: number;
+  flags: number; // v1.9 (SC-14): general-purpose bit flags
   compSize: number;
   uncompSize: number;
   localOffset: number;
@@ -461,6 +621,7 @@ function readCentralDirectory(b: Uint8Array): ZipEntry[] {
   const entries: ZipEntry[] = [];
   for (let i = 0; i < count; i++) {
     if (u32(b, p) !== 0x02014b50) throw new Error("ZipTextExtract: bad central header at " + p);
+    const flags = u16(b, p + 8);
     const method = u16(b, p + 10);
     const compSize = u32(b, p + 20);
     const uncompSize = u32(b, p + 24);
@@ -470,13 +631,17 @@ function readCentralDirectory(b: Uint8Array): ZipEntry[] {
     const localOffset = u32(b, p + 42);
     let name = "";
     for (let k = 0; k < nameLen; k++) name += String.fromCharCode(b[p + 46 + k]);
-    entries.push({ name: name, method: method, compSize: compSize, uncompSize: uncompSize, localOffset: localOffset });
+    entries.push({ name: name, method: method, flags: flags, compSize: compSize, uncompSize: uncompSize, localOffset: localOffset });
     p += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
 }
 
 function extractEntry(b: Uint8Array, e: ZipEntry): Uint8Array {
+  // v1.9 (SC-14): an encrypted stored entry would otherwise return
+  // ciphertext as "text" silently — the one silent-wrong-output path
+  // in the zip layer.
+  if ((e.flags & 0x1) !== 0) throw new Error("ZipTextExtract: encrypted entry " + e.name);
   const p = e.localOffset;
   if (u32(b, p) !== 0x04034b50) throw new Error("ZipTextExtract: bad local header for " + e.name);
   const nameLen = u16(b, p + 26);
@@ -565,6 +730,11 @@ function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
       bitBuf = 0; bitCnt = 0;
       const len = src[pos] | (src[pos + 1] << 8);
       pos += 4; // skip LEN + NLEN
+      // v1.9 (SC-8): a truncated stored block previously zero-padded
+      // silently (OOB Uint8Array reads yield undefined -> 0), emitting
+      // garbled text as a "successful" extraction. Huffman blocks
+      // already throw via bits(); stored blocks now match.
+      if (pos + len > src.length) throw new Error("inflate: stored block out of input");
       ensure(len);
       for (let i = 0; i < len; i++) out[outLen++] = src[pos++];
     } else {

@@ -1,14 +1,24 @@
 /**
- * MediaExtract v1.1 — pull raster images out of a pptx/docx, bounded
+ * MediaExtract v1.2 — pull raster images out of a pptx/docx, bounded
  * ------------------------------------------------------------
- * v1.1 is v1.0 with typed-array plumbing only (performance, F7 in
+ * Gate passed and pasted 2026-08-11 (check_batch.py: v1.1 vs v1.2
+ * byte-identical on every valid fixture; throw paths exercised).
+ *
+ * v1.2 = v1.1 + the REVIEW_v2_5 batch (SC-8, SC-11, SC-14). Output on
+ * every valid archive is byte-identical to v1.1 — the changes are
+ * throw paths and error text only:
+ *
+ *   SC-11 error messages now say "MediaExtract:" (v1.0/v1.1 said
+ *         "ZipTextExtract:", sending Error-row triage to the wrong
+ *         script).
+ *   SC-14 encrypted zip entries (GP bit 0) throw instead of returning
+ *         ciphertext as image bytes.
+ *   SC-8  truncated stored blocks throw instead of zero-padding
+ *         silently (matches ZipTextExtract v1.9).
+ *
+ * v1.1 = v1.0 with typed-array plumbing only (performance, F7 in
  * the v1.9 review): same shared zip/inflate changes as ZipTextExtract
- * v1.6, plus chunked base64 encoding in bytesToB64. Output
- * byte-identical by construction. Gate passed and promoted
- * 2026-08-11: run_diff.py IDENTICAL on both media fixtures,
- * ground-truth OK, nonzero images (the post-review harness with the
- * vacuous-zero check closed). Historical gate recipe:
- * review/harness/README.md.
+ * v1.6, plus chunked base64 encoding in bytesToB64.
  * ------------------------------------------------------------
  * Companion to ZipTextExtract. Takes the same base64 file content,
  * returns raster media entries (png/jpg/jpeg/gif/bmp) as base64 so
@@ -94,6 +104,7 @@ function b64ToBytes(b64: string): Uint8Array {
 interface ZipEntry {
   name: string;
   method: number;
+  flags: number; // v1.2 (SC-14): general-purpose bit flags
   compSize: number;
   uncompSize: number;
   localOffset: number;
@@ -113,12 +124,13 @@ function readCentralDirectory(b: Uint8Array): ZipEntry[] {
       eocd = p; break;
     }
   }
-  if (eocd < 0) throw new Error("ZipTextExtract: EOCD not found (not a zip?)");
+  if (eocd < 0) throw new Error("MediaExtract: EOCD not found (not a zip?)");
   const count = u16(b, eocd + 10);
   let p = u32(b, eocd + 16); // central directory offset
   const entries: ZipEntry[] = [];
   for (let i = 0; i < count; i++) {
-    if (u32(b, p) !== 0x02014b50) throw new Error("ZipTextExtract: bad central header at " + p);
+    if (u32(b, p) !== 0x02014b50) throw new Error("MediaExtract: bad central header at " + p);
+    const flags = u16(b, p + 8);
     const method = u16(b, p + 10);
     const compSize = u32(b, p + 20);
     const uncompSize = u32(b, p + 24);
@@ -128,22 +140,24 @@ function readCentralDirectory(b: Uint8Array): ZipEntry[] {
     const localOffset = u32(b, p + 42);
     let name = "";
     for (let k = 0; k < nameLen; k++) name += String.fromCharCode(b[p + 46 + k]);
-    entries.push({ name: name, method: method, compSize: compSize, uncompSize: uncompSize, localOffset: localOffset });
+    entries.push({ name: name, method: method, flags: flags, compSize: compSize, uncompSize: uncompSize, localOffset: localOffset });
     p += 46 + nameLen + extraLen + commentLen;
   }
   return entries;
 }
 
 function extractEntry(b: Uint8Array, e: ZipEntry): Uint8Array {
+  // v1.2 (SC-14): never return ciphertext as image bytes
+  if ((e.flags & 0x1) !== 0) throw new Error("MediaExtract: encrypted entry " + e.name);
   const p = e.localOffset;
-  if (u32(b, p) !== 0x04034b50) throw new Error("ZipTextExtract: bad local header for " + e.name);
+  if (u32(b, p) !== 0x04034b50) throw new Error("MediaExtract: bad local header for " + e.name);
   const nameLen = u16(b, p + 26);
   const extraLen = u16(b, p + 28); // local extra can differ from central
   const dataStart = p + 30 + nameLen + extraLen;
   const data = b.subarray(dataStart, dataStart + e.compSize); // v1.1: view, no copy
   if (e.method === 0) return data;                    // stored
   if (e.method === 8) return inflateRaw(data, e.uncompSize); // deflate
-  throw new Error("ZipTextExtract: unsupported compression method " + e.method + " for " + e.name);
+  throw new Error("MediaExtract: unsupported compression method " + e.method + " for " + e.name);
 }
 
 // ------------------------------------------------------------ inflate (RFC 1951)
@@ -223,6 +237,8 @@ function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
       bitBuf = 0; bitCnt = 0;
       const len = src[pos] | (src[pos + 1] << 8);
       pos += 4; // skip LEN + NLEN
+      // v1.2 (SC-8): throw on truncation instead of zero-padding
+      if (pos + len > src.length) throw new Error("inflate: stored block out of input");
       ensure(len);
       for (let i = 0; i < len; i++) out[outLen++] = src[pos++];
     } else {

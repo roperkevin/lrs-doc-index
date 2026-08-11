@@ -572,23 +572,22 @@ historical (`git show 86f016c:` fetches v1.0). Residual: the SC-11
 Documents library (LocationReferencing site) while the list was still
 small; recorded in the v2.5 CHANGES R8 addendum.
 
-**The script batch is authored and fixture-gated** (2026-08-11):
-`patches/ZipTextExtract_v1_9.ts` (SC-2, SC-3, SC-4, SC-5, SC-6, SC-7,
-SC-9 documented, SC-10, SC-14, FL-5), `patches/MediaExtract_v1_2.ts`
-(SC-8, SC-11, SC-14), `patches/RelatedRank_v1_2.ts` (SC-12), and
-`patches/SidecarPatch_v1_3.ts` (SC-13), gated by the new
-`harness/check_batch.py` — which re-runs the FULL existing suites over
-the staged batch (all green), byte-diffs MediaExtract v1.1 vs v1.2
-(identical on valid archives), and asserts every new behavior on new
-fixtures. All four type-check at ES2017. Pending: the Automate-tab paste
-of all four (then promote the patches over `scripts/` and fold the new
-assertions into the standing suites).
+**The script batch and the v1.3 prompt are LIVE** (2026-08-11): all
+four patches (SC-2..SC-14, FL-5) passed `harness/check_batch.py`, were
+pasted into the Automate tab together with `DocIndex_Prompt_v1_3.md`
+(DX-2, DX-14), and `Config.PromptVersion` bumped v1.7 → `v1.8` — one
+converging backfill covers both. The patches are promoted over
+`scripts/` (v1.9 / v1.2 / v1.2 / v1.3), the new-behavior assertions
+are folded into the standing suites (`check_format.py` §9,
+`check_related.py` §10/§11 — all green against the promoted scripts),
+`check_batch.py` is marked historical, and R12 in
+`flow/v2_5/CHANGES.md` records the bump (definition + zip carry it).
 
-Still requiring tenant-side action (designer edits / Automate-tab pastes /
-list settings): FL-3, FL-6, the script-batch paste above, DX-7, DX-11,
-DX-12, HA-8/HA-9 (optional), and the v1.3 prompt paste. (FL-1/FL-2
-R9–R11, SC-1, DX-1, DX-8, and FL-4 are applied live and recorded; FL-5
-rides the batch.)
+Still requiring tenant-side action: FL-3 (finish or delete the dead
+error-capture composes), FL-6 (informational), DX-7 (empty-release
+exemplar match), DX-11 (empty-queue digest), DX-12 (menu-path guard
+visibility), and HA-8/HA-9 (optional). Everything else in this review
+is applied and recorded.
 
 ## Recommended order of work
 

@@ -39,6 +39,14 @@ v2.3 contract:
        the output verbatim (set and merge alike), and a folder-less
        file comes back with folder "" (v1.2 — lets the flow save
        patched files back into their own kind subfolders)
+   10. RelatedRank v1.2 defensive cases: an idLinks row where neither
+       endpoint is self credits nobody; title-less keywords score but
+       never leak raw ids into why/sharedKeywords
+   11. SidecarPatch v1.3 hardening: BOM/CRLF input is normalized and
+       patched (unsafe files keep original bytes); bullets escape
+       ] --> > metacharacters; meta-less fallback entries render
+       unlinked (folded from check_batch.py on the 2026-08-11
+       promotion)
 
 Both wrapped runners must type-check at ES2017.
 
@@ -433,6 +441,54 @@ check(fa['folder'] == '/LRS Doc Index/User Stories' and
       'folder passes through verbatim in set and merge modes')
 [fc] = patch([{'doc': 42, 'name': 'self.md', 'content': sidecar()}])
 check(fc['folder'] == '', 'folder-less file object comes back with folder ""')
+
+# -- v1.2: idLinks row with neither endpoint = self -----------------------
+r = run('rr_v11.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [idlink(7, 8, 'a#1')], 'topN': 5})
+check(r['count'] == 0, 'idLinks row with neither endpoint = self credits nobody')
+
+# -- v1.2: title-less keywords score but never surface raw ids ------------
+r = run('rr_v11.ts', {'selfId': '42',
+                      'myKws': [kwrow(42, 1, 'locks'),
+                                {'Document': {'Id': 42}, 'Keyword': {'Id': 5}}],
+                      'sharers': [kwrow(10, 1, 'locks'),
+                                  {'Document': {'Id': 10}, 'Keyword': {'Id': 5}}],
+                      'idLinks': [], 'topN': 5})
+check(r['count'] == 1 and r['related'][0]['s'] == 2,
+      'title-less keyword still counts toward the score (s == 2)')
+check(r['related'][0]['why'] == '1 shared keyword: locks' and
+      r['related'][0]['sharedKeywords'] == ['locks'],
+      'title-less keyword leaves why/sharedKeywords (no raw ids)')
+
+# -- v1.3: BOM/CRLF sidecar is normalized and patched ---------------------
+crlf = '﻿' + sidecar().replace('\n', '\r\n')
+[out] = patch([{'doc': 42, 'name': 's.md', 'content': crlf}])
+check(out['changed'] and '\r' not in out['content'] and '﻿' not in out['content'],
+      'BOM+CRLF sidecar is normalized (patchable again)')
+check('<!-- rel:17 -->' in out['content'], 'normalized sidecar received the patch')
+[again] = patch([{'doc': 42, 'name': 's.md', 'content': out['content']}])
+check(not again['changed'] and again['content'] == out['content'],
+      'idempotent after normalization')
+
+# -- v1.3: unsafe-to-patch input keeps its ORIGINAL bytes -----------------
+junk = 'no frontmatter here\r\nat all'
+[out] = patch([{'doc': 42, 'name': 'x.md', 'content': junk}])
+check(not out['changed'] and out['content'] == junk and out['note'] == 'not-frontmatter',
+      'unsafe file returns original bytes untouched (CRLF included)')
+
+# -- v1.3: bullet metacharacter escaping ----------------------------------
+bad_meta = [{'ID': 17, 'Title': 'Bad] --> [Title',
+             'TextFileUrl': 'https://x/s/Test Plans/we>ird__doc17.md'}]
+[out] = patch([{'doc': 42, 'name': 's.md', 'content': sidecar()}], meta=bad_meta)
+check('[Bad - Title](<https://x/s/Test Plans/we%3Eird__doc17.md>)' in out['content'],
+      'bullet escapes ] --> and > in title/url')
+
+# -- v1.3: meta-less fallback entry renders unlinked ----------------------
+fb_neighbor = sidecar(related_line='related: [{"doc":99,"file":"other__doc99.md","s":1}]')
+[out] = patch([{'doc': 17, 'name': 'n.md', 'content': fb_neighbor}])
+fb_line = [ln for ln in out['content'].split('\n') if 'rel:99' in ln]
+check(bool(fb_line) and '](' not in fb_line[0] and 'other__doc99.md' in fb_line[0],
+      'meta-less entry renders as plain text, not a bare-filename link')
 
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------

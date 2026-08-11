@@ -18,6 +18,12 @@ as-is), this validates the *intentional* format change:
      lastEditedBy / lastEdited come back from docProps/core.xml with
      entities decoded; a fixture without core.xml degrades to empty
      strings, not an error
+  9. the v1.9 batch behaviors (folded from check_batch.py on the
+     2026-08-11 promotion): presentation-order slides, hMerge cells
+     skipped, cap-aware image links (link set ⊆ MediaExtract's saved
+     set), attr-order-proof rels, link-safe digit strip, astral
+     entities, content-H1 escaping, date-validated core properties,
+     and the encrypted / truncated-stored-block throw paths
 
 Prereqs: make_fixtures.py has run in this directory. The wrapped Node
 runners are (re)generated here on every run.
@@ -224,6 +230,71 @@ check(len(slugs[2]) <= 80 and not slugs[2].endswith('-') and slugs[2].startswith
       f'slug: long title capped at word boundary ({len(slugs[2])} chars)')
 check(slugs[3] == 'my-fallback-file', f'slug: non-Latin title falls back to filename -> {slugs[3]}')
 check(slugs[4] == 'doc', f'slug: nothing slugifiable -> literal "doc" ({slugs[4]})')
+
+# ---- 9: v1.9 batch behaviors (ZipTextExtract v1.9 / MediaExtract v1.2) --
+import base64
+import zipfile
+
+subprocess.run([sys.executable, 'wrap.py', f'{SCRIPTS}/MediaExtract.ts', 'me_cur.ts'], check=True)
+
+
+def run_node_fail(script, *args):
+    return subprocess.run(['node', '--experimental-strip-types', script, *args],
+                          capture_output=True, text=True, encoding='utf-8')
+
+
+# SC-2: presentation-order slides
+text = run_node('zte_v18.ts', 'reordered_deck.pptx.b64', '')['out']['text']
+heads = [ln for ln in text.split('\n') if ln.startswith('## Slide ')]
+check(len(heads) == 4 and heads[0] == '## Slide 1 — OrderTitle3',
+      'reversed sldIdLst: first section is "## Slide 1 — OrderTitle3"')
+order = [text.find(f'OrderTitle{i}') for i in (3, 2, 1, 0)]
+check(all(a >= 0 for a in order) and order == sorted(order),
+      'sections appear in presentation order')
+
+# SC-3: hMerge continuation cells skipped
+text = run_node('zte_v18.ts', 'merged_deck.pptx.b64', '')['out']['text']
+mrows = [ln for ln in text.split('\n') if ln.startswith('| ')]
+check(len(mrows) >= 4 and all(len(cells(r)) == 3 for r in mrows),
+      'hMerge table keeps width 3 on every row')
+
+# SC-4: link set ⊆ saved set
+with zipfile.ZipFile('bigimg_deck.pptx') as z:
+    sizes = {n.split('/')[-1]: z.getinfo(n).file_size for n in z.namelist() if '/media/' in n}
+small = [n for n, sz in sizes.items() if sz <= 350 * 1024][0]
+big = [n for n, sz in sizes.items() if sz > 350 * 1024][0]
+zout = run_node('zte_v18.ts', 'bigimg_deck.pptx.b64', 'media/docX_')['out']
+mout = run_node('me_cur.ts', 'bigimg_deck.pptx.b64')['out']
+check(f'](media/docX_{small})' in zout['text'] and big not in zout['text'] and zout['media'] == small,
+      'only the under-cap image is linked / listed')
+check(mout['count'] == 1 and mout['images'][0]['name'] == small and big in mout['skipped'],
+      'MediaExtract saves the same set; over-cap lands in skipped')
+
+# SC-6 / SC-7: rels attr order + link-safe digit strip
+zr = run_node('zte_v18.ts', 'relswap_deck.pptx.b64', 'media/docX_')['out']
+check('](media/docX_image1.png)' in zr['text'], 'Target-before-Id rels still resolve')
+zr = run_node('zte_v18.ts', 'relswap_deck.pptx.b64', 'media/doc12345678901_')['out']
+check('](media/doc12345678901_image1.png)' in zr['text'],
+      '10+ digit prefix survives inside the generated link')
+
+# SC-5 / SC-10 / SC-7 / FL-5: edgecase deck
+ze = run_node('zte_v18.ts', 'edgecase2_deck.pptx.b64', '')['out']
+check('😀' in ze['text'], 'astral entity decodes to the emoji')
+check('\\# Roadmap pasted markdown' in ze['text'] and
+      not any(re.match(r'^# ', ln) for ln in ze['text'].split('\n')),
+      'content H1 escaped; no H1 in body output')
+check('12345678901234' not in ze['text'], 'long digit run stripped from plain content')
+check(ze['lastEdited'] == '', 'malformed dcterms:modified degrades to ""')
+
+# SC-14 / SC-8 / SC-11: throw paths
+r = run_node_fail('zte_v18.ts', 'encrypted_deck.pptx.b64', '')
+check(r.returncode != 0 and 'encrypted' in r.stderr, 'ZTE throws on encrypted entries')
+r = run_node_fail('me_cur.ts', 'encrypted_img_deck.pptx.b64')
+check(r.returncode != 0 and 'MediaExtract:' in r.stderr and 'ZipTextExtract' not in r.stderr,
+      'MediaExtract throws on encrypted entries under its own name')
+r = run_node_fail('zte_v18.ts', 'truncstored.docx.b64', '')
+check(r.returncode != 0 and 'stored block out of input' in r.stderr,
+      'truncated stored block throws instead of zero-padding')
 
 print()
 if failures:

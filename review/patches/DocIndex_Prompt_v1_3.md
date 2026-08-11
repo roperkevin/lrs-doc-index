@@ -1,4 +1,4 @@
-# Doc Index Prompt — v1.3 (keyword-rule reconciliation + fence hardening) — PROPOSED, not yet pasted
+# Doc Index Prompt — v1.3 (keyword-rule reconciliation + fence hardening) — CURRENT, pasted 2026-08-11 with Config.PromptVersion → v1.8
 
 Minimal diff of v1.2, fixing two review findings (REVIEW_v2_5.md DX-2, DX-14):
 
