@@ -25,12 +25,15 @@ runners are (re)generated here on every run.
 Exit code: non-zero on any failed assertion.
 """
 import json
+import os
 import re
 import subprocess
 import sys
 
 RECALL_BAR = 0.97
-SCRIPTS = '../../scripts'
+# check_batch.py points this at a staged patch set to gate a script
+# batch with the full suite before pasting; default is the shipped set.
+SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../../scripts')
 
 failures = []
 

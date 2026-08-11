@@ -23,6 +23,10 @@ sidecar to its related documents.
 | scripts/SidecarPatch.ts | Surgical related-section patching | v1.2 |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (current) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (PROPOSED — pending paste + PromptVersion → v1.8; see REVIEW_v2_5.md DX-2/DX-14) | v1.3 |
+| review/patches/ZipTextExtract_v1_9.ts | GATED script batch: slide order, hMerge, cap-aware links, entity/strip/zip hardening (pending check_batch.py + paste) | v1.9 |
+| review/patches/MediaExtract_v1_2.ts | GATED script batch: own error prefixes, encrypted/truncation throws (pending check_batch.py + paste) | v1.2 |
+| review/patches/RelatedRank_v1_2.ts | GATED script batch: defensive idLinks/keyword-title guards (pending check_batch.py + paste) | v1.2 |
+| review/patches/SidecarPatch_v1_3.ts | GATED script batch: BOM/CRLF normalization, bullet escaping (pending check_batch.py + paste) | v1.3 |
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
