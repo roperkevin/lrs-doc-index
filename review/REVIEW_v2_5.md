@@ -583,11 +583,17 @@ are folded into the standing suites (`check_format.py` §9,
 `check_batch.py` is marked historical, and R12 in
 `flow/v2_5/CHANGES.md` records the bump (definition + zip carry it).
 
-Still requiring tenant-side action: FL-3 (finish or delete the dead
-error-capture composes), FL-6 (informational), DX-7 (empty-release
-exemplar match), DX-11 (empty-queue digest), DX-12 (menu-path guard
-visibility), and HA-8/HA-9 (optional). Everything else in this review
-is applied and recorded.
+**FL-3 is fixed in the repo** (2026-08-11, R13 in the v2.5 CHANGES):
+the `LastError` column is back in the schema, both catch writes carry
+`outputs('Err_detail')`, and `Set_text_url`/`Update_doc_skipped` clear
+it on recovery — apply live as the column-create + four designer edits
+documented there.
+
+Still requiring tenant-side action: the FL-3 edits above (R13), FL-6
+(informational), DX-7 (empty-release exemplar match), DX-11
+(empty-queue digest), DX-12 (menu-path guard visibility), and
+HA-8/HA-9 (optional). Everything else in this review is applied and
+recorded.
 
 ## Recommended order of work
 
