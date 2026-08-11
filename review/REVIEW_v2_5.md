@@ -560,10 +560,23 @@ apply to the live flow as the three designer edits documented there.
 and `HHmmss` draft names in both flow definitions, both packages re-cut,
 and the Teams-click smoke check in `Agent_Setup.md`).
 
+**SC-1 is fixed** (2026-08-11): the v1.1 patch passed the (post-HA-3)
+harness gate and was pasted into the Automate tab; `scripts/
+MediaExtract.ts` is now the v1.1 content with a promotion-record header,
+README rows updated, and the harness README's MediaExtract gate marked
+historical (`git show 86f016c:` fetches v1.0). Residual: the SC-11
+"ZipTextExtract:" error-prefix misattribution survives in v1.1 by design
+(byte-identical-output constraint) — it belongs to the next script batch.
+
+**FL-4 is done** (2026-08-11): Modified is indexed on the source
+Documents library (LocationReferencing site) while the list was still
+small; recorded in the v2.5 CHANGES R8 addendum.
+
 Still requiring tenant-side action (designer edits / Automate-tab pastes /
-list settings): the FL-1/FL-2 designer edits (R9–R11), FL-3..FL-6,
-SC-1..SC-10, SC-12..SC-14, DX-7, DX-11, DX-12, HA-8/HA-9
-(optional), and the v1.3 prompt paste itself.
+list settings): FL-3, FL-5, FL-6, the script batch SC-2..SC-14 (SC-11's
+error prefixes included), DX-7, DX-11, DX-12, HA-8/HA-9 (optional), and
+the v1.3 prompt paste itself. (FL-1/FL-2 R9–R11, SC-1, DX-1, DX-8, and
+FL-4 are applied live and recorded.)
 
 ## Recommended order of work
 

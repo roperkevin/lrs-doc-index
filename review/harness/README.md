@@ -37,9 +37,12 @@ python3 make_fixtures.py     # builds real_deck.pptx / real_doc.docx / edge_deck
 #   git show fd9d1c2:scripts/ZipTextExtract.ts > zte_v15_src.ts
 #   python3 wrap.py zte_v15_src.ts zte_v15.ts
 #   python3 wrap.py ../patches/ZipTextExtract_v1_6.ts zte_v16.ts
-# MediaExtract half — STILL LIVE: the shipped script is v1.0, the patch v1.1,
-# and this gate is the paste precondition for promoting it.
-python3 wrap.py ../../scripts/MediaExtract.ts me_v10.ts
+# MediaExtract half — ALSO HISTORICAL since 2026-08-11: the v1.1 patch
+# passed this gate and was promoted to scripts/MediaExtract.ts, so
+# wrapping the shipped script as "v1.0" now self-compares v1.1. To
+# re-run the historical gate, fetch v1.0 from git:
+#   git show 86f016c:scripts/MediaExtract.ts > me_v10_src.ts
+#   python3 wrap.py me_v10_src.ts me_v10.ts
 python3 wrap.py ../patches/MediaExtract_v1_1.ts me_v11.ts
 python3 run_diff.py          # runs the wrapped pairs over all fixtures, prints the table
 ```

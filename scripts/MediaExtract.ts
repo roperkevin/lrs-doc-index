@@ -1,5 +1,14 @@
 /**
- * MediaExtract v1.0 — pull raster images out of a pptx/docx, bounded
+ * MediaExtract v1.1 — pull raster images out of a pptx/docx, bounded
+ * ------------------------------------------------------------
+ * v1.1 is v1.0 with typed-array plumbing only (performance, F7 in
+ * the v1.9 review): same shared zip/inflate changes as ZipTextExtract
+ * v1.6, plus chunked base64 encoding in bytesToB64. Output
+ * byte-identical by construction. Gate passed and promoted
+ * 2026-08-11: run_diff.py IDENTICAL on both media fixtures,
+ * ground-truth OK, nonzero images (the post-review harness with the
+ * vacuous-zero check closed). Historical gate recipe:
+ * review/harness/README.md.
  * ------------------------------------------------------------
  * Companion to ZipTextExtract. Takes the same base64 file content,
  * returns raster media entries (png/jpg/jpeg/gif/bmp) as base64 so
@@ -40,38 +49,45 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): MediaResult {
   return { images: images, skipped: skipped.join("\n"), count: images.length };
 }
 
-function bytesToB64(b: number[]): string {
+// v1.1: chunked assembly (join at the end) instead of one growing string.
+function bytesToB64(b: Uint8Array): string {
   const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let out = "";
+  const parts: string[] = [];
+  let chunk = "";
   for (let i = 0; i < b.length; i += 3) {
     const n = (b[i] << 16) | ((b[i + 1] || 0) << 8) | (b[i + 2] || 0);
-    out += alpha[(n >> 18) & 63] + alpha[(n >> 12) & 63] +
-           (i + 1 < b.length ? alpha[(n >> 6) & 63] : "=") +
-           (i + 2 < b.length ? alpha[n & 63] : "=");
+    chunk += alpha[(n >> 18) & 63] + alpha[(n >> 12) & 63] +
+             (i + 1 < b.length ? alpha[(n >> 6) & 63] : "=") +
+             (i + 2 < b.length ? alpha[n & 63] : "=");
+    if (chunk.length >= 8192) { parts.push(chunk); chunk = ""; }
   }
-  return out;
+  parts.push(chunk);
+  return parts.join("");
 }
 
 // ------------------------------------------------------------ base64
-function b64ToBytes(b64: string): number[] {
-  const T: { [c: string]: number } = {};
+// v1.1: Uint8Array + charCode table. Skips '=', CR/LF and any
+// non-alphabet char exactly as v1.0's dictionary miss did.
+function b64ToBytes(b64: string): Uint8Array {
+  const T = new Int32Array(128).fill(-1);
   const alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  for (let i = 0; i < alpha.length; i++) T[alpha[i]] = i;
-  const out: number[] = [];
+  for (let i = 0; i < alpha.length; i++) T[alpha.charCodeAt(i)] = i;
+  const out = new Uint8Array(Math.floor((b64.length * 3) / 4) + 3);
+  let n = 0;
   let buf = 0, bits = 0;
   for (let i = 0; i < b64.length; i++) {
-    const c = b64[i];
-    if (c === "=" || c === "\n" || c === "\r") continue;
-    const v = T[c];
-    if (v === undefined) continue;
+    const code = b64.charCodeAt(i);
+    if (code >= 128) continue;
+    const v = T[code];
+    if (v < 0) continue;
     buf = (buf << 6) | v;
     bits += 6;
     if (bits >= 8) {
       bits -= 8;
-      out.push((buf >> bits) & 0xff);
+      out[n++] = (buf >> bits) & 0xff;
     }
   }
-  return out;
+  return n === out.length ? out : out.subarray(0, n);
 }
 
 // ------------------------------------------------------------ zip reader
@@ -83,12 +99,12 @@ interface ZipEntry {
   localOffset: number;
 }
 
-function u16(b: number[], p: number): number { return b[p] | (b[p + 1] << 8); }
-function u32(b: number[], p: number): number {
+function u16(b: Uint8Array, p: number): number { return b[p] | (b[p + 1] << 8); }
+function u32(b: Uint8Array, p: number): number {
   return (b[p] | (b[p + 1] << 8) | (b[p + 2] << 16) | (b[p + 3] << 24)) >>> 0;
 }
 
-function readCentralDirectory(b: number[]): ZipEntry[] {
+function readCentralDirectory(b: Uint8Array): ZipEntry[] {
   // find EOCD (0x06054b50) scanning back from end (max comment 64k)
   let eocd = -1;
   const stop = Math.max(0, b.length - 65558);
@@ -118,13 +134,13 @@ function readCentralDirectory(b: number[]): ZipEntry[] {
   return entries;
 }
 
-function extractEntry(b: number[], e: ZipEntry): number[] {
+function extractEntry(b: Uint8Array, e: ZipEntry): Uint8Array {
   const p = e.localOffset;
   if (u32(b, p) !== 0x04034b50) throw new Error("ZipTextExtract: bad local header for " + e.name);
   const nameLen = u16(b, p + 26);
   const extraLen = u16(b, p + 28); // local extra can differ from central
   const dataStart = p + 30 + nameLen + extraLen;
-  const data = b.slice(dataStart, dataStart + e.compSize);
+  const data = b.subarray(dataStart, dataStart + e.compSize); // v1.1: view, no copy
   if (e.method === 0) return data;                    // stored
   if (e.method === 8) return inflateRaw(data, e.uncompSize); // deflate
   throw new Error("ZipTextExtract: unsupported compression method " + e.method + " for " + e.name);
@@ -152,10 +168,24 @@ function buildHuff(lengths: number[]): Huff {
   return { counts: counts, symbols: symbols };
 }
 
-function inflateRaw(src: number[], outHint: number): number[] {
-  const out: number[] = [];
+// v1.1: output preallocated from outHint (central-directory uncompSize),
+// doubling growth as a safety net; write pointer instead of push. The
+// back-reference copy stays a byte-wise loop — overlapping copies
+// (distance < length) are RLE by definition and forbid block copies.
+function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
+  let out = new Uint8Array(outHint > 0 ? outHint : 1024);
+  let outLen = 0;
   let pos = 0;      // byte position
   let bitBuf = 0, bitCnt = 0;
+
+  function ensure(extra: number): void {
+    if (outLen + extra <= out.length) return;
+    let cap = out.length * 2;
+    while (cap < outLen + extra) cap *= 2;
+    const grown = new Uint8Array(cap);
+    grown.set(out);
+    out = grown;
+  }
 
   function bits(n: number): number {
     while (bitCnt < n) {
@@ -193,7 +223,8 @@ function inflateRaw(src: number[], outHint: number): number[] {
       bitBuf = 0; bitCnt = 0;
       const len = src[pos] | (src[pos + 1] << 8);
       pos += 4; // skip LEN + NLEN
-      for (let i = 0; i < len; i++) out.push(src[pos++]);
+      ensure(len);
+      for (let i = 0; i < len; i++) out[outLen++] = src[pos++];
     } else {
       let lit: Huff, dist: Huff;
       if (type === 1) {
@@ -237,41 +268,21 @@ function inflateRaw(src: number[], outHint: number): number[] {
       }
       while (true) {
         const sym = decodeSym(lit);
-        if (sym < 256) out.push(sym);
+        if (sym < 256) { ensure(1); out[outLen++] = sym; }
         else if (sym === 256) break;
         else {
           const li = sym - 257;
           const length = LEN_BASE[li] + bits(LEN_EXTRA[li]);
           const dsym = decodeSym(dist);
           const distance = DIST_BASE[dsym] + bits(DIST_EXTRA[dsym]);
-          const start = out.length - distance;
+          const start = outLen - distance;
           if (start < 0) throw new Error("inflate: bad distance");
-          for (let i = 0; i < length; i++) out.push(out[start + i]);
+          ensure(length);
+          for (let i = 0; i < length; i++) out[outLen++] = out[start + i];
         }
       }
     }
     if (final) break;
   }
-  return out;
-}
-
-// ------------------------------------------------------------ utf-8 decode
-function utf8ToString(b: number[]): string {
-  let s = "";
-  let i = 0;
-  while (i < b.length) {
-    const c = b[i];
-    if (c < 0x80) { s += String.fromCharCode(c); i += 1; }
-    else if (c < 0xe0) { s += String.fromCharCode(((c & 0x1f) << 6) | (b[i + 1] & 0x3f)); i += 2; }
-    else if (c < 0xf0) {
-      s += String.fromCharCode(((c & 0x0f) << 12) | ((b[i + 1] & 0x3f) << 6) | (b[i + 2] & 0x3f));
-      i += 3;
-    } else {
-      const cp = ((c & 0x07) << 18) | ((b[i + 1] & 0x3f) << 12) | ((b[i + 2] & 0x3f) << 6) | (b[i + 3] & 0x3f);
-      const u = cp - 0x10000;
-      s += String.fromCharCode(0xd800 + (u >> 10), 0xdc00 + (u & 0x3ff));
-      i += 4;
-    }
-  }
-  return s;
+  return outLen === out.length ? out : out.subarray(0, outLen);
 }

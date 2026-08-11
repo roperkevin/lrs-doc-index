@@ -186,7 +186,10 @@ Two notes:
   (auto-indexing usually covers lists under 20k, but not guaranteed).
   The library is ~600 docs today; if it ever grows past ~5,000
   items, add a column index on Modified in library settings — or
-  drop the Order By and accept default order.
+  drop the Order By and accept default order. **Done pre-emptively
+  2026-08-11** (review finding FL-4): Modified is indexed on the
+  source Documents library, so the ceiling is defused while indexing
+  was still free.
 
 The definition and `DocIndexSweep_v2_5.zip` in this folder carry the
 addendum. No PromptVersion change (processing order is not a format),

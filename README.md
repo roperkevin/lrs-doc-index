@@ -17,7 +17,7 @@ sidecar to its related documents.
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.8 |
-| scripts/MediaExtract.ts | Bounded raster image extraction | v1.0 |
+| scripts/MediaExtract.ts | Bounded raster image extraction | v1.1 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.1 |
 | scripts/SidecarPatch.ts | Surgical related-section patching | v1.2 |
@@ -199,7 +199,7 @@ to be deployed).
    Doc Reviews, Other.
 3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
    (RegexExtract v1.2, ZipTextExtract v1.8, WorkbookDump v1.1,
-   MediaExtract v1.0, RelatedRank v1.1, SidecarPatch v1.2).
+   MediaExtract v1.1, RelatedRank v1.1, SidecarPatch v1.2).
 4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_2.md
    (item/requestv2 keys: FileName, DocText, ExistingKeywords).
 5. Import the v2.5 flow package, bind SharePoint + Excel
