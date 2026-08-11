@@ -1354,7 +1354,8 @@
                               "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
                               "item/IndexStatus/Value": "Indexed",
                               "item/TextFileUrl": "@outputs('Text_file_url')",
-                              "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}"
+                              "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                              "item/LastError": "@{string('')}"
                             },
                             "host": {
                               "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
@@ -2394,6 +2395,7 @@
                                       "item/IndexStatus/Value": "Skipped",
                                       "item/SourceModified": "@items('For_each_file')?['Modified']",
                                       "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                                      "item/LastError": "@{string('')}",
                                       "item/IndexedOn": "@utcNow()"
                                     },
                                     "host": {
@@ -2463,6 +2465,7 @@
                               "item/SourceModified": "@items('For_each_file')?['Modified']",
                               "item/ExtractionLane/Value": "@variables('LaneUsed')",
                               "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                              "item/LastError": "@{outputs('Err_detail')}",
                               "item/IndexedOn": "@utcNow()"
                             },
                             "host": {
@@ -2488,6 +2491,7 @@
                                 "item/DocKey": "@outputs('Doc_key')",
                                 "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
                                 "item/IndexStatus/Value": "Error",
+                                "item/LastError": "@{outputs('Err_detail')}",
                                 "item/IndexedOn": "@utcNow()"
                               },
                               "host": {

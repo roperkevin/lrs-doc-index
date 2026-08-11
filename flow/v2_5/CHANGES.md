@@ -292,3 +292,31 @@ Smoke checks (run on paste day):
   (~150/day) until the corpus converges on `v1.8`.
 
 The definition and `DocIndexSweep_v2_5.zip` in this folder carry R12.
+
+## Addendum (2026-08-11) — LastError capture finished (R13)
+
+Finishes the v1.9 review's F6, half-applied since v2.3: `Filter_failed`
+and `Err_detail` have computed the failing action's name + connector
+error in the catch all along, but the rebuilt Doc Index list had no
+`LastError` column, so the detail was thrown away — an Error row older
+than the 28-day run history was undiagnosable (REVIEW_v2_5 FL-3).
+
+Schema (additive, no classic-UI dance — that rule is for lookups):
+`LastError`, Multiple lines of text, PLAIN (not enhanced), optional —
+see `schemas/SPList_DocIndex.csv`.
+
+- **R13a — `Create_doc_error`**: add field `LastError` =
+  `outputs('Err_detail')`.
+- **R13b — `Update_doc_error`**: same field, same expression.
+- **R13c — clear on recovery**: add `LastError` = `string('')` to
+  `Set_text_url` (a healed doc drops its stale forensics) and to
+  `Update_doc_skipped` (an Error doc later gated Skipped doesn't
+  carry a stale message).
+
+Smoke (the original F6 recipe): SmokeFile a doc, temporarily re-pick
+`Run_regex`'s script binding to a wrong script → the Error row's
+`LastError` names `Run_regex` and carries the connector message;
+restore, rerun → the row heals to Indexed with `LastError` empty.
+
+The definition and `DocIndexSweep_v2_5.zip` in this folder carry
+R13a–R13c. No PromptVersion change (row plumbing, not format).
