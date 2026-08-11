@@ -347,7 +347,8 @@
             "parameters": {
               "dataset": "https://esriis.sharepoint.com/sites/LocationReferencing",
               "table": "c8784e70-c536-4064-91e9-14b8b6535a03",
-              "$top": 20000
+              "$top": 20000,
+              "$orderby": "Modified desc"
             },
             "host": {
               "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",

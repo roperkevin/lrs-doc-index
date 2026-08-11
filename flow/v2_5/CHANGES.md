@@ -161,3 +161,41 @@ Run-script calls, no new queries, no schema changes.
 - `review/harness/` not re-run: no script changes, and the sidecar
   header format is unchanged (`doc_id:` remains a bare integer —
   only which integer changed), so the v2.4 record stands.
+
+## Addendum (2026-08-11) — newest-first sweep order
+
+`Get_files` gains `Order By` = `Modified desc`, so each run walks the
+library newest-edited-first. `If_process` spends the `MaxDocsPerRun`
+budget (150) in iteration order, so this changes who gets indexed
+today: fresh uploads and just-edited documents index on the next run
+instead of waiting behind the alphabetical/default walk, and the
+`v1.7` backfill migrates the most recently touched part of the corpus
+first. Converged behavior is unchanged — the same rows eventually
+reprocess; only the order moves.
+
+Two notes:
+
+- The sort column is the **library's Modified** — the same column the
+  reindex gate compares (`SourceModified`). The document-property
+  last-edited time (`dcterms:modified` → `SourceEdited`) cannot drive
+  the query: it lives inside the file and is only known after
+  extraction. For "run on recent items first" the library column is
+  the right signal anyway — it moves on upload and edit.
+- Large-list caveat: SharePoint rejects `$orderby` on a non-indexed
+  column once a list passes the 5,000-item view threshold
+  (auto-indexing usually covers lists under 20k, but not guaranteed).
+  The library is ~600 docs today; if it ever grows past ~5,000
+  items, add a column index on Modified in library settings — or
+  drop the Order By and accept default order.
+
+The definition and `DocIndexSweep_v2_5.zip` in this folder carry the
+addendum. No PromptVersion change (processing order is not a format),
+no script, schema, or prompt changes.
+
+- **R8 — `Get_files`**: set the action's **Order By** field to
+  `Modified desc`.
+
+Smoke check: run history → `Get_files` raw outputs — the first items
+in `value` are the library's most recently modified files; a
+just-uploaded smoke file indexes on the immediately following full
+sweep even with a large Pending backlog.
