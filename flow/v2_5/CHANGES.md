@@ -258,3 +258,37 @@ Smoke checks:
 
 The definition and `DocIndexSweep_v2_5.zip` in this folder carry
 R9–R11.
+
+## Addendum (2026-08-11) — PromptVersion v1.8: the script batch + prompt v1.3 (R12)
+
+One Config literal drives two pasted changes from the full-codebase
+review (`review/REVIEW_v2_5.md`), both live as of 2026-08-11:
+
+- **The v1.9 script batch** (Automate-tab paste of
+  ZipTextExtract v1.9 / MediaExtract v1.2 / RelatedRank v1.2 /
+  SidecarPatch v1.3, gated by `review/harness/check_batch.py`).
+  ZipTextExtract v1.9 changes the sidecar BODY format: slides in true
+  presentation order with position numbering, merged pptx tables no
+  longer column-shifted, image links only for images MediaExtract
+  actually saves, pasted-markdown H1 lines escaped.
+- **DocIndex_Prompt v1.3** (AI Builder paste): keyword rule reconciled
+  with its exemplars — established spellings win, singular only for
+  newly minted terms, 1–3 words — and the document-text fence hardened
+  against embedded END markers.
+
+Unlike the v1.3–v1.7 bumps this one is NOT format-only: the prompt
+text changed, so the re-paste was required. The bump drives the
+converging backfill (~150 docs/day) that rewrites the corpus under
+both changes at once.
+
+- **R12 — `Config`**: `PromptVersion` literal `v1.7` → `v1.8`.
+
+Smoke checks (run on paste day):
+- SmokeFile a deck with reordered slides or a merged table header —
+  the sidecar body reflects display order / clean columns.
+- A doc whose subject matches an established plural keyword comes back
+  with the established spelling (no new singular variant Keywords row).
+- `Run_summary` over the following days shows the backfill churning
+  (~150/day) until the corpus converges on `v1.8`.
+
+The definition and `DocIndexSweep_v2_5.zip` in this folder carry R12.

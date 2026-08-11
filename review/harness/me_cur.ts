@@ -1,8 +1,9 @@
 /**
  * MediaExtract v1.2 — pull raster images out of a pptx/docx, bounded
  * ------------------------------------------------------------
- * Gate passed and pasted 2026-08-11 (check_batch.py: v1.1 vs v1.2
- * byte-identical on every valid fixture; throw paths exercised).
+ * !!! GATED PATCH — DO NOT PASTE UNTIL review/harness check_batch.py
+ * PASSES (it byte-diffs v1.1 vs v1.2 on the media fixtures and
+ * exercises the new throw paths) !!!
  *
  * v1.2 = v1.1 + the REVIEW_v2_5 batch (SC-8, SC-11, SC-14). Output on
  * every valid archive is byte-identical to v1.1 — the changes are
@@ -38,7 +39,7 @@ const MAX_IMAGES = 12;
 const MAX_ONE = 350 * 1024;
 const MAX_TOTAL = 3 * 1024 * 1024;
 
-function main(workbook: ExcelScript.Workbook, zipBase64: string): MediaResult {
+function main(workbook: unknown, zipBase64: string): MediaResult {
   const bytes = b64ToBytes(zipBase64);
   const entries = readCentralDirectory(bytes);
   const media = entries.filter((e) =>
@@ -302,3 +303,14 @@ function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
   }
   return outLen === out.length ? out : out.subarray(0, outLen);
 }
+
+// ---- harness appendix ----
+declare const require: (m: string) => { readFileSync: (p: string, e: string) => string };
+const fs = require('fs');
+const which = (globalThis as {process?: {argv: string[]}}).process!.argv[2];
+const b64 = fs.readFileSync(which, 'utf8');
+const label = (globalThis as {process?: {argv: string[]}}).process!.argv[3] || '';
+const t0 = Date.now();
+const res = main(null as unknown, b64, label);
+const t1 = Date.now();
+console.log(JSON.stringify({ms: t1 - t0, out: res}));

@@ -1,5 +1,20 @@
 /**
- * RelatedRank v1.1 — score and rank a document's related documents
+ * RelatedRank v1.2 — score and rank a document's related documents
+ * ------------------------------------------------------------------
+ * Gate passed and pasted 2026-08-11 (check_batch.py: full
+ * check_related suite green + both defensive cases).
+ *
+ * v1.2 = v1.1 + two defensive fixes (REVIEW_v2_5 SC-12). Output on
+ * well-formed input is identical to v1.1:
+ *
+ *   (a) an idLinks row where NEITHER endpoint is the current doc is
+ *       skipped instead of silently crediting doc A with 1000+ points
+ *       (reachable only if the flow's OData filter regresses — but
+ *       every other input path here is defensive, this one now is too)
+ *   (b) keywords whose lookup Title is missing are dropped from the
+ *       human-readable why/sharedKeywords (no more "shared keywords:
+ *       41, testing" leaking raw list-item ids into sidecars); they
+ *       still count toward the score.
  * ------------------------------------------------------------------
  * Pure aggregation over the raw rows of three SharePoint queries the
  * flow has just issued for the current document (WDL has no group-by,
@@ -138,6 +153,9 @@ function main(
   for (const row of parseRows(idLinksJson)) {
     const a = lookupId(row, "DocA");
     const b = lookupId(row, "DocB");
+    if (a !== self && b !== self) {
+      continue; // v1.2 (SC-12a): row isn't about this doc — never credit it
+    }
     const other = a === self ? b : a;
     if (other <= 0 || other === self) {
       continue;
@@ -178,7 +196,9 @@ function main(
       const tb = myKw[b] || String(b);
       return ta < tb ? -1 : ta > tb ? 1 : 0;
     });
-    const kws = kwIds.map((k) => myKw[k] || String(k));
+    // v1.2 (SC-12b): title-less keywords stay in the score but leave
+    // the human-readable lists — raw list-item ids never reach sidecars
+    const kws = kwIds.map((k) => myKw[k]).filter((t) => !!t);
     let kwScore = 0;
     for (const k of kwIds) {
       kwScore += kwWeight(k);

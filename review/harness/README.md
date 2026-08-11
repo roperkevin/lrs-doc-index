@@ -148,7 +148,14 @@ python3 check_related.py     # no fixture prereqs — can run standalone
 python3 render_sample.py && cat sample_sidecar.md sample_sidecar_related.md
 ```
 
-## Batch gate — the v1.9 script batch (`check_batch.py`)
+## Batch gate — the v1.9 script batch (`check_batch.py`) — HISTORICAL
+
+**The batch passed this gate, was pasted, and was promoted over
+`scripts/` on 2026-08-11** — its new-behavior assertions now live in
+the standing suites (`check_format.py` §9, `check_related.py`
+§10/§11), which run against `scripts/` directly. `check_batch.py`
+still passes (the staged patches equal the shipped scripts) and stays
+as the template for gating any future batch. Original description:
 
 The paste gate for the REVIEW_v2_5 script batch
 (`../patches/ZipTextExtract_v1_9.ts`, `MediaExtract_v1_2.ts`,

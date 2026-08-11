@@ -1,5 +1,14 @@
 """Gate for the v1.9 script batch (REVIEW_v2_5 SC-2..SC-14, FL-5).
 
+HISTORICAL since 2026-08-11: the batch PASSED this gate, was pasted
+into the Automate tab, and the patches were promoted over scripts/ —
+so the staged copies below are now identical to the shipped scripts
+and this gate re-verifies the promotion. The new-behavior assertions
+were folded into check_format.py (§9) and check_related.py (§10/§11),
+which run against scripts/ directly; those are the standing suites.
+Keep this file for the record and for gating any FUTURE batch (point
+PATCHES at the new patch files).
+
 Stages the four patch files —
 
   ../patches/ZipTextExtract_v1_9.ts   (SC-2..SC-10, SC-14, FL-5)

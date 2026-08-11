@@ -16,17 +16,17 @@ sidecar to its related documents.
 | flow/v2_5/definition.json | Flow definition | v2.5 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.8 |
-| scripts/MediaExtract.ts | Bounded raster image extraction | v1.1 |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.9 |
+| scripts/MediaExtract.ts | Bounded raster image extraction | v1.2 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.1 |
-| scripts/SidecarPatch.ts | Surgical related-section patching | v1.2 |
-| review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (current) | v1.2 |
-| review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (PROPOSED — pending paste + PromptVersion → v1.8; see REVIEW_v2_5.md DX-2/DX-14) | v1.3 |
-| review/patches/ZipTextExtract_v1_9.ts | GATED script batch: slide order, hMerge, cap-aware links, entity/strip/zip hardening (pending check_batch.py + paste) | v1.9 |
-| review/patches/MediaExtract_v1_2.ts | GATED script batch: own error prefixes, encrypted/truncation throws (pending check_batch.py + paste) | v1.2 |
-| review/patches/RelatedRank_v1_2.ts | GATED script batch: defensive idLinks/keyword-title guards (pending check_batch.py + paste) | v1.2 |
-| review/patches/SidecarPatch_v1_3.ts | GATED script batch: BOM/CRLF normalization, bullet escaping (pending check_batch.py + paste) | v1.3 |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.2 |
+| scripts/SidecarPatch.ts | Surgical related-section patching | v1.3 |
+| review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
+| review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
+| review/patches/ZipTextExtract_v1_9.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.9 |
+| review/patches/MediaExtract_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
+| review/patches/RelatedRank_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
+| review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
 | DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
@@ -202,9 +202,9 @@ to be deployed).
    User Stories, Design Spikes, Data Templates, Schedules,
    Doc Reviews, Other.
 3. Scripts into the dummy Scripts.xlsx Automate tab, exact names
-   (RegexExtract v1.2, ZipTextExtract v1.8, WorkbookDump v1.1,
-   MediaExtract v1.1, RelatedRank v1.1, SidecarPatch v1.2).
-4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_2.md
+   (RegexExtract v1.2, ZipTextExtract v1.9, WorkbookDump v1.1,
+   MediaExtract v1.2, RelatedRank v1.2, SidecarPatch v1.3).
+4. AI Builder prompt from review/patches/DocIndex_Prompt_v1_3.md
    (item/requestv2 keys: FileName, DocText, ExistingKeywords).
 5. Import the v2.5 flow package, bind SharePoint + Excel
    Online + Dataverse connections.
@@ -290,7 +290,11 @@ from v2.3 or earlier, do the v2.4 steps first
   the v2.4 bump to `v1.6` (kind subfolders + authorship fields)
   and the v2.5 bump to `v1.7` (sidecar names and `doc_id` re-keyed
   to the Doc Index row id) are all format-only: the prompt text is
-  unchanged and must not be re-pasted.
+  unchanged and must not be re-pasted. The v1.8 bump (2026-08-11) is
+  the exception: it pairs the DocIndex_Prompt v1.3 paste (keyword rule
+  reconciled with its exemplars; fence hardening) with the v1.9 script
+  batch's sidecar-body changes — prompt re-paste required and done;
+  one backfill converges both.
 - **AgentInstructionsVersion**: the Q&A agent's instructions bump
   like the prompt — new `agent/QA_Agent_Instructions_vX_Y.md`,
   re-paste into Copilot Studio, re-run the smoke suite, record in

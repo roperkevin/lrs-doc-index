@@ -1,6 +1,33 @@
 /**
- * SidecarPatch v1.2 — surgical "Related documents" patching for
+ * SidecarPatch v1.3 — surgical "Related documents" patching for
  * markdown sidecars, batched over every file touched for one doc
+ * ------------------------------------------------------------------
+ * Gate passed and pasted 2026-08-11 (check_batch.py: full
+ * check_related suite green + the normalization/escaping cases).
+ *
+ * v1.3 = v1.2 + out-of-band-edit hardening (REVIEW_v2_5 SC-13).
+ * Output on clean input is identical to v1.2:
+ *
+ *   (a) input is normalized before patching: a leading BOM is
+ *       stripped and CRLF line endings become LF. Pre-v1.3, a sidecar
+ *       re-saved by an editor with either never matched the frame at
+ *       position 0 and every future patch was a silent no-op — the
+ *       related section went permanently stale with no Error row.
+ *       When a patch succeeds on a normalized file, the normalized
+ *       form is what's written back (this patcher is the last
+ *       writer); when patching is unsafe (not-frontmatter /
+ *       malformed-markers / no-seam) the ORIGINAL bytes are returned
+ *       untouched, as before.
+ *   (b) rendered bullets escape markdown/HTML metacharacters: "["
+ *       "]" "<" ">" in titles/reasons become spaces, "-->" becomes
+ *       "-" (a title containing it would visually close the rel tag),
+ *       and ">" in URLs is %-encoded so the <...> link target can't
+ *       be truncated. Titles/URLs without those characters render
+ *       byte-identically to v1.2.
+ *   (c) the marker-fallback bullet (an entry whose Doc Index row is
+ *       gone from docsMeta) renders as plain unlinked text instead of
+ *       a bare-filename link that 404s whenever the neighbor lives in
+ *       a different kind subfolder (v2.4+ routing).
  * ------------------------------------------------------------------
  * v1.2: each file object may carry a `folder` (the library folder the
  * sidecar lives in, server-relative — since v2.4 sidecars are routed
@@ -177,9 +204,27 @@ function urlString(raw: unknown): string {
   return "";
 }
 
+// v1.3 (SC-13b): strip characters that malform the bullet markdown —
+// "]" breaks the link text, "-->" visually closes the rel tag, ">"
+// truncates the <...> url target. Clean inputs pass through unchanged.
+function cleanText(s: string): string {
+  return s
+    .replace(/-->/g, "-")
+    .replace(/<!--/g, "")
+    .replace(/[\[\]<>]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function cleanUrl(u: string): string {
+  return u.replace(/>/g, "%3E");
+}
+
 function renderBullet(title: string, url: string, why: string, doc: number): string {
-  const reason = why ? " — " + why : "";
-  return "- [" + title + "](<" + url + ">)" + reason + " <!-- rel:" + doc + " -->";
+  const t = cleanText(title);
+  const w = cleanText(why);
+  const reason = w ? " — " + w : "";
+  return "- [" + (t || "untitled") + "](<" + cleanUrl(url) + ">)" + reason + " <!-- rel:" + doc + " -->";
 }
 
 function renderFmLine(entries: RelEntry[]): string {
@@ -191,8 +236,11 @@ function renderRegionInner(entries: RelEntry[], bullets: { [doc: number]: string
   if (entries.length === 0) {
     return EMPTY_STATE;
   }
+  // v1.3 (SC-13c): the fallback (no bullet and no meta for the entry)
+  // renders unlinked — a bare-filename link only resolves when the
+  // neighbor happens to share this sidecar's kind subfolder.
   return entries
-    .map((e) => bullets[e.doc] || renderBullet(e.file, e.file, "", e.doc))
+    .map((e) => bullets[e.doc] || "- " + cleanText(e.file) + " <!-- rel:" + e.doc + " -->")
     .join("\n");
 }
 
@@ -351,11 +399,20 @@ function main(
   const files: PatchedFile[] = [];
   for (const raw of asArray(parseJson(filesJson))) {
     const f = raw as { doc?: unknown; name?: unknown; folder?: unknown; content?: unknown };
+    const original = typeof f.content === "string" ? f.content : "";
+    // v1.3 (SC-13a): normalize out-of-band-edit artifacts (BOM, CRLF)
+    // so the frame match at position 0 still works; if patching turns
+    // out to be unsafe, the ORIGINAL bytes are returned below.
+    let normalized = original;
+    if (normalized.charCodeAt(0) === 0xfeff) {
+      normalized = normalized.slice(1);
+    }
+    normalized = normalized.replace(/\r\n/g, "\n");
     const file: PatchFile = {
       doc: typeof f.doc === "number" ? f.doc : parseInt(String(f.doc), 10) || 0,
       name: typeof f.name === "string" ? f.name : "",
       folder: typeof f.folder === "string" ? f.folder : "",
-      content: typeof f.content === "string" ? f.content : "",
+      content: normalized,
     };
 
     let patched: { content: string; note: string };
@@ -401,11 +458,17 @@ function main(
       }
     }
 
+    // v1.3 (SC-13a): unsafe-to-patch files keep their original bytes —
+    // normalization is only written back alongside a successful patch
+    if (patched.note === "not-frontmatter" || patched.note === "malformed-markers" ||
+        patched.note === "no-seam" || patched.note === "no-pair-evidence") {
+      patched = { content: original, note: patched.note };
+    }
     files.push({
       name: file.name,
       folder: file.folder,
       content: patched.content,
-      changed: patched.content !== file.content,
+      changed: patched.content !== original,
       note: patched.note,
     });
   }
