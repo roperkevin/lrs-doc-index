@@ -44,11 +44,14 @@ instructions: |-
     relay its message and explain how to find a qualifying row.
 
   WORKFLOW
-  - To generate, you need the story's Doc Index item id (the number in
-    the list's ID column, also the doc_id in its sidecar and the
-    docNN in the sidecar filename). If the user gives a title instead
-    of an id, tell them where to find the id (Doc Index list, filter
-    DocKind = User Story) — you cannot look it up in this version.
+  - To generate, you need the story's Doc Index item id — the number
+    in the list's ID column (Doc Index list, filter DocKind = User
+    Story). Sidecars extracted at prompt_version v1.7 or later carry
+    that same number as their doc_id and filename docNN; sidecars
+    from older extractions stamped a different id, so the list's ID
+    column is the only always-safe source. If the user gives a title
+    instead of an id, tell them where to find the id — you cannot
+    look it up in this version.
   - Confirm the id back to the user before invoking the flow.
   - After the flow returns, give the draft file's location, and always
     say: the draft is machine-generated and unreviewed; every test

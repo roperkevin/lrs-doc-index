@@ -1,3 +1,35 @@
+# TestPlanGen v1.5 — stop equating sidecar doc_id with the item id
+
+Text-only release, companion to flow v2.5 (`flow/v2_5/CHANGES.md`).
+The agent front-end's instructions (`agent/TestPlanGenAgent/agent.mcs.yml`)
+and the `askStoryId` question (`topics/GenerateTestPlan.mcs.yml`) both
+claimed the Doc Index item id "is also the doc_id in the sidecar and
+the docNN in the filename". That was never true: the sweep stamped
+sidecars with the source library file's item id — a different id
+space — so a user who obeyed the prompt and typed a sidecar's `doc_id`
+sent `Get_story_row` to an unrelated row (observed: doc_id 1008 →
+wrong document; the guard rejects it, or worse, a different Indexed
+User Story row grounds the draft).
+
+Both texts now direct users to the Doc Index list's ID column as the
+only always-safe source, with the accurate caveat: sidecars extracted
+at `prompt_version` v1.7+ (flow v2.5) do carry the matching number;
+older sidecars don't until the backfill renames them.
+
+No flow, package, prompt, or schema changes — the generation flows
+already used the row id correctly end to end (`Get_story_row`, the
+`StoryMeta` `doc_id:` line, the `TestPlanDraft__doc{ID}` name).
+Deploy: re-import or hand-edit the agent's Instructions and the
+topic's question text in Copilot Studio; re-run smoke row 1
+(`TestPlanGen_Smoke.md`) plus one deliberate wrong-id probe (feed a
+pre-migration sidecar's `doc_id`; expect the guard message, then
+success with the list's ID).
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent instructions + topic text | **v1.5** | `testplangen/agent/TestPlanGenAgent/` |
+| Everything else | unchanged | — |
+
 # TestPlanGen v1.4 — import package for the agent flow (TestPlanGenAgentFlow)
 
 `testplangen/TestPlanGenAgentFlow_v1_0.zip` packages the §1c agent

@@ -8,7 +8,7 @@ before moving on.
 
 Why Copilot Studio and not a plain SharePoint agent: full custom
 instructions (the delimited block in
-`agent/QA_Agent_Instructions_v1_0.md` — SharePoint agents take only a
+`agent/QA_Agent_Instructions_v1_1.md` — SharePoint agents take only a
 short tuning blurb and cannot enforce the dual-citation rule), knowledge
 scoped to exactly one library, and the growth path to list-query
 actions (queued below). Why sidecars and not the raw source library:
@@ -76,7 +76,7 @@ connected or indexed yet (see §4).
 ## 3 — Paste the instructions
 
 Overview → Instructions: paste the delimited block from
-`agent/QA_Agent_Instructions_v1_0.md` verbatim — everything between
+`agent/QA_Agent_Instructions_v1_1.md` verbatim — everything between
 `INSTRUCTIONS TEXT BEGINS` and `INSTRUCTIONS TEXT ENDS`, exclusive.
 
 Record `AgentInstructionsVersion: v1.0` in `agent/CHANGES.md` (the
