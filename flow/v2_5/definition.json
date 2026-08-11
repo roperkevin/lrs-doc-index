@@ -1286,7 +1286,7 @@
                         },
                         "Old_sidecar_url": {
                           "runAfter": {
-                            "Text_file_url": [
+                            "Set_text_url": [
                               "Succeeded"
                             ]
                           },
@@ -1339,7 +1339,7 @@
                         },
                         "Set_text_url": {
                           "runAfter": {
-                            "If_sidecar_moved": [
+                            "Text_file_url": [
                               "Succeeded"
                             ]
                           },
@@ -1353,7 +1353,8 @@
                               "item/DocKey": "@outputs('Doc_key')",
                               "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
                               "item/IndexStatus/Value": "Indexed",
-                              "item/TextFileUrl": "@outputs('Text_file_url')"
+                              "item/TextFileUrl": "@outputs('Text_file_url')",
+                              "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}"
                             },
                             "host": {
                               "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
@@ -1387,7 +1388,6 @@
                                   "item/IndexStatus/Value": "Indexed",
                                   "item/SourceModified": "@items('For_each_file')?['Modified']",
                                   "item/ExtractionLane/Value": "@variables('LaneUsed')",
-                                  "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
                                   "item/IndexedOn": "@utcNow()",
                                   "item/DocKind/Value": "@outputs('Doc_kind_safe')",
                                   "item/Surface/Value": "@outputs('Surface_safe')",
@@ -1428,7 +1428,6 @@
                                     "item/IndexStatus/Value": "Indexed",
                                     "item/SourceModified": "@items('For_each_file')?['Modified']",
                                     "item/ExtractionLane/Value": "@variables('LaneUsed')",
-                                    "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
                                     "item/IndexedOn": "@utcNow()",
                                     "item/DocKind/Value": "@outputs('Doc_kind_safe')",
                                     "item/Surface/Value": "@outputs('Surface_safe')",
@@ -1477,7 +1476,7 @@
                         "For_each_id": {
                           "foreach": "@coalesce(outputs('Run_regex')?['body/result/ids'], json('[]'))",
                           "runAfter": {
-                            "Set_text_url": [
+                            "If_sidecar_moved": [
                               "Succeeded"
                             ]
                           },
@@ -2394,6 +2393,7 @@
                                       "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
                                       "item/IndexStatus/Value": "Skipped",
                                       "item/SourceModified": "@items('For_each_file')?['Modified']",
+                                      "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
                                       "item/IndexedOn": "@utcNow()"
                                     },
                                     "host": {

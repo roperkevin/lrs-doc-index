@@ -550,9 +550,15 @@ SC-11/DX-7 header stamp (`MediaExtract v1.0`). **DX-2 + DX-14** are authored
 as `patches/DocIndex_Prompt_v1_3.md` (PROPOSED — takes effect only when
 pasted, with Config → PromptVersion `v1.8`).
 
+**FL-1 and FL-2 are now also fixed in the repo definition**: R9–R11 in
+`flow/v2_5/CHANGES.md`'s second addendum, carried by
+`flow/v2_5/definition.json` and the re-cut `DocIndexSweep_v2_5.zip` —
+apply to the live flow as the three designer edits documented there.
+
 Still requiring tenant-side action (designer edits / Automate-tab pastes /
-list settings): FL-1..FL-6, SC-1..SC-10, SC-12..SC-14, DX-1, DX-7, DX-8,
-DX-11, DX-12, HA-8/HA-9 (optional), and the v1.3 prompt paste itself.
+list settings): the FL-1/FL-2 designer edits (R9–R11), FL-3..FL-6,
+SC-1..SC-10, SC-12..SC-14, DX-1, DX-7, DX-8, DX-11, DX-12, HA-8/HA-9
+(optional), and the v1.3 prompt paste itself.
 
 ## Recommended order of work
 
