@@ -685,7 +685,7 @@
                         ]
                       },
                       "type": "Compose",
-                      "inputs": "@{concat(outputs('Config_gen')?['SiteUrl'], outputs('Config_gen')?['DraftFolder'], '/', outputs('Draft_name'))}"
+                      "inputs": "@{replace(concat(outputs('Config_gen')?['SiteUrl'], outputs('Config_gen')?['DraftFolder'], '/', outputs('Draft_name')), ' ', '%20')}"
                     }
                   },
                   "else": {

@@ -43,7 +43,7 @@ sidecar to its related documents.
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.1 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v1.5 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v1.6 |
 
 Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/`, `flow/v2_4/` and their
