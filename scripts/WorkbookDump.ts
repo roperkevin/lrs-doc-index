@@ -1,5 +1,11 @@
 /**
- * WorkbookDump v1.1 — xlsx → markdown (the free xlsx extraction lane)
+ * WorkbookDump v1.2 — xlsx → markdown (the free xlsx extraction lane)
+ * ------------------------------------------------------------------
+ * r2 batch (REVIEW_v2_5_r2.md SB-4) — gated by check_batch_r2.py.
+ * Gate PASSED (check_batch_r2.py, 2026-08-11).
+ * TENANT PASTE STILL PENDING — the live flow runs the previous
+ * version until this file is pasted into the Automate workbook
+ * (see STATUS.md).
  * ------------------------------------------------------------------
  * Dumps every worksheet's used range as a GFM pipe table:
  *
@@ -81,6 +87,15 @@ function main(
     }
     let width = 0;
     for (const r of grid) if (r.length > width) width = r.length;
+    // v1.2 (SB-4): getUsedRange() counts formatted-but-empty cells, so
+    // a styled sheet with no values reaches here with every row trimmed
+    // to length 0 — and previously emitted a run of malformed "|  |"
+    // lines. Treat it like a truly absent used range.
+    if (width === 0) {
+      out.push("(empty)");
+      out.push("");
+      continue;
+    }
     const over = width > COLCAP ? width - COLCAP : 0;
     if (over > 0) width = COLCAP;
 

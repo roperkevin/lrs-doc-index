@@ -16,10 +16,12 @@ when a batch is promoted:
 4. **Equivalence gate** (`run_diff.py`) — the HISTORICAL v1.5-vs-v1.6 /
    v1.0-vs-v1.1 byte-diff, recorded below; both halves now skip
    gracefully unless their wraps are deliberately regenerated from git
-   history. `scripts/ZipTextExtract.ts` has long since moved on (v1.9
-   as of the 2026-08-11 promotion).
-5. **Batch gates** (`check_batch.py`, historical) — the template any
-   future script batch clones before its patches may be pasted.
+   history. `scripts/ZipTextExtract.ts` has long since moved on (v2.0
+   as of the r2 promotion).
+5. **Batch gates** (`check_batch.py` — v1.9 era, skips as superseded;
+   `check_batch_r2.py` — r2 era, re-verifies the promotion) — the
+   template any future script batch clones before its patches may be
+   pasted.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for
@@ -165,9 +167,13 @@ python3 render_sample.py && cat sample_sidecar.md sample_sidecar_related.md
 **The batch passed this gate, was pasted, and was promoted over
 `scripts/` on 2026-08-11** — its new-behavior assertions now live in
 the standing suites (`check_format.py` §9, `check_related.py`
-§10/§11), which run against `scripts/` directly. `check_batch.py`
-still passes (the staged patches equal the shipped scripts) and stays
-as the template for gating any future batch. Original description:
+§10/§11), which run against `scripts/` directly. Since the r2 batch
+promotion, `scripts/` has moved past the v1.9 generation, so this
+gate detects that and **skips gracefully** (its premises — staged
+v1.9 patches equal to shipped scripts — no longer hold); to re-run it
+for the record, check out the v1.9-promotion-era commit. It remains
+the structural template every future batch gate clones
+(`check_batch_r2.py` is the first). Original description:
 
 The paste gate for the REVIEW_v2_5 script batch
 (`../patches/ZipTextExtract_v1_9.ts`, `MediaExtract_v1_2.ts`,
@@ -238,3 +244,38 @@ harness changes (version-neutral `*_cur.ts` runners, new
 `check_regex.py`, `run_diff.py` media-half skip guard): all suites
 PASS — `check_regex.py`'s 34 assertions green on RegexExtract v1.2,
 and `run_diff.py` now degrades gracefully on both historical halves.
+
+## Batch gate — the r2 script batch (`check_batch_r2.py`) — HISTORICAL
+
+The gate for the REVIEW_v2_5_r2 batch (SB-1..SB-9: RegexExtract v1.3,
+SidecarPatch v1.4, WorkbookDump v1.2, ZipTextExtract v2.0,
+MediaExtract v1.3, RelatedRank v1.3). Same lifecycle as its v1.9
+template, with two additions: old-vs-new **equivalence diffs on every
+existing fixture** (IDENTICAL required — the batch's design constraint
+is zero behavior change on well-formed inputs) and **discriminator
+assertions** that run each fixture against the OLD scripts to prove it
+actually catches its bug. The batch PASSED and was promoted
+2026-08-11; the folded standing assertions live in `check_regex.py`
+(SB-1), `check_format.py` §10 (SB-4..SB-8), and `check_related.py`
+(the v1.4 SB-2/SB-3 cases). Post-promotion the gate re-verifies the
+promotion — the discriminator half skips via its PROMOTED guard.
+
+```
+python3 make_fixtures.py     # builds the r2 fixtures too
+python3 check_batch_r2.py    # any FAIL = do not paste
+```
+
+### Last run (2026-08-11, Node 22.22.2) — r2 gate + promotion
+
+Pre-promotion gate run: **PASS** — regression suites fully green over
+the staged batch; ZTE/MediaExtract/WorkbookDump/RegexExtract/
+RelatedRank/SidecarPatch old-vs-new IDENTICAL on every existing
+fixture (9 ZTE fixtures + throw-parity on 2, 3 media fixtures,
+sheets.json, the non-SB-1 id contract, mixed rank payload, well-formed
+merge payload); all SB-1..SB-8 new behaviors green with every fixture
+proven to discriminate; all six staged scripts type-check at ES2017.
+Post-promotion: `check_format.py` (incl. §10), `check_related.py`
+(incl. v1.4 cases), `check_regex.py` (incl. SB-1 negatives),
+`check_batch_r2.py` (promotion re-verification), and
+`render_sample.py` all PASS against the promoted `scripts/`;
+`check_batch.py` skips as superseded by design.

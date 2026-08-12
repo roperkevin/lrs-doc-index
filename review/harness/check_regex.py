@@ -90,6 +90,13 @@ CASES = [
     {'file': 'Notes_1.docx', 'title': '', 'content': ''},
     {'file': '2_35.xlsx', 'title': '', 'content': ''},
     {'file': 'Plan_v123.docx', 'title': '', 'content': ''},
+    # -- SB-1 (v1.3): letter-run tails are not revisions ------------------
+    {'file': 'Notes_Nov21.docx', 'title': '', 'content': ''},
+    {'file': '20260806_Rev12.pptx', 'title': '', 'content': ''},
+    {'file': 'Notes_dev3.docx', 'title': '', 'content': ''},
+    {'file': 'REV12.docx', 'title': '', 'content': ''},
+    {'file': 'MyPlanv2.docx', 'title': '', 'content': ''},
+    {'file': 'V4.docx', 'title': '', 'content': ''},
 ]
 
 json.dump(CASES, open('rex_cases.json', 'w', encoding='utf-8'))
@@ -140,9 +147,14 @@ check(len(byfile['Twice.docx']['ids']) == 1, 'dedupe: same repo|number claimed o
 check(byfile['Bounds.docx']['ids'] == [], 'bounds: 0 and >999999 both rejected')
 
 # -- 6: docRevision --------------------------------------------------------
+# SB-1 (v1.3) negatives: Nov21/Rev12/dev3 letter-run tails, all-caps
+# acronym tails, and lowercase v glued to a letter mint no revision
 for f, want in (('TestPlanV1.docx', 'V1'), ('Report_V4.pptx', 'V4'),
                 ('spec_v2.docx', 'V2'), ('Notes_1.docx', ''),
-                ('2_35.xlsx', ''), ('Plan_v123.docx', '')):
+                ('2_35.xlsx', ''), ('Plan_v123.docx', ''),
+                ('Notes_Nov21.docx', ''), ('20260806_Rev12.pptx', ''),
+                ('Notes_dev3.docx', ''), ('REV12.docx', ''),
+                ('MyPlanv2.docx', ''), ('V4.docx', 'V4')):
     check(byfile[f]['docRevision'] == want,
           f"docRevision: {f} -> {want!r} (got {byfile[f]['docRevision']!r})")
 

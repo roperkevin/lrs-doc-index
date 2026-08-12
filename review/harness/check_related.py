@@ -490,6 +490,23 @@ fb_line = [ln for ln in out['content'].split('\n') if 'rel:99' in ln]
 check(bool(fb_line) and '](' not in fb_line[0] and 'other__doc99.md' in fb_line[0],
       'meta-less entry renders as plain text, not a bare-filename link')
 
+# -- v1.4 (SB-2, folded from check_batch_r2.py): every root related: form
+# is REPLACED, never duplicated ------------------------------------------
+for tag, rel in (('block-sequence', 'related:\n  - doc: 9\n    file: x.md\n    s: 1'),
+                 ('null-value', 'related: null'),
+                 ('extra-space inline', 'related:  [{"doc": 9, "file": "x.md", "s": 1}]')):
+    [out] = patch([{'doc': 17, 'name': 'n.md', 'content': sidecar(related_line=rel)}])
+    fm2 = out['content'].split('```')[1]
+    n_rel = sum(1 for ln in fm2.split('\n') if ln.startswith('related:'))
+    check(n_rel == 1, f'v1.4: one related: key after patching a {tag} form (got {n_rel})')
+    check('  - doc: 9' not in fm2, f'v1.4: {tag} continuation lines consumed')
+
+# -- v1.4 (SB-3): duplicate doc ids in ranked dedupe, highest score wins --
+dup_ranked = [{'doc': 17, 's': 900.0, 'why': 'w1'}, {'doc': 17, 's': 5.0, 'why': 'w2'}]
+[out] = patch([{'doc': 42, 'name': 's.md', 'content': sidecar()}], ranked=dup_ranked)
+check(out['content'].count('rel:17') == 1 and '"s":900' in out['content'],
+      f"v1.4: duplicate ranked doc renders once at its best score (x{out['content'].count('rel:17')})")
+
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
 for runner in ('rr_cur.ts', 'scp_cur.ts'):

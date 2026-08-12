@@ -98,15 +98,15 @@ produces for a truly absent used range.
 
 **Fix (v1.2):** after trimming, treat `width === 0` as `(empty)`.
 
-### SB-5 — Stored-block LEN unbounded, NLEN unverified (Medium)
+### SB-5 — Stored-block NLEN never verified (Medium)
 
-`scripts/ZipTextExtract.ts:731` (and the twin in MediaExtract) reads the stored-block
-length before any bounds check; at end-of-buffer the byte reads yield `undefined`
-arithmetic → `len` 0 → the SC-8 truncation guard at `:737` never fires, and NLEN
-(the ones-complement check the format requires) is never verified. A truncated or
-corrupt archive can slip past the exact guard SC-8 added. **Fix (v2.0 / v1.3):**
-bounds-check the 4 header bytes and verify `NLEN === (~LEN & 0xffff)`, throwing the
-same clean error shape SC-8 established.
+`scripts/ZipTextExtract.ts:731` (and the twin in MediaExtract): NLEN — the
+ones-complement integrity check RFC 1951 requires — is never read or verified, so
+a corrupted length field emits garbled text as a "successful" extraction. (The
+originally-suspected header-truncation leg turned out to be covered: `pos` advances
+past both fields before the SC-8 bounds check, so a truncated header does throw —
+verified while authoring the fix.) **Fix (v2.0 / v1.3):** verify
+`NLEN === (~LEN & 0xffff)`, throwing the same clean error shape SC-8 established.
 
 ### SB-6 — Heading escape covers `#` but not `##` (Low)
 
@@ -311,15 +311,18 @@ All verified against file content this round:
 ## Round checklist (promotion + paste)
 
 1. ~~Baseline: `make_fixtures` + `check_format` + `check_related` + `check_batch` green (2026-08-11, pre-change).~~ Done.
-2. Repo-side fixes: DD, HG, RL, PV-1 (commits on this branch).
-3. Author the r2 batch in `review/patches/`; gate with `check_batch_r2.py` —
-   IDENTICAL on every existing fixture, PASS on every new-behavior assertion.
-4. Promote the batch to `scripts/`; fold the gate's new assertions into the
+2. ~~Repo-side fixes: DD, HG, RL, PV-1 (commits on this branch).~~ Done.
+3. ~~Author the r2 batch in `review/patches/`; gate with `check_batch_r2.py` —
+   IDENTICAL on every existing fixture, PASS on every new-behavior assertion.~~
+   Done — gate PASSED (run record in `review/harness/README.md`).
+4. ~~Promote the batch to `scripts/`; fold the gate's new assertions into the
    standing suites; mark `check_batch_r2.py` HISTORICAL; update STATUS.md and the
-   harness run record.
+   harness run record.~~ Done.
 5. **User: paste the six scripts** into the Automate-tab workbook (order per the
-   gate output). Until pasted, the live flow still runs the previous versions —
-   STATUS.md tracks this.
+   gate output: RegexExtract, WorkbookDump, RelatedRank, SidecarPatch,
+   MediaExtract, ZipTextExtract). Until pasted, the live flow still runs the
+   previous versions — STATUS.md tracks this. No prompt re-paste and no
+   PromptVersion bump needed (no format change on well-formed inputs).
 6. **User: designer edits** per `review/patches/designer-edits.md` §r2 (PV-3
    choice; optional DD-8 trigger concurrency).
 7. **User: confirm** the agent-v1.1 / curation-v1.1 paste dates to close the RL-6

@@ -1,6 +1,12 @@
 /**
- * RegexExtract v1.2 — deterministic ID + doc revision extraction,
+ * RegexExtract v1.3 — deterministic ID + doc revision extraction,
  * plus sidecar filename slug
+ * ------------------------------------------------------------------
+ * r2 batch (REVIEW_v2_5_r2.md SB-1) — gated by check_batch_r2.py.
+ * Gate PASSED (check_batch_r2.py, 2026-08-11).
+ * TENANT PASTE STILL PENDING — the live flow runs the previous
+ * version until this file is pasted into the Automate workbook
+ * (see STATUS.md).
  * ------------------------------------------------------------------
  * Implements the three validated ID sources, in precedence order:
  *
@@ -19,8 +25,14 @@
  * prevents e.g. ExB issue #26161 from also registering a phantom
  * copy under the default repo).
  *
- * docRevision: [Vv]\d{1,2} at the very end of the base filename —
- * matches TestPlanV1, _V4, _v2; ignores trailing "_1" and "2_35".
+ * docRevision: [Vv]\d{1,2} at the very end of the base filename,
+ * where the V opens a token (v1.3, SB-1): start-of-name, after a
+ * non-letter, or an uppercase V at a camelCase boundary. Matches
+ * TestPlanV1, _V4, _v2; ignores trailing "_1", "2_35", and — new in
+ * v1.3 — letter-run tails like Nov21 / Rev12 / dev3, which previously
+ * minted phantom revisions (V21/V12/V3). All-caps tails (REV12) are
+ * rejected too: an uppercase V after an uppercase letter reads as the
+ * inside of an acronym, not a revision marker.
  *
  * slug (v1.2): kebab-case filename stem for the markdown sidecar,
  * from the AI-derived title when provided, else from the file's base
@@ -131,7 +143,12 @@ function main(
   }
 
   // --- doc revision from the base filename ------------------------
-  const rv = baseName.match(/[Vv](\d{1,2})$/);
+  // v1.3 (SB-1): the V must open a token — start, after a non-letter,
+  // or uppercase V at a camelCase boundary ([a-z] then V). A bare
+  // [Vv]\d$ matched inside words: Notes_Nov21 -> "V21", Rev12 -> "V12".
+  // (No lookbehind — ES2017; the [a-z](?=V) leg consumes the boundary
+  // letter, leaving the digits as group 1 either way.)
+  const rv = baseName.match(/(?:^|[^A-Za-z]|[a-z](?=V))[Vv](\d{1,2})$/);
   const docRevision = rv ? "V" + rv[1] : "";
 
   // --- sidecar filename slug (v1.2) -------------------------------

@@ -1,11 +1,32 @@
 /**
- * ZipTextExtract v1.9 — OOXML file (pptx/docx) → markdown text + rels
+ * ZipTextExtract v2.0 — OOXML file (pptx/docx) → markdown text + rels
  *                       + document core properties
  * --------------------------------------------------------------------
- * Gate passed and pasted 2026-08-11 (check_batch.py: full v1.8
- * regression suites green over the batch + every new-behavior fixture;
- * ES2017 type-check clean). Sidecar-format changes ride the
- * Config.PromptVersion v1.8 backfill (with DocIndex_Prompt v1.3).
+ * r2 batch (REVIEW_v2_5_r2.md SB-5..SB-8) — gated by check_batch_r2.py.
+ * Gate PASSED (check_batch_r2.py, 2026-08-11).
+ * TENANT PASTE STILL PENDING — the live flow runs the previous
+ * version until this file is pasted into the Automate workbook
+ * (see STATUS.md). v2.0 deltas, all
+ * output-identical on well-formed inputs:
+ *   SB-5  stored-block NLEN (ones-complement of LEN) is now verified —
+ *         a corrupted length field previously emitted garbled text as
+ *         a "successful" extraction
+ *   SB-6  the SC-10 heading escape now covers ## through ######, not
+ *         just a single # — pasted markdown can no longer forge
+ *         slide/notes-level section structure
+ *   SB-7  table rendering past the 200-table guard emits an explicit
+ *         truncation marker instead of silently flattening; the table
+ *         width max is a loop (Math.max.apply threw RangeError at
+ *         argument-limit row counts)
+ *   SB-8  KEEP-IN-SYNC banners over the zip-reader block and the
+ *         media caps shared with MediaExtract (v1.3 verifies the
+ *         central directory's size claims, making the SC-4 mirror
+ *         here exact)
+ * --------------------------------------------------------------------
+ * v1.9 provenance: gate passed and pasted 2026-08-11 (check_batch.py:
+ * full v1.8 regression suites green over the batch + every
+ * new-behavior fixture; ES2017 type-check clean). Sidecar-format
+ * changes rode the Config.PromptVersion v1.8 backfill.
  *
  * v1.9 = v1.8 + the REVIEW_v2_5 script batch (SC-2..SC-10, SC-14, FL-5):
  *
@@ -203,7 +224,8 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
       const hit = findTitleShape(xml);
       const title = hit ? hit.text : "";
       // v1.9 (SC-2): display number = position in presentation order
-      const heading = "\n## Slide " + (slideDisplay[e.name] || slideNum(e.name)) + (title ? " — " + title : "") + "\n";
+      // v2.0 (SB-6): \u0001 = generated-heading sentinel (see stripOoxml)
+      const heading = "\n\u0001## Slide " + (slideDisplay[e.name] || slideNum(e.name)) + (title ? " — " + title : "") + "\n";
       const body = hit && title ? xml.slice(0, hit.start) + xml.slice(hit.end) : xml;
       xmlParts.push(heading + body + imgs);
       // resolve this slide's notes part through its own rels — the
@@ -219,14 +241,14 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
         const ne = noteByName[noteName];
         if (ne && !consumed[noteName]) {
           consumed[noteName] = true;
-          xmlParts.push("\n### Notes\n" + utf8ToString(extractEntry(bytes, ne)));
+          xmlParts.push("\n\u0001### Notes\n" + utf8ToString(extractEntry(bytes, ne)));
         }
         break;
       }
     }
     for (const ne of notes) {
       if (!consumed[ne.name]) {
-        xmlParts.push("\n## Notes (unmatched " + slideNum(ne.name) + ")\n" + utf8ToString(extractEntry(bytes, ne)));
+        xmlParts.push("\n\u0001## Notes (unmatched " + slideNum(ne.name) + ")\n" + utf8ToString(extractEntry(bytes, ne)));
       }
     }
   } else {
@@ -361,6 +383,15 @@ function orderSlides(bytes: Uint8Array, entries: ZipEntry[], slides: ZipEntry[])
 // v1.9 (SC-4): replicate MediaExtract's selection exactly (same regex,
 // same caps, same central-directory order, sizes from uncompSize) so
 // the links minted here name only files that will actually exist.
+// ================= KEEP IN SYNC with MediaExtract.ts =================
+// The three caps below MUST equal MediaExtract's MAX_IMAGES / MAX_ONE
+// / MAX_TOTAL, and this selection walk MUST mirror its save loop —
+// SC-4 (no dead image links) holds only while both stay identical.
+// Budgeting uses the central directory's uncompSize on both sides;
+// MediaExtract v1.3 (SB-8) throws on a lying central directory, so
+// the claim-based prediction here is exact for every archive that
+// extracts successfully.
+// =====================================================================
 function mediaSaveSet(entries: ZipEntry[]): { [base: string]: boolean } {
   const MAX_IMAGES = 12;
   const MAX_ONE = 350 * 1024;
@@ -424,7 +455,14 @@ function renderTables(xml: string, ns: string): string {
   const inner = new RegExp("<" + ns + ":tbl\\b(?:(?!<" + ns + ":tbl\\b)[\\s\\S])*?</" + ns + ":tbl>");
   let t = xml;
   let guard = 0;
-  while (inner.test(t) && guard++ < 200) {
+  let truncated = false;
+  while (inner.test(t)) {
+    // v2.0 (SB-7): tables past the guard previously fell through to the
+    // raw tag strip and rendered as flattened prose with no marker
+    if (guard++ >= 200) {
+      truncated = true;
+      break;
+    }
     t = t.replace(inner, (tbl) => {
       const rows = tbl.split(new RegExp("<" + ns + ":tr\\b"));
       const grid: string[][] = [];
@@ -455,7 +493,10 @@ function renderTables(xml: string, ns: string): string {
         if (line.length > 0) grid.push(line);
       }
       if (grid.length === 0) return "\n";
-      const width = Math.max.apply(null, grid.map((r) => r.length));
+      // v2.0 (SB-7): loop, not Math.max.apply — the spread hit the
+      // argument limit (RangeError) at ~65k rows
+      let width = 0;
+      for (const r of grid) if (r.length > width) width = r.length;
       const md: string[] = [];
       for (let i = 0; i < grid.length; i++) {
         const r = grid[i].slice();
@@ -469,6 +510,9 @@ function renderTables(xml: string, ns: string): string {
       }
       return "\n\n" + md.join("\n") + "\n\n";
     });
+  }
+  if (truncated) {
+    t += "\n\n*(tables truncated at 200 — remaining tables render as plain text)*\n";
   }
   return t;
 }
@@ -502,8 +546,9 @@ function stripOoxml(xml: string): string {
   t = t.replace(/<w:p\b(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g, (p) => {
     const ppr = (p.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/) || [""])[0];
     const hs = ppr.match(/<w:pStyle [^>]*w:val="Heading([1-6])"/);
-    if (hs) return "\n" + "######".slice(0, Math.min(parseInt(hs[1], 10) + 1, 6)) + " " + p;
-    if (/<w:pStyle [^>]*w:val="Title"/.test(ppr)) return "\n## " + p;
+    // \u0001 = generated-heading sentinel, consumed by the SB-6 pass
+    if (hs) return "\n\u0001" + "######".slice(0, Math.min(parseInt(hs[1], 10) + 1, 6)) + " " + p;
+    if (/<w:pStyle [^>]*w:val="Title"/.test(ppr)) return "\n\u0001## " + p;
     if (ppr.indexOf("<w:numPr>") >= 0) {
       const il = ppr.match(/<w:ilvl [^>]*w:val="(\d+)"/);
       let indent = "";
@@ -527,6 +572,17 @@ function stripOoxml(xml: string): string {
   t = t.replace(/<\/w:p>|<\/w:tc>|<\/a:p>|<w:br\b[^>]*>|<w:cr\b[^>]*>|<a:br\b[^>]*>/g, "\n");
   t = t.replace(/<w:tab\/>/g, "\t");
   t = t.replace(/<[^>]+>/g, "");
+  // v2.0 (SB-6): escape content heading markers (## through ######
+  // collide with the generated "## Slide N"/"### Notes"/docx-style
+  // sections; v1.9's SC-10 escape below covers only a single #).
+  // This runs while generated headings still carry their \u0001
+  // sentinel (added at every injection site) and entities are still
+  // encoded — Office writers never entity-escape '#', so every
+  // authored hash is literal at this point, and raw \u0001 is not
+  // legal XML CharData, so only our sentinels can start a line with
+  // it. Escape unsentineled heading-like lines, then drop sentinels.
+  t = t.replace(/^#(?=#{0,5}(?:[ \t]|$))/gm, "\\#");
+  t = t.replace(/\u0001/g, "");
   // v1.9 (SC-5): astral-safe entity decode (same helper as core props)
   t = t.replace(/&#x([0-9a-fA-F]+);/g, (_m, h: string) => codePointStr(parseInt(h, 16)));
   t = t.replace(/&#(\d+);/g, (_m, d: string) => codePointStr(parseInt(d, 10)));
@@ -560,13 +616,24 @@ function stripOoxml(xml: string): string {
   // v1.9 (SC-10): a content line that would render as an H1 breaks the
   // "H1 unique to the flow header" contract (pasted markdown in decks
   // is common) — escape it. Generated headings are always ##..######,
-  // never a single #, so only document content can match here.
+  // never a single #, so only document content can match here. (The
+  // ##..###### case is handled by the SB-6 sentinel pass above, which
+  // runs while generated headings are still tagged; this line stays as
+  // the v1.9 backstop for a single # materialized by entity decode.)
   t = t.replace(/^#(?=[ \t]|$)/gm, "\\#");
   t = t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
   return t.trim();
 }
 
 // ------------------------------------------------------------ base64
+// ============ KEEP IN SYNC with MediaExtract.ts (SB-8) ==============
+// Everything from here through the utf-8 decoder — b64ToBytes, the
+// zip central-directory reader, extractEntry, and the RFC 1951
+// inflate — is duplicated byte-for-byte in MediaExtract.ts (Office
+// Scripts cannot share modules). Every fix landed here MUST be landed
+// there in the same batch, and vice versa; the harness equivalence
+// gates are the only enforcement.
+// =====================================================================
 // v1.6: Uint8Array + charCode table. Skips '=', CR/LF and any
 // non-alphabet char exactly as v1.5's dictionary miss did.
 function b64ToBytes(b64: string): Uint8Array {
@@ -729,7 +796,13 @@ function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
       // stored block: align to byte
       bitBuf = 0; bitCnt = 0;
       const len = src[pos] | (src[pos + 1] << 8);
+      const nlen = src[pos + 2] | (src[pos + 3] << 8);
       pos += 4; // skip LEN + NLEN
+      // v2.0 (SB-5): NLEN is LEN's ones-complement by spec — a corrupted
+      // length field previously emitted garbled text as a "successful"
+      // extraction. (A truncated header is caught by the bounds check
+      // below, since pos has already advanced past both fields.)
+      if (nlen !== (~len & 0xffff)) throw new Error("inflate: stored block NLEN mismatch");
       // v1.9 (SC-8): a truncated stored block previously zero-padded
       // silently (OOB Uint8Array reads yield undefined -> 0), emitting
       // garbled text as a "successful" extraction. Huffman blocks

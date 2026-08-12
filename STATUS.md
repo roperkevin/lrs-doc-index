@@ -17,18 +17,23 @@ Last updated: **2026-08-11 (review round r2)**.
 
 | Script | Repo version | Pasted on tenant |
 |---|---|---|
-| ZipTextExtract | v1.9 | 2026-08-11 |
-| MediaExtract | v1.2 | 2026-08-11 |
-| RelatedRank | v1.2 | 2026-08-11 |
-| SidecarPatch | v1.3 | 2026-08-11 |
-| RegexExtract | v1.2 | pre-v2.2 (unchanged since) |
-| WorkbookDump | v1.1 | pre-v2.2 (unchanged since) |
+| ZipTextExtract | **v2.0** (r2) | **PENDING** — tenant runs v1.9 (pasted 2026-08-11) |
+| MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
+| RelatedRank | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
+| SidecarPatch | **v1.4** (r2) | **PENDING** — tenant runs v1.3 (pasted 2026-08-11) |
+| RegexExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pre-v2.2) |
+| WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
 
-The r2 script batch (RegexExtract v1.3, SidecarPatch v1.4,
-WorkbookDump v1.2, ZipTextExtract v2.0, MediaExtract v1.3,
-RelatedRank v1.3 — see `review/REVIEW_v2_5_r2.md`) supersedes this
-table **only after** it passes `check_batch_r2.py` AND is pasted;
-until both, the live flow runs the versions above.
+The r2 batch passed `check_batch_r2.py` (all equivalence IDENTICAL,
+every new behavior green, ES2017 clean) and was promoted to
+`scripts/`. **The tenant paste is the open action**: paste all six in
+the gate's printed order (RegexExtract, WorkbookDump, RelatedRank,
+SidecarPatch, MediaExtract, ZipTextExtract), then update this table.
+No prompt re-paste and no PromptVersion bump needed — the r2 changes
+alter sidecar bodies only on inputs the corpus should not contain
+(corrupt archives, pasted `##` markdown, 200+ table docs, phantom
+revisions), so no backfill is required; changed docs converge as
+their sources change.
 
 ## Components
 
@@ -48,5 +53,5 @@ until both, the live flow runs the versions above.
 
 1. Confirm + record the Q&A agent v1.1 instruction paste (`agent/CHANGES.md`).
 2. Confirm the curation v1.1 fix on the next all-resolved Saturday run (`curation/CHANGES.md`).
-3. r2 script batch: gate → paste → promote (`review/REVIEW_v2_5_r2.md` checklist).
+3. r2 script batch: gate PASSED, promoted — **paste the six scripts** (`review/REVIEW_v2_5_r2.md` checklist step 5).
 4. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).

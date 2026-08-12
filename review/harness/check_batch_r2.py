@@ -1,5 +1,15 @@
 """Gate for the r2 script batch (REVIEW_v2_5_r2.md SB-1..SB-9).
 
+HISTORICAL since 2026-08-11: the batch PASSED this gate and the patches
+were promoted over scripts/ — the new-behavior assertions were folded
+into check_regex.py, check_format.py (§10) and check_related.py (the
+v1.4 cases), which run against scripts/ directly; those are the
+standing suites. Post-promotion this gate re-verifies the promotion:
+the old-vs-new equivalence halves self-compare (old = scripts/ = the
+promoted batch) and the "fixture discriminates" assertions — which
+need the genuinely-old scripts — are skipped via the PROMOTED guard.
+The tenant PASTE may still be pending independently; see STATUS.md.
+
 Stages the six patch files —
 
   ../patches/RegexExtract_v1_3.ts     (SB-1)
@@ -44,6 +54,13 @@ PATCHES = {
 }
 STAGE = 'stage_r2'
 OLD = '../../scripts'
+# post-promotion, scripts/ IS the r2 batch: discriminator assertions
+# (which prove each fixture catches its bug on the OLD scripts) skip
+PROMOTED = 'RegexExtract v1.3' in open(f'{OLD}/RegexExtract.ts',
+                                       encoding='utf-8').read(200)
+if PROMOTED:
+    print('scripts/ carries the promoted r2 batch — equivalence halves '
+          'self-compare; discriminator assertions skipped (see docstring).')
 
 failures = []
 
@@ -218,13 +235,14 @@ SB1 = [{'file': f, 'title': '', 'content': ''} for f in
        ('Notes_Nov21.docx', '20260806_Rev12.pptx', 'Notes_dev3.docx', 'REV12.docx',
         'MyPlanv2.docx', 'TestPlanV1.docx', 'Report_V4.pptx', 'spec_v2.docx', 'V4.docx')]
 json.dump(SB1, open('rex_sb1_cases.json', 'w', encoding='utf-8'))
-old = run_node('rex_old.ts', 'rex_sb1_cases.json')
 new = run_node('rex_new.ts', 'rex_sb1_cases.json')
 want = ['', '', '', '', '', 'V1', 'V4', 'V2', 'V4']
 got = [r['docRevision'] for r in new]
 check(got == want, f'v1.3 docRevision table exact (got {got})')
-check(old[0]['docRevision'] == 'V21' and old[1]['docRevision'] == 'V12',
-      'fixture discriminates: v1.2 mints the phantom V21/V12 the fix removes')
+if not PROMOTED:
+    old = run_node('rex_old.ts', 'rex_sb1_cases.json')
+    check(old[0]['docRevision'] == 'V21' and old[1]['docRevision'] == 'V12',
+          'fixture discriminates: v1.2 mints the phantom V21/V12 the fix removes')
 
 # ==== SB-2: duplicate related: key ========================================
 print('== SB-2 related: node forms (SidecarPatch v1.4) ==')
@@ -237,11 +255,12 @@ for tag, content in (('block-sequence', BLOCK), ('null-value', NULLV), ('extra-s
     fm = out.split('```')[1]
     n = sum(1 for ln in fm.split('\n') if ln.startswith('related:'))
     check(n == 1, f'v1.4: exactly one related: key after patching a {tag} form (got {n})')
-p = dict(SCP_PAYLOAD, files=[{'doc': 41, 'name': 'n.md', 'folder': '', 'content': BLOCK}])
-out_old = run_payload('scp_old.ts', p)['files'][0]['content']
-fm_old = out_old.split('```')[1]
-n_old = sum(1 for ln in fm_old.split('\n') if ln.startswith('related:'))
-check(n_old == 2, f'fixture discriminates: v1.3 duplicates the key on block form (got {n_old})')
+if not PROMOTED:
+    p = dict(SCP_PAYLOAD, files=[{'doc': 41, 'name': 'n.md', 'folder': '', 'content': BLOCK}])
+    out_old = run_payload('scp_old.ts', p)['files'][0]['content']
+    fm_old = out_old.split('```')[1]
+    n_old = sum(1 for ln in fm_old.split('\n') if ln.startswith('related:'))
+    check(n_old == 2, f'fixture discriminates: v1.3 duplicates the key on block form (got {n_old})')
 check('  - doc: 9' not in fm, 'v1.4: the block-sequence continuation lines are consumed')
 
 # ==== SB-3: ranked dedupe =================================================
@@ -252,8 +271,9 @@ DUP = dict(SCP_PAYLOAD,
 out = run_payload('scp_new.ts', DUP)['files'][0]['content']
 check(out.count('rel:41') == 1 and '"s": 900' not in out,
       f"v1.4: duplicate ranked doc renders once, highest score wins (rel:41 x{out.count('rel:41')})")
-out_old = run_payload('scp_old.ts', DUP)['files'][0]['content']
-check(out_old.count('rel:41') > 1, 'fixture discriminates: v1.3 renders the duplicate')
+if not PROMOTED:
+    out_old = run_payload('scp_old.ts', DUP)['files'][0]['content']
+    check(out_old.count('rel:41') > 1, 'fixture discriminates: v1.3 renders the duplicate')
 
 # ==== SB-4: formatted-but-empty sheet =====================================
 print('== SB-4 empty-width sheet (WorkbookDump v1.2) ==')
@@ -264,8 +284,9 @@ lines = new.split('\n')
 check(lines[lines.index('## Sheet: Styled Empty') + 1] == '(empty)',
       'v1.2: formatted-but-empty sheet renders "(empty)"')
 check('| a | b |' in new, 'v1.2: the real sheet still renders')
-old = run_node('wbd_old.ts', 'sheets_empty.json')['out']
-check('|  |' in old, 'fixture discriminates: v1.1 emits malformed "|  |" rows')
+if not PROMOTED:
+    old = run_node('wbd_old.ts', 'sheets_empty.json')['out']
+    check('|  |' in old, 'fixture discriminates: v1.1 emits malformed "|  |" rows')
 
 # ==== SB-5: stored-block NLEN =============================================
 print('== SB-5 NLEN verification (ZTE v2.0 / MediaExtract v1.3) ==')
@@ -275,8 +296,9 @@ check(r.returncode != 0 and 'NLEN mismatch' in r.stderr,
 r = run_node_expect_fail('me_new.ts', 'storednlen_img.pptx.b64')
 check(r.returncode != 0 and 'NLEN mismatch' in r.stderr,
       'v1.3 MediaExtract throws on a wrong NLEN (media entry)')
-r = run_node_expect_fail('zte_old.ts', 'storednlen.docx.b64', '')
-check(r.returncode == 0, 'fixture discriminates: v1.9 accepts the corrupted block')
+if not PROMOTED:
+    r = run_node_expect_fail('zte_old.ts', 'storednlen.docx.b64', '')
+    check(r.returncode == 0, 'fixture discriminates: v1.9 accepts the corrupted block')
 
 # ==== SB-6: content ##..###### escape =====================================
 print('== SB-6 heading forgery (ZTE v2.0) ==')
@@ -292,9 +314,10 @@ check(heads == ['## Slide 1 — HashTitle'],
       f'exactly one generated H2 survives, the slide heading (got {heads})')
 check(sum(1 for ln in lines if ln == '### Notes') == 1,
       'the generated ### Notes heading survives')
-old_text = run_node('zte_old.ts', 'hashheading_deck.pptx.b64', '')['out']['text']
-check('\n## Fake section pasted' in old_text,
-      'fixture discriminates: v1.9 lets content ## through unescaped')
+if not PROMOTED:
+    old_text = run_node('zte_old.ts', 'hashheading_deck.pptx.b64', '')['out']['text']
+    check('\n## Fake section pasted' in old_text,
+          'fixture discriminates: v1.9 lets content ## through unescaped')
 
 # ==== SB-7: table truncation marker + width loop ==========================
 print('== SB-7 table guard (ZTE v2.0) ==')
@@ -302,17 +325,19 @@ text = run_node('zte_new.ts', 'manytables.docx.b64', '')['out']['text']
 check('(tables truncated at 200' in text, 'v2.0 emits the explicit truncation marker')
 check('| tbl0cell |' in text, 'tables under the guard still render as GFM')
 check('after the tables' in text, 'content after the tables survives')
-old_text = run_node('zte_old.ts', 'manytables.docx.b64', '')['out']['text']
-check('(tables truncated' not in old_text,
-      'fixture discriminates: v1.9 truncates silently')
+if not PROMOTED:
+    old_text = run_node('zte_old.ts', 'manytables.docx.b64', '')['out']['text']
+    check('(tables truncated' not in old_text,
+          'fixture discriminates: v1.9 truncates silently')
 
 # ==== SB-8: lying central directory =======================================
 print('== SB-8 size-claim verification (MediaExtract v1.3) ==')
 r = run_node_expect_fail('me_new.ts', 'lyingcd_deck.pptx.b64')
 check(r.returncode != 0 and 'size mismatch' in r.stderr,
       'v1.3 throws on a central directory whose size claim lies')
-r = run_node_expect_fail('me_old.ts', 'lyingcd_deck.pptx.b64')
-check(r.returncode == 0, 'fixture discriminates: v1.2 silently accepts the lie')
+if not PROMOTED:
+    r = run_node_expect_fail('me_old.ts', 'lyingcd_deck.pptx.b64')
+    check(r.returncode == 0, 'fixture discriminates: v1.2 silently accepts the lie')
 
 # ==== type-check every staged SCRIPT at ES2017 ============================
 # The scripts themselves (what actually gets pasted), one at a time —

@@ -1,7 +1,15 @@
 /**
- * RelatedRank v1.2 — score and rank a document's related documents
+ * RelatedRank v1.3 — score and rank a document's related documents
  * ------------------------------------------------------------------
- * Gate passed and pasted 2026-08-11 (check_batch.py: full
+ * r2 batch (REVIEW_v2_5_r2.md SB-9) — gated by check_batch_r2.py.
+ * Gate PASSED (check_batch_r2.py, 2026-08-11).
+ * TENANT PASTE STILL PENDING — the live flow runs the previous
+ * version until this file is pasted into the Automate workbook
+ * (see STATUS.md). Output byte-identical to
+ * v1.2; the only change is perf (kwWeight precomputed per doc
+ * instead of re-derived inside the sort comparator).
+ * ------------------------------------------------------------------
+ * v1.2 provenance: gate passed and pasted 2026-08-11 (check_batch.py: full
  * check_related suite green + both defensive cases).
  *
  * v1.2 = v1.1 + two defensive fixes (REVIEW_v2_5 SC-12). Output on
@@ -186,9 +194,15 @@ function main(
     const doc = parseInt(d, 10);
     const ids = Object.keys(idShared[doc] || {}).sort();
     const kwIds = Object.keys(kwShared[doc] || {}).map((k) => parseInt(k, 10));
+    // v1.3 (SB-9): kwWeight allocates Object.keys() per call — compute
+    // each id's weight once instead of O(n log n) times in the comparator
+    const w: { [k: number]: number } = {};
+    for (const k of kwIds) {
+      w[k] = kwWeight(k);
+    }
     // rarest (most informative) first; ties alphabetical by title
     kwIds.sort((a, b) => {
-      const dw = kwWeight(b) - kwWeight(a);
+      const dw = w[b] - w[a];
       if (dw !== 0) {
         return dw;
       }
@@ -201,7 +215,7 @@ function main(
     const kws = kwIds.map((k) => myKw[k]).filter((t) => !!t);
     let kwScore = 0;
     for (const k of kwIds) {
-      kwScore += kwWeight(k);
+      kwScore += w[k];
     }
     kwScore = Math.min(kwScore, 999); // id links must always outrank keywords
     const s = 1000 * ids.length + Math.round(kwScore * 1000) / 1000;

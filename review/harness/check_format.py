@@ -300,6 +300,48 @@ r = run_node_fail('zte_cur.ts', 'truncstored.docx.b64', '')
 check(r.returncode != 0 and 'stored block out of input' in r.stderr,
       'truncated stored block throws instead of zero-padding')
 
+# ---- 10: the r2 batch behaviors (folded from check_batch_r2.py on the
+# 2026-08-11 promotion; SB-4..SB-8 — SB-1..SB-3 live in check_regex.py
+# and the SidecarPatch cases in check_related.py) ---------------------------
+
+# SB-6: content ##..###### escaped; generated headings survive
+text = run_node('zte_cur.ts', 'hashheading_deck.pptx.b64', '')['out']['text']
+hlines = text.split('\n')
+check('\\## Fake section pasted' in text and '\\### Fake notes pasted' in text
+      and '\\#### deep heading pasted' in text and '\\# Roadmap pasted markdown' in text,
+      'content #/##/###/#### lines all escaped')
+check('\\## Fake heading inside notes' in text, 'notes content escaped too')
+check([ln for ln in hlines if ln.startswith('## ')] == ['## Slide 1 — HashTitle']
+      and sum(1 for ln in hlines if ln == '### Notes') == 1,
+      'generated slide + notes headings survive the escape')
+
+# SB-7: explicit truncation marker past the 200-table guard
+text = run_node('zte_cur.ts', 'manytables.docx.b64', '')['out']['text']
+check('(tables truncated at 200' in text and '| tbl0cell |' in text
+      and 'after the tables' in text,
+      '201+ tables: marker emitted, in-guard tables + trailing content intact')
+
+# SB-5: stored-block NLEN verified in both zip readers
+r = run_node_fail('zte_cur.ts', 'storednlen.docx.b64', '')
+check(r.returncode != 0 and 'NLEN mismatch' in r.stderr, 'ZTE throws on a wrong NLEN')
+r = run_node_fail('me_cur.ts', 'storednlen_img.pptx.b64')
+check(r.returncode != 0 and 'NLEN mismatch' in r.stderr,
+      'MediaExtract throws on a wrong NLEN (media entry)')
+
+# SB-8: central-directory size claims verified against inflated bytes
+r = run_node_fail('me_cur.ts', 'lyingcd_deck.pptx.b64')
+check(r.returncode != 0 and 'size mismatch' in r.stderr,
+      'MediaExtract throws on a lying central directory')
+
+# SB-4: formatted-but-empty sheet renders (empty), not malformed rows
+json.dump({'Styled Empty': [['', ''], ['', '']], 'Real': [['a', 'b'], ['1', '2']]},
+          open('sheets_empty.json', 'w', encoding='utf-8'))
+wb2 = run_node('wbd_cur.ts', 'sheets_empty.json')['out']
+wlines2 = wb2.split('\n')
+check(wlines2[wlines2.index('## Sheet: Styled Empty') + 1] == '(empty)'
+      and '| a | b |' in wb2 and '|  |' not in wb2,
+      'formatted-but-empty sheet renders "(empty)"')
+
 print()
 if failures:
     print(f'RESULT: FAIL — {len(failures)} assertion(s) failed')

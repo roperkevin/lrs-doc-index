@@ -242,3 +242,54 @@ After pasting the v1.2 prompt (see `DocIndex_Prompt_v1_2.md`):
 **Config** → `"PromptVersion": "v1.1"` → `"v1.2"` (literal stays literal). Rows written
 before the bump are then discoverable via the runbook's promptversion filter for
 selective re-runs.
+
+---
+
+# r2 round (2026-08-11) — REVIEW_v2_5_r2.md
+
+## r2-1 — Script paste (REQUIRED for the SB batch to go live)
+
+Open the Automate-tab workbook's Code Editor and paste each promoted
+script over its existing counterpart, in this order:
+
+1. `scripts/RegexExtract.ts` (v1.3)
+2. `scripts/WorkbookDump.ts` (v1.2)
+3. `scripts/RelatedRank.ts` (v1.3)
+4. `scripts/SidecarPatch.ts` (v1.4)
+5. `scripts/MediaExtract.ts` (v1.3)
+6. `scripts/ZipTextExtract.ts` (v2.0)
+
+No flow edits, no prompt re-paste, no PromptVersion bump — same names
+and signatures, and output is identical on well-formed inputs (the
+gate's equivalence table). Note ZipTextExtract v2.0 contains
+backslash-u0001 escape sequences (the SB-6 generated-heading
+sentinel) — they are plain ASCII in the source, so pasting is safe;
+do not "clean them up".
+
+Test after pasting: run the flow in smoke mode (Config→SmokeFile) on
+any pptx; then update STATUS.md's paste column and append the
+deployment record per the round checklist.
+
+## r2-2 — PV-3: the dead `Config.SourceSiteUrl` (pick ONE)
+
+`Config.SourceSiteUrl` is referenced by nothing; `Get_files` hardcodes
+the same URL (the connector's dataset field must be a literal picker
+value, so the key cannot actually be wired in). Either:
+
+- **(a) Delete it (recommended):** **Config** → remove the
+  `"SourceSiteUrl"` line. The flow keeps working; the README already
+  documents the source site.
+- **(b) Keep it as documentation:** leave the key and accept that it
+  is informational only — `Get_files`' site picker is the binding.
+
+Test: save; the flow's next run behaves identically.
+
+## r2-3 — DD-8 (optional): pin trigger concurrency
+
+`docs/SP_Adaptation_Notes.md` now documents that overlapping runs are
+fenced only by the daily cadence. To make the original claim true:
+trigger `Recurrence` → Settings → Concurrency Control ON → Degree of
+Parallelism 1. Optional hardening; skipping it is fine at one run/day.
+
+Test: trigger settings show concurrency 1; next scheduled run is
+unaffected.

@@ -1,6 +1,19 @@
 /**
- * SidecarPatch v1.3 — surgical "Related documents" patching for
+ * SidecarPatch v1.4 — surgical "Related documents" patching for
  * markdown sidecars, batched over every file touched for one doc
+ * ------------------------------------------------------------------
+ * r2 batch (REVIEW_v2_5_r2.md SB-2, SB-3) — gated by
+ * check_batch_r2.py. Gate PASSED (check_batch_r2.py, 2026-08-11).
+ * TENANT PASTE STILL PENDING — the live flow runs the previous
+ * version until this file is pasted into the Automate workbook
+ * (see STATUS.md).
+ * v1.4: (SB-2) patchFrontmatter recognizes ANY root `related:` form
+ * (inline with extra spaces, bare key, block sequence, null) and
+ * replaces the whole node — previously only the exact `related: [`
+ * prefix matched, and every other form gained a DUPLICATE related:
+ * key. (SB-3) sortAndCap dedupes by doc id (highest-scored occurrence
+ * wins) so duplicate ids in rankedJson or a hand-edited related: line
+ * can't render duplicate entries.
  * ------------------------------------------------------------------
  * Gate passed and pasted 2026-08-11 (check_batch.py: full
  * check_related suite green + the normalization/escaping cases).
@@ -246,23 +259,45 @@ function renderRegionInner(entries: RelEntry[], bullets: { [doc: number]: string
 
 function sortAndCap(entries: RelEntry[], cap: number): RelEntry[] {
   entries.sort((x, y) => (y.s - x.s) || (y.doc - x.doc));
-  return entries.slice(0, cap);
+  // v1.4 (SB-3): dedupe by doc id — after the sort, the first
+  // occurrence is the highest-scored one, so it wins
+  const seen: { [d: number]: boolean } = {};
+  const out: RelEntry[] = [];
+  for (const e of entries) {
+    if (!seen[e.doc]) {
+      seen[e.doc] = true;
+      out.push(e);
+    }
+  }
+  return out.slice(0, cap);
 }
 
 /** Replace/insert the `related:` line inside the frontmatter text. */
 function patchFrontmatter(fm: string, fmLine: string): string {
   const lines = fm.split("\n");
   let relIdx = -1;
+  let relEnd = -1;
   let toolsIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].indexOf("related: [") === 0) {
-      if (relIdx < 0) relIdx = i;
+    // v1.4 (SB-2): any root `related:` key is the node to replace —
+    // `related: [...]` (any spacing), bare `related:`, `related: null`,
+    // or block-sequence form. Only the exact `related: [` prefix
+    // matched before, so every other form gained a duplicate key.
+    if (/^related:(\s|$)/.test(lines[i])) {
+      if (relIdx < 0) {
+        relIdx = i;
+        relEnd = i + 1;
+        // a block-sequence/multiline value continues on indented lines
+        while (relEnd < lines.length && /^\s+\S/.test(lines[relEnd])) {
+          relEnd++;
+        }
+      }
     } else if (lines[i].indexOf("tools: [") === 0) {
       toolsIdx = i;
     }
   }
   if (relIdx >= 0) {
-    lines[relIdx] = fmLine;
+    lines.splice(relIdx, relEnd - relIdx, fmLine);
   } else if (toolsIdx >= 0) {
     lines.splice(toolsIdx + 1, 0, fmLine);
   } else {
@@ -274,9 +309,13 @@ function patchFrontmatter(fm: string, fmLine: string): string {
 /** Read existing entries from the frontmatter's `related:` line. */
 function readFmEntries(fm: string): RelEntry[] {
   for (const line of fm.split("\n")) {
-    if (line.indexOf("related: [") === 0) {
+    // v1.4 (SB-2): tolerate extra spacing before the bracket; non-inline
+    // forms (block sequence, null) read as empty and get rewritten
+    // inline by patchFrontmatter
+    const m = line.match(/^related:\s*(\[[\s\S]*)$/);
+    if (m) {
       const out: RelEntry[] = [];
-      for (const raw of asArray(parseJson(line.slice("related: ".length)))) {
+      for (const raw of asArray(parseJson(m[1]))) {
         const o = raw as { doc?: unknown; file?: unknown; s?: unknown };
         const doc = typeof o.doc === "number" ? o.doc : parseInt(String(o.doc), 10);
         if (doc > 0) {

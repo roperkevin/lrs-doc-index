@@ -1,7 +1,22 @@
 /**
- * MediaExtract v1.2 — pull raster images out of a pptx/docx, bounded
+ * MediaExtract v1.3 — pull raster images out of a pptx/docx, bounded
  * ------------------------------------------------------------
- * Gate passed and pasted 2026-08-11 (check_batch.py: v1.1 vs v1.2
+ * r2 batch (REVIEW_v2_5_r2.md SB-5, SB-8) — gated by
+ * check_batch_r2.py. Gate PASSED (check_batch_r2.py, 2026-08-11).
+ * TENANT PASTE STILL PENDING — the live flow runs the previous
+ * version until this file is pasted into the Automate workbook
+ * (see STATUS.md). v1.3:
+ *   SB-8  the MAX_TOTAL accumulator now counts the central
+ *         directory's uncompSize claim (matching ZipTextExtract's
+ *         SC-4 prediction arithmetic exactly), and every inflated
+ *         entry is verified against that claim — a lying central
+ *         directory throws instead of silently diverging the two
+ *         scripts' selection sets (the SC-4 dead-link mode). Also
+ *         adds the KEEP-IN-SYNC banner over the shared zip reader.
+ *   SB-5  stored-block NLEN verified in the shared inflate (see
+ *         ZipTextExtract v2.0).
+ * ------------------------------------------------------------
+ * v1.2 provenance: gate passed and pasted 2026-08-11 (check_batch.py: v1.1 vs v1.2
  * byte-identical on every valid fixture; throw paths exercised).
  *
  * v1.2 = v1.1 + the REVIEW_v2_5 batch (SC-8, SC-11, SC-14). Output on
@@ -34,6 +49,13 @@
 interface ExtractedImg { name: string; b64: string; }
 interface MediaResult { images: ExtractedImg[]; skipped: string; count: number; }
 
+// ============ KEEP IN SYNC with ZipTextExtract.ts (SB-8) =============
+// These three caps MUST equal the triple in ZipTextExtract's
+// mediaSaveSet, and the save loop below MUST mirror its selection
+// walk — SC-4 (no dead image links) holds only while both stay
+// identical. Budgeting uses the central directory's uncompSize on
+// both sides; the claim is verified against the inflated bytes below.
+// =====================================================================
 const MAX_IMAGES = 12;
 const MAX_ONE = 350 * 1024;
 const MAX_TOTAL = 3 * 1024 * 1024;
@@ -53,8 +75,15 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): MediaResult {
       continue;
     }
     const data = extractEntry(bytes, e);
+    // v1.3 (SB-8): the central directory's size claim is the budgeting
+    // currency on both sides (ZipTextExtract predicts from it without
+    // inflating); verify it so a lying archive throws loudly instead
+    // of silently diverging the two scripts' selection sets
+    if (data.length !== e.uncompSize) {
+      throw new Error("MediaExtract: entry size mismatch (corrupt archive): " + e.name);
+    }
     images.push({ name: base, b64: bytesToB64(data) });
-    total += data.length;
+    total += e.uncompSize;
   }
   return { images: images, skipped: skipped.join("\n"), count: images.length };
 }
@@ -76,6 +105,14 @@ function bytesToB64(b: Uint8Array): string {
 }
 
 // ------------------------------------------------------------ base64
+// ============ KEEP IN SYNC with ZipTextExtract.ts (SB-8) ============
+// Everything from here down — b64ToBytes, the zip central-directory
+// reader, extractEntry, and the RFC 1951 inflate — is duplicated
+// byte-for-byte in ZipTextExtract.ts (Office Scripts cannot share
+// modules). Every fix landed here MUST be landed there in the same
+// batch, and vice versa; the harness equivalence gates are the only
+// enforcement.
+// =====================================================================
 // v1.1: Uint8Array + charCode table. Skips '=', CR/LF and any
 // non-alphabet char exactly as v1.0's dictionary miss did.
 function b64ToBytes(b64: string): Uint8Array {
@@ -236,7 +273,11 @@ function inflateRaw(src: Uint8Array, outHint: number): Uint8Array {
       // stored block: align to byte
       bitBuf = 0; bitCnt = 0;
       const len = src[pos] | (src[pos + 1] << 8);
+      const nlen = src[pos + 2] | (src[pos + 3] << 8);
       pos += 4; // skip LEN + NLEN
+      // v1.3 (SB-5): NLEN is LEN's ones-complement by spec — verify it
+      // so a corrupted length field throws instead of emitting garbage
+      if (nlen !== (~len & 0xffff)) throw new Error("inflate: stored block NLEN mismatch");
       // v1.2 (SC-8): throw on truncation instead of zero-padding
       if (pos + len > src.length) throw new Error("inflate: stored block out of input");
       ensure(len);

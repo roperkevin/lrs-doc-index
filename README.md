@@ -18,12 +18,12 @@ sidecar to its related documents.
 |---|---|---|
 | flow/v2_5/definition.json | Flow definition | v2.5 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
-| scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.9 |
-| scripts/MediaExtract.ts | Bounded raster image extraction | v1.2 |
-| scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.2 |
-| scripts/SidecarPatch.ts | Surgical related-section patching | v1.3 |
+| scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.3 (paste pending) |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v2.0 (paste pending) |
+| scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
+| scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.3 (paste pending) |
+| scripts/SidecarPatch.ts | Surgical related-section patching | v1.4 (paste pending) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
 | review/patches/ZipTextExtract_v1_9.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.9 |
