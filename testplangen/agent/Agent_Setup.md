@@ -202,6 +202,20 @@ lists only; no child flow, no AI Builder call, no new connectors
 reference is `testplangen/flow/lookup_v1_0/definition.json` — the
 exact WDL for every expression below.
 
+> **Import shortcut, with the 1c caveat:**
+> `testplangen/StoryLookupFlow_v1_0.zip` is an authored re-cut of
+> that definition (My flows → Import → Import package (Legacy), map
+> the SharePoint connection during import). Try it first if you
+> prefer importing — but on the first live tenant this package CLASS
+> (agent-flow trigger/respond) did not surface as recognized cards,
+> so Copilot Studio never listed the imported flow as a tool (the
+> CHANGES v1.4 record for `TestPlanGenAgentFlow_v1_0.zip`). If the
+> imported flow doesn't appear under Tools → Add a tool, don't fight
+> it: build by hand below — the payload is byte-identical to the
+> shape reference either way. If it DOES import cleanly, re-pick the
+> Doc Index and Doc IDs lists on the query actions if your GUIDs
+> differ, add the flow to the §0 solution, and run the §1d check.
+
 - Trigger: **When an agent calls the flow**, two Text inputs, names
   exactly `LookupKind` (`issue` or `title` — the topic classifies,
   the flow never parses free text) and `LookupQuery` (the issue
@@ -516,6 +530,8 @@ the checked-in file.
   drafts).
 - **Provenance export**: once §1's four flows are stable, export the
   solution and check it in beside the agent files, the way `flow/`
-  versions accrete. (`flow/lookup_v1_0/definition.json` is authored,
-  the 1c-lesson posture: a shape/contract reference for the
-  Copilot-Studio-built flow, not an import artifact.)
+  versions accrete. (`flow/lookup_v1_0/definition.json` is the
+  authored source; `StoryLookupFlow_v1_0.zip` is its authored re-cut
+  package, carried with the §1d caveat that agent-flow imports may
+  not surface as recognized cards — the hand-build stays the primary
+  path.)
