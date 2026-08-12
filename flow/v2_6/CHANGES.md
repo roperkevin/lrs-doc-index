@@ -8,6 +8,19 @@ two `Get_my_kws`/`Get_id_links` queries, `Config`, the init chain and
 `flow/v2_6/definition.json` was generated from the v2.5 definition
 and the diff is exactly the edits below.
 
+`flow/DocIndexSweep_v2_6.zip` is authored the same way the v2.5 zip
+was: the v2.5 package skeleton (manifests and maps byte-identical,
+connection display names already scrubbed) with the v2.6 definition
+as the payload — payload byte-identical to
+`flow/v2_6/definition.json`, satisfying the RL-4 zip-matches-folder
+rule by construction. The usual import caveat carries over verbatim
+from the v2.5 row: post-import verification needed, in particular
+re-picking the Office Script on every Run-script action
+(`Extract_media_*`, `Run_regex`, `Dump_workbook`,
+`Run_related_shortlist`, `Run_related_rank`, `Run_sidecar_patch`) —
+the recommended deployment remains designer edits on the live flow,
+not a re-import.
+
 **The script paste and these flow edits are ONE maintenance window.**
 RelatedRank v2.0 changed its signature (11 parameters, new names);
 the v2.5 flow's `Run_related_rank` binding errors against it, and
@@ -130,8 +143,10 @@ metadata / recency pile.
 4. Smoke run (Config → SmokeFile) on a doc with keywords: expect
    the sidecar's Related section unchanged in shape, and
    `related_flags=` (usually empty) in `Run_summary`.
-5. Full run next day; export the flow → cut
-   `flow/DocIndexSweep_v2_6.zip`; update STATUS.md.
+5. Full run next day; update STATUS.md. (The import zip is already
+   authored in-repo — see above; optionally refresh it from the
+   live export after application if the applied flow drifts from
+   the authored definition, and record any drift RL-4-style.)
 
 Rollback: re-paste `review/patches/RelatedRank_v1_3.ts` and revert
 the designer edits (the §v2_6 list is written to be reversible
