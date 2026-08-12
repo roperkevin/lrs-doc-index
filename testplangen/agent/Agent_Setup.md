@@ -1,6 +1,6 @@
 # Test Plan Generator Agent Setup — import and wire
 
-Current versions: agent file set **v1.2**, component **v2.1** (see `../CHANGES.md`).
+Current versions: agent file set **v1.3**, component **v2.2** (see `../CHANGES.md`).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story's Doc Index item
@@ -171,7 +171,20 @@ flow, if not importing the package):
   child-flow action has **Failed / Timed out**: `Status` = `error`,
   `DraftUrl` empty, `GenSummary` =
   `@{take(string(coalesce(outputs('Run_a_Child_Flow')?['body'], 'child flow failed')), 1000)}`
-  — the agent relays it verbatim (the topic's else branch).
+  — the agent relays it verbatim (the topic's statusError branch).
+
+> **Run-after discipline on the two responds** (v1.3, from the first
+> live transcript): the success respond keeps its DEFAULT run-after
+> (child-flow action succeeded) and maps each of the three outputs
+> from the child's INDIVIDUAL response fields — never the whole body;
+> the error respond runs ONLY after the child-flow action **has
+> failed / has timed out**. Get either wrong — error respond left on
+> the default run-after, responds misordered, or a success output
+> mapped to the full body — and a successful run returns
+> `Status: error` with `GenSummary` = the child's entire JSON
+> response (`{"status":"ok","drafturl":...,...}`), so the agent
+> reports "no draft" for a run that produced one while the file sits
+> in the drafts folder.
 
 The output names `Status` / `DraftUrl` / `GenSummary` and the input
 name `StoryId` are a CONTRACT with
@@ -182,7 +195,12 @@ Check: run `TestPlanGenCore` directly (Test → Manually) with StoryId
 `DraftUrl` with its spaces encoded as `%20` (the drafts folder path
 contains spaces; an unencoded URL dies at the first one in Teams). Run it with a Test Plan row's id → `Status: guard`, no
 file. Run the list-menu parent on doc 42 → same draft behavior as
-before the split.
+before the split. Then exercise `TestPlanGenAgentFlow` itself (its
+run history after a §3 test, or a direct test run): a doc-42 run
+must return `Status` = `ok` with `DraftUrl` and `GenSummary` as
+three SEPARATE fields — `Status` = `error` carrying a JSON blob in
+`GenSummary` on a run whose child succeeded means the run-after
+discipline above wasn't applied.
 
 ## 2 — Import the agent files
 
@@ -238,7 +256,14 @@ outputs into the EXISTING variables `Topic.Status` /
 picker rather than letting the canvas mint new ones — the downstream
 condition and messages reference those names, so rename any
 auto-created variables to match). The commented block in the topic
-file shows the node's intended final shape.
+file shows the node's intended final shape. Two notes: the binding
+KEYS the canvas writes may surface lowercased
+(`status`/`drafturl`/`gensummary`) — that follows the flow's respond
+schema and is fine, only the Topic.* variable side matters; and since
+topic v1.3 the status condition has a branch per contract status
+(`ok`/`guard`/`nodraft`/`error`) plus an else that reports a
+contract/wiring fault — if the else fires in testing, the §1c
+run-after discipline or this section's output mapping is what broke.
 
 Check: Test pane → "draft a test plan" → agent asks for the id → give
 `42` → confirm → draft link comes back with the review reminder, and
@@ -261,7 +286,7 @@ pass/fail per row).
 
 | # | Action | Expected | Check |
 |---|---|---|---|
-| 1 | "Draft a test plan" → give id 42 → confirm | Draft generated | Reply carries the draft URL **as one clickable link — click it in the Teams chat and confirm it opens the draft** (the path has spaces; an unencoded URL truncates at `…/Shared` — this click is the check that catches it), the unreviewed/[VERIFY] reminder, and the Gen_summary line; file exists in the drafts folder |
+| 1 | "Draft a test plan" → give id 42 → confirm | Draft generated | Reply carries the draft URL **as one clickable link — click it in the Teams chat and confirm it opens the draft** (the path has spaces; an unencoded URL truncates at `…/Shared` — this click is the check that catches it), the unreviewed/[VERIFY] reminder, and the Gen_summary line; file exists in the drafts folder. Exactly ONE reply reports the result — a second, restyled summary following the topic's reply is triage (f), and a "no draft" reply containing raw JSON is triage (e) |
 | 2 | "Draft a test plan for the conflict prevention story" (title, no id) | Id coaching, no invocation | Agent explains where to find the item id; flow does NOT run (no new file) |
 | 3 | Give a *pick: Test Plan row's* id → confirm | Guard relayed | Reply carries the child's guard message (User Story + Indexed required); `Status: guard`; no file |
 | 4 | Decline at the confirm step | Clean cancel | "Nothing was generated" reply; no flow run in history |
@@ -273,7 +298,16 @@ lost in the overlay, re-check §2 step 3; (b) flow node errors —
 re-bind §3, then §1c's output names against the topic contract;
 (c) guard/error text missing — §1a substitution 2 skipped (the child
 still Terminates instead of Responding); (d) agent answers content
-questions — general knowledge got re-enabled, §2 check.
+questions — general knowledge got re-enabled, §2 check; (e) a
+successful run reports no draft, with the child's raw JSON
+(`{"status":"ok",...}`) dumped in the reply — the agent flow's error
+respond is firing on success; apply §1c's run-after discipline;
+(f) messages arrive reworded ("Shall I proceed?" appended), the agent
+asks for the id again right after a confirmation, or a second styled
+summary follows the topic's own reply — generative orchestration /
+message rephrasing got enabled, contradicting `settings.mcs.yml`;
+restore Settings → Orchestration → Classic (and general knowledge
+OFF), then re-run rows 1 and 5.
 
 ## Known limits (v1.0)
 
