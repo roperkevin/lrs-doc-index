@@ -40,6 +40,22 @@ into Doc Links or any other list. Staleness is handled by reciprocal
 patching (a newly indexed doc updates its neighbors' sidecar
 sections), not by materializing edges.
 
+*v2.6 addendum:* still true after the related-ranking overhaul, with
+two refinements. (1) The ranking now reads **all** stored Doc Links
+edge types (id / review / gantt / titlematch, weighted per type from
+`Config.RelatedWeights`) — the sparse-edges rule is unchanged; the
+sweep still mints only `id`, and gantt/titlematch minting stays with
+Flow #2. (2) Ranking is a **shortlist-then-rerank** pattern: the two
+indexed queries (widened by one Keywords-list metadata query that
+also folds alias junction rows onto their canonicals) produce a
+shortlist of `RelatedShortlist` (12) candidates; the flow fetches
+just those candidates' Doc Index rows and a second script call
+re-ranks them with metadata affinity and a symmetric (pair-min)
+recency bonus before capping at RelatedTopN. Metadata never grows
+the candidate set — no shared edge or keyword, no entry — so the
+display cache stays O(docs × RelatedTopN) and keyword edges stay
+computed-on-read.
+
 **2. Full extracted text lives as .md sidecar files, not list columns.**
 Create a document library **LRS Doc Index**. The flow writes one
 `{title-slug}__doc{ID}.md` per document (fenced ` ```yaml ` metadata

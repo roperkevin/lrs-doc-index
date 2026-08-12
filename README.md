@@ -4,7 +4,7 @@
 > source-of-truth table (scripts, prompts, components, open actions).
 
 Everything the document-indexing pipeline needs, in one bundle.
-Current as of 2026-08-11. The system: a daily Power Automate flow
+Current as of 2026-08-12. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
 in-script, classifies and keywords each doc via AI Builder, mints
 issue-ID rows and doc-to-doc edges, writes markdown sidecars with
@@ -16,13 +16,14 @@ sidecar to its related documents.
 
 | Path | What | Version |
 |---|---|---|
-| flow/v2_5/definition.json | Flow definition | v2.5 |
+| flow/v2_5/definition.json | Flow definition (deployed) | v2.5 |
+| flow/v2_6/definition.json | Flow definition (authored — related-ranking overhaul; designer application pending, one window with the RelatedRank v2.0 paste) | v2.6 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.3 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v2.0 (paste pending) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.3 (paste pending) |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity, recency, config-driven weights) | v2.0 (paste pending — one window with the v2.6 designer edits) |
 | scripts/SidecarPatch.ts | Surgical related-section patching | v1.4 (paste pending) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
@@ -30,6 +31,7 @@ sidecar to its related documents.
 | review/patches/MediaExtract_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/RelatedRank_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
+| review/patches/RelatedRank_v2_0.ts | r3 patch (gated + promoted 2026-08-12; tenant paste pending, fenced to the v2.6 window) | v2.0 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy) | v1.0 |
@@ -257,18 +259,34 @@ from v2.3 or earlier, do the v2.4 steps first
   column (see `flow/v2_5/CHANGES.md`).
 - **Edges** mint when the LATER doc of an ID-sharing pair
   processes; the graph self-assembles during backfill.
-- **Related documents** (v2.3): each sidecar shows its top 5
-  related docs — id-linked docs first (score 1000+/shared issue),
-  then by rarity-weighted keyword overlap (a local IDF computed
-  from rows the flow already fetches: common terms fade, specific
-  terms dominate, and one rare shared keyword outranks two
-  generic ones); indexing a doc also reciprocally patches its
-  neighbors' sidecars, so lists stay fresh in both directions and
-  entries self-heal on reindex. Keyword relatedness is still
-  never stored as edges — the lists are a bounded per-doc render
-  (see docs/SP_Adaptation_Notes.md). Rarity is sampled from the
-  sharers query's top-500 rows — the `$top` ceiling is the knob
-  if the corpus outgrows it.
+- **Related documents** (v2.3, overhauled v2.6): each sidecar shows
+  its top 5 related docs. Since v2.6 (RelatedRank v2.0) the score
+  is `s = edges + min(soft, 999)`: every stored Doc Links edge
+  type counts, weighted per type (id 1000/shared issue — still
+  structurally dominant — then review 100, gantt 60, titlematch
+  40, ready for Flow #2's edges the day they exist), and the soft
+  part adds rarity-weighted keyword overlap (a local IDF computed
+  from rows the flow already fetches, keywords further weighted by
+  Kind: topic 1.0 / tool 0.6 / product 0.4, alias junction rows
+  folded onto their canonical), metadata affinity (same
+  DocKind/Surface/PE/Dev, same TargetRelease strongest) and a
+  symmetric recency bonus (half-life decay on the OLDER doc's
+  SourceModified — pair-min, so scores stay reciprocal-safe).
+  Ranking is two-phase: a shortlist of 12 by edges+keywords, then
+  a metadata re-rank of the fetched shortlist — a doc with no
+  shared edge or keyword never appears just for matching metadata.
+  Every weight lives in `Config.RelatedWeights` (JSON string;
+  absent keys fall back to identical in-script defaults), so
+  tuning is a designer edit, not a script paste. Indexing a doc
+  still reciprocally patches its neighbors' sidecars, so lists
+  stay fresh in both directions and entries self-heal on reindex.
+  Keyword relatedness is still never stored as edges — the lists
+  are a bounded per-doc render (see docs/SP_Adaptation_Notes.md).
+  Rarity sampling ceilings moved into Config (`MyKwsTop` 100,
+  `SharersTop` 2000, `LinksTop` 200) and truncation is now
+  *detected*, not just documented: any input arriving at its
+  ceiling shows up as `related_flags=` in the run summary — raise
+  the ceiling when it fires.
 - **Kind routing** (v2.4): sidecars file into the subfolder named by
   `Config.KindFolders[DocKind]`; when a reindex changes the path
   (kind reclassified, title slug changed, or the v1.6 backfill

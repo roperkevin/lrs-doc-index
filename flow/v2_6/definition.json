@@ -1,0 +1,2733 @@
+{
+  "name": "0761eca0-c33f-4ac0-a65a-be02acece220",
+  "id": "/providers/Microsoft.Flow/flows/0761eca0-c33f-4ac0-a65a-be02acece220",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "Doc Index Sweep",
+    "definition": {
+      "metadata": {
+        "workflowEntityId": null,
+        "processAdvisorMetadata": null,
+        "flowChargedByPaygo": null,
+        "flowclientsuspensionreason": "None",
+        "flowclientsuspensiontime": null,
+        "flowclientsuspensionreasondetails": null,
+        "creator": {
+          "id": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+          "type": "User",
+          "tenantId": "aee6e3c9-711e-4c7c-bd27-04f2307db20d"
+        },
+        "provisioningMethod": "FromDefinition",
+        "failureAlertSubscription": true,
+        "clientLastModifiedTime": "2026-08-07T23:23:32.8102362Z",
+        "lastModifiedBy": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+        "connectionKeySavedTimeKey": "2026-08-07T23:23:32.8102362Z",
+        "creationSource": "Portal",
+        "modifiedSources": "Portal"
+      },
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "interval": 1,
+            "frequency": "Day",
+            "schedule": {
+              "hours": [
+                "17"
+              ],
+              "minutes": [
+                0
+              ]
+            },
+            "timeZone": "US Mountain Standard Time"
+          },
+          "evaluatedRecurrence": {
+            "interval": 1,
+            "frequency": "Day",
+            "schedule": {
+              "hours": [
+                "17"
+              ],
+              "minutes": [
+                0
+              ]
+            },
+            "timeZone": "US Mountain Standard Time"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Config": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": {
+            "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
+            "SourceSiteUrl": "https://esriis.sharepoint.com/sites/LocationReferencing",
+            "TextsFolder": "/LRS Doc Index",
+            "SmokeFile": "",
+            "DefaultRepo": "ArcGISPro/ps-location-referencing",
+            "PromptVersion": "v1.8",
+            "TextCap": 100000,
+            "PreviewCap": 5000,
+            "MaxDocsPerRun": 150,
+            "RelatedTopN": 5,
+            "RelatedShortlist": 12,
+            "MyKwsTop": 100,
+            "SharersTop": 2000,
+            "LinksTop": 200,
+            "RelatedWeights": "{\"edge\":{\"id\":1000,\"review\":100,\"gantt\":60,\"titlematch\":40},\"kwKind\":{\"topic\":1.0,\"tool\":0.6,\"product\":0.4},\"meta\":{\"kind\":0.5,\"surface\":0.5,\"release\":1.0,\"pe\":0.75,\"dev\":0.75},\"recency\":{\"weight\":1.0,\"halfLifeDays\":180},\"softCap\":999,\"tops\":{\"myKws\":100,\"sharers\":2000,\"links\":200}}",
+            "KindFolders": {
+              "Test Plan": "Test Plans",
+              "User Story": "User Stories",
+              "Design Spike": "Design Spikes",
+              "Data Template": "Data Templates",
+              "Schedule": "Schedules",
+              "Doc Review": "Doc Reviews",
+              "Other": "Other"
+            }
+          }
+        },
+        "Init_RelatedFlags": {
+          "runAfter": {
+            "Config": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RelatedFlags",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_XmlBuf": {
+          "runAfter": {
+            "Init_RelatedFlags": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "XmlBuf",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_RelsText": {
+          "runAfter": {
+            "Init_XmlBuf": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "RelsText",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_DocText": {
+          "runAfter": {
+            "Init_RelsText": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DocText",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_LaneUsed": {
+          "runAfter": {
+            "Init_DocText": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "LaneUsed",
+                "type": "string",
+                "value": "none"
+              }
+            ]
+          }
+        },
+        "Init_ProcessedCount": {
+          "runAfter": {
+            "Init_LaneUsed": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ProcessedCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_ErrorCount": {
+          "runAfter": {
+            "Init_ProcessedCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ErrorCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_NeighborFiles": {
+          "runAfter": {
+            "Init_ErrorCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "NeighborFiles",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_SrcAuthor": {
+          "runAfter": {
+            "Init_NeighborFiles": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SrcAuthor",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_SrcEditor": {
+          "runAfter": {
+            "Init_SrcAuthor": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SrcEditor",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_SrcEdited": {
+          "runAfter": {
+            "Init_SrcEditor": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SrcEdited",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_DocRowId": {
+          "runAfter": {
+            "Init_SrcEdited": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DocRowId",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Get_keywords": {
+          "runAfter": {
+            "Init_DocRowId": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+              "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+              "$top": 5000
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetItems"
+            },
+            "authentication": "@parameters('$authentication')"
+          }
+        },
+        "Filter_canonical": {
+          "runAfter": {
+            "Get_keywords": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Get_keywords')?['value']",
+            "where": "@empty(item()?['CanonicalRef'])"
+          }
+        },
+        "Select_kw_titles": {
+          "runAfter": {
+            "Filter_canonical": [
+              "Succeeded"
+            ]
+          },
+          "type": "Select",
+          "inputs": {
+            "from": "@body('Filter_canonical')",
+            "select": "@item()?['Title']"
+          }
+        },
+        "Existing_keywords": {
+          "runAfter": {
+            "Select_kw_titles": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@join(body('Select_kw_titles'), ', ')"
+        },
+        "Get_files": {
+          "runAfter": {
+            "Existing_keywords": [
+              "Succeeded"
+            ]
+          },
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://esriis.sharepoint.com/sites/LocationReferencing",
+              "table": "c8784e70-c536-4064-91e9-14b8b6535a03",
+              "$top": 20000,
+              "$orderby": "Modified desc"
+            },
+            "host": {
+              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+              "connectionName": "shared_sharepointonline",
+              "operationId": "GetFileItems"
+            },
+            "authentication": "@parameters('$authentication')"
+          },
+          "runtimeConfiguration": {
+            "paginationPolicy": {
+              "minimumItemCount": 20000
+            }
+          }
+        },
+        "Smoke_filter": {
+          "runAfter": {
+            "Get_files": [
+              "Succeeded"
+            ]
+          },
+          "type": "Query",
+          "inputs": {
+            "from": "@body('Get_files')?['value']",
+            "where": "@or(equals(trim(coalesce(outputs('Config')?['SmokeFile'], '')), ''), equals(toLower(trim(item()?['{FilenameWithExtension}'])), toLower(trim(outputs('Config')?['SmokeFile']))))"
+          }
+        },
+        "For_each_file": {
+          "foreach": "@body('Smoke_filter')",
+          "runAfter": {
+            "Smoke_filter": [
+              "Succeeded"
+            ]
+          },
+          "type": "Foreach",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Doc_key": {
+              "runAfter": {},
+              "type": "Compose",
+              "inputs": "@toLower(concat(items('For_each_file')?['{Path}'], items('For_each_file')?['{FilenameWithExtension}']))"
+            },
+            "Doc_ext": {
+              "runAfter": {
+                "Doc_key": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@toLower(last(split(items('For_each_file')?['{FilenameWithExtension}'], '.')))"
+            },
+            "File_type_safe": {
+              "runAfter": {
+                "Doc_ext": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(contains(createArray('pptx','docx','xlsx','pdf','msg','txt','html'), outputs('Doc_ext')), outputs('Doc_ext'), if(contains(createArray('png','jpg','jpeg','tif','tiff','gif','bmp'), outputs('Doc_ext')), 'image', 'other'))"
+            },
+            "Check_indexed": {
+              "runAfter": {
+                "File_type_safe": [
+                  "Succeeded"
+                ]
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                  "$top": 1,
+                  "$filter": "DocKey eq '@{replace(outputs('Doc_key'), '''', '''''')}'"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Needs_index": {
+              "runAfter": {
+                "Check_indexed": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@or(empty(body('Check_indexed')?['value']), equals(coalesce(first(body('Check_indexed')?['value'])?['IndexStatus']?['Value'], ''), 'Error'), less(coalesce(first(body('Check_indexed')?['value'])?['SourceModified'], '1900-01-01T00:00:00Z'), items('For_each_file')?['Modified']), not(equals(coalesce(first(body('Check_indexed')?['value'])?['PromptVersion'], ''), outputs('Config')?['PromptVersion'])))"
+            },
+            "If_process": {
+              "runAfter": {
+                "Needs_index": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "not": {
+                      "equals": [
+                        "@items('For_each_file')?['{IsFolder}']",
+                        true
+                      ]
+                    }
+                  },
+                  {
+                    "equals": [
+                      "@outputs('Needs_index')",
+                      true
+                    ]
+                  },
+                  {
+                    "less": [
+                      "@variables('ProcessedCount')",
+                      "@int(outputs('Config')?['MaxDocsPerRun'])"
+                    ]
+                  }
+                ]
+              },
+              "actions": {
+                "Increment_count": {
+                  "runAfter": {},
+                  "type": "IncrementVariable",
+                  "inputs": {
+                    "name": "ProcessedCount",
+                    "value": 1
+                  }
+                },
+                "Try_index": {
+                  "runAfter": {
+                    "Increment_count": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Scope",
+                  "actions": {
+                    "Reset_XmlBuf": {
+                      "runAfter": {},
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "XmlBuf",
+                        "value": "@{string('')}"
+                      }
+                    },
+                    "Reset_RelsText": {
+                      "runAfter": {
+                        "Reset_XmlBuf": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "RelsText",
+                        "value": "@{string('')}"
+                      }
+                    },
+                    "Reset_DocText": {
+                      "runAfter": {
+                        "Reset_RelsText": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "DocText",
+                        "value": "@{string('')}"
+                      }
+                    },
+                    "Reset_LaneUsed": {
+                      "runAfter": {
+                        "Reset_DocText": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "LaneUsed",
+                        "value": "none"
+                      }
+                    },
+                    "Reset_SrcAuthor": {
+                      "runAfter": {
+                        "Reset_LaneUsed": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "SrcAuthor",
+                        "value": "@{coalesce(items('For_each_file')?['Author']?['DisplayName'], '')}"
+                      }
+                    },
+                    "Reset_SrcEditor": {
+                      "runAfter": {
+                        "Reset_SrcAuthor": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "SrcEditor",
+                        "value": "@{coalesce(items('For_each_file')?['Editor']?['DisplayName'], '')}"
+                      }
+                    },
+                    "Reset_SrcEdited": {
+                      "runAfter": {
+                        "Reset_SrcEditor": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "SrcEdited",
+                        "value": "@{coalesce(items('For_each_file')?['Modified'], '')}"
+                      }
+                    },
+                    "Reset_DocRowId": {
+                      "runAfter": {
+                        "Reset_SrcEdited": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "SetVariable",
+                      "inputs": {
+                        "name": "DocRowId",
+                        "value": "@{string('')}"
+                      }
+                    },
+                    "Switch_ext": {
+                      "runAfter": {
+                        "Reset_DocRowId": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Switch",
+                      "expression": "@if(and(greater(int(coalesce(items('For_each_file')?['File_x0020_Size'], 0)), 3500000), not(equals(outputs('Doc_ext'), 'xlsx'))), 'oversize', outputs('Doc_ext'))",
+                      "cases": {
+                        "Case_pptx": {
+                          "case": "pptx",
+                          "actions": {
+                            "Get_content_pptx": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/LocationReferencing",
+                                  "id": "@items('For_each_file')?['{Identifier}']",
+                                  "inferContentType": false
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetFileContent"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Zip_extract_pptx": {
+                              "runAfter": {
+                                "Get_content_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                  "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                  "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZIEEGZVFDTYSRHIEYGHUY2ZADVP",
+                                  "ScriptParameters/zipBase64": "@{body('Get_content_pptx')?['$content']}",
+                                  "ScriptParameters/mediaPrefix": "@{concat('../media/doc', items('For_each_file')?['ID'], '_')}"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                  "connectionName": "shared_excelonlinebusiness",
+                                  "operationId": "RunScriptProd"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                              }
+                            },
+                            "Set_DocText_pptx": {
+                              "runAfter": {
+                                "Zip_extract_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "DocText",
+                                "value": "@{outputs('Zip_extract_pptx')?['body/result/text']}"
+                              }
+                            },
+                            "Set_RelsText_pptx": {
+                              "runAfter": {
+                                "Set_DocText_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "RelsText",
+                                "value": "@{outputs('Zip_extract_pptx')?['body/result/rels']}"
+                              }
+                            },
+                            "Set_Lane_pptx": {
+                              "runAfter": {
+                                "Set_RelsText_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "LaneUsed",
+                                "value": "xmlstrip"
+                              }
+                            },
+                            "Set_SrcAuthor_pptx": {
+                              "runAfter": {
+                                "Set_Lane_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "SrcAuthor",
+                                "value": "@{if(empty(coalesce(outputs('Zip_extract_pptx')?['body/result/author'], '')), coalesce(items('For_each_file')?['Author']?['DisplayName'], ''), outputs('Zip_extract_pptx')?['body/result/author'])}"
+                              }
+                            },
+                            "Set_SrcEditor_pptx": {
+                              "runAfter": {
+                                "Set_SrcAuthor_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "SrcEditor",
+                                "value": "@{if(empty(coalesce(outputs('Zip_extract_pptx')?['body/result/lastEditedBy'], '')), coalesce(items('For_each_file')?['Editor']?['DisplayName'], ''), outputs('Zip_extract_pptx')?['body/result/lastEditedBy'])}"
+                              }
+                            },
+                            "Set_SrcEdited_pptx": {
+                              "runAfter": {
+                                "Set_SrcEditor_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "SrcEdited",
+                                "value": "@{if(empty(coalesce(outputs('Zip_extract_pptx')?['body/result/lastEdited'], '')), coalesce(items('For_each_file')?['Modified'], ''), outputs('Zip_extract_pptx')?['body/result/lastEdited'])}"
+                              }
+                            },
+                            "If_has_media_pptx": {
+                              "runAfter": {
+                                "Set_SrcEdited_pptx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@not(empty(outputs('Zip_extract_pptx')?['body/result/media']))",
+                              "actions": {
+                                "Extract_media_pptx": {
+                                  "runAfter": {},
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                      "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                      "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOFC7PKHHZ4JBF3FRRA7SOX77PF",
+                                      "ScriptParameters/zipBase64": "@{body('Get_content_pptx')?['$content']}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                      "connectionName": "shared_excelonlinebusiness",
+                                      "operationId": "RunScriptProd"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                                  }
+                                },
+                                "For_each_img_pptx": {
+                                  "type": "Foreach",
+                                  "foreach": "@coalesce(outputs('Extract_media_pptx')?['body/result/images'], json('[]'))",
+                                  "runAfter": {
+                                    "Extract_media_pptx": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "runtimeConfiguration": {
+                                    "concurrency": {
+                                      "repetitions": 1
+                                    }
+                                  },
+                                  "actions": {
+                                    "Save_img_pptx": {
+                                      "runAfter": {},
+                                      "type": "OpenApiConnection",
+                                      "inputs": {
+                                        "parameters": {
+                                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                          "folderPath": "@{concat(outputs('Config')?['TextsFolder'], '/media')}",
+                                          "name": "@{concat('doc', items('For_each_file')?['ID'], '_', item()?['name'])}",
+                                          "body": "@base64ToBinary(item()?['b64'])"
+                                        },
+                                        "host": {
+                                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                          "connectionName": "shared_sharepointonline",
+                                          "operationId": "CreateFile"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              }
+                            }
+                          }
+                        },
+                        "Case_docx": {
+                          "case": "docx",
+                          "actions": {
+                            "Get_content_docx": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/LocationReferencing",
+                                  "id": "@items('For_each_file')?['{Identifier}']",
+                                  "inferContentType": false
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetFileContent"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Zip_extract_docx": {
+                              "runAfter": {
+                                "Get_content_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                  "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                  "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZIEEGZVFDTYSRHIEYGHUY2ZADVP",
+                                  "ScriptParameters/zipBase64": "@{body('Get_content_docx')?['$content']}",
+                                  "ScriptParameters/mediaPrefix": "@{concat('../media/doc', items('For_each_file')?['ID'], '_')}"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                  "connectionName": "shared_excelonlinebusiness",
+                                  "operationId": "RunScriptProd"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                              }
+                            },
+                            "Set_DocText_docx": {
+                              "runAfter": {
+                                "Zip_extract_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "DocText",
+                                "value": "@{outputs('Zip_extract_docx')?['body/result/text']}"
+                              }
+                            },
+                            "Set_RelsText_docx": {
+                              "runAfter": {
+                                "Set_DocText_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "RelsText",
+                                "value": "@{outputs('Zip_extract_docx')?['body/result/rels']}"
+                              }
+                            },
+                            "Set_Lane_docx": {
+                              "runAfter": {
+                                "Set_RelsText_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "LaneUsed",
+                                "value": "xmlstrip"
+                              }
+                            },
+                            "Set_SrcAuthor_docx": {
+                              "runAfter": {
+                                "Set_Lane_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "SrcAuthor",
+                                "value": "@{if(empty(coalesce(outputs('Zip_extract_docx')?['body/result/author'], '')), coalesce(items('For_each_file')?['Author']?['DisplayName'], ''), outputs('Zip_extract_docx')?['body/result/author'])}"
+                              }
+                            },
+                            "Set_SrcEditor_docx": {
+                              "runAfter": {
+                                "Set_SrcAuthor_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "SrcEditor",
+                                "value": "@{if(empty(coalesce(outputs('Zip_extract_docx')?['body/result/lastEditedBy'], '')), coalesce(items('For_each_file')?['Editor']?['DisplayName'], ''), outputs('Zip_extract_docx')?['body/result/lastEditedBy'])}"
+                              }
+                            },
+                            "Set_SrcEdited_docx": {
+                              "runAfter": {
+                                "Set_SrcEditor_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "SrcEdited",
+                                "value": "@{if(empty(coalesce(outputs('Zip_extract_docx')?['body/result/lastEdited'], '')), coalesce(items('For_each_file')?['Modified'], ''), outputs('Zip_extract_docx')?['body/result/lastEdited'])}"
+                              }
+                            },
+                            "If_has_media_docx": {
+                              "runAfter": {
+                                "Set_SrcEdited_docx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@not(empty(outputs('Zip_extract_docx')?['body/result/media']))",
+                              "actions": {
+                                "Extract_media_docx": {
+                                  "runAfter": {},
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                      "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                      "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOFC7PKHHZ4JBF3FRRA7SOX77PF",
+                                      "ScriptParameters/zipBase64": "@{body('Get_content_docx')?['$content']}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                      "connectionName": "shared_excelonlinebusiness",
+                                      "operationId": "RunScriptProd"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                                  }
+                                },
+                                "For_each_img_docx": {
+                                  "type": "Foreach",
+                                  "foreach": "@coalesce(outputs('Extract_media_docx')?['body/result/images'], json('[]'))",
+                                  "runAfter": {
+                                    "Extract_media_docx": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "runtimeConfiguration": {
+                                    "concurrency": {
+                                      "repetitions": 1
+                                    }
+                                  },
+                                  "actions": {
+                                    "Save_img_docx": {
+                                      "runAfter": {},
+                                      "type": "OpenApiConnection",
+                                      "inputs": {
+                                        "parameters": {
+                                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                          "folderPath": "@{concat(outputs('Config')?['TextsFolder'], '/media')}",
+                                          "name": "@{concat('doc', items('For_each_file')?['ID'], '_', item()?['name'])}",
+                                          "body": "@base64ToBinary(item()?['b64'])"
+                                        },
+                                        "host": {
+                                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                          "connectionName": "shared_sharepointonline",
+                                          "operationId": "CreateFile"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              }
+                            }
+                          }
+                        },
+                        "Case_xlsx": {
+                          "case": "xlsx",
+                          "actions": {
+                            "Dump_workbook": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "source": "sites/esriis.sharepoint.com,7bdc56c0-a9b9-4fdc-98b2-f1402f5b286e,e91dfb8c-b58b-4075-b08a-711088bff8bf",
+                                  "drive": "b!wFbce7mp3E-YsvFAL1soboz7HemLtXVAsIpxEIi_-L9wTnjINsVkQJHpFLi2U1oD",
+                                  "file": "@items('For_each_file')?['{DriveItemId}']",
+                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZN6FVK4YIIAVBALXVNVPNFOK75S",
+                                  "ScriptParameters/maxCells": 60000
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                  "connectionName": "shared_excelonlinebusiness",
+                                  "operationId": "RunScriptProd"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Set_DocText_xlsx": {
+                              "runAfter": {
+                                "Dump_workbook": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "DocText",
+                                "value": "@{outputs('Dump_workbook')?['body/result']}"
+                              }
+                            },
+                            "Set_Lane_xlsx": {
+                              "runAfter": {
+                                "Set_DocText_xlsx": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "LaneUsed",
+                                "value": "workbookdump"
+                              }
+                            }
+                          }
+                        },
+                        "Case_txt": {
+                          "case": "txt",
+                          "actions": {
+                            "Get_content_txt": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/LocationReferencing",
+                                  "id": "@items('For_each_file')?['{Identifier}']",
+                                  "inferContentType": true
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetFileContent"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Set_DocText_txt": {
+                              "runAfter": {
+                                "Get_content_txt": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "DocText",
+                                "value": "@{body('Get_content_txt')}"
+                              }
+                            },
+                            "Set_Lane_txt": {
+                              "runAfter": {
+                                "Set_DocText_txt": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "SetVariable",
+                              "inputs": {
+                                "name": "LaneUsed",
+                                "value": "plaintext"
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "default": {
+                        "actions": {}
+                      }
+                    },
+                    "If_has_text": {
+                      "runAfter": {
+                        "Switch_ext": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "If",
+                      "expression": "@not(empty(variables('DocText')))",
+                      "actions": {
+                        "Doc_text_capped": {
+                          "runAfter": {},
+                          "type": "Compose",
+                          "inputs": "@if(greater(length(variables('DocText')), int(outputs('Config')?['TextCap'])), substring(variables('DocText'), 0, int(outputs('Config')?['TextCap'])), variables('DocText'))"
+                        },
+                        "Run_prompt": {
+                          "runAfter": {
+                            "Doc_text_capped": [
+                              "Succeeded"
+                            ]
+                          },
+                          "metadata": {
+                            "flowSystemMetadata": {
+                              "portalOperationId": "aibuilderpredict_customprompt",
+                              "portalOperationGroup": "aibuilder",
+                              "portalOperationApiDisplayNameOverride": "AI Builder",
+                              "portalOperationIconOverride": "https://content.powerapps.com/resource/makerx/static/pauto/images/designeroperations/aibuilderIcon2026.8e878397.png",
+                              "portalOperationBrandColorOverride": "#0A76C4",
+                              "portalOperationApiTierOverride": "Standard"
+                            }
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "recordId": "ef04e39d-3775-4655-a8be-60192095c1d6",
+                              "item/requestv2/ExistingKeywords": "@{outputs('Existing_keywords')}",
+                              "item/requestv2/DocText": "@{outputs('Doc_text_capped')}",
+                              "item/requestv2/FileName": "@{items('For_each_file')?['{FilenameWithExtension}']}",
+                              "item/source": {
+                                "consumptionSource": "PowerAutomate",
+                                "partnerSource": "AIBuilder",
+                                "consumptionSourceVersion": "Flow",
+                                "partnerSourceVersion": "bcddf2eb-b03f-49d4-8ac7-e1afa1260034"
+                              }
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                              "connectionName": "shared_commondataserviceforapps",
+                              "operationId": "aibuilderpredict_customprompt"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Prompt_text_raw": {
+                          "runAfter": {
+                            "Run_prompt": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@coalesce(outputs('Run_prompt')?['body/responsev2/predictionOutput/text'], '{}')"
+                        },
+                        "Prompt_json_slice": {
+                          "runAfter": {
+                            "Prompt_text_raw": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@if(and(greater(indexOf(outputs('Prompt_text_raw'), '{'), -1), greater(lastIndexOf(outputs('Prompt_text_raw'), '}'), indexOf(outputs('Prompt_text_raw'), '{'))), substring(outputs('Prompt_text_raw'), indexOf(outputs('Prompt_text_raw'), '{'), add(sub(lastIndexOf(outputs('Prompt_text_raw'), '}'), indexOf(outputs('Prompt_text_raw'), '{')), 1)), '{}')"
+                        },
+                        "Parse_prompt_output": {
+                          "runAfter": {
+                            "Prompt_json_slice": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@json(outputs('Prompt_json_slice'))"
+                        },
+                        "Doc_kind_safe": {
+                          "runAfter": {
+                            "Parse_prompt_output": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@if(contains(createArray('Test Plan','User Story','Design Spike','Data Template','Schedule','Doc Review','Other'), coalesce(outputs('Parse_prompt_output')?['docKind'], 'Other')), coalesce(outputs('Parse_prompt_output')?['docKind'], 'Other'), 'Other')"
+                        },
+                        "Surface_safe": {
+                          "runAfter": {
+                            "Doc_kind_safe": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@if(contains(createArray('Pro','Experience Builder','Server','Enterprise','Other'), coalesce(outputs('Parse_prompt_output')?['surface'], 'Other')), coalesce(outputs('Parse_prompt_output')?['surface'], 'Other'), 'Other')"
+                        },
+                        "Doc_title": {
+                          "runAfter": {
+                            "Surface_safe": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@if(greater(length(coalesce(outputs('Parse_prompt_output')?['title'], items('For_each_file')?['{FilenameWithExtension}'])), 255), substring(coalesce(outputs('Parse_prompt_output')?['title'], items('For_each_file')?['{FilenameWithExtension}']), 0, 255), coalesce(outputs('Parse_prompt_output')?['title'], items('For_each_file')?['{FilenameWithExtension}']))"
+                        },
+                        "Preview_capped": {
+                          "runAfter": {
+                            "Doc_title": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@if(greater(length(variables('DocText')), int(outputs('Config')?['PreviewCap'])), substring(variables('DocText'), 0, int(outputs('Config')?['PreviewCap'])), variables('DocText'))"
+                        },
+                        "Run_regex": {
+                          "runAfter": {
+                            "Preview_capped": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                              "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                              "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                              "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOV25BH4K5KOBFIEGOQR6GHSCOP",
+                              "ScriptParameters/fileName": "@{items('For_each_file')?['{FilenameWithExtension}']}",
+                              "ScriptParameters/content": "@{variables('DocText')}\n@{variables('RelsText')}",
+                              "ScriptParameters/defaultRepo": "@{outputs('Config')?['DefaultRepo']}",
+                              "ScriptParameters/title": "@{outputs('Doc_title')}"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                              "connectionName": "shared_excelonlinebusiness",
+                              "operationId": "RunScriptProd"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          },
+                          "metadata": {
+                            "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                          }
+                        },
+                        "Sidecar_name": {
+                          "runAfter": {
+                            "Set_DocRowId": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@concat(coalesce(outputs('Run_regex')?['body/result/slug'], toLower(replace(replace(replace(items('For_each_file')?['{Name}'], ' ', '-'), '#', ''), '%', ''))), '__doc', outputs('Doc_item_id'), '.md')"
+                        },
+                        "Kind_folder": {
+                          "runAfter": {
+                            "Sidecar_name": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@coalesce(outputs('Config')?['KindFolders']?[outputs('Doc_kind_safe')], 'Other')"
+                        },
+                        "Sidecar_folder": {
+                          "runAfter": {
+                            "Kind_folder": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@concat(outputs('Config')?['TextsFolder'], '/', outputs('Kind_folder'))"
+                        },
+                        "Sidecar_header": {
+                          "type": "Compose",
+                          "inputs": "```yaml\ntitle: @{outputs('Yaml_title')}\nsource_file: @{outputs('Yaml_file')}\nsource_url: \"@{items('For_each_file')?['{Link}']}\"\ndoc_id: @{outputs('Doc_item_id')}\ndoc_kind: \"@{outputs('Doc_kind_safe')}\"\nsurface: \"@{outputs('Surface_safe')}\"\ndoc_revision: \"@{coalesce(outputs('Run_regex')?['body/result/docRevision'], '')}\"\ntarget_release: \"@{replace(coalesce(outputs('Parse_prompt_output')?['targetRelease'], ''), '\"', '')}\"\npe: \"@{replace(coalesce(outputs('Parse_prompt_output')?['pe'], ''), '\"', '')}\"\ndev: \"@{replace(coalesce(outputs('Parse_prompt_output')?['dev'], ''), '\"', '')}\"\nauthor: \"@{replace(variables('SrcAuthor'), '\"', '')}\"\nlast_edited_by: \"@{replace(variables('SrcEditor'), '\"', '')}\"\nlast_edited: \"@{variables('SrcEdited')}\"\nextracted: @{formatDateTime(utcNow(), 'yyyy-MM-dd')}\nextraction_lane: @{variables('LaneUsed')}\nprompt_version: \"@{outputs('Config')?['PromptVersion']}\"\nkeywords: [@{join(body('Select_kw_yaml'), ', ')}]\ntools: [@{join(body('Select_tools_yaml'), ', ')}]\nrelated: []\n```\n\n# @{outputs('H1_title')}\n\n**@{outputs('Doc_kind_safe')}** \u00b7 **Surface:** @{outputs('Surface_safe')} \u00b7 **Extracted:** @{formatDateTime(utcNow(), 'yyyy-MM-dd')} \u00b7 **Lane:** @{variables('LaneUsed')} \u00b7 **Last edited:** @{if(empty(variables('SrcEdited')), 'unknown', formatDateTime(variables('SrcEdited'), 'yyyy-MM-dd HH:mm'))} by @{if(empty(variables('SrcEditor')), 'unknown', variables('SrcEditor'))}  \n[Source: @{items('For_each_file')?['{FilenameWithExtension}']}](<@{items('For_each_file')?['{Link}']}>)\n\n## Summary\n\n@{if(empty(coalesce(outputs('Parse_prompt_output')?['summary'], '')), '_No summary available._', coalesce(outputs('Parse_prompt_output')?['summary'], ''))}\n\n## Related documents\n\n<!-- related:begin -->\n_None yet._\n<!-- related:end -->\n\n---\n\n",
+                          "runAfter": {
+                            "H1_title": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Save_sidecar": {
+                          "runAfter": {
+                            "Sidecar_header": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "folderPath": "@{outputs('Sidecar_folder')}",
+                              "name": "@outputs('Sidecar_name')",
+                              "body": "@concat(outputs('Sidecar_header'), variables('DocText'))"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "CreateFile"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Text_file_url": {
+                          "runAfter": {
+                            "Save_sidecar": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@concat(outputs('Config')?['SiteUrl'], outputs('Sidecar_folder'), '/', outputs('Sidecar_name'))"
+                        },
+                        "Old_sidecar_url": {
+                          "runAfter": {
+                            "Set_text_url": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@{coalesce(first(body('Check_indexed')?['value'])?['TextFileUrl'], '')}"
+                        },
+                        "If_sidecar_moved": {
+                          "runAfter": {
+                            "Old_sidecar_url": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@and(startsWith(outputs('Old_sidecar_url'), concat(outputs('Config')?['SiteUrl'], '/')), not(equals(outputs('Old_sidecar_url'), outputs('Text_file_url'))))",
+                          "actions": {
+                            "Recycle_old_sidecar": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "parameters/method": "POST",
+                                  "parameters/uri": "_api/web/GetFileByServerRelativePath(decodedurl='@{replace(concat(uriPath(outputs('Config')?['SiteUrl']), replace(outputs('Old_sidecar_url'), outputs('Config')?['SiteUrl'], '')), '''', '''''')}')/recycle()",
+                                  "parameters/headers": {
+                                    "Accept": "application/json;odata=nometadata"
+                                  }
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "HttpRequest"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Recycle_note": {
+                              "runAfter": {
+                                "Recycle_old_sidecar": [
+                                  "Succeeded",
+                                  "Failed"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@{concat('old sidecar recycle attempted: ', outputs('Old_sidecar_url'))}"
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          }
+                        },
+                        "Set_text_url": {
+                          "runAfter": {
+                            "Text_file_url": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                              "id": "@int(outputs('Doc_item_id'))",
+                              "item/Title": "@outputs('Doc_title')",
+                              "item/DocKey": "@outputs('Doc_key')",
+                              "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                              "item/IndexStatus/Value": "Indexed",
+                              "item/TextFileUrl": "@outputs('Text_file_url')",
+                              "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                              "item/LastError": "@{string('')}"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "PatchItem"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "If_doc_exists": {
+                          "runAfter": {
+                            "Run_regex": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@empty(body('Check_indexed')?['value'])",
+                          "actions": {
+                            "Create_doc": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                  "item/Title": "@outputs('Doc_title')",
+                                  "item/DocKey": "@outputs('Doc_key')",
+                                  "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                  "item/SourceLink": "@items('For_each_file')?['{Link}']",
+                                  "item/FileType/Value": "@outputs('File_type_safe')",
+                                  "item/IndexStatus/Value": "Indexed",
+                                  "item/SourceModified": "@items('For_each_file')?['Modified']",
+                                  "item/ExtractionLane/Value": "@variables('LaneUsed')",
+                                  "item/IndexedOn": "@utcNow()",
+                                  "item/DocKind/Value": "@outputs('Doc_kind_safe')",
+                                  "item/Surface/Value": "@outputs('Surface_safe')",
+                                  "item/Summary": "@{coalesce(outputs('Parse_prompt_output')?['summary'], '')}",
+                                  "item/DocRevision": "@{coalesce(outputs('Run_regex')?['body/result/docRevision'], '')}",
+                                  "item/TargetRelease": "@{coalesce(outputs('Parse_prompt_output')?['targetRelease'], '')}",
+                                  "item/PE": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
+                                  "item/Dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
+                                  "item/SourceAuthor": "@{variables('SrcAuthor')}",
+                                  "item/SourceEditor": "@{variables('SrcEditor')}",
+                                  "item/SourceEdited": "@if(empty(variables('SrcEdited')), null, variables('SrcEdited'))",
+                                  "item/TextPreview": "@outputs('Preview_capped')"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "PostItem"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Update_doc": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "parameters": {
+                                    "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                    "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                    "id": "@first(body('Check_indexed')?['value'])?['ID']",
+                                    "item/Title": "@outputs('Doc_title')",
+                                    "item/DocKey": "@outputs('Doc_key')",
+                                    "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                    "item/SourceLink": "@items('For_each_file')?['{Link}']",
+                                    "item/FileType/Value": "@outputs('File_type_safe')",
+                                    "item/IndexStatus/Value": "Indexed",
+                                    "item/SourceModified": "@items('For_each_file')?['Modified']",
+                                    "item/ExtractionLane/Value": "@variables('LaneUsed')",
+                                    "item/IndexedOn": "@utcNow()",
+                                    "item/DocKind/Value": "@outputs('Doc_kind_safe')",
+                                    "item/Surface/Value": "@outputs('Surface_safe')",
+                                    "item/Summary": "@{coalesce(outputs('Parse_prompt_output')?['summary'], '')}",
+                                    "item/DocRevision": "@{coalesce(outputs('Run_regex')?['body/result/docRevision'], '')}",
+                                    "item/TargetRelease": "@{coalesce(outputs('Parse_prompt_output')?['targetRelease'], '')}",
+                                    "item/PE": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
+                                    "item/Dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
+                                    "item/SourceAuthor": "@{variables('SrcAuthor')}",
+                                    "item/SourceEditor": "@{variables('SrcEditor')}",
+                                    "item/SourceEdited": "@if(empty(variables('SrcEdited')), null, variables('SrcEdited'))",
+                                    "item/TextPreview": "@outputs('Preview_capped')"
+                                  },
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                    "connectionName": "shared_sharepointonline",
+                                    "operationId": "PatchItem"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "Doc_item_id": {
+                          "runAfter": {
+                            "If_doc_exists": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@coalesce(outputs('Create_doc')?['body/ID'], first(body('Check_indexed')?['value'])?['ID'])"
+                        },
+                        "Set_DocRowId": {
+                          "runAfter": {
+                            "Doc_item_id": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "SetVariable",
+                          "inputs": {
+                            "name": "DocRowId",
+                            "value": "@{outputs('Doc_item_id')}"
+                          }
+                        },
+                        "For_each_id": {
+                          "foreach": "@coalesce(outputs('Run_regex')?['body/result/ids'], json('[]'))",
+                          "runAfter": {
+                            "If_sidecar_moved": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Foreach",
+                          "runtimeConfiguration": {
+                            "concurrency": {
+                              "repetitions": 1
+                            }
+                          },
+                          "actions": {
+                            "Id_key": {
+                              "runAfter": {},
+                              "type": "Compose",
+                              "inputs": "@concat(outputs('Doc_item_id'), '|', item()?['repo'], '#', item()?['number'])"
+                            },
+                            "Check_idrow": {
+                              "runAfter": {
+                                "Id_key": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
+                                  "$top": 1,
+                                  "$filter": "IdKey eq '@{outputs('Id_key')}'"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItems"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_new_id": {
+                              "runAfter": {
+                                "Check_idrow": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@empty(body('Check_idrow')?['value'])",
+                              "actions": {
+                                "Body_idrow": {
+                                  "runAfter": {},
+                                  "type": "Compose",
+                                  "inputs": {
+                                    "Title": "@{concat(item()?['repo'], '#', item()?['number'])}",
+                                    "DocumentId": "@int(outputs('Doc_item_id'))",
+                                    "Repo": "@{item()?['repo']}",
+                                    "IssueNumber": "@item()?['number']",
+                                    "Source": "@{item()?['source']}",
+                                    "IdKey": "@{outputs('Id_key')}"
+                                  }
+                                },
+                                "Create_idrow": {
+                                  "runAfter": {
+                                    "Body_idrow": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "parameters/method": "POST",
+                                      "parameters/uri": "_api/web/lists(guid'87b75cd7-5e84-4a65-adb5-dcd0de08321d')/items",
+                                      "parameters/headers": {
+                                        "Accept": "application/json;odata=nometadata",
+                                        "Content-Type": "application/json;odata=nometadata"
+                                      },
+                                      "parameters/body": "@{string(outputs('Body_idrow'))}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "HttpRequest"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              }
+                            },
+                            "Find_sharers": {
+                              "runAfter": {
+                                "If_new_id": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
+                                  "$top": 5000,
+                                  "$filter": "Repo eq '@{item()?['repo']}' and IssueNumber eq @{item()?['number']}"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItems"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Filter_other_docs": {
+                              "runAfter": {
+                                "Find_sharers": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Query",
+                              "inputs": {
+                                "from": "@body('Find_sharers')?['value']",
+                                "where": "@not(equals(int(first(split(item()?['IdKey'], '|'))), int(outputs('Doc_item_id'))))"
+                              }
+                            },
+                            "For_each_sharer": {
+                              "foreach": "@body('Filter_other_docs')",
+                              "runAfter": {
+                                "Filter_other_docs": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Foreach",
+                              "runtimeConfiguration": {
+                                "concurrency": {
+                                  "repetitions": 1
+                                }
+                              },
+                              "actions": {
+                                "Sharer_id": {
+                                  "runAfter": {},
+                                  "type": "Compose",
+                                  "inputs": "@int(first(split(item()?['IdKey'], '|')))"
+                                },
+                                "Link_key": {
+                                  "runAfter": {
+                                    "Sharer_id": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@concat(min(createArray(int(outputs('Doc_item_id')), outputs('Sharer_id'))), '|', max(createArray(int(outputs('Doc_item_id')), outputs('Sharer_id'))), '|id')"
+                                },
+                                "Check_link": {
+                                  "runAfter": {
+                                    "Link_key": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "table": "3c50c3fe-a4e8-4ae2-9668-43987c9bff60",
+                                      "$top": 1,
+                                      "$filter": "LinkKey eq '@{outputs('Link_key')}'"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "GetItems"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                },
+                                "If_new_link": {
+                                  "runAfter": {
+                                    "Check_link": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "If",
+                                  "expression": "@empty(body('Check_link')?['value'])",
+                                  "actions": {
+                                    "Body_link": {
+                                      "runAfter": {},
+                                      "type": "Compose",
+                                      "inputs": {
+                                        "Title": "@{concat('shared ', items('For_each_id')?['repo'], '#', items('For_each_id')?['number'])}",
+                                        "DocAId": "@min(createArray(int(outputs('Doc_item_id')), outputs('Sharer_id')))",
+                                        "DocBId": "@max(createArray(int(outputs('Doc_item_id')), outputs('Sharer_id')))",
+                                        "LinkType": "id",
+                                        "SharedValues": "@{concat(items('For_each_id')?['repo'], '#', items('For_each_id')?['number'])}",
+                                        "Strength": 1,
+                                        "LinkKey": "@{outputs('Link_key')}"
+                                      }
+                                    },
+                                    "Create_link": {
+                                      "runAfter": {
+                                        "Body_link": [
+                                          "Succeeded"
+                                        ]
+                                      },
+                                      "type": "OpenApiConnection",
+                                      "inputs": {
+                                        "parameters": {
+                                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                          "parameters/method": "POST",
+                                          "parameters/uri": "_api/web/lists(guid'3c50c3fe-a4e8-4ae2-9668-43987c9bff60')/items",
+                                          "parameters/headers": {
+                                            "Accept": "application/json;odata=nometadata",
+                                            "Content-Type": "application/json;odata=nometadata"
+                                          },
+                                          "parameters/body": "@{string(outputs('Body_link'))}"
+                                        },
+                                        "host": {
+                                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                          "connectionName": "shared_sharepointonline",
+                                          "operationId": "HttpRequest"
+                                        },
+                                        "authentication": "@parameters('$authentication')"
+                                      }
+                                    }
+                                  },
+                                  "else": {
+                                    "actions": {}
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "Select_kw_topic": {
+                          "runAfter": {
+                            "For_each_id": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@coalesce(outputs('Parse_prompt_output')?['keywords'], json('[]'))",
+                            "select": {
+                              "val": "@toLower(item())",
+                              "kind": "topic"
+                            }
+                          }
+                        },
+                        "Select_kw_tool": {
+                          "runAfter": {
+                            "Select_kw_topic": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@coalesce(outputs('Parse_prompt_output')?['tools'], json('[]'))",
+                            "select": {
+                              "val": "@toLower(item())",
+                              "kind": "tool"
+                            }
+                          }
+                        },
+                        "Kw_all": {
+                          "runAfter": {
+                            "Select_kw_tool": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@union(body('Select_kw_topic'), body('Select_kw_tool'))"
+                        },
+                        "For_each_kw": {
+                          "foreach": "@outputs('Kw_all')",
+                          "runAfter": {
+                            "Kw_all": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Foreach",
+                          "runtimeConfiguration": {
+                            "concurrency": {
+                              "repetitions": 1
+                            }
+                          },
+                          "actions": {
+                            "Kw_clean": {
+                              "runAfter": {},
+                              "type": "Compose",
+                              "inputs": "@replace(item()?['val'], '''', '''''')"
+                            },
+                            "Check_kw": {
+                              "runAfter": {
+                                "Kw_clean": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+                                  "$top": 1,
+                                  "$filter": "Title eq '@{outputs('Kw_clean')}'"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItems"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_kw_found": {
+                              "runAfter": {
+                                "Check_kw": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@not(empty(body('Check_kw')?['value']))",
+                              "actions": {
+                                "Canonical_id_found": {
+                                  "runAfter": {},
+                                  "type": "Compose",
+                                  "inputs": "@coalesce(first(body('Check_kw')?['value'])?['CanonicalRef']?['Id'], first(body('Check_kw')?['value'])?['ID'])"
+                                }
+                              },
+                              "else": {
+                                "actions": {
+                                  "Create_kw": {
+                                    "runAfter": {},
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "parameters": {
+                                        "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                        "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+                                        "item/Title": "@item()?['val']",
+                                        "item/Kind/Value": "@item()?['kind']"
+                                      },
+                                      "host": {
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                        "connectionName": "shared_sharepointonline",
+                                        "operationId": "PostItem"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "Kw_id": {
+                              "runAfter": {
+                                "If_kw_found": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@coalesce(outputs('Canonical_id_found'), outputs('Create_kw')?['body/ID'])"
+                            },
+                            "KW_key": {
+                              "runAfter": {
+                                "Kw_id": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@concat(outputs('Doc_item_id'), '|', outputs('Kw_id'))"
+                            },
+                            "Check_dockw": {
+                              "runAfter": {
+                                "KW_key": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "68752782-6d2d-4c65-b4e8-361c0df706ec",
+                                  "$top": 1,
+                                  "$filter": "KWKey eq '@{outputs('KW_key')}'"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItems"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_new_dockw": {
+                              "runAfter": {
+                                "Check_dockw": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@empty(body('Check_dockw')?['value'])",
+                              "actions": {
+                                "Body_dockw": {
+                                  "runAfter": {},
+                                  "type": "Compose",
+                                  "inputs": {
+                                    "Title": "@{concat(items('For_each_file')?['{FilenameWithExtension}'], ' | ', item()?['val'])}",
+                                    "DocumentId": "@int(outputs('Doc_item_id'))",
+                                    "KeywordId": "@int(outputs('Kw_id'))",
+                                    "KWKey": "@{outputs('KW_key')}"
+                                  }
+                                },
+                                "Create_dockw": {
+                                  "runAfter": {
+                                    "Body_dockw": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "parameters/method": "POST",
+                                      "parameters/uri": "_api/web/lists(guid'68752782-6d2d-4c65-b4e8-361c0df706ec')/items",
+                                      "parameters/headers": {
+                                        "Accept": "application/json;odata=nometadata",
+                                        "Content-Type": "application/json;odata=nometadata"
+                                      },
+                                      "parameters/body": "@{string(outputs('Body_dockw'))}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "HttpRequest"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              }
+                            }
+                          }
+                        },
+                        "Select_kw_yaml": {
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@coalesce(outputs('Parse_prompt_output')?['keywords'], json('[]'))",
+                            "select": "@concat('\"', replace(replace(string(item()), '\\', ''), '\"', ''), '\"')"
+                          },
+                          "runAfter": {
+                            "Sidecar_folder": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Select_tools_yaml": {
+                          "type": "Select",
+                          "inputs": {
+                            "from": "@coalesce(outputs('Parse_prompt_output')?['tools'], json('[]'))",
+                            "select": "@concat('\"', replace(replace(string(item()), '\\', ''), '\"', ''), '\"')"
+                          },
+                          "runAfter": {
+                            "Select_kw_yaml": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Yaml_title": {
+                          "type": "Compose",
+                          "inputs": "@concat('\"', replace(replace(replace(replace(outputs('Doc_title'), '\\', '\\\\'), '\"', '\\\"'), decodeUriComponent('%0D'), ' '), decodeUriComponent('%0A'), ' '), '\"')",
+                          "runAfter": {
+                            "Select_tools_yaml": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Yaml_file": {
+                          "type": "Compose",
+                          "inputs": "@concat('\"', replace(replace(replace(replace(items('For_each_file')?['{FilenameWithExtension}'], '\\', '\\\\'), '\"', '\\\"'), decodeUriComponent('%0D'), ' '), decodeUriComponent('%0A'), ' '), '\"')",
+                          "runAfter": {
+                            "Yaml_title": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "H1_title": {
+                          "type": "Compose",
+                          "inputs": "@if(equals(outputs('Doc_title'), items('For_each_file')?['{FilenameWithExtension}']), items('For_each_file')?['{Name}'], outputs('Doc_title'))",
+                          "runAfter": {
+                            "Yaml_file": [
+                              "Succeeded"
+                            ]
+                          }
+                        },
+                        "Get_my_kws": {
+                          "runAfter": {
+                            "For_each_kw": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "table": "68752782-6d2d-4c65-b4e8-361c0df706ec",
+                              "$top": "@int(outputs('Config')?['MyKwsTop'])",
+                              "$filter": "DocumentId eq @{outputs('Doc_item_id')}"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "GetItems"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Get_id_links": {
+                          "runAfter": {
+                            "Get_my_kws": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "table": "3c50c3fe-a4e8-4ae2-9668-43987c9bff60",
+                              "$top": "@int(outputs('Config')?['LinksTop'])",
+                              "$filter": "DocAId eq @{outputs('Doc_item_id')} or DocBId eq @{outputs('Doc_item_id')}"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "GetItems"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "If_related_signals": {
+                          "runAfter": {
+                            "Get_id_links": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@or(not(empty(body('Get_my_kws')?['value'])), not(empty(body('Get_id_links')?['value'])))",
+                          "actions": {
+                            "Select_kw_filter": {
+                              "runAfter": {},
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@coalesce(body('Get_my_kws')?['value'], json('[]'))",
+                                "select": "@concat('KeywordId eq ', coalesce(item()?['Keyword']?['Id'], 0))"
+                              }
+                            },
+                            "Select_kwmeta_canon": {
+                              "runAfter": {
+                                "Select_kw_filter": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@coalesce(body('Get_my_kws')?['value'], json('[]'))",
+                                "select": "@concat('ID eq ', coalesce(item()?['Keyword']?['Id'], 0))"
+                              }
+                            },
+                            "Select_kwmeta_alias": {
+                              "runAfter": {
+                                "Select_kwmeta_canon": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@coalesce(body('Get_my_kws')?['value'], json('[]'))",
+                                "select": "@concat('CanonicalRefId eq ', coalesce(item()?['Keyword']?['Id'], 0))"
+                              }
+                            },
+                            "Get_kw_meta": {
+                              "runAfter": {
+                                "Select_kwmeta_alias": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+                                  "$top": 200,
+                                  "$filter": "@{if(empty(body('Select_kwmeta_canon')), 'ID eq 0', join(union(body('Select_kwmeta_canon'), body('Select_kwmeta_alias')), ' or '))}"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItems"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Select_kw_filter_meta": {
+                              "runAfter": {
+                                "Get_kw_meta": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Select",
+                              "inputs": {
+                                "from": "@coalesce(body('Get_kw_meta')?['value'], json('[]'))",
+                                "select": "@concat('KeywordId eq ', coalesce(item()?['ID'], 0))"
+                              }
+                            },
+                            "Get_kw_sharers": {
+                              "runAfter": {
+                                "Select_kw_filter_meta": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "68752782-6d2d-4c65-b4e8-361c0df706ec",
+                                  "$top": "@int(outputs('Config')?['SharersTop'])",
+                                  "$filter": "@{if(empty(body('Select_kw_filter')), 'KeywordId eq 0', join(union(body('Select_kw_filter'), body('Select_kw_filter_meta')), ' or '))}"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItems"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "Self_rank_meta": {
+                              "runAfter": {
+                                "Get_kw_sharers": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": {
+                                "kind": "@{outputs('Doc_kind_safe')}",
+                                "surface": "@{outputs('Surface_safe')}",
+                                "release": "@{coalesce(outputs('Parse_prompt_output')?['targetRelease'], '')}",
+                                "pe": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
+                                "dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
+                                "modified": "@{coalesce(items('For_each_file')?['Modified'], '')}"
+                              }
+                            },
+                            "Run_related_shortlist": {
+                              "runAfter": {
+                                "Self_rank_meta": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                  "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                  "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOYCUREQER2OVD3MOWC62Y3DGNV",
+                                  "ScriptParameters/selfId": "@{outputs('Doc_item_id')}",
+                                  "ScriptParameters/mode": "shortlist",
+                                  "ScriptParameters/myKwsJson": "@{string(coalesce(body('Get_my_kws')?['value'], json('[]')))}",
+                                  "ScriptParameters/sharersJson": "@{string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))}",
+                                  "ScriptParameters/linksJson": "@{string(coalesce(body('Get_id_links')?['value'], json('[]')))}",
+                                  "ScriptParameters/kwMetaJson": "@{string(coalesce(body('Get_kw_meta')?['value'], json('[]')))}",
+                                  "ScriptParameters/candsMetaJson": "[]",
+                                  "ScriptParameters/selfMetaJson": "@{string(outputs('Self_rank_meta'))}",
+                                  "ScriptParameters/configJson": "@{outputs('Config')?['RelatedWeights']}",
+                                  "ScriptParameters/topN": "@int(outputs('Config')?['RelatedShortlist'])"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                  "connectionName": "shared_excelonlinebusiness",
+                                  "operationId": "RunScriptProd"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                              }
+                            },
+                            "Append_related_flags": {
+                              "runAfter": {
+                                "Run_related_shortlist": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "AppendToStringVariable",
+                              "inputs": {
+                                "name": "RelatedFlags",
+                                "value": "@{if(empty(coalesce(outputs('Run_related_shortlist')?['body/result/flags'], '')), '', concat(outputs('Doc_item_id'), ':', outputs('Run_related_shortlist')?['body/result/flags'], ' '))}"
+                              }
+                            },
+                            "If_has_related": {
+                              "runAfter": {
+                                "Append_related_flags": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@greater(coalesce(outputs('Run_related_shortlist')?['body/result/count'], 0), 0)",
+                              "actions": {
+                                "Select_id_filter": {
+                                  "runAfter": {},
+                                  "type": "Select",
+                                  "inputs": {
+                                    "from": "@coalesce(outputs('Run_related_shortlist')?['body/result/docIds'], json('[]'))",
+                                    "select": "@concat('ID eq ', item())"
+                                  }
+                                },
+                                "Get_cand_docs": {
+                                  "runAfter": {
+                                    "Select_id_filter": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                      "$top": "@int(outputs('Config')?['RelatedShortlist'])",
+                                      "$filter": "@{join(body('Select_id_filter'), ' or ')}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "GetItems"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                },
+                                "Run_related_rank": {
+                                  "runAfter": {
+                                    "Get_cand_docs": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                      "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                      "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZOYCUREQER2OVD3MOWC62Y3DGNV",
+                                      "ScriptParameters/selfId": "@{outputs('Doc_item_id')}",
+                                      "ScriptParameters/mode": "final",
+                                      "ScriptParameters/myKwsJson": "@{string(coalesce(body('Get_my_kws')?['value'], json('[]')))}",
+                                      "ScriptParameters/sharersJson": "@{string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))}",
+                                      "ScriptParameters/linksJson": "@{string(coalesce(body('Get_id_links')?['value'], json('[]')))}",
+                                      "ScriptParameters/kwMetaJson": "@{string(coalesce(body('Get_kw_meta')?['value'], json('[]')))}",
+                                      "ScriptParameters/candsMetaJson": "@{string(coalesce(body('Get_cand_docs')?['value'], json('[]')))}",
+                                      "ScriptParameters/selfMetaJson": "@{string(outputs('Self_rank_meta'))}",
+                                      "ScriptParameters/configJson": "@{outputs('Config')?['RelatedWeights']}",
+                                      "ScriptParameters/topN": "@int(outputs('Config')?['RelatedTopN'])"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                      "connectionName": "shared_excelonlinebusiness",
+                                      "operationId": "RunScriptProd"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                                  }
+                                },
+                                "Filter_final_docs": {
+                                  "runAfter": {
+                                    "Run_related_rank": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Query",
+                                  "inputs": {
+                                    "from": "@coalesce(body('Get_cand_docs')?['value'], json('[]'))",
+                                    "where": "@contains(coalesce(outputs('Run_related_rank')?['body/result/docIds'], json('[]')), item()?['ID'])"
+                                  }
+                                },
+                                "Reset_NeighborFiles": {
+                                  "runAfter": {
+                                    "Filter_final_docs": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "SetVariable",
+                                  "inputs": {
+                                    "name": "NeighborFiles",
+                                    "value": "@json('[]')"
+                                  }
+                                },
+                                "For_each_neighbor": {
+                                  "foreach": "@coalesce(body('Filter_final_docs'), json('[]'))",
+                                  "runAfter": {
+                                    "Reset_NeighborFiles": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Foreach",
+                                  "runtimeConfiguration": {
+                                    "concurrency": {
+                                      "repetitions": 1
+                                    }
+                                  },
+                                  "actions": {
+                                    "Neighbor_url": {
+                                      "runAfter": {},
+                                      "type": "Compose",
+                                      "inputs": "@{coalesce(item()?['TextFileUrl'], '')}"
+                                    },
+                                    "Neighbor_path": {
+                                      "runAfter": {
+                                        "Neighbor_url": [
+                                          "Succeeded"
+                                        ]
+                                      },
+                                      "type": "Compose",
+                                      "inputs": "@{replace(outputs('Neighbor_url'), outputs('Config')?['SiteUrl'], '')}"
+                                    },
+                                    "If_neighbor_has_url": {
+                                      "runAfter": {
+                                        "Neighbor_path": [
+                                          "Succeeded"
+                                        ]
+                                      },
+                                      "type": "If",
+                                      "expression": "@startsWith(outputs('Neighbor_path'), '/')",
+                                      "actions": {
+                                        "Get_neighbor_md": {
+                                          "runAfter": {},
+                                          "type": "OpenApiConnection",
+                                          "inputs": {
+                                            "parameters": {
+                                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                              "path": "@outputs('Neighbor_path')",
+                                              "inferContentType": false
+                                            },
+                                            "host": {
+                                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                              "connectionName": "shared_sharepointonline",
+                                              "operationId": "GetFileContentByPath"
+                                            },
+                                            "authentication": "@parameters('$authentication')"
+                                          }
+                                        },
+                                        "Append_neighbor": {
+                                          "runAfter": {
+                                            "Get_neighbor_md": [
+                                              "Succeeded"
+                                            ]
+                                          },
+                                          "type": "AppendToArrayVariable",
+                                          "inputs": {
+                                            "name": "NeighborFiles",
+                                            "value": {
+                                              "doc": "@item()?['ID']",
+                                              "name": "@{last(split(outputs('Neighbor_path'), '/'))}",
+                                              "folder": "@{substring(outputs('Neighbor_path'), 0, lastIndexOf(outputs('Neighbor_path'), '/'))}",
+                                              "content": "@{base64ToString(body('Get_neighbor_md')?['$content'])}"
+                                            }
+                                          }
+                                        },
+                                        "Neighbor_skipped": {
+                                          "runAfter": {
+                                            "Append_neighbor": [
+                                              "Failed",
+                                              "Skipped",
+                                              "TimedOut"
+                                            ]
+                                          },
+                                          "type": "Compose",
+                                          "inputs": "@{concat('sidecar unreadable, skipped: ', outputs('Neighbor_path'))}"
+                                        }
+                                      },
+                                      "else": {
+                                        "actions": {}
+                                      }
+                                    }
+                                  }
+                                },
+                                "Self_meta": {
+                                  "runAfter": {
+                                    "For_each_neighbor": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": {
+                                    "doc": "@int(outputs('Doc_item_id'))",
+                                    "title": "@{outputs('Doc_title')}",
+                                    "url": "@{outputs('Text_file_url')}",
+                                    "file": "@{outputs('Sidecar_name')}"
+                                  }
+                                },
+                                "Self_file": {
+                                  "runAfter": {
+                                    "Self_meta": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": {
+                                    "doc": "@int(outputs('Doc_item_id'))",
+                                    "name": "@{outputs('Sidecar_name')}",
+                                    "folder": "@{outputs('Sidecar_folder')}",
+                                    "content": "@{concat(outputs('Sidecar_header'), variables('DocText'))}"
+                                  }
+                                },
+                                "Files_for_patch": {
+                                  "runAfter": {
+                                    "Self_file": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@union(createArray(outputs('Self_file')), variables('NeighborFiles'))"
+                                },
+                                "Run_sidecar_patch": {
+                                  "runAfter": {
+                                    "Files_for_patch": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                      "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                      "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZM5MIGLQGRYUFDIJ3YMRLUJJJPC",
+                                      "ScriptParameters/filesJson": "@{string(outputs('Files_for_patch'))}",
+                                      "ScriptParameters/selfId": "@{outputs('Doc_item_id')}",
+                                      "ScriptParameters/rankedJson": "@{string(coalesce(outputs('Run_related_rank')?['body/result/related'], json('[]')))}",
+                                      "ScriptParameters/docsMetaJson": "@{string(coalesce(body('Filter_final_docs'), json('[]')))}",
+                                      "ScriptParameters/selfMetaJson": "@{string(outputs('Self_meta'))}",
+                                      "ScriptParameters/topN": "@outputs('Config')?['RelatedTopN']"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                      "connectionName": "shared_excelonlinebusiness",
+                                      "operationId": "RunScriptProd"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S": "/Scripts.xlsx"
+                                  }
+                                },
+                                "For_each_patched": {
+                                  "foreach": "@coalesce(outputs('Run_sidecar_patch')?['body/result/files'], json('[]'))",
+                                  "runAfter": {
+                                    "Run_sidecar_patch": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Foreach",
+                                  "runtimeConfiguration": {
+                                    "concurrency": {
+                                      "repetitions": 1
+                                    }
+                                  },
+                                  "actions": {
+                                    "If_patch_changed": {
+                                      "runAfter": {},
+                                      "type": "If",
+                                      "expression": "@equals(item()?['changed'], true)",
+                                      "actions": {
+                                        "Save_patched": {
+                                          "runAfter": {},
+                                          "type": "OpenApiConnection",
+                                          "inputs": {
+                                            "parameters": {
+                                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                              "folderPath": "@{if(empty(item()?['folder']), outputs('Config')?['TextsFolder'], item()?['folder'])}",
+                                              "name": "@item()?['name']",
+                                              "body": "@item()?['content']"
+                                            },
+                                            "host": {
+                                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                              "connectionName": "shared_sharepointonline",
+                                              "operationId": "CreateFile"
+                                            },
+                                            "authentication": "@parameters('$authentication')"
+                                          }
+                                        }
+                                      },
+                                      "else": {
+                                        "actions": {}
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {}
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {
+                          "If_skip_exists": {
+                            "runAfter": {},
+                            "type": "If",
+                            "expression": "@empty(body('Check_indexed')?['value'])",
+                            "actions": {
+                              "Create_doc_skipped": {
+                                "runAfter": {},
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "parameters": {
+                                    "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                    "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                    "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                    "item/DocKey": "@outputs('Doc_key')",
+                                    "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                    "item/SourceLink": "@items('For_each_file')?['{Link}']",
+                                    "item/FileType/Value": "@outputs('File_type_safe')",
+                                    "item/IndexStatus/Value": "Skipped",
+                                    "item/SourceModified": "@items('For_each_file')?['Modified']",
+                                    "item/ExtractionLane/Value": "@variables('LaneUsed')",
+                                    "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                                    "item/IndexedOn": "@utcNow()"
+                                  },
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                    "connectionName": "shared_sharepointonline",
+                                    "operationId": "PostItem"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              }
+                            },
+                            "else": {
+                              "actions": {
+                                "Update_doc_skipped": {
+                                  "runAfter": {},
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                      "id": "@first(body('Check_indexed')?['value'])?['ID']",
+                                      "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                      "item/DocKey": "@outputs('Doc_key')",
+                                      "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                      "item/IndexStatus/Value": "Skipped",
+                                      "item/SourceModified": "@items('For_each_file')?['Modified']",
+                                      "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                                      "item/LastError": "@{string('')}",
+                                      "item/IndexedOn": "@utcNow()"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "PatchItem"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "Catch_index": {
+                  "runAfter": {
+                    "Try_index": [
+                      "Failed",
+                      "TimedOut"
+                    ]
+                  },
+                  "type": "Scope",
+                  "actions": {
+                    "Filter_failed": {
+                      "runAfter": {},
+                      "type": "Query",
+                      "inputs": {
+                        "from": "@result('Try_index')",
+                        "where": "@or(equals(item()?['status'], 'Failed'), equals(item()?['status'], 'TimedOut'))"
+                      }
+                    },
+                    "Err_detail": {
+                      "runAfter": {
+                        "Filter_failed": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "@take(concat(coalesce(first(body('Filter_failed'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed'))?['error'], first(body('Filter_failed'))?['outputs'], ''))), 4000)"
+                    },
+                    "If_err_exists": {
+                      "runAfter": {
+                        "Err_detail": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "If",
+                      "expression": "@and(empty(variables('DocRowId')), empty(body('Check_indexed')?['value']))",
+                      "actions": {
+                        "Create_doc_error": {
+                          "runAfter": {},
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                              "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
+                              "item/DocKey": "@outputs('Doc_key')",
+                              "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                              "item/SourceLink": "@items('For_each_file')?['{Link}']",
+                              "item/FileType/Value": "@outputs('File_type_safe')",
+                              "item/IndexStatus/Value": "Error",
+                              "item/SourceModified": "@items('For_each_file')?['Modified']",
+                              "item/ExtractionLane/Value": "@variables('LaneUsed')",
+                              "item/PromptVersion": "@{outputs('Config')?['PromptVersion']}",
+                              "item/LastError": "@{outputs('Err_detail')}",
+                              "item/IndexedOn": "@utcNow()"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "PostItem"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        }
+                      },
+                      "else": {
+                        "actions": {
+                          "Update_doc_error": {
+                            "runAfter": {},
+                            "type": "OpenApiConnection",
+                            "inputs": {
+                              "parameters": {
+                                "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                "id": "@if(empty(variables('DocRowId')), first(body('Check_indexed')?['value'])?['ID'], int(variables('DocRowId')))",
+                                "item/Title": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                "item/DocKey": "@outputs('Doc_key')",
+                                "item/FileName": "@items('For_each_file')?['{FilenameWithExtension}']",
+                                "item/IndexStatus/Value": "Error",
+                                "item/LastError": "@{outputs('Err_detail')}",
+                                "item/IndexedOn": "@utcNow()"
+                              },
+                              "host": {
+                                "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                "connectionName": "shared_sharepointonline",
+                                "operationId": "PatchItem"
+                              },
+                              "authentication": "@parameters('$authentication')"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Increment_ErrorCount": {
+                      "runAfter": {
+                        "If_err_exists": [
+                          "Succeeded",
+                          "Failed"
+                        ]
+                      },
+                      "type": "IncrementVariable",
+                      "inputs": {
+                        "name": "ErrorCount",
+                        "value": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {}
+              }
+            }
+          }
+        },
+        "Run_summary": {
+          "runAfter": {
+            "For_each_file": [
+              "Succeeded",
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@{concat('library_items_seen=', length(body('Get_files')?['value']), ' after_smoke_filter=', length(body('Smoke_filter')), ' processed=', variables('ProcessedCount'), ' errors=', variables('ErrorCount'), ' smoke=', coalesce(outputs('Config')?['SmokeFile'], ''), ' related_flags=', variables('RelatedFlags'))}"
+        }
+      },
+      "outputs": {}
+    },
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "connectionName": "9c9bfea530b9428aa0c7c2a438b2c0a8",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "tier": "NotSpecified",
+        "apiName": "sharepointonline",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      },
+      "shared_excelonlinebusiness": {
+        "connectionName": "shared-excelonlinebu-25a5634f-9e21-4ae9-86a3-2d28c2377935",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "tier": "NotSpecified",
+        "apiName": "excelonlinebusiness",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      },
+      "shared_commondataserviceforapps": {
+        "connectionName": "shared-commondataser-ebf2bddd-de06-4bb4-a085-3ef4a329003e",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+        "tier": "NotSpecified",
+        "apiName": "commondataserviceforapps",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      }
+    },
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}

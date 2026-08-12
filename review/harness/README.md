@@ -19,9 +19,9 @@ when a batch is promoted:
    history. `scripts/ZipTextExtract.ts` has long since moved on (v2.0
    as of the r2 promotion).
 5. **Batch gates** (`check_batch.py` — v1.9 era, skips as superseded;
-   `check_batch_r2.py` — r2 era, re-verifies the promotion) — the
-   template any future script batch clones before its patches may be
-   pasted.
+   `check_batch_r2.py` — r2 era, re-verifies the promotion;
+   `check_batch_r3.py` — r3 era, RelatedRank v2.0) — the template any
+   future script batch clones before its patches may be pasted.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for
@@ -135,6 +135,15 @@ file still has one H1, and the patched file keeps its `folder`.
   rarity (`w = 1/log2(1+df)` from the sharers rows, 3-decimal rounding,
   totals under 1000) so one rare keyword outranks two common ones, and
   `why`/`sharedKeywords` list rarest first (v1.1)
+- RelatedRank v2.0 (r3): the legacy cases above run UNCHANGED through
+  the new 11-param signature (empty new params + defaults = legacy
+  behavior); plus per-edge-type weighting (id / review / gantt /
+  titlematch, unknown ignored, Strength → SharedValues → 1 counting),
+  the 999 soft cap hit exactly and id-dominated (HA-9), keyword-kind
+  multipliers, alias→canonical folding (DX-2), final-mode metadata
+  affinity + pair-min recency with a symmetry property case,
+  shortlist/final universe semantics, config deep-merge hardening,
+  and the truncation `flags` tripwire
 - SidecarPatch: set mode rewrites ONLY the metadata `related:` line and
   the begin/end marker region (byte-integrity asserted against planted
   decoy `related:` text and stray `---` seams in the body); idempotence
@@ -257,8 +266,11 @@ assertions** that run each fixture against the OLD scripts to prove it
 actually catches its bug. The batch PASSED and was promoted
 2026-08-11; the folded standing assertions live in `check_regex.py`
 (SB-1), `check_format.py` §10 (SB-4..SB-8), and `check_related.py`
-(the v1.4 SB-2/SB-3 cases). Post-promotion the gate re-verifies the
-promotion — the discriminator half skips via its PROMOTED guard.
+(the v1.4 SB-2/SB-3 cases). Post-promotion the gate re-verified the
+promotion — the discriminator half skipped via its PROMOTED guard.
+Since the r3 promotion (RelatedRank v2.0, a signature change) the
+whole gate skips as superseded, like `check_batch.py` before it; to
+re-run it for the record, check out the r2-promotion-era commit.
 
 ```
 python3 make_fixtures.py     # builds the r2 fixtures too
@@ -279,3 +291,40 @@ Post-promotion: `check_format.py` (incl. §10), `check_related.py`
 `check_batch_r2.py` (promotion re-verification), and
 `render_sample.py` all PASS against the promoted `scripts/`;
 `check_batch.py` skips as superseded by design.
+
+## Batch gate — the r3 batch (`check_batch_r3.py`)
+
+The gate for the related-ranking overhaul (RelatedRank v2.0 —
+all edge types, keyword kinds + DX-2 alias fold, metadata affinity +
+pair-min recency, `Config.RelatedWeights`, truncation `flags`; flow
+v2.6 wiring). Single-patch batch; same lifecycle as the r2 template.
+Its equivalence leg drives v2.0 through legacy-shaped payloads
+(empty new params, default config) and requires the v1.3
+related/docIds/count byte-identical with `flags` empty — the
+overhaul may not move a single legacy score. Discriminators prove
+v1.3 mis-scores a gantt row as id-links (it never read LinkType)
+and is blind to candidate metadata. **The paste is fenced to the
+v2.6 flow window** — the changed signature breaks the v2.5 binding
+(see `../patches/designer-edits.md` §v2_6).
+
+```
+python3 make_fixtures.py     # the standing suites need the fixtures
+python3 check_batch_r3.py    # any FAIL = do not paste
+```
+
+### Last run (2026-08-12, Node 22.22.2) — r3 gate + promotion
+
+Pre-promotion gate run: **PASS** — `check_format.py` /
+`check_related.py` (incl. the new v2.0 contract cases) /
+`check_regex.py` fully green over the staged batch; v1.3-vs-v2.0
+IDENTICAL related/docIds/count with empty `flags` on all eight
+legacy payloads (mixed id+keyword, 8-keyword dominance, rarity +
+ties, tie-break/cap, both-signals merge, SC-12a/b defensives,
+empty); both discriminators fire; staged script type-checks at
+ES2017. Post-promotion: `check_related.py`, `check_batch_r3.py`
+(promotion re-verification, equivalence halves self-compare),
+`check_format.py`, `check_regex.py` and `render_sample.py` all PASS
+against the promoted `scripts/`; `check_batch_r2.py` now skips as
+superseded (the r3 promotion moved RelatedRank past its generation —
+the same graceful-skip lifecycle `check_batch.py` entered at r2),
+and `check_batch.py` keeps skipping as before.

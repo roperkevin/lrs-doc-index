@@ -2,12 +2,9 @@
  * RelatedRank v2.0 — score and rank a document's related documents
  * ------------------------------------------------------------------
  * r3 batch (related-ranking overhaul) — gated by check_batch_r3.py.
- * Gate PASSED (check_batch_r3.py, 2026-08-12).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md), and the paste MUST land in the same maintenance
- * window as the v2.6 flow edits: the signature changed, so the
- * live flow's Run-script bindings break until reconfigured
+ * DO NOT PASTE until the gate is green, and never without the v2.6
+ * flow edits in the same maintenance window: the signature changed,
+ * so the live flow's Run-script bindings break until reconfigured
  * (see review/patches/designer-edits.md §v2_6).
  * ------------------------------------------------------------------
  * v1.3 provenance: r2 batch (REVIEW_v2_5_r2.md SB-9), gate passed

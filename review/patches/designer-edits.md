@@ -293,3 +293,208 @@ Parallelism 1. Optional hardening; skipping it is fine at one run/day.
 
 Test: trigger settings show concurrency 1; next scheduled run is
 unaffected.
+
+---
+
+# v2_6 round — related-ranking overhaul (RelatedRank v2.0)
+
+`flow/v2_6/definition.json` is the authoritative result; these are
+the same edits as designer actions, in dependency order. **Edit V1
+(the script paste) and V2–V10 are ONE maintenance window** — the
+v2.0 signature breaks the existing `Run_related_rank` binding until
+V7/V8 rewire it. Do the whole list with the flow OFF or well clear
+of the 17:00 trigger, then smoke. Prereq: the r2 six-script paste
+already done (STATUS open action 3); gate `check_batch_r3.py` green.
+
+Unlike the F-series, don't smoke between single edits here — the
+branch is broken mid-sequence by design. Smoke once after V10.
+
+## V1 — Paste RelatedRank v2.0
+
+Automate-tab workbook → Code Editor → paste `scripts/RelatedRank.ts`
+(v2.0) over the existing RelatedRank. (Script list order for any
+future batch paste: unchanged from r2.)
+
+## V2 — Config keys
+
+**Config** compose: after `"RelatedTopN": 5,` add (literals):
+
+```
+"RelatedShortlist": 12,
+"MyKwsTop": 100,
+"SharersTop": 2000,
+"LinksTop": 200,
+"RelatedWeights": "{\"edge\":{\"id\":1000,\"review\":100,\"gantt\":60,\"titlematch\":40},\"kwKind\":{\"topic\":1.0,\"tool\":0.6,\"product\":0.4},\"meta\":{\"kind\":0.5,\"surface\":0.5,\"release\":1.0,\"pe\":0.75,\"dev\":0.75},\"recency\":{\"weight\":1.0,\"halfLifeDays\":180},\"softCap\":999,\"tops\":{\"myKws\":100,\"sharers\":2000,\"links\":200}}",
+```
+
+`RelatedWeights` is a JSON *string* (the flow never parses it — the
+script does, shrugging off garbage back to identical in-script
+defaults). Keep `tops` in sync with the three *Top keys when tuning.
+
+## V3 — Init_RelatedFlags
+
+New **Initialize variable** `Init_RelatedFlags` directly after
+`Config` (re-point `Init_XmlBuf` to run after it): name
+`RelatedFlags`, type String, value `@{string('')}` (the usual
+empty-value designer-trap guard).
+
+## V4 — Query ceilings from Config; all edge types
+
+- **Get_my_kws** → Top Count: `50` → `@int(outputs('Config')?['MyKwsTop'])`
+- **Get_id_links** → Top Count: `200` → `@int(outputs('Config')?['LinksTop'])`
+- **Get_id_links** → Filter Query — replace:
+
+```
+(DocAId eq @{outputs('Doc_item_id')} or DocBId eq @{outputs('Doc_item_id')}) and LinkType eq 'id'
+```
+
+with:
+
+```
+DocAId eq @{outputs('Doc_item_id')} or DocBId eq @{outputs('Doc_item_id')}
+```
+
+(Keep the action's name — everything downstream references it.)
+
+## V5 — Keyword metadata query (Kind + DX-2 aliases)
+
+Inside `If_related_signals`, after `Select_kw_filter`, three new
+actions in a chain:
+
+**Select `Select_kwmeta_canon`** — From:
+`@coalesce(body('Get_my_kws')?['value'], json('[]'))`, Map (text
+mode): `@concat('ID eq ', coalesce(item()?['Keyword']?['Id'], 0))`
+
+**Select `Select_kwmeta_alias`** — same From, Map:
+`@concat('CanonicalRefId eq ', coalesce(item()?['Keyword']?['Id'], 0))`
+
+**Get items `Get_kw_meta`** — Site the usual, List **Keywords**
+(GUID `e096ab26-27d2-4ef4-ae40-c24e35fa2fb7`), Top Count `200`,
+Filter Query:
+
+```
+@{if(empty(body('Select_kwmeta_canon')), 'ID eq 0', join(union(body('Select_kwmeta_canon'), body('Select_kwmeta_alias')), ' or '))}
+```
+
+**Select `Select_kw_filter_meta`** — From:
+`@coalesce(body('Get_kw_meta')?['value'], json('[]'))`, Map:
+`@concat('KeywordId eq ', coalesce(item()?['ID'], 0))`
+
+## V6 — Get_kw_sharers reads the widened filter + Config ceiling
+
+**Get_kw_sharers** → run after `Select_kw_filter_meta`; Top Count:
+`500` → `@int(outputs('Config')?['SharersTop'])`; Filter Query:
+
+```
+@{if(empty(body('Select_kw_filter')), 'KeywordId eq 0', join(union(body('Select_kw_filter'), body('Select_kw_filter_meta')), ' or '))}
+```
+
+(`union` dedupes the canonical ids the two Selects both emit.)
+
+## V7 — Self metadata + the shortlist call
+
+After `Get_kw_sharers`:
+
+**Compose `Self_rank_meta`:**
+
+```
+{
+  "kind": "@{outputs('Doc_kind_safe')}",
+  "surface": "@{outputs('Surface_safe')}",
+  "release": "@{coalesce(outputs('Parse_prompt_output')?['targetRelease'], '')}",
+  "pe": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
+  "dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
+  "modified": "@{coalesce(items('For_each_file')?['Modified'], '')}"
+}
+```
+
+**Run script `Run_related_shortlist`** (Excel Online Business, same
+workbook + RelatedRank script pick as `Run_related_rank`):
+
+| Param | Value |
+|---|---|
+| selfId | `@{outputs('Doc_item_id')}` |
+| mode | `shortlist` (literal) |
+| myKwsJson | `@{string(coalesce(body('Get_my_kws')?['value'], json('[]')))}` |
+| sharersJson | `@{string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))}` |
+| linksJson | `@{string(coalesce(body('Get_id_links')?['value'], json('[]')))}` |
+| kwMetaJson | `@{string(coalesce(body('Get_kw_meta')?['value'], json('[]')))}` |
+| candsMetaJson | `[]` (literal) |
+| selfMetaJson | `@{string(outputs('Self_rank_meta'))}` |
+| configJson | `@{outputs('Config')?['RelatedWeights']}` |
+| topN | `@int(outputs('Config')?['RelatedShortlist'])` |
+
+**Append to string variable `Append_related_flags`** — name
+`RelatedFlags`, value:
+
+```
+@{if(empty(coalesce(outputs('Run_related_shortlist')?['body/result/flags'], '')), '', concat(outputs('Doc_item_id'), ':', outputs('Run_related_shortlist')?['body/result/flags'], ' '))}
+```
+
+Then **If_has_related** → run after `Append_related_flags`;
+condition expression:
+
+```
+@greater(coalesce(outputs('Run_related_shortlist')?['body/result/count'], 0), 0)
+```
+
+## V8 — Two-phase rerank inside If_has_related
+
+- **Select_id_filter** → From:
+  `@coalesce(outputs('Run_related_shortlist')?['body/result/docIds'], json('[]'))`
+- **Get_related_docs** → rename is NOT possible; instead delete it
+  and create **Get_cand_docs** (Get items, Doc Index list, Filter
+  Query `@{join(body('Select_id_filter'), ' or ')}`, Top Count
+  `@int(outputs('Config')?['RelatedShortlist'])`), run after
+  `Select_id_filter`. (Deleting is safe here — the only referents
+  are edited in this same round: V8/V10.)
+- **Drag `Run_related_rank`** inside `If_has_related`, run after
+  `Get_cand_docs` (drag in the designer — do not delete/recreate;
+  `Run_sidecar_patch` references its outputs). Set its params to
+  the V7 table with three differences: mode `final`, candsMetaJson
+  `@{string(coalesce(body('Get_cand_docs')?['value'], json('[]')))}`,
+  topN `@int(outputs('Config')?['RelatedTopN'])`.
+- **Filter array `Filter_final_docs`** after `Run_related_rank` —
+  From: `@coalesce(body('Get_cand_docs')?['value'], json('[]'))`,
+  Where (advanced mode):
+
+```
+@contains(coalesce(outputs('Run_related_rank')?['body/result/docIds'], json('[]')), item()?['ID'])
+```
+
+- **Reset_NeighborFiles** → run after `Filter_final_docs`.
+
+## V9 — Neighbor loop reads the final cut
+
+- **For_each_neighbor** → foreach:
+  `@coalesce(body('Filter_final_docs'), json('[]'))`
+- **Run_sidecar_patch** → docsMetaJson:
+  `@{string(coalesce(body('Filter_final_docs'), json('[]')))}`
+  (rankedJson / selfMetaJson / topN stay as they are).
+
+## V10 — Run_summary tripwire
+
+**Run_summary** compose — replace the trailing
+`' smoke=', coalesce(outputs('Config')?['SmokeFile'], ''))}` with:
+
+```
+' smoke=', coalesce(outputs('Config')?['SmokeFile'], ''), ' related_flags=', variables('RelatedFlags'))}
+```
+
+## Smoke (after V10, one pass)
+
+Config → SmokeFile on a doc known to have keywords and an id edge:
+
+1. Run succeeds; `Run_related_shortlist` and `Run_related_rank`
+   both ran; `Get_cand_docs` returned ≤ 12 rows.
+2. The doc's sidecar Related section: same shape as before, scores
+   may differ by small soft-signal deltas; an id-linked neighbor is
+   still first.
+3. `Run_summary` shows `related_flags=` (expected empty at today's
+   corpus size).
+4. A neighbor sidecar re-merged cleanly (no duplicate `related:`
+   keys, list still score-descending).
+
+Then update STATUS.md (RelatedRank paste column, flow version) and
+append the deployment record. Export the flow and cut
+`flow/DocIndexSweep_v2_6.zip` per the provenance convention.
