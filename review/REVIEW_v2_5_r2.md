@@ -283,12 +283,12 @@ All verified against file content this round:
   replaced by a generic connection label; `definition.json` payload bytes verified
   md5-identical before/after (v2_3's known one-field drift preserved as-is).
   Byte-provenance of the *manifests* is broken by design and recorded here and in
-  each flow CHANGES. **Open decision — the repo is PUBLIC** (verified via the
-  GitHub API during this round), so the pre-scrub blobs remain reachable in public
-  git history. Options: (a) accept (it is a work email, not a credential), (b)
-  rewrite history to purge the old zip blobs — destructive: force-push, breaks
-  existing clones and PR diffs, or (c) make the repo private. Owner's call;
-  tracked in STATUS.md.
+  each flow CHANGES. The repo is PUBLIC (verified via the GitHub API during this
+  round), so the pre-scrub blobs remain reachable in public git history. Options
+  weighed: (a) accept (it is a work email, not a credential), (b) rewrite history
+  — destructive force-push, or (c) make the repo private. **DECIDED (owner,
+  2026-08-12): (a) accept — the repo stays public and the historical blobs stay.**
+  The current tree remains scrubbed; revisit only if circumstances change.
 - **PV-2** — Azure AD `tenantId` + creator/lastModifiedBy object IDs sit in every
   `definition.json` metadata block, and tenant hostname / site paths / list GUIDs /
   Graph drive IDs appear throughout (34 occurrences in v2.5 alone; partly forced by
