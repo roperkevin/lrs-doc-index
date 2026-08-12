@@ -1,3 +1,171 @@
+# TestPlanGen v2.0 — reference-functionality input lane (prompt v1.3)
+
+Motivated by a live PE workflow (2026-08-12, the doc 1 revision that
+followed `review/REVIEW_TestPlanGen_doc1_coverage.md`): three Pro
+test plans (devtopia 3906/3910/3911, the Add-Event offset methods)
+define the expected tool functionality — input methods, per-method
+referent-population semantics — for an Experience Builder story, and
+the pipeline had no sanctioned way to use them. Exemplars are
+style/coverage ONLY ("never their feature-specific content" — the
+hallucination guard), and the G6 fallback is same-surface by design,
+so cross-surface functional grounding could only happen by hand in
+the §4 review pass. v2.0 makes it a first-class, cited, guarded
+generation input. This is a CONTRACT change (a fifth AI Builder
+prompt input parameter), hence the major version.
+
+**Prompt v1.3** (authored as
+`review/patches/TestPlanGen_Prompt_v1_3.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.2 in-repo BEFORE its
+pending paste; v1.2's enumeration-coverage rule + conditional
+sections and v1.1's marker fix carry forward unchanged):
+
+- Fifth input key **`ReferenceText`** — REFERENCE FUNCTIONALITY
+  documents: test plans/design docs describing the expected behavior
+  of this story's feature area, possibly on another surface. Unlike
+  exemplars, the model MAY ground expected functional behavior on
+  them (input methods, field-population semantics, validations),
+  applied within the story's scope.
+- Three guards: every reference-grounded statement's **Trace cites
+  the reference document by title**; a cross-surface reference forces
+  a **surface-parity [VERIFY]** item; **the story wins every
+  conflict** (conflicts become [VERIFY] items). The lane supplies
+  BEHAVIOR, never tool names — the tools rule is explicitly extended
+  to it, so a Pro tool named in a reference never becomes a named
+  widget in an EXB draft.
+- New `<<<REFERENCE FUNCTIONALITY BEGIN/END>>>` input fence;
+  untrusted-data and Trace rules extended to the fourth block. An
+  empty lane (`(none)`) drafts exactly as v1.2 did.
+
+**Both flows** (structural additions, mirrored in `flow/v1_0/` and
+`flow/core_v1_0/`, both packages re-cut):
+
+- `Config_gen`: `ReferenceCap` 12000, version stamp → v1.3.
+- Three new top-level variables: `ReferenceText`, `ReferenceUrls`,
+  `ReferenceCount`.
+- **G5b — the surface split**: `If_testplan_neighbor` no longer
+  slots every related Test Plan as an exemplar. Same-surface plans →
+  `ExemplarUrls` (max 2, unchanged semantics); cross-surface plans →
+  `ReferenceUrls` (max 2), stored as `{url, surface, title}` objects
+  so the fetch can label each reference block with title + surface
+  (what the prompt's surface-parity rule keys on). A same-surface
+  plan arriving after both exemplar slots are full stays digest-only.
+- **G7b — `For_each_reference`**: the G7 fetch pattern over the
+  reference objects, capped at `ReferenceCap`.
+- Prompt call binds the fifth key; `Story_meta` now runs after
+  `For_each_reference`; `Gen_summary` adds `references=`.
+- **No reference fallback query, deliberately**: cross-surface
+  grounding is taken ONLY from documents RelatedRank actually linked
+  to the story — a blind other-surface query would ground drafts on
+  unrelated features. Stories without cross-surface related plans
+  generate byte-for-byte as v1.9 would (`references=0`).
+
+**Docs** — Setup §2 (five parameters + pane check), §3 G0/G0b/G5b/G7b/
+G8/G13, §4 review runbook (reference-grounded cases get the
+surface-parity check); Smoke suite v1.2: row 3 narrowed to
+same-surface, new row 10 (reference lane end-to-end: `references≥1`,
+cited Traces, surface-parity [VERIFY], no tool-name leakage).
+
+Deploy (one window, replaces the still-pending v1.9 window; heavier
+than a paste): (1) add the fifth input parameter **ReferenceText** to
+the `LRS Test Plan Generation` AI Builder prompt and paste the v1.3
+text; (2) apply the §3 flow additions in BOTH live flows — either
+re-import the re-cut packages (post-import checks I1–I4) or designer-
+build G0/G0b/G5b/G7b/G8/G13 per the guide — plus the earlier v1.8
+marker edits if the tenant still runs v1.0 markers; (3) run the smoke
+suite (now 10 rows) and record below. NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus.
+
+To exercise row 10 with real data: upload the three Pro offset test
+plans (3906/3910/3911) to the LocationReferencing Documents library,
+let the nightly sweep index them, confirm doc 1's sidecar `related:`
+list picks them up (shared keywords/issue ids), then run on doc 1.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.3** | `review/patches/TestPlanGen_Prompt_v1_3.md` → `prompts/TestPlanGen_Prompt.md` |
+| Core child flow + package | **v2.0** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Standalone flow + package | **v2.0** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.2, 10 rows) |
+| Agent file set | unchanged (v1.1) | flow contract (`StoryId` → `Status`/`DraftUrl`/`GenSummary`) untouched |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 10) | TestPlanGenPromptVersion |
+|---|---|---|---|
+| — | — | — | v1.3 (paste pending) |
+
+# TestPlanGen v1.9 — enumeration coverage + conditional sections (prompt v1.2)
+
+Motivated by a coverage review of a live draft (2026-08-12,
+`review/REVIEW_TestPlanGen_doc1_coverage.md`): the doc 1 draft
+("Auto-Populate Referents for Event Edits") silently dropped the
+attribute-table edit pathway its story names in the same acceptance
+criterion as dynamic segmentation (CG-1), didn't exercise both event
+types the story enumerates ("point and line" — CG-4), and had no home
+for the story's Automation and Documentation slides (CG-2/CG-3). All
+three are prompt-design faults, not one-off model faults:
+
+- **RC-1** — the grounding rules require every case to trace to the
+  story but never the converse; enumerated items ("Table"; "point and
+  line") could silently collapse into a neighboring case.
+- **RC-2** — the fixed five-section draft shape gave automation and
+  documentation content nowhere to go.
+- **RC-3** — "prefer fewer, well-grounded cases" pushed toward
+  consolidation exactly when an enumeration-heavy story needs
+  expansion.
+
+The fix, **prompt v1.2** (authored as
+`review/patches/TestPlanGen_Prompt_v1_2.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.1 in-repo BEFORE its
+pending tenant paste; v1.1's marker fix is carried forward unchanged):
+
+- **ENUMERATION COVERAGE grounding rule** — every workflow, edit
+  pathway, input method, or event/geometry type the story enumerates
+  must be exercised by at least one case (own case or explicit
+  parameterization); grouped items in one statement are separate
+  pathways; untestable items become Open Questions entries. The
+  case-count guidance now explicitly yields to it.
+- **Two CONDITIONAL draft sections** — `## Automation Notes` and
+  `## Documentation Impacts`, between Negative Tests and Open
+  Questions, emitted only when the story carries such content and
+  omitted entirely (no empty heading) otherwise, so drafts for
+  stories without those slides are unchanged. Bullets carry the same
+  mandatory **Trace:** line as test cases.
+- Output markers, input keys, and fences unchanged from v1.1 — the
+  G9 slice and its literals are untouched.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.2 in
+`flow/v1_0/` and `flow/core_v1_0/`; both packages re-cut (the §
+"authored, not exported" re-cut mechanics: `definition.json` swapped
+into the `Microsoft.Flow/flows/<guid>/` entry, manifests and maps
+untouched).
+
+**Docs** — Setup §2's pane check and §4's review runbook cover the
+conditional sections and the enumeration-coverage review step; Smoke
+suite bumped to v1.1: row 1's section check rephrased (five CORE
+sections + conditionals iff story content), new row 9 pinned to doc 1
+as the enumeration-coverage regression fixture.
+
+Deploy (one window, replaces the still-pending v1.8 window): paste the
+v1.2 prompt into `LRS Test Plan Generation` (instead of v1.1), edit
+the `Config_gen` version stamp to v1.2 in BOTH live flows — plus the
+v1.8 `Draft_begin` / `Draft_end` literal edits if the tenant still
+runs v1.0 markers — then run the smoke suite (now 9 rows) and record
+below. NEVER bump `Config.PromptVersion` — nothing here changes the
+sidecar format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.2** | `review/patches/TestPlanGen_Prompt_v1_2.md` → `prompts/TestPlanGen_Prompt.md` |
+| Core child flow + package | **v1.9** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Standalone flow + package | **v1.9** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.1, 9 rows) |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 9) | TestPlanGenPromptVersion |
+|---|---|---|---|
+| — | — | — | v1.2 (paste pending) |
+
 # TestPlanGen v1.8 — sanitizer-safe output markers (prompt v1.1)
 
 Root-caused from a live failure (2026-08-12): every generation run

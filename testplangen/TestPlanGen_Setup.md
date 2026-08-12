@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v1.8** (see `CHANGES.md`).
+Current component version: **v2.0** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -69,11 +69,13 @@ Check: `/Shared Documents/Test Plan Drafts` exists and is empty.
 
 ## 2 — The AI Builder prompt
 
-Create a custom prompt named `LRS Test Plan Generation`. Four input
+Create a custom prompt named `LRS Test Plan Generation`. FIVE input
 parameters, exact names: **StoryMeta**, **StoryText**,
-**RelatedDigest**, **ExemplarText**. Paste the delimited block from
+**RelatedDigest**, **ExemplarText**, **ReferenceText** (the fifth is
+new in v2.0 — an upgrade from a pre-v1.3 paste must CREATE the
+parameter, not just re-paste the text). Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.1` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.3` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -92,10 +94,12 @@ closed. Angle-bracket fences remain fine on the INPUT side.
 Check: test in the AI Builder pane with a three-line StoryMeta
 (`title: Smoke Story`, `surface: Pro`, `target_release: 3.8`), a
 two-sentence StoryText ("As an editor, I need to merge two routes.
-The merge must preserve measures."), empty RelatedDigest and
-ExemplarText → the reply is wrapped in the two markers, contains all
-five draft sections, every test case carries a **Trace:** line, and
-Open Questions is non-empty.
+The merge must preserve measures."), empty RelatedDigest, ExemplarText
+and ReferenceText → the reply is wrapped in the two markers, contains the
+five core draft sections (the smoke story has no automation or
+documentation plans, so the two conditional sections — Automation
+Notes, Documentation Impacts — are correctly absent), every test case
+carries a **Trace:** line, and Open Questions is non-empty.
 
 ## 3 — The flow: import the package, or build by hand
 
@@ -149,9 +153,10 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "DraftFolder": "/Shared Documents/Test Plan Drafts",
   "StoryCap": 30000,
   "ExemplarCap": 20000,
+  "ReferenceCap": 12000,
   "NeighborCap": 5,
   "DigestSummaryCap": 400,
-  "TestPlanGenPromptVersion": "v1.1"
+  "TestPlanGenPromptVersion": "v1.3"
 }
 ```
 
@@ -159,11 +164,13 @@ The caps are the token-budget knobs (Known limits below). Trim
 priority when a generation feels starved: the story always wins, then
 the first exemplar, then the digest, then the second exemplar.
 
-**G0b — Initialize variables** (four, top level — variables cannot
+**G0b — Initialize variables** (seven, top level — variables cannot
 initialize inside a scope): `NeighborDigest` (String, value
 `@{string('')}` — the empty-value designer-trap guard), `ExemplarText`
 (String, same), `ExemplarUrls` (Array, value `@{json('[]')}`),
-`ExemplarCount` (Integer, 0).
+`ExemplarCount` (Integer, 0), `ReferenceText` (String, `@{string('')}`),
+`ReferenceUrls` (Array, `@{json('[]')}`), `ReferenceCount`
+(Integer, 0).
 
 **G0c — `Try_gen`** (Scope) containing G1–G11:
 
@@ -240,13 +247,35 @@ run:
     `NeighborDigest`:
     `- [@{coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], 'Other')}] "@{body('Get_neighbor_row')?['Title']}" — surface @{coalesce(body('Get_neighbor_row')?['Surface']?['Value'], '')}, release @{coalesce(body('Get_neighbor_row')?['TargetRelease'], '')}, PE @{coalesce(body('Get_neighbor_row')?['PE'], '')}: @{outputs('Neighbor_summary_capped')}@{decodeUriComponent('%0A')}`
   - **`If_testplan_neighbor`** (Condition):
-    `@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), less(length(variables('ExemplarUrls')), 2), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))`
-    — Yes: **`Collect_exemplar_url`** (Append to array variable
-    `ExemplarUrls`, value
-    `@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}`).
-    Related Test Plans are the best exemplars — topically closest —
-    so up to two are taken here before the fallback query is even
-    considered.
+    `@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))`
+    — Yes branch (**G5b, the v2.0 surface split**): related Test Plans
+    route by surface — same-surface plans are the best style/coverage
+    exemplars (topically closest, taken before the fallback query is
+    even considered); cross-surface plans describe the same feature
+    area on another surface, which makes them REFERENCE FUNCTIONALITY,
+    not style exemplars:
+    - **`If_exemplar_slot`** (Condition):
+      `@and(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), 2))`
+      — Yes: **`Collect_exemplar_url`** (Append to array variable
+      `ExemplarUrls`, value
+      `@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}`).
+      — No: **`If_reference_slot`** (Condition):
+      `@and(not(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], ''))), less(length(variables('ReferenceUrls')), 2))`
+      — Yes: **`Collect_reference_url`** (Append to array variable
+      `ReferenceUrls`) — the value is an OBJECT, because the reference
+      header needs title and surface at fetch time:
+
+      ```json
+      {
+        "url": "@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}",
+        "surface": "@{coalesce(body('Get_neighbor_row')?['Surface']?['Value'], '')}",
+        "title": "@{replace(coalesce(body('Get_neighbor_row')?['Title'], ''), '\"', '')}"
+      }
+      ```
+
+      (A same-surface plan arriving after both exemplar slots are
+      full falls through both conditions and stays digest-only — it
+      is never mis-slotted as a reference.)
 - **`Neighbor_done`** (Compose, inputs `ok`) — configure run after:
   `Try_neighbor` has **Succeeded, Failed, Skipped, Timed out**. This
   is the neutralizer; without it a single failed iteration fails the
@@ -285,6 +314,14 @@ the catalog generates with `ExemplarText` empty — the prompt tolerates
 it (structure comes from the DRAFT SHAPE rules), the draft just leans
 harder on the story alone; `Gen_summary` shows `exemplars=0`.
 
+The reference lane has NO fallback query, deliberately: cross-surface
+functional grounding is only ever taken from documents RelatedRank
+actually linked to this story (shared keywords/issue ids) — a blind
+"any test plan from another surface" query would ground drafts on
+unrelated features. A story with no cross-surface related Test Plan
+generates with `ReferenceText` empty (`Gen_summary` shows
+`references=0`), exactly as every story did before v2.0.
+
 **G7 — `For_each_exemplar`** (Apply to each over
 `@variables('ExemplarUrls')`, concurrency 1), same per-item Try +
 neutralizer pattern as G5:
@@ -303,6 +340,28 @@ neutralizer pattern as G5:
       - **`Inc_exemplar`** — Increment variable `ExemplarCount` by 1.
 - **`Exemplar_done`** (Compose, inputs `ok`, run after `Try_exemplar`
   has **Succeeded, Failed, Skipped, Timed out**).
+
+**G7b — `For_each_reference`** (v2.0; Apply to each over
+`@variables('ReferenceUrls')`, concurrency 1, run after
+`For_each_exemplar`), the G7 pattern over the reference objects —
+note the `items(...)?['url']` reads, since the array holds objects:
+- **`Try_reference`** (Scope):
+  - **`Ref_path`** (Compose):
+    `@{replace(coalesce(items('For_each_reference')?['url'], ''), outputs('Config_gen')?['SiteUrl'], '')}`
+  - **`If_ref_path_ok`** (Condition:
+    `@startsWith(outputs('Ref_path'), '/')`), Yes branch:
+    - **`Get_reference_md`** (Get file content using path, Infer
+      Content Type **No**, File Path `@{outputs('Ref_path')}`)
+    - **`If_ref_budget`** (Condition:
+      `@less(length(variables('ReferenceText')), int(outputs('Config_gen')?['ReferenceCap']))`),
+      Yes branch:
+      - **`Append_reference`** — Append to string `ReferenceText` —
+        the header carries title AND surface, which the prompt's
+        surface-parity rule keys on:
+        `--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), int(outputs('Config_gen')?['ReferenceCap']))}@{decodeUriComponent('%0A%0A')}`
+      - **`Inc_reference`** — Increment variable `ReferenceCount` by 1.
+- **`Reference_done`** (Compose, inputs `ok`, run after
+  `Try_reference` has **Succeeded, Failed, Skipped, Timed out**).
 
 **G8 — the prompt call** (the sweep's `Run_prompt` shape):
 - **`Story_meta`** (Compose) — flow-composed from row fields, the
@@ -327,8 +386,10 @@ neutralizer pattern as G5:
   `StoryMeta` = `@{outputs('Story_meta')}`,
   `StoryText` = `@{outputs('Story_text_capped')}`,
   `RelatedDigest` = `@{if(empty(variables('NeighborDigest')), '(none)', variables('NeighborDigest'))}`,
-  `ExemplarText` = `@{if(empty(variables('ExemplarText')), '(none)', variables('ExemplarText'))}`.
-  One call per run.
+  `ExemplarText` = `@{if(empty(variables('ExemplarText')), '(none)', variables('ExemplarText'))}`,
+  `ReferenceText` = `@{if(empty(variables('ReferenceText')), '(none)', variables('ReferenceText'))}`.
+  One call per run. Note `Story_meta` now runs after `For_each_reference`
+  (was `For_each_exemplar` pre-v2.0).
 
 **G9 — marker slice** (the F3 pattern with draft sentinels; the BEGIN
 marker `[[[DRAFT BEGIN]]]` is 17 characters):
@@ -387,17 +448,18 @@ out** — the curation Catch verbatim, names swapped):
 the F11 pattern):
 
 ```
-@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}
+@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}
 ```
 
 `exemplars=0` on a story that should have peers = check §3-G6's
-Surface value against the catalog; `draftChars` near zero never
-happens (G9 fails closed first).
+Surface value against the catalog; `references=0` is normal unless the
+story's `related:` list actually carries a cross-surface Test Plan;
+`draftChars` near zero never happens (G9 fails closed first).
 
-**Cost**: 1 trigger + ~25 fixed actions + ~3 per related neighbor +
-~5 per exemplar + ONE AI Builder call ≈ **35–55 actions + one AI
-call, per invocation, on demand** — noise next to the sweep's
-~2,500/day.
+**Cost**: 1 trigger + ~28 fixed actions + ~3 per related neighbor +
+~5 per exemplar + ~5 per reference + ONE AI Builder call ≈ **35–65
+actions + one AI call, per invocation, on demand** — noise next to
+the sweep's ~2,500/day.
 
 **Concurrency with the sweep**: this flow writes nothing the sweep
 (or anything else) reads — it is read-only over Doc Index and the
@@ -423,8 +485,20 @@ the Doc Index list (rename the flow's menu label to
   top to bottom: verify every case's **Trace:** line actually points
   at something the story says; resolve every `[VERIFY: ...]` item;
   delete cases that don't survive scrutiny; add the cases only a
-  human would know to add. The banner's warning line is the contract:
-  nothing ships until this pass happens.
+  human would know to add. Check enumeration coverage (the prompt
+  v1.2 rule): every workflow, edit pathway, input method, and
+  event/geometry type the story enumerates has at least one case —
+  the doc 1 review (`review/REVIEW_TestPlanGen_doc1_coverage.md`)
+  shows how grouped pathways ("Dynamic Segmentation & Attribute
+  Table") silently collapse without this check. When the story has
+  automation or documentation plans, the draft carries `Automation
+  Notes` / `Documentation Impacts` sections — review their bullets'
+  Trace lines the same way. Reference-grounded cases (prompt v1.3:
+  cases whose Trace cites a cross-surface reference document) get one
+  extra check: confirm the borrowed behavior actually applies on this
+  story's surface — the draft must carry a surface-parity `[VERIFY]`
+  item for them, and resolving it is part of this pass. The banner's
+  warning line is the contract: nothing ships until this pass happens.
 - **Finalize**: transfer the reviewed content into the team's normal
   test-plan format (pptx/docx). The draft file itself is an
   intermediate — it never becomes the document of record.

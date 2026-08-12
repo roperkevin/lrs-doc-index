@@ -1,63 +1,55 @@
-# Test Plan Generation Prompt — v1.3
+# TestPlanGen Prompt — v1.3 (reference-functionality input lane) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.3`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+Motivated by the doc 1 draft revision (2026-08-12, follow-up to
+`review/REVIEW_TestPlanGen_doc1_coverage.md`): a PE had three Pro-surface
+test plans defining the expected tool functionality (input methods,
+per-method referent-population semantics) for an Experience Builder
+story, and the pipeline had no sanctioned way to use them — exemplars
+are style/coverage ONLY ("never their feature-specific content", the
+hallucination guard), so functional grounding could only happen in the
+§4 human-review pass. This version adds a fifth input lane that makes
+cross-surface functional grounding a first-class, cited, guarded
+generation input; supersedes v1.2 IN-REPO before its tenant paste
+(v1.2's enumeration-coverage rule and conditional sections, and v1.1's
+marker fix, are carried forward unchanged — paste THIS version).
 
-FIVE item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
-(the fifth added in v1.3 — the AI Builder prompt needs the parameter
-created, not just the text re-pasted).
+Changes against v1.2:
 
-v1.3 (the reference-functionality input lane): `ReferenceText` carries
-test plans or design docs describing the expected behavior of this
-story's feature area, possibly on ANOTHER surface — the flow fills it
-with related Test Plans whose Surface differs from the story's (the
-same-surface ones remain style/coverage exemplars). Unlike exemplars,
-the model may ground expected functional behavior on these — input
-methods, field-population semantics, validations — within the story's
-scope, with three guards: every borrowed statement's Trace cites the
-reference document, a cross-surface reference forces a surface-parity
-[VERIFY] item, and the story wins every conflict. Reference docs
-supply behavior, never tool names.
+1. **Fifth input key: `ReferenceText`** — REFERENCE FUNCTIONALITY
+   docs: test plans or design docs describing the expected behavior of
+   this story's feature area, possibly on ANOTHER surface. Unlike
+   exemplars, the model MAY ground expected functional behavior on
+   them (input methods, field-population semantics, validation rules),
+   applied within the story's scope.
+2. **New grounding rules for the lane**: every reference-grounded case
+   cites its reference doc in the Trace; a reference doc whose surface
+   differs from the story's surface forces a surface-parity
+   [VERIFY] item in Open Questions; the story always wins on conflict
+   (conflicts become [VERIFY] items, never silent preference); the
+   lane supplies BEHAVIOR, never tool names — the existing tools rule
+   is unchanged, so a Pro tool named in a reference doc never becomes
+   a named widget in an EXB draft.
+3. Trace rule and untrusted-data rule extended to the fourth text
+   block; new `<<<REFERENCE FUNCTIONALITY BEGIN/END>>>` input fence
+   after the exemplar fence. Empty lane (`(none)`) drafts exactly as
+   v1.2 did.
 
-v1.2 (the doc 1 coverage-review fixes — see
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): an ENUMERATION COVERAGE
-grounding rule — every workflow, pathway, input method, or
-event/geometry type the story enumerates must be exercised by at least
-one case, and this wins over the preferred case-count range — plus two
-CONDITIONAL draft sections, `## Automation Notes` and
-`## Documentation Impacts`, emitted between Negative Tests and Open
-Questions only when the story carries such content.
+Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`).
+Input keys are now FIVE, exact names: **StoryMeta**, **StoryText**,
+**RelatedDigest**, **ExemplarText**, **ReferenceText**.
 
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
-
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written (create the fifth parameter,
-ReferenceText, when upgrading from a pre-v1.3 paste), then wire per
-the build guide §2.
+Deploy (this is a CONTRACT change, not just a paste — component v2.0):
+add the fifth input parameter **ReferenceText** to the
+`LRS Test Plan Generation` AI Builder prompt, paste this text
+(replaces the pending v1.2 paste), apply the §3 flow additions in BOTH
+live flows (or re-import the re-cut packages): `ReferenceCap` +
+version stamp in `Config_gen`, three new variables, the
+`If_testplan_neighbor` surface split, the `For_each_reference` fetch
+loop, the fifth prompt-call binding, and the `Gen_summary`
+`references=` count — guide §3 G0/G0b/G5b/G7b/G8. Then re-run the
+smoke suite (row 10 exercises this lane). NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 

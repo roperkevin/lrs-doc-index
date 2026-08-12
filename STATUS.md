@@ -74,7 +74,7 @@ unchanged.
 |---|---|---|---|
 | Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
-| TestPlanGen | v1.8 | v1.1 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v1.1 prompt paste + live flow marker edits pending — `testplangen/CHANGES.md` |
+| TestPlanGen | v2.0 | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0 |
 
 ## Harness
 
