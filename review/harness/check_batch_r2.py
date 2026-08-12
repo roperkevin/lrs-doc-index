@@ -356,7 +356,7 @@ for canon in PATCHES:
         'workbook: ExcelScript.Workbook', 'workbook: ' + swap)
     tsc_file = canon.replace('.ts', '_tsc.ts').lower()
     open(tsc_file, 'w', encoding='utf-8').write(body)
-    r = subprocess.run(['npx', 'tsc', '--noEmit', '--target', 'es2017', tsc_file],
+    r = subprocess.run(['npx', '--yes', '--package', 'typescript', 'tsc', '--noEmit', '--target', 'es2017', tsc_file],
                        capture_output=True, text=True, encoding='utf-8')
     check(r.returncode == 0, f'{canon} (staged) type-checks at ES2017'
           + ('' if r.returncode == 0 else '\n' + (r.stdout + r.stderr)[-2000:]))

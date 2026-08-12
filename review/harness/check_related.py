@@ -510,7 +510,7 @@ check(out['content'].count('rel:17') == 1 and '"s":900' in out['content'],
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
 for runner in ('rr_cur.ts', 'scp_cur.ts'):
-    tsc = subprocess.run(['npx', '--yes', 'tsc', '--noEmit', '--target', 'es2017',
+    tsc = subprocess.run(['npx', '--yes', '--package', 'typescript', 'tsc', '--noEmit', '--target', 'es2017',
                           '--lib', 'es2017,dom', runner],
                          capture_output=True, text=True, encoding='utf-8')
     check(tsc.returncode == 0, f'{runner} type-checks at ES2017'
