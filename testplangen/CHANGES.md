@@ -1,3 +1,39 @@
+# TestPlanGen v2.4 — two-argument IsMatch in the classify group (agent v1.5)
+
+Live-deployment fix, found on the first v1.4 canvas paste
+(2026-08-12): the topic's `refIsIssueUrl` condition — the file's ONLY
+three-argument `IsMatch` — failed canvas validation on
+`MatchOptions.Contains`. Every two-argument `IsMatch` and the
+named-group `Match(...).num` extractions validated, so the fault line
+is the `MatchOptions` enum on Copilot Studio's Power Fx surface, not
+regex support. Fix: drop the third argument and express contains
+semantics with anchors on the default complete-match —
+
+    =IsMatch(Topic.RefLower, ".*devtopia\.esri\.com/[^/\s]+/[^/\s]+/issues/\d+.*")
+
+Behavior identical. The rule going forward (topic header + the
+Agent_Setup schema-drift caution): every `IsMatch` in the file stays
+two-argument. The caution also records the regex-free fallback for
+the URL test (`Find`-based) should a tenant reject even the anchored
+form — swap it in the canvas and carry it back to the file. All five
+file-set headers move to v1.5 together (settings had lagged at v1.3;
+its content is unchanged).
+
+No flow, package, prompt, or schema changes — both flow contracts and
+every generation artifact are untouched. Deploy delta for a tenant
+mid-v2.3-paste: re-paste the one condition (or the topic body) and
+continue at Agent_Setup §3.
+
+| Piece | Version | Where |
+|---|---|---|
+| GenerateTestPlan topic (refIsIssueUrl condition + comments; + file-set headers) | **TestPlanGenAgentVersion v1.5** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent_Setup (schema-drift caution: two-argument IsMatch rule + Find fallback) | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 9) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.5 (paste in progress) |
+
 # TestPlanGen v2.3 — story lookup: doc id, devtopia issue #, or title (agent v1.4)
 
 Closes the "Title → id resolution" follow-on queued in
