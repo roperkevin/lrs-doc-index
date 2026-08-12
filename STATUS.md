@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-12 (round r4 — related-ranking upgrade, RelatedRank v2.1)**.
+Last updated: **2026-08-12 (TestPlanGen v2.3 authored — story lookup by doc id / devtopia issue # / title)**.
 
 ## Core sweep
 
@@ -74,7 +74,7 @@ unchanged.
 |---|---|---|---|
 | Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
-| TestPlanGen | v2.0 | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0 |
+| TestPlanGen | v2.0 deployed — **v2.3 authored, deploy pending** | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1 live (**v1.4 authored**). **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0. Then the v2.3 delta: build `StoryLookupFlow` (`agent/Agent_Setup.md` §1d, or try `StoryLookupFlow_v1_0.zip` with the §1d import caveat), re-paste/push the four v1.4 agent files, re-add BOTH canvas flow nodes (§3), run agent smoke rows 1–2c and 7 — `testplangen/CHANGES.md` v2.3 |
 
 ## Harness
 
