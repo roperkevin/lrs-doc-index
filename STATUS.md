@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-12 (round r3 — related-ranking overhaul)**.
+Last updated: **2026-08-12 (round r4 — related-ranking upgrade, RelatedRank v2.1)**.
 
 ## Core sweep
 
@@ -19,7 +19,7 @@ Last updated: **2026-08-12 (round r3 — related-ranking overhaul)**.
 |---|---|---|
 | ZipTextExtract | **v2.0** (r2) | **PENDING** — tenant runs v1.9 (pasted 2026-08-11) |
 | MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
-| RelatedRank | **v2.0** (r3) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11); paste is fenced to the v2.6 flow window, see below |
+| RelatedRank | **v2.1** (r4) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11); paste is fenced to the v2.6 flow window, see below |
 | SidecarPatch | **v1.4** (r2) | **PENDING** — tenant runs v1.3 (pasted 2026-08-11) |
 | RegexExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pre-v2.2) |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
@@ -51,6 +51,23 @@ against both downstream consumers: TestPlanGen line-slices
 `related: [` and needs only score-descending order; the Q&A agent
 reads the rendered section generically).
 
+**r4 amendment (2026-08-12)**: RelatedRank has since moved again, to
+**v2.1** (`check_batch_r4.py` gate PASSED; `check_batch_r3.py` now
+skips as superseded — v2.0 was never tenant-pasted). v2.1 keeps
+v2.0's signature, so the v2.6 window is unchanged in shape and now
+**pastes v2.1 instead of v2.0** (designer-edits §v2_6, r4
+amendment); it stays fenced against the v2.5 flow exactly as v2.0
+was. The upgrade: total id dominance (non-id edge scores join the
+999 soft cap — no Strength pile outranks an id link), PE/Dev
+name-set overlap matching, and final-mode title-token affinity (new
+`title` line in `Self_rank_meta` + `title` weights in
+`Config.RelatedWeights`; the authored v2.6 definition and zip were
+amended in place — dormant and output-identical to v2.0 until that
+line lands). The gate proves v2.0-vs-v2.1 identical on every
+tenant-producible payload shape, so everything in the r3 amendment
+about PromptVersion, backfill and downstream consumers carries over
+unchanged.
+
 ## Components
 
 | Component | Version | Prompt | Notes |
@@ -63,8 +80,8 @@ reads the rendered section generically).
 
 | Suite | Last green |
 |---|---|
-| check_format.py / check_related.py / check_regex.py / check_batch_r3.py | 2026-08-12 (see `review/harness/README.md` run records) |
-| check_batch.py / check_batch_r2.py | skip as superseded by design (v1.9 / r2 generations) |
+| check_format.py / check_related.py / check_regex.py / check_batch_r4.py | 2026-08-12 (see `review/harness/README.md` run records) |
+| check_batch.py / check_batch_r2.py / check_batch_r3.py | skip as superseded by design (v1.9 / r2 / r3 generations) |
 
 ## Open actions
 
@@ -73,4 +90,4 @@ reads the rendered section generically).
 3. r2 script batch: gate PASSED, promoted — **paste the six scripts** (`review/REVIEW_v2_5_r2.md` checklist step 5; for RelatedRank paste the r2 artifact `review/patches/RelatedRank_v1_3.ts`, or skip it — see the r3 amendment above).
 4. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).
 5. ~~PV-1 residual~~ — **CLOSED (owner decision, 2026-08-12): accepted.** The repo stays public; the pre-scrub zips (containing the work email) remain reachable in git history, knowingly. Current-tree manifests stay scrubbed. Revisit only if circumstances change (`review/REVIEW_v2_5_r2.md` §PV-1).
-6. r3 (after action 3): **paste RelatedRank v2.0 + apply the flow v2.6 designer edits in ONE maintenance window** (`review/patches/designer-edits.md` §v2_6), smoke, full run, then update this table (flow row, RelatedRank paste column). `flow/DocIndexSweep_v2_6.zip` is already authored (v2.5 skeleton + v2.6 payload).
+6. r3/r4 (after action 3): **paste RelatedRank v2.1 + apply the flow v2.6 designer edits in ONE maintenance window** (`review/patches/designer-edits.md` §v2_6 — V1 pastes v2.1 per the r4 amendment), smoke, full run, then update this table (flow row, RelatedRank paste column). `flow/DocIndexSweep_v2_6.zip` is already authored (v2.5 skeleton + v2.6 payload, amended for r4).

@@ -32,6 +32,11 @@ halves self-compare (old = scripts/ = the promoted patch, driven
 through the new signature) and the discriminator assertions — which
 need the genuinely-old v1.3 — are skipped via the PROMOTED guard.
 
+r4 note (2026-08-12): RelatedRank has moved past v2.0 (v2.1, the r4
+batch — check_batch_r4.py), so this gate is HISTORICAL and now skips
+via the guard below, exactly as check_batch_r2.py did when r3
+promoted over its generation.
+
 Prereqs: make_fixtures.py has run in this directory (the standing
 suites need the planted fixtures; the RelatedRank cases themselves
 are inline payloads). Exit nonzero on any failure — any FAIL = do
@@ -42,6 +47,19 @@ import os
 import shutil
 import subprocess
 import sys
+
+# r4 (2026-08-12): once a NEWER batch is promoted over scripts/, this
+# gate's premises break by design — the staged v2.0 patch no longer
+# equals the shipped script (RelatedRank moved to v2.1), and the
+# standing suites carry folded v2.1 assertions the r3 generation
+# predates. Skip gracefully (the check_batch.py / check_batch_r2.py
+# precedent); to re-run the r3 gate for the record, check out the
+# r3-promotion-era commit from git history.
+_rr_head = open('../../scripts/RelatedRank.ts', encoding='utf-8').read(200)
+if 'RelatedRank v2.0' not in _rr_head and 'RelatedRank v1.3' not in _rr_head:
+    print('scripts/ has moved past the r3 generation — this HISTORICAL '
+          'gate is superseded (see the r4 note in its docstring); skipping.')
+    sys.exit(0)
 
 PATCHES = {
     'RelatedRank.ts': '../patches/RelatedRank_v2_0.ts',

@@ -1,4 +1,22 @@
-# Flow v2.6 — related-ranking overhaul (RelatedRank v2.0 wiring)
+# Flow v2.6 — related-ranking overhaul (RelatedRank v2.0 → v2.1 wiring)
+
+**r4 amendment (2026-08-12)**: before this definition was ever
+applied, RelatedRank moved on to **v2.1** (`scripts/RelatedRank.ts`,
+gated by `check_batch_r4.py` — same 11-param signature as v2.0), and
+the authored v2.6 definition was amended in place to carry the two
+r4 additions: `Self_rank_meta` gains a `"title"` line
+(`@{outputs('Doc_title')}` — the same value the Doc Index row's
+Title gets, feeding v2.1's title-token affinity) and the
+`Config.RelatedWeights` literal gains
+`"title":{"weight":0.4,"cap":6}`. `DocIndexSweep_v2_6.zip` was
+re-cut the same way (payload byte-identical to this folder; every
+other zip entry byte-identical to the original cut). The deployment
+window below is unchanged in shape — it now pastes v2.1 instead of
+v2.0; a tenant that already applied the window with v2.0 pastes
+v2.1 alone and adds the two deltas (see
+`review/patches/designer-edits.md` §v2_6, r4 amendment). Everything
+else in this document reads as written, with "v2.0" as the wiring
+generation v2.6 was designed against.
 
 v2.6 is v2.5 plus one feature: the related-documents branch feeds and
 drives RelatedRank v2.0 (`review/patches/RelatedRank_v2_0.ts`, gated

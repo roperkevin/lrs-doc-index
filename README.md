@@ -17,14 +17,14 @@ sidecar to its related documents.
 | Path | What | Version |
 |---|---|---|
 | flow/v2_5/definition.json | Flow definition (deployed) | v2.5 |
-| flow/v2_6/definition.json | Flow definition (authored — related-ranking overhaul; designer application pending, one window with the RelatedRank v2.0 paste) | v2.6 |
+| flow/v2_6/definition.json | Flow definition (authored — related-ranking overhaul; designer application pending, one window with the RelatedRank v2.1 paste; amended for r4: Self_rank_meta title line + title weights) | v2.6 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
 | flow/DocIndexSweep_v2_6.zip | Import package (v2.5 package skeleton + the v2.6 definition, payload byte-identical to the folder; post-import verification still needed — re-pick every Run-script action) | v2.6 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.3 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v2.0 (paste pending) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity, recency, config-driven weights) | v2.0 (paste pending — one window with the v2.6 designer edits) |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (paste pending — one window with the v2.6 designer edits) |
 | scripts/SidecarPatch.ts | Surgical related-section patching | v1.4 (paste pending) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
@@ -32,7 +32,8 @@ sidecar to its related documents.
 | review/patches/MediaExtract_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/RelatedRank_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
-| review/patches/RelatedRank_v2_0.ts | r3 patch (gated + promoted 2026-08-12; tenant paste pending, fenced to the v2.6 window) | v2.0 |
+| review/patches/RelatedRank_v2_0.ts | r3 patch (gated; superseded in-repo by v2.1 before its paste) | v2.0 |
+| review/patches/RelatedRank_v2_1.ts | r4 patch (gated + promoted 2026-08-12; tenant paste pending, fenced to the v2.6 window — same signature as v2.0) | v2.1 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy) | v1.0 |
@@ -262,18 +263,23 @@ from v2.3 or earlier, do the v2.4 steps first
 - **Edges** mint when the LATER doc of an ID-sharing pair
   processes; the graph self-assembles during backfill.
 - **Related documents** (v2.3, overhauled v2.6): each sidecar shows
-  its top 5 related docs. Since v2.6 (RelatedRank v2.0) the score
-  is `s = edges + min(soft, 999)`: every stored Doc Links edge
-  type counts, weighted per type (id 1000/shared issue — still
-  structurally dominant — then review 100, gantt 60, titlematch
+  its top 5 related docs. Since v2.6 (RelatedRank v2.1) the score
+  is `s = id-edges + min(soft, 999)`: every stored Doc Links edge
+  type counts, weighted per type (id 1000/shared issue —
+  structurally dominant: since v2.1 every OTHER signal, non-id
+  edges included, shares the 999 soft cap, so no accumulation
+  outranks an id link — then review 100, gantt 60, titlematch
   40, ready for Flow #2's edges the day they exist), and the soft
   part adds rarity-weighted keyword overlap (a local IDF computed
   from rows the flow already fetches, keywords further weighted by
   Kind: topic 1.0 / tool 0.6 / product 0.4, alias junction rows
   folded onto their canonical), metadata affinity (same
-  DocKind/Surface/PE/Dev, same TargetRelease strongest) and a
-  symmetric recency bonus (half-life decay on the OLDER doc's
-  SourceModified — pair-min, so scores stay reciprocal-safe).
+  DocKind/Surface, PE/Dev matched on name-SET overlap so
+  multi-name fields count, same TargetRelease strongest), shared
+  distinctive title tokens (0.4 each, up to 6, corpus-generic
+  words stopworded) and a symmetric recency bonus (half-life decay
+  on the OLDER doc's SourceModified — pair-min, so scores stay
+  reciprocal-safe).
   Ranking is two-phase: a shortlist of 12 by edges+keywords, then
   a metadata re-rank of the fetched shortlist — a doc with no
   shared edge or keyword never appears just for matching metadata.

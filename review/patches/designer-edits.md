@@ -296,24 +296,40 @@ unaffected.
 
 ---
 
-# v2_6 round — related-ranking overhaul (RelatedRank v2.0)
+# v2_6 round — related-ranking overhaul (RelatedRank v2.0 → v2.1)
 
 `flow/v2_6/definition.json` is the authoritative result; these are
 the same edits as designer actions, in dependency order. **Edit V1
 (the script paste) and V2–V10 are ONE maintenance window** — the
-v2.0 signature breaks the existing `Run_related_rank` binding until
+v2.0+ signature breaks the existing `Run_related_rank` binding until
 V7/V8 rewire it. Do the whole list with the flow OFF or well clear
 of the 17:00 trigger, then smoke. Prereq: the r2 six-script paste
-already done (STATUS open action 3); gate `check_batch_r3.py` green.
+already done (STATUS open action 3); gate `check_batch_r4.py` green.
+
+**r4 amendment (2026-08-12)**: RelatedRank has been promoted to
+**v2.1** (`check_batch_r4.py` gate PASSED; `check_batch_r3.py` now
+skips as superseded) with the SAME signature as v2.0, so this window
+is unchanged in shape — V1 now pastes v2.1, and V2/V7 below already
+carry the two r4 additions (the `"title"` fragment in
+`RelatedWeights`; the `"title"` line in `Self_rank_meta`, feeding
+title-token affinity). `flow/v2_6/definition.json` and
+`flow/DocIndexSweep_v2_6.zip` were amended to match (payload still
+byte-identical to the folder). **If this window was already applied
+with v2.0 before r4 landed**: paste v2.1 alone — same signature, no
+window needed — then apply just the two r4 deltas (V2's literal,
+V7's title line). Until the title line lands, title affinity is
+dormant and v2.1's output is identical to v2.0's on tenant-shaped
+input, so the two-step path is safe in either order.
 
 Unlike the F-series, don't smoke between single edits here — the
 branch is broken mid-sequence by design. Smoke once after V10.
 
-## V1 — Paste RelatedRank v2.0
+## V1 — Paste RelatedRank v2.1
 
 Automate-tab workbook → Code Editor → paste `scripts/RelatedRank.ts`
-(v2.0) over the existing RelatedRank. (Script list order for any
-future batch paste: unchanged from r2.)
+(v2.1 — the r4 amendment; this window originally pasted v2.0) over
+the existing RelatedRank. (Script list order for any future batch
+paste: unchanged from r2.)
 
 ## V2 — Config keys
 
@@ -324,12 +340,16 @@ future batch paste: unchanged from r2.)
 "MyKwsTop": 100,
 "SharersTop": 2000,
 "LinksTop": 200,
-"RelatedWeights": "{\"edge\":{\"id\":1000,\"review\":100,\"gantt\":60,\"titlematch\":40},\"kwKind\":{\"topic\":1.0,\"tool\":0.6,\"product\":0.4},\"meta\":{\"kind\":0.5,\"surface\":0.5,\"release\":1.0,\"pe\":0.75,\"dev\":0.75},\"recency\":{\"weight\":1.0,\"halfLifeDays\":180},\"softCap\":999,\"tops\":{\"myKws\":100,\"sharers\":2000,\"links\":200}}",
+"RelatedWeights": "{\"edge\":{\"id\":1000,\"review\":100,\"gantt\":60,\"titlematch\":40},\"kwKind\":{\"topic\":1.0,\"tool\":0.6,\"product\":0.4},\"meta\":{\"kind\":0.5,\"surface\":0.5,\"release\":1.0,\"pe\":0.75,\"dev\":0.75},\"title\":{\"weight\":0.4,\"cap\":6},\"recency\":{\"weight\":1.0,\"halfLifeDays\":180},\"softCap\":999,\"tops\":{\"myKws\":100,\"sharers\":2000,\"links\":200}}",
 ```
 
 `RelatedWeights` is a JSON *string* (the flow never parses it — the
 script does, shrugging off garbage back to identical in-script
 defaults). Keep `tops` in sync with the three *Top keys when tuning.
+The `title` fragment is the r4 amendment (title-token affinity —
+weight per shared distinctive token, counted up to cap; an optional
+`\"stop\":[...]` array appends tenant stopwords); omitting it is
+harmless — the in-script defaults are identical.
 
 ## V3 — Init_RelatedFlags
 
@@ -404,9 +424,15 @@ After `Get_kw_sharers`:
   "release": "@{coalesce(outputs('Parse_prompt_output')?['targetRelease'], '')}",
   "pe": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
   "dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
-  "modified": "@{coalesce(items('For_each_file')?['Modified'], '')}"
+  "modified": "@{coalesce(items('For_each_file')?['Modified'], '')}",
+  "title": "@{outputs('Doc_title')}"
 }
 ```
+
+(The `title` line is the r4 amendment — the same value `Create_doc`
+/ `Update_doc` write to the row's Title, so self and candidates read
+the same field and title-token affinity stays symmetric. Leaving it
+off is safe: the term reads as 0 and v2.1 scores exactly like v2.0.)
 
 **Run script `Run_related_shortlist`** (Excel Online Business, same
 workbook + RelatedRank script pick as `Run_related_rank`):

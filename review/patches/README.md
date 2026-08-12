@@ -10,7 +10,8 @@ history / gate inputs — do not edit).
 | File | Status |
 |---|---|
 | designer-edits.md | Living log of manual flow-designer edits, newest section last |
-| RelatedRank_v2_0.ts | **r3 — gated + promoted; TENANT PASTE PENDING, fenced to the v2.6 flow window** (designer-edits §v2_6) |
+| RelatedRank_v2_1.ts | **r4 — gated + promoted; TENANT PASTE PENDING, fenced to the v2.6 flow window** (same signature as v2.0 — the window now pastes this; designer-edits §v2_6, r4 amendment) |
+| RelatedRank_v2_0.ts | **r3 — gated; superseded in-repo by v2_1 before its paste.** The v2.6 window pastes v2.1 instead (same signature). Frozen. |
 | RegexExtract_v1_3.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-1) |
 | SidecarPatch_v1_4.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-2/3) |
 | WorkbookDump_v1_2.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-4) |

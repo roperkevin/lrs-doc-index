@@ -19,9 +19,11 @@ when a batch is promoted:
    history. `scripts/ZipTextExtract.ts` has long since moved on (v2.0
    as of the r2 promotion).
 5. **Batch gates** (`check_batch.py` — v1.9 era, skips as superseded;
-   `check_batch_r2.py` — r2 era, re-verifies the promotion;
-   `check_batch_r3.py` — r3 era, RelatedRank v2.0) — the template any
-   future script batch clones before its patches may be pasted.
+   `check_batch_r2.py` — r2 era, skips as superseded;
+   `check_batch_r3.py` — r3 era, skips as superseded;
+   `check_batch_r4.py` — r4 era, RelatedRank v2.1, re-verifies the
+   promotion) — the template any future script batch clones before
+   its patches may be pasted.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for
@@ -292,7 +294,15 @@ Post-promotion: `check_format.py` (incl. §10), `check_related.py`
 `render_sample.py` all PASS against the promoted `scripts/`;
 `check_batch.py` skips as superseded by design.
 
-## Batch gate — the r3 batch (`check_batch_r3.py`)
+## Batch gate — the r3 batch (`check_batch_r3.py`) — HISTORICAL
+
+**Superseded by the r4 promotion (2026-08-12): RelatedRank moved to
+v2.1, so this gate's premises no longer hold and it skips
+gracefully** (the same lifecycle `check_batch.py` and
+`check_batch_r2.py` entered when their generations were passed); to
+re-run it for the record, check out the r3-promotion-era commit.
+Note the r3 batch itself was never tenant-pasted — v2.1 replaces
+v2.0 in the pending v2.6 window. Original description:
 
 The gate for the related-ranking overhaul (RelatedRank v2.0 —
 all edge types, keyword kinds + DX-2 alias fold, metadata affinity +
@@ -328,3 +338,45 @@ against the promoted `scripts/`; `check_batch_r2.py` now skips as
 superseded (the r3 promotion moved RelatedRank past its generation —
 the same graceful-skip lifecycle `check_batch.py` entered at r2),
 and `check_batch.py` keeps skipping as before.
+
+## Batch gate — the r4 batch (`check_batch_r4.py`)
+
+The gate for the related-ranking upgrade (RelatedRank v2.1 — total
+id dominance: non-id edges join the softCap bucket; PE/Dev name-set
+overlap; final-mode title-token affinity behind the new selfMeta
+`title` key; `title.{weight,cap,stop}` config). Single-patch batch;
+same lifecycle as the r2/r3 templates. The signature is UNCHANGED
+from v2.0, so its equivalence leg is broader than r3's: v2.0 vs
+v2.1 must be IDENTICAL on the full result (related/docIds/count/
+flags) across both the r3 legacy payload set and an r3-shaped set
+(per-type edges, kind multipliers, alias fold, metadata affinity
+with single-name PE, pinned recency, ceiling flags, the HA-9 pile) —
+the upgrade may not move a single score on input the tenant can
+produce today. Discriminators prove v2.0 let a Strength-20 gantt
+pile (1200) outrank an id link, matched PE/Dev only on exact string
+equality, and ignored selfMeta `title`. **The paste stays fenced to
+the v2.6 flow window** (v2.1 replaces v2.0 there — same signature,
+no new wiring; a tenant already at v2.0 + v2.6 pastes v2.1 alone);
+see `../patches/designer-edits.md` §v2_6, r4 amendment.
+
+```
+python3 make_fixtures.py     # the standing suites need the fixtures
+python3 check_batch_r4.py    # any FAIL = do not paste
+```
+
+### Last run (2026-08-12, Node 22.22.2) — r4 gate + promotion
+
+Pre-promotion gate run: **PASS** — `check_format.py` /
+`check_related.py` (incl. the 17 new v2.1 contract cases) /
+`check_regex.py` fully green over the staged batch; v2.0-vs-v2.1
+IDENTICAL related/docIds/count/flags on all sixteen equivalence
+payloads (the eight r3 legacy payloads plus eight r3-shaped ones:
+per-type edges, strength fallback, kind multipliers, alias fold,
+single-name metadata affinity, pinned recency, ceiling flags, HA-9
+pile); all three discriminators fire; staged script type-checks at
+ES2017. Post-promotion: `check_related.py`, `check_batch_r4.py`
+(promotion re-verification, equivalence halves self-compare),
+`check_format.py`, `check_regex.py` and `render_sample.py` all PASS
+against the promoted `scripts/`; `check_batch_r3.py` now skips as
+superseded (the r4 promotion moved RelatedRank past its generation),
+joining `check_batch_r2.py` and `check_batch.py`.

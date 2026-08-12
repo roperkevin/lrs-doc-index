@@ -88,7 +88,7 @@
             "MyKwsTop": 100,
             "SharersTop": 2000,
             "LinksTop": 200,
-            "RelatedWeights": "{\"edge\":{\"id\":1000,\"review\":100,\"gantt\":60,\"titlematch\":40},\"kwKind\":{\"topic\":1.0,\"tool\":0.6,\"product\":0.4},\"meta\":{\"kind\":0.5,\"surface\":0.5,\"release\":1.0,\"pe\":0.75,\"dev\":0.75},\"recency\":{\"weight\":1.0,\"halfLifeDays\":180},\"softCap\":999,\"tops\":{\"myKws\":100,\"sharers\":2000,\"links\":200}}",
+            "RelatedWeights": "{\"edge\":{\"id\":1000,\"review\":100,\"gantt\":60,\"titlematch\":40},\"kwKind\":{\"topic\":1.0,\"tool\":0.6,\"product\":0.4},\"meta\":{\"kind\":0.5,\"surface\":0.5,\"release\":1.0,\"pe\":0.75,\"dev\":0.75},\"title\":{\"weight\":0.4,\"cap\":6},\"recency\":{\"weight\":1.0,\"halfLifeDays\":180},\"softCap\":999,\"tops\":{\"myKws\":100,\"sharers\":2000,\"links\":200}}",
             "KindFolders": {
               "Test Plan": "Test Plans",
               "User Story": "User Stories",
@@ -2145,7 +2145,8 @@
                                 "release": "@{coalesce(outputs('Parse_prompt_output')?['targetRelease'], '')}",
                                 "pe": "@{coalesce(outputs('Parse_prompt_output')?['pe'], '')}",
                                 "dev": "@{coalesce(outputs('Parse_prompt_output')?['dev'], '')}",
-                                "modified": "@{coalesce(items('For_each_file')?['Modified'], '')}"
+                                "modified": "@{coalesce(items('For_each_file')?['Modified'], '')}",
+                                "title": "@{outputs('Doc_title')}"
                               }
                             },
                             "Run_related_shortlist": {
