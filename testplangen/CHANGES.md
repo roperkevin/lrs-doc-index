@@ -1,3 +1,57 @@
+# TestPlanGen v1.8 — sanitizer-safe output markers (prompt v1.1)
+
+Root-caused from a live failure (2026-08-12): every generation run
+terminated `NoDraftMarkers` — all actions green, complete draft in the
+reply — because AI Builder sanitizes HTML-tag-like sequences out of
+the prompt REPLY. The output sentinels `<<<DRAFT BEGIN>>>` /
+`<<<DRAFT END>>>` each contain a tag-shaped inner run
+(`<DRAFT BEGIN>` / `<DRAFT END>`) that the sanitizer removed, so
+`Gen_text_raw` arrived bracketed by bare `<<>>` stubs, the G9 slice
+found no markers, and the flow failed closed — exactly as designed,
+on every run. TestPlanGen was the first prompt to use angle-bracket
+sentinels in the OUTPUT direction; the JSON prompts use `<<<...>>>`
+only as input fences, which travel flow→model and are never
+sanitized — which is why five days of DocIndex/curation history never
+surfaced this.
+
+The fix — square-bracket output sentinels, same lengths, so the slice
+arithmetic (`Draft_body`'s hardcoded 17) is untouched:
+
+| | old | new |
+|---|---|---|
+| begin (17 chars) | `<<<DRAFT BEGIN>>>` | `[[[DRAFT BEGIN]]]` |
+| end (15 chars) | `<<<DRAFT END>>>` | `[[[DRAFT END]]]` |
+
+- **Prompt v1.1** — output markers swapped in the instruction and the
+  worked example; header documents the sanitizer rationale. Input
+  fences (`<<<STORY TEXT BEGIN>>>` etc.) unchanged. Authored as
+  `review/patches/TestPlanGen_Prompt_v1_1.md`, promoted to
+  `prompts/TestPlanGen_Prompt.md`.
+- **Both flows** — `Draft_begin` / `Draft_end` literals and
+  `Config_gen.TestPlanGenPromptVersion` (→ v1.1) updated in
+  `flow/v1_0/` and `flow/core_v1_0/`; both packages re-cut.
+  `Terminate_no_draft`'s message is unchanged (it names the markers
+  generically).
+- **Docs** — Setup §2/§G0/§G9 and Smoke rows 5–6 carry the new
+  literals; Smoke row 6's parse probe now doubles as the regression
+  check for this bug (a probe reply pasted with the OLD markers must
+  fail closed).
+
+Deploy (designer edits + paste, one window): re-paste the v1.1 prompt
+into `LRS Test Plan Generation`, edit `Draft_begin` / `Draft_end` and
+the `Config_gen` version stamp in BOTH live flows (core + standalone),
+then run the smoke suite and record below. NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.1** | `review/patches/TestPlanGen_Prompt_v1_1.md` → `prompts/TestPlanGen_Prompt.md` |
+| Core child flow + package | **v1.8** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Standalone flow + package | **v1.8** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` |
+| Everything else | unchanged | — |
+
 # TestPlanGen v1.7 — empty-release exemplar fix + visible menu-path guard
 
 Two review fixes (`review/REVIEW_v2_5.md` DX-7, DX-12), both applied to
