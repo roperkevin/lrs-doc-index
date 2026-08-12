@@ -9,3 +9,6 @@ __pycache__/
 *.pyc
 
 # harness-generated artifacts have their own review/harness/.gitignore
+
+# planted by review/harness/check_pptx.py (sidecar image links resolve here)
+review/media/

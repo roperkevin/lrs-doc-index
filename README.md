@@ -56,6 +56,13 @@ sidecar to its related documents.
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.1 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v1.7 |
+| pptxgen/sidecar_parser.py | Sidecar md → model (contract mirror; repo-native, runs locally) | v1.0 |
+| pptxgen/deck_outline.py | DeckOutline model + schema + deterministic mapping | v1.0 |
+| pptxgen/sidecar_to_pptx.py | Sidecar md → designed briefing-deck .pptx (renderer + CLI) | v1.0 |
+| pptxgen/enhance.py | Optional Claude API deck-restructuring stage (`--enhance`) | v1.0 |
+| pptxgen/DeckOutline_Prompt.md | Deck-outline prompt (Claude API; AI Builder-portable) | v1.0 |
+| pptxgen/README.md | Converter usage + design spec + follow-ons | current (component v1.0) |
+| pptxgen/CHANGES.md | Sidecar-deck release notes | v1.0 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,
@@ -214,6 +221,24 @@ draft location; it has no knowledge sources and never drafts content
 itself — corpus questions stay with LRS Doc Index Q&A (optional and
 independent: nothing in test-plan generation requires the Q&A agent
 to be deployed).
+
+## Sidecar deck rendering (v1.0)
+
+The extraction lane also runs in reverse: `pptxgen/sidecar_to_pptx.py`
+turns a **user-story sidecar `.md` into a designed 16:9 briefing deck**
+(`.pptx`) — dark title/closing slides from the yaml metadata, a summary
+slide with keyword chips and a metadata card, one styled slide per
+extracted section with native tables, embedded images, and real speaker
+notes, plus a related-documents closer. An optional `--enhance` flag
+sends the sidecar through the Claude API
+(`pptxgen/DeckOutline_Prompt.md`) to restructure the raw extract into
+presentation-grade headlines, condensed bullets, persona callouts, an
+agenda, and key takeaways — with a deterministic fallback so the deck
+always builds, and guardrails that keep metadata verbatim and every
+bullet traceable to the source. Repo-native (Python, no tenant deploy;
+the patch workflow doesn't apply); gate `review/harness/check_pptx.py`
+runs in CI. Usage, design spec, and the queued in-tenant handoff:
+`pptxgen/README.md`.
 
 ## Fresh-tenant install order
 
@@ -398,4 +423,7 @@ queued follow-ons. Test-plan generation's own deferred work — docx
 conversion of drafts and the IssueRefs-driven coverage matrix — is
 specified in `testplangen/TestPlanGen_Setup.md`'s Queued follow-ons
 (the Copilot Studio front end shipped in v1.1; see
-`testplangen/agent/Agent_Setup.md`).
+`testplangen/agent/Agent_Setup.md`). Sidecar deck rendering's
+in-tenant handoff (on-demand flow + hosted compute + the AI Builder
+port of its prompt) is specified in `pptxgen/README.md`'s Queued
+follow-ons.

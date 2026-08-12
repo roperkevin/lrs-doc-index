@@ -24,6 +24,17 @@ when a batch is promoted:
    `check_batch_r4.py` — r4 era, RelatedRank v2.1, re-verifies the
    promotion) — the template any future script batch clones before
    its patches may be pasted.
+6. **Deck-rendering checks** (`check_pptx.py`) — the pptxgen gate:
+   converts the `render_sample.py` sidecars through the real
+   `pptxgen/sidecar_to_pptx.py` CLI and asserts deck structure by
+   reading the .pptx back (titles/order/continuations, notes
+   off-canvas, table caps, image + placeholder, related closer),
+   plus the outline contract round-trip, the enhanced rendering path
+   from the checked-in `enhanced_outline_fixture.json`, docx-lane
+   tolerance, overflow pagination, degenerate inputs, and the
+   `--enhance` fallback semantics. Fully offline (the Claude API
+   stage is tested via its required no-key fallback). Needs
+   `render_sample.py` to have run; plants `../media/doc42_image1.png`.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for

@@ -75,12 +75,14 @@ unchanged.
 | Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
 | TestPlanGen | v2.0 | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0 |
+| SidecarDeck (pptxgen) | v1.0 | DeckOutline_Prompt v1.0 (`pptxgen/DeckOutline_Prompt.md` — Claude API, not AI Builder) | repo-native md→pptx converter (no tenant deploy; patch workflow n/a). Gate: `check_pptx.py` — `pptxgen/CHANGES.md` |
 
 ## Harness
 
 | Suite | Last green |
 |---|---|
 | check_format.py / check_related.py / check_regex.py / check_batch_r4.py | 2026-08-12 (see `review/harness/README.md` run records) |
+| check_pptx.py | 2026-08-12 (first green — pptxgen v1.0) |
 | check_batch.py / check_batch_r2.py / check_batch_r3.py | skip as superseded by design (v1.9 / r2 / r3 generations) |
 
 ## Open actions

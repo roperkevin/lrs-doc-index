@@ -1,0 +1,62 @@
+{
+  "_comment": "Checked-in representative --enhance response for the check_pptx.py gate: shaped like a DeckOutline_Prompt v1.0 restructuring of sample_sidecar_related.md (agenda, condensed headlines, persona callout, takeaways). Lets CI exercise the enhanced rendering path with no network, API key, or anthropic install. Keys beginning with _ are stripped by the gate before validation.",
+  "outline_version": "1",
+  "title": "Conflict \"Prevention\": Acquire Locks for New Routes",
+  "summary": "Conflict prevention should acquire locks when routes are created rather than first edited, covering lock timing in Create, Extend, Realign, and Reassign Route and the behavior when another user already holds the lock.",
+  "slides": [
+    {"kind": "title", "title": "", "subhead": "", "kicker": "", "blocks": [], "items": [], "notes": ""},
+    {"kind": "summary", "title": "", "subhead": "", "kicker": "", "blocks": [], "items": [], "notes": ""},
+    {"kind": "agenda", "title": "Agenda", "subhead": "", "kicker": "", "blocks": [],
+     "items": ["Why locks must move to route creation",
+               "Lock timing across Create, Extend, Realign, Reassign",
+               "When another user already holds the lock",
+               "Edge cases and open questions"],
+     "notes": ""},
+    {"kind": "content",
+     "title": "Locks are acquired at route creation, not first edit",
+     "subhead": "Closing the conflict window between creating a route and editing it",
+     "kicker": "SLIDE 1",
+     "blocks": [
+       {"kind": "persona", "text": "As an LRS editor, I need a lock acquired the moment I create a route, so that a concurrent editor cannot modify it before my first edit.", "level": 0, "rows": [], "alt": "", "path": ""},
+       {"kind": "bullet", "text": "Create, Extend, Realign, and Reassign Route all acquire locks", "level": 1, "rows": [], "alt": "", "path": ""},
+       {"kind": "bullet", "text": "Lock timing moves from first edit to route creation", "level": 1, "rows": [], "alt": "", "path": ""},
+       {"kind": "bullet", "text": "Applies to the LRS Network the new route belongs to", "level": 2, "rows": [], "alt": "", "path": ""}
+     ],
+     "items": [],
+     "notes": "Open with the conflict window today: a route exists before any lock is taken, so two editors can collide. The proposal closes that window by acquiring the lock inside the create operation itself."},
+    {"kind": "content",
+     "title": "Lock timing by route operation",
+     "subhead": "",
+     "kicker": "SLIDE 2",
+     "blocks": [
+       {"kind": "subheading", "text": "Operations compared", "level": 3, "rows": [], "alt": "", "path": ""},
+       {"kind": "table", "text": "", "level": 0,
+        "rows": [["Operation", "Lock acquired", "Negative case"],
+                 ["Create Route", "At creation", "Lock holder blocks creation"],
+                 ["Extend Route", "At creation", "Stay Put on conflict"],
+                 ["Reassign Route", "At edit", "Concurrency error surfaced"]],
+        "alt": "", "path": ""},
+       {"kind": "image", "text": "", "level": 0, "rows": [], "alt": "image1.png", "path": "../media/doc42_image1.png"}
+     ],
+     "items": [],
+     "notes": "Walk the table row by row. The diagram shows the lock acquisition sequence against the LRS Network for the positive case."},
+    {"kind": "content",
+     "title": "When another user already holds the lock",
+     "subhead": "",
+     "kicker": "",
+     "blocks": [
+       {"kind": "para", "text": "The create operation must fail fast and name the lock holder.", "level": 0, "rows": [], "alt": "", "path": ""},
+       {"kind": "bullet", "text": "Expected result: creation blocked with a concurrency message", "level": 1, "rows": [], "alt": "", "path": ""},
+       {"kind": "bullet", "text": "Negative case: silent Stay Put leaves the route unlocked", "level": 1, "rows": [], "alt": "", "path": ""}
+     ],
+     "items": [],
+     "notes": "This merges the negative-case fragments from the source slides: the failure mode we must not ship is a created-but-unlocked route."},
+    {"kind": "takeaways", "title": "Key takeaways", "subhead": "", "kicker": "", "blocks": [],
+     "items": ["Locks move from first edit to route creation across all four route operations.",
+               "A held lock must block creation with a clear concurrency message.",
+               "The unlocked-after-create window is the defect this story eliminates.",
+               "Test plans must cover Create, Extend, Realign, and Reassign paths."],
+     "notes": ""},
+    {"kind": "related", "title": "", "subhead": "", "kicker": "", "blocks": [], "items": [], "notes": ""}
+  ]
+}
