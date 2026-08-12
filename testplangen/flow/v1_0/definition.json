@@ -72,7 +72,7 @@
             "ExemplarCap": 20000,
             "NeighborCap": 5,
             "DigestSummaryCap": 400,
-            "TestPlanGenPromptVersion": "v1.1"
+            "TestPlanGenPromptVersion": "v1.2"
           }
         },
         "Init_NeighborDigest": {

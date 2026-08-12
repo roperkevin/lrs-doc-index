@@ -1,3 +1,75 @@
+# TestPlanGen v1.9 — enumeration coverage + conditional sections (prompt v1.2)
+
+Motivated by a coverage review of a live draft (2026-08-12,
+`review/REVIEW_TestPlanGen_doc1_coverage.md`): the doc 1 draft
+("Auto-Populate Referents for Event Edits") silently dropped the
+attribute-table edit pathway its story names in the same acceptance
+criterion as dynamic segmentation (CG-1), didn't exercise both event
+types the story enumerates ("point and line" — CG-4), and had no home
+for the story's Automation and Documentation slides (CG-2/CG-3). All
+three are prompt-design faults, not one-off model faults:
+
+- **RC-1** — the grounding rules require every case to trace to the
+  story but never the converse; enumerated items ("Table"; "point and
+  line") could silently collapse into a neighboring case.
+- **RC-2** — the fixed five-section draft shape gave automation and
+  documentation content nowhere to go.
+- **RC-3** — "prefer fewer, well-grounded cases" pushed toward
+  consolidation exactly when an enumeration-heavy story needs
+  expansion.
+
+The fix, **prompt v1.2** (authored as
+`review/patches/TestPlanGen_Prompt_v1_2.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.1 in-repo BEFORE its
+pending tenant paste; v1.1's marker fix is carried forward unchanged):
+
+- **ENUMERATION COVERAGE grounding rule** — every workflow, edit
+  pathway, input method, or event/geometry type the story enumerates
+  must be exercised by at least one case (own case or explicit
+  parameterization); grouped items in one statement are separate
+  pathways; untestable items become Open Questions entries. The
+  case-count guidance now explicitly yields to it.
+- **Two CONDITIONAL draft sections** — `## Automation Notes` and
+  `## Documentation Impacts`, between Negative Tests and Open
+  Questions, emitted only when the story carries such content and
+  omitted entirely (no empty heading) otherwise, so drafts for
+  stories without those slides are unchanged. Bullets carry the same
+  mandatory **Trace:** line as test cases.
+- Output markers, input keys, and fences unchanged from v1.1 — the
+  G9 slice and its literals are untouched.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.2 in
+`flow/v1_0/` and `flow/core_v1_0/`; both packages re-cut (the §
+"authored, not exported" re-cut mechanics: `definition.json` swapped
+into the `Microsoft.Flow/flows/<guid>/` entry, manifests and maps
+untouched).
+
+**Docs** — Setup §2's pane check and §4's review runbook cover the
+conditional sections and the enumeration-coverage review step; Smoke
+suite bumped to v1.1: row 1's section check rephrased (five CORE
+sections + conditionals iff story content), new row 9 pinned to doc 1
+as the enumeration-coverage regression fixture.
+
+Deploy (one window, replaces the still-pending v1.8 window): paste the
+v1.2 prompt into `LRS Test Plan Generation` (instead of v1.1), edit
+the `Config_gen` version stamp to v1.2 in BOTH live flows — plus the
+v1.8 `Draft_begin` / `Draft_end` literal edits if the tenant still
+runs v1.0 markers — then run the smoke suite (now 9 rows) and record
+below. NEVER bump `Config.PromptVersion` — nothing here changes the
+sidecar format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.2** | `review/patches/TestPlanGen_Prompt_v1_2.md` → `prompts/TestPlanGen_Prompt.md` |
+| Core child flow + package | **v1.9** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Standalone flow + package | **v1.9** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.1, 9 rows) |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 9) | TestPlanGenPromptVersion |
+|---|---|---|---|
+| — | — | — | v1.2 (paste pending) |
+
 # TestPlanGen v1.8 — sanitizer-safe output markers (prompt v1.1)
 
 Root-caused from a live failure (2026-08-12): every generation run

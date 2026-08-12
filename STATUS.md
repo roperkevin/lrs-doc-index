@@ -74,7 +74,7 @@ unchanged.
 |---|---|---|---|
 | Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
-| TestPlanGen | v1.8 | v1.1 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v1.1 prompt paste + live flow marker edits pending — `testplangen/CHANGES.md` |
+| TestPlanGen | v1.9 | v1.2 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v1.2 prompt paste (replaces the pending v1.1 paste) + live flow `Config_gen` stamp → v1.2 (+ the v1.8 marker edits if still on v1.0 markers) — `testplangen/CHANGES.md` |
 
 ## Harness
 

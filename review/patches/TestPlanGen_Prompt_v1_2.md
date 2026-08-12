@@ -1,48 +1,45 @@
-# Test Plan Generation Prompt — v1.2
+# TestPlanGen Prompt — v1.2 (enumeration coverage + conditional sections) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.2`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+Motivated by the doc 1 draft coverage review
+(`review/REVIEW_TestPlanGen_doc1_coverage.md`, 2026-08-12): a generated
+draft silently dropped a whole edit pathway the story named (attribute
+table edits — CG-1), didn't exercise both event types the story
+enumerated ("point and line" — CG-4), and had nowhere to put the
+story's Automation and Documentation slides (CG-2/CG-3). Root causes
+were prompt-design faults, fixed here; supersedes v1.1 IN-REPO before
+its tenant paste (v1.1's marker fix is carried forward unchanged —
+paste THIS version instead of v1.1).
 
-Four item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**.
+Three changes against v1.1, everything else byte-identical:
 
-v1.2 (the doc 1 coverage-review fixes — see
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): an ENUMERATION COVERAGE
-grounding rule — every workflow, pathway, input method, or
-event/geometry type the story enumerates must be exercised by at least
-one case, and this wins over the preferred case-count range — plus two
-CONDITIONAL draft sections, `## Automation Notes` and
-`## Documentation Impacts`, emitted between Negative Tests and Open
-Questions only when the story carries such content. Drafts for stories
-without automation/documentation plans are unchanged from v1.1.
+1. **Enumeration-coverage grounding rule (RC-1, RC-3).** New rule:
+   every workflow, edit pathway, input method, or event/geometry type
+   the story enumerates must be exercised by at least one case (own
+   case or explicit parameterization); untestable items become Open
+   Questions entries. The case-count guidance now yields to it.
+2. **Two conditional DRAFT SHAPE sections (RC-2).**
+   `## Automation Notes` and `## Documentation Impacts`, between
+   Negative Tests and Open Questions, emitted ONLY when the story
+   carries automation/documentation content — omitted entirely
+   otherwise, so drafts for stories without those slides are unchanged.
+3. Worked example gains a one-line note that its story has no
+   automation/documentation content (why the conditional sections are
+   absent from it).
 
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
+Output markers, input keys and fences are UNCHANGED from v1.1
+(`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`; **StoryMeta**, **StoryText**,
+**RelatedDigest**, **ExemplarText**) — no `Draft_begin` / `Draft_end`
+flow edits needed beyond the ones the v1.1 rollout already specifies.
 
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written, then wire per the build guide §2.
+Deploy: paste into the `LRS Test Plan Generation` AI Builder prompt
+(this replaces the pending v1.1 paste), set `Config_gen`'s
+`TestPlanGenPromptVersion` to `v1.2` in the live flows (designer
+edit; if the flows still carry v1.0's angle-bracket markers, also
+apply the v1.1 `Draft_begin` / `Draft_end` literal edits — guide §3
+G9), then re-run the smoke suite (`testplangen/TestPlanGen_Smoke.md`)
+— row 1's section check changed and row 9 (doc 1 coverage) is new.
+NEVER bump `Config.PromptVersion` for this — nothing here changes the
+sidecar format or reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 

@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v1.8** (see `CHANGES.md`).
+Current component version: **v1.9** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -73,7 +73,7 @@ Create a custom prompt named `LRS Test Plan Generation`. Four input
 parameters, exact names: **StoryMeta**, **StoryText**,
 **RelatedDigest**, **ExemplarText**. Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.1` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.2` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -93,9 +93,11 @@ Check: test in the AI Builder pane with a three-line StoryMeta
 (`title: Smoke Story`, `surface: Pro`, `target_release: 3.8`), a
 two-sentence StoryText ("As an editor, I need to merge two routes.
 The merge must preserve measures."), empty RelatedDigest and
-ExemplarText → the reply is wrapped in the two markers, contains all
-five draft sections, every test case carries a **Trace:** line, and
-Open Questions is non-empty.
+ExemplarText → the reply is wrapped in the two markers, contains the
+five core draft sections (the smoke story has no automation or
+documentation plans, so the two conditional sections — Automation
+Notes, Documentation Impacts — are correctly absent), every test case
+carries a **Trace:** line, and Open Questions is non-empty.
 
 ## 3 — The flow: import the package, or build by hand
 
@@ -151,7 +153,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "ExemplarCap": 20000,
   "NeighborCap": 5,
   "DigestSummaryCap": 400,
-  "TestPlanGenPromptVersion": "v1.1"
+  "TestPlanGenPromptVersion": "v1.2"
 }
 ```
 
@@ -423,8 +425,16 @@ the Doc Index list (rename the flow's menu label to
   top to bottom: verify every case's **Trace:** line actually points
   at something the story says; resolve every `[VERIFY: ...]` item;
   delete cases that don't survive scrutiny; add the cases only a
-  human would know to add. The banner's warning line is the contract:
-  nothing ships until this pass happens.
+  human would know to add. Check enumeration coverage (the prompt
+  v1.2 rule): every workflow, edit pathway, input method, and
+  event/geometry type the story enumerates has at least one case —
+  the doc 1 review (`review/REVIEW_TestPlanGen_doc1_coverage.md`)
+  shows how grouped pathways ("Dynamic Segmentation & Attribute
+  Table") silently collapse without this check. When the story has
+  automation or documentation plans, the draft carries `Automation
+  Notes` / `Documentation Impacts` sections — review their bullets'
+  Trace lines the same way. The banner's warning line is the
+  contract: nothing ships until this pass happens.
 - **Finalize**: transfer the reviewed content into the team's normal
   test-plan format (pptx/docx). The draft file itself is an
   intermediate — it never becomes the document of record.

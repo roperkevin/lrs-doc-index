@@ -18,6 +18,8 @@ history / gate inputs — do not edit).
 | ZipTextExtract_v2_0.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-5..8) |
 | MediaExtract_v1_3.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-5/8) |
 | RelatedRank_v1_3.ts | **r2 — gated; superseded in-repo by v2_0 before its paste.** Still the artifact the r2 six-script paste uses for RelatedRank (same signature as the live v1.2, safe under the v2.5 flow; or skip it — output-identical to v1.2). Frozen. |
+| TestPlanGen_Prompt_v1_2.md | **Promoted to `prompts/TestPlanGen_Prompt.md`; TENANT PASTE PENDING** (doc 1 coverage review CG-1..4 / RC-1..3 — replaces the pending v1.1 paste) |
+| TestPlanGen_Prompt_v1_1.md | **Superseded in-repo by v1_2 before its paste.** Its marker fix (square-bracket output sentinels + G9 designer edits) is carried forward unchanged in v1.2. Frozen. |
 | DocIndex_Prompt_v1_3.md | Frozen — promoted to `prompts/DocIndex_Prompt.md`, pasted 2026-08-11 |
 | DocIndex_Prompt_v1_2.md | Frozen — superseded promotion history |
 | ZipTextExtract_v1_9.ts | Frozen — promoted to `scripts/` 2026-08-11 (v1.9 batch) |
