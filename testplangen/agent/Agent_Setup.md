@@ -1,6 +1,6 @@
 # Test Plan Generator Agent Setup — import and wire
 
-Current versions: agent file set **v1.4**, component **v2.3** (see `../CHANGES.md`).
+Current versions: agent file set **v1.5**, component **v2.4** (see `../CHANGES.md`).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story reference in
@@ -44,6 +44,18 @@ absence.
 > Instructions, Settings, and each topic's **Open code editor**
 > paste), so the files always work as paste sources. This is the
 > repo's designer-verify posture applied to a new surface.
+>
+> The same caution covers the Power Fx *inside* topics. Keep every
+> `IsMatch` in the GenerateTestPlan classify group two-argument — a
+> live canvas rejected the three-argument form's
+> `MatchOptions.Contains` (v2.4 record), so contains semantics are
+> written as `.*` anchors on a complete-match pattern instead. If a
+> tenant's canvas rejects even the anchored URL test, the regex-free
+> fallback is
+> `=!IsBlank(Find("devtopia.esri.com/", Topic.RefLower)) && !IsBlank(Find("/issues/", Topic.RefLower))`
+> — swap it into the `refIsIssueUrl` condition (the digit extraction
+> below it is unchanged) and carry the substitution back to the
+> checked-in file.
 
 ---
 
