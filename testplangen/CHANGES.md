@@ -32,7 +32,12 @@ sweep time), and generation is NOT invoked.
 
 **New agent flow `StoryLookupFlow`** (Agent_Setup §1d; built in
 Copilot Studio per the 1c lesson; authored shape reference checked in
-at `testplangen/flow/lookup_v1_0/definition.json`): inputs
+at `testplangen/flow/lookup_v1_0/definition.json`, with an authored
+re-cut import package `testplangen/StoryLookupFlow_v1_0.zip` — the
+TestPlanGenAgentFlow packaging mechanics, byte-identical payload,
+SharePoint-only resource map, carried with the v1.4 caveat that
+agent-flow package imports may not surface as recognized cards, so
+the §1d hand-build stays the primary path): inputs
 `LookupKind` (`issue`|`title` — the flow never parses free text) and
 `LookupQuery`; outputs `LookupStatus` (`one`/`many`/`none`, `error`
 from the failure respond) + `StoryId` + `StoryTitle` + `Candidates`.
@@ -69,6 +74,7 @@ smoke rows 1–2c and 7. No prompt, package, or schema changes.
 |---|---|---|
 | Agent file set (topic restructure + instructions + fallback + connection refs) | **TestPlanGenAgentVersion v1.4** | `testplangen/agent/TestPlanGenAgent/` |
 | StoryLookupFlow (new; shape/contract reference) | v1.0 | `testplangen/flow/lookup_v1_0/definition.json` |
+| StoryLookupFlow import package (authored re-cut; §1d caveat applies) | v1.0 | `testplangen/StoryLookupFlow_v1_0.zip` |
 | Agent_Setup (§1d, §3 two-node bind, smoke rows 2–2c/7, limits, follow-on closure) | updated | `testplangen/agent/Agent_Setup.md` |
 | Everything else (flows, packages, prompt, schemas) | unchanged | — |
 

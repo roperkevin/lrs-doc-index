@@ -54,6 +54,7 @@ sidecar to its related documents.
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/flow/lookup_v1_0/definition.json | StoryLookupFlow definition (issue-#/title → doc id; contract reference, build in Copilot Studio per Agent_Setup §1d) | v1.0 |
+| testplangen/StoryLookupFlow_v1_0.zip | StoryLookupFlow import package (authored re-cut; agent-flow import caveat, Agent_Setup §1d) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.4 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v2.3 |
