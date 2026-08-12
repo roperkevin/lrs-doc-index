@@ -61,6 +61,18 @@ v2.3 contract:
        final universe to the fetched shortlist; configJson
        deep-merges over defaults and shrugs off garbage; `flags`
        reports inputs at their configured ceilings
+   13. RelatedRank v2.1 (r4 upgrade; same signature as v2.0, and
+       v2.0-shaped input scores unchanged): non-id edge scores join
+       the softCap bucket, so no Strength pile outranks an id link
+       at default weights (softCap stays the config escape hatch);
+       PE/Dev affinity matches on ;-/,-//-separated name-set overlap
+       instead of string equality (exact-equal still matches, empty
+       never does); final mode adds title-token affinity — shared
+       distinctive title tokens (3+ chars, letter-bearing, stopworded,
+       deduped, alphabetical) score title.weight each up to title.cap,
+       need BOTH titles present (selfMeta "title" + candidate Title),
+       stay symmetric, and surface as an 'N title words:' why part;
+       title.stop appends corpus stopwords from config
 
 Both wrapped runners must type-check at ES2017.
 
@@ -245,7 +257,7 @@ def candrow(doc, **fields):
     for k in ('DocKind', 'Surface'):
         if k in fields:
             row[k] = {'Value': fields[k]}
-    for k in ('TargetRelease', 'PE', 'Dev', 'SourceModified'):
+    for k in ('TargetRelease', 'PE', 'Dev', 'SourceModified', 'Title'):
         if k in fields:
             row[k] = fields[k]
     return row
@@ -440,6 +452,125 @@ r = run('rr_cur.ts', {'selfId': '42', 'mode': 'banana',
                       'idLinks': [], 'candsMeta': [candrow(10)], 'topN': 5})
 check(r['docIds'] == [10],
       'unknown mode reads as final (candsMeta restriction applies)')
+
+# ==== RelatedRank v2.1 (r4) ==============================================
+print('== RelatedRank v2.1 ==')
+
+# -- total id dominance: non-id edges join the softCap bucket --------------
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [link(42, 60, 'gantt', strength=20),
+                                  idlink(61, 42, 'x#1')], 'topN': 5})
+by_doc = {e['doc']: e for e in r['related']}
+check(r['docIds'] == [61, 60] and by_doc[60]['s'] == 999,
+      'gantt Strength 20 (raw 1200) caps at 999 — the id link stays first')
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [kwrow(42, 1, 'locks')],
+                      'sharers': [kwrow(60, 1, 'locks')],
+                      'idLinks': [link(42, 60, 'review', strength=10)],
+                      'topN': 5})
+check(r['related'][0]['s'] == 999,
+      'edges and keywords share ONE bucket (review 1000 + kw 1 -> 999)')
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [link(42, 60, 'gantt', strength=20),
+                                  idlink(61, 42, 'x#1')],
+                      'config': {'softCap': 5000}, 'topN': 5})
+check(r['docIds'] == [60, 61] and r['related'][0]['s'] == 1200,
+      'raising softCap in config re-opens the bucket (the escape hatch)')
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [link(42, 60, 'gantt', strength=3)], 'topN': 5})
+check(r['related'][0]['s'] == 180,
+      'below the cap non-id edge scores are unchanged from v2.0 (60 x 3)')
+
+# -- PE/Dev name-set overlap (multi-name person fields) --------------------
+pe_base = {'selfId': '42', 'mode': 'final',
+           'myKws': [kwrow(42, 1, 'locks')],
+           'sharers': [kwrow(80, 1, 'locks')],
+           'idLinks': [],
+           'selfMeta': {'kind': '', 'surface': '', 'release': '',
+                        'pe': 'jane doe', 'dev': '', 'modified': ''},
+           'topN': 5}
+r = run('rr_cur.ts', dict(pe_base,
+                          candsMeta=[candrow(80, PE='Jane Doe; John Roe')]))
+check(r['related'][0]['s'] == 1.75 and
+      r['related'][0]['why'].endswith('also: same pe'),
+      'multi-name PE overlaps a single name (set match, case-insensitive)')
+r = run('rr_cur.ts', dict(pe_base,
+                          candsMeta=[candrow(80, PE='Jane Doe')]))
+check(r['related'][0]['s'] == 1.75,
+      'exact-equal PE still matches (equality is a subset of overlap)')
+r = run('rr_cur.ts', dict(pe_base,
+                          candsMeta=[candrow(80, PE='John Roe')]))
+check(r['related'][0]['s'] == 1, 'disjoint name sets earn no pe bonus')
+r = run('rr_cur.ts', dict(pe_base,
+                          selfMeta=dict(pe_base['selfMeta'], pe='',
+                                        dev='b. jones'),
+                          candsMeta=[candrow(80, Dev='A. Smith / B. Jones')]))
+check(r['related'][0]['s'] == 1.75 and
+      r['related'][0]['why'].endswith('also: same dev'),
+      'Dev splits on / too; empty PE never matches')
+
+# -- title-token affinity (final mode) -------------------------------------
+ttl_base = {'selfId': '42', 'mode': 'final',
+            'myKws': [kwrow(42, 1, 'locks')],
+            'sharers': [kwrow(80, 1, 'locks')],
+            'idLinks': [],
+            'candsMeta': [candrow(80, Title='Calibration Editing Test Plan V3')],
+            'selfMeta': {'kind': '', 'surface': '', 'release': '', 'pe': '',
+                         'dev': '', 'modified': '',
+                         'title': 'LRS Calibration Editing Workflows'},
+            'topN': 5}
+r = run('rr_cur.ts', ttl_base)
+check(r['related'][0]['s'] == 1.8,
+      'two shared distinctive title tokens add 2 x 0.4 (stopwords out)')
+check('2 title words: calibration, editing' in r['related'][0]['why'],
+      'why names the shared title tokens, alphabetical')
+r = run('rr_cur.ts', dict(ttl_base,
+                          candsMeta=[candrow(80, Title='LRS Test Plan Draft')],
+                          selfMeta=dict(ttl_base['selfMeta'],
+                                        title='Lrs Test Plan Overview')))
+check(r['related'][0]['s'] == 1 and 'title word' not in r['related'][0]['why'],
+      'corpus-generic tokens (lrs/test/plan/...) never count')
+r = run('rr_cur.ts', dict(ttl_base,
+                          selfMeta=dict(ttl_base['selfMeta'], title='')))
+check(r['related'][0]['s'] == 1,
+      'absent self title (v2.0-shaped selfMeta) -> no title term at all')
+many = 'Alpha Bravo Charlie Delta Echo Foxtrot Golf Hotel'
+r = run('rr_cur.ts', dict(ttl_base, candsMeta=[candrow(80, Title=many)],
+                          selfMeta=dict(ttl_base['selfMeta'], title=many)))
+check(r['related'][0]['s'] == 3.4 and
+      '6 title words: alpha, bravo, charlie, +3 more' in r['related'][0]['why'],
+      'shared tokens count at most title.cap (6); why shows 3 + more')
+r = run('rr_cur.ts', dict(ttl_base, config={'title': {'weight': 1.0, 'cap': 1}}))
+check(r['related'][0]['s'] == 2 and
+      '1 title word: calibration' in r['related'][0]['why'],
+      'title.weight and title.cap read from config')
+r = run('rr_cur.ts', dict(ttl_base, config={'title': {'stop': ['calibration']}}))
+check(r['related'][0]['s'] == 1.4,
+      'title.stop appends corpus stopwords from config')
+r = run('rr_cur.ts', dict(ttl_base, mode='shortlist', candsMeta=[]))
+check(r['related'][0]['s'] == 1,
+      'shortlist mode: title affinity is a final-phase re-ranker only')
+
+
+def ttl_side(me, other, my_title, other_title):
+    return {'selfId': str(me), 'mode': 'final',
+            'myKws': [kwrow(me, 1, 'locks')],
+            'sharers': [kwrow(other, 1, 'locks')],
+            'idLinks': [],
+            'candsMeta': [candrow(other, Title=other_title,
+                                  PE='Jane Doe; John Roe' if other == 17
+                                  else 'jane doe')],
+            'selfMeta': {'kind': '', 'surface': '', 'release': '',
+                         'pe': 'jane doe' if me == 42 else 'Jane Doe; John Roe',
+                         'dev': '', 'modified': '', 'title': my_title},
+            'topN': 5}
+
+
+ra = run('rr_cur.ts', ttl_side(42, 17, 'LRS Calibration Editing Workflows',
+                               'Calibration Editing Test Plan V3'))
+rb = run('rr_cur.ts', ttl_side(17, 42, 'Calibration Editing Test Plan V3',
+                               'LRS Calibration Editing Workflows'))
+check(ra['related'][0]['s'] == rb['related'][0]['s'] == 2.55,
+      'symmetry holds with title + person-set terms (both sides 2.55)')
 
 # ==== SidecarPatch ========================================================
 print('== SidecarPatch ==')

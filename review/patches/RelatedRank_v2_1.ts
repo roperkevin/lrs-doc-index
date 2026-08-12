@@ -2,18 +2,13 @@
  * RelatedRank v2.1 — score and rank a document's related documents
  * ------------------------------------------------------------------
  * r4 batch (related-ranking upgrade) — gated by check_batch_r4.py.
- * Gate PASSED (check_batch_r4.py, 2026-08-12).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md). The signature is UNCHANGED from v2.0 (11 params,
- * same names), so there is no new flow rewiring: in the pending
- * v2.6 window this file simply replaces the v2.0 paste
- * (designer-edits.md §v2_6, r4 amendment); on a tenant already
- * running v2.0 + flow v2.6 it pastes alone safely — title affinity
- * stays dormant until the Self_rank_meta compose gains its "title"
- * line (one additive designer edit, no window). It stays fenced
- * against the v2.5 flow exactly as v2.0 was: never paste it before
- * the v2.6 window.
+ * DO NOT PASTE until the gate is green. The signature is UNCHANGED
+ * from v2.0 (11 params, same names), so there is no new flow
+ * rewiring: in the pending v2.6 window this file simply replaces
+ * the v2.0 paste (designer-edits.md §v2_6, r4 amendment); on a
+ * tenant already running v2.0 + flow v2.6 it pastes alone safely —
+ * title affinity stays dormant until the Self_rank_meta compose
+ * gains its "title" line (one additive designer edit, no window).
  * ------------------------------------------------------------------
  * v2.0 provenance: r3 overhaul (all edge types, keyword kinds +
  * DX-2 alias fold, metadata affinity + pair-min recency,
