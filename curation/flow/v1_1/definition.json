@@ -81,7 +81,7 @@
           "type": "Compose",
           "inputs": {
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-            "KeywordsList": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+            "KeywordsList": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
             "DigestFolder": "/Shared Documents",
             "DigestName": "Keyword_Curation_Digest.md",
             "MaxProposals": 20,
@@ -170,7 +170,7 @@
               "inputs": {
                 "parameters": {
                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                  "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+                  "table": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
                   "$top": 5000
                 },
                 "host": {
@@ -214,7 +214,7 @@
                     "parameters": {
                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                       "parameters/method": "POST",
-                      "parameters/uri": "_api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/items(@{items('For_each_approved')?['ID']})",
+                      "parameters/uri": "_api/web/lists(guid'a7bd004b-84e0-408f-b32d-3f1d791e2af6')/items(@{items('For_each_approved')?['ID']})",
                       "parameters/headers": {
                         "Accept": "application/json;odata=nometadata",
                         "Content-Type": "application/json;odata=nometadata",
@@ -509,7 +509,7 @@
                         "parameters": {
                           "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                           "parameters/method": "POST",
-                          "parameters/uri": "_api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/items(@{first(body('Find_alias'))?['ID']})",
+                          "parameters/uri": "_api/web/lists(guid'a7bd004b-84e0-408f-b32d-3f1d791e2af6')/items(@{first(body('Find_alias'))?['ID']})",
                           "parameters/headers": {
                             "Accept": "application/json;odata=nometadata",
                             "Content-Type": "application/json;odata=nometadata",

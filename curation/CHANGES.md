@@ -136,3 +136,14 @@ Live-tenant smoke run (fill in at deployment; suite =
 | Date | Tenant | Steps passed (of 7) | CurationPromptVersion |
 |---|---|---|---|
 | — | — | — | v1.0 |
+
+---
+
+**Addendum (2026-08-12, GUID re-provisioning):** the lrsworkspace
+lists were re-provisioned with new GUIDs (canonical table:
+`docs/SP_Adaptation_Notes.md`). The Keywords GUID (Config literal,
+`Update_kw` table binding, both REST URIs) and the DocKeywords GUID
+were swapped in `curation/flow/v1_1/definition.json` and
+`Curation_Setup.md` — no other change; a flow already built from the
+old guide needs its list pickers and the two `Send an HTTP request
+to SharePoint` URIs re-pointed at the new GUIDs.

@@ -21,9 +21,10 @@ except Issue Refs, whose feeder — flow #2 — is not yet built):
 
 GUIDs updated 2026-08-12 for the re-provisioned lrsworkspace schema
 (the Copilot provisioning prompt in `schemas/`). The v2.6 import
-package carries these; pre-v2.6 definitions (`flow/v2_3`–`v2_5`)
-and the curation/testplangen guides still quote the pre-provisioning
-GUIDs as the record of what was authored against the old lists.
+package, the curation definition/guide and the testplangen
+definitions/guide/zips all carry these; only the pre-v2.6 sweep
+definitions and zips (`flow/v2_3`–`v2_5`) keep the pre-provisioning
+GUIDs, as the record of what was authored against the old lists.
 
 ## What changed, and two changes that are upgrades
 

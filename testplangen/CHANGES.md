@@ -438,3 +438,18 @@ Live-tenant smoke run (fill in at deployment; suite =
 `manifest.json`; `definition.json` payloads byte-identical, import
 behavior unaffected (`TestPlanGenAgentFlow_v1_0.zip` never carried
 the email). Originals in git history.
+
+---
+
+**Addendum (2026-08-12, GUID re-provisioning):** the lrsworkspace
+lists were re-provisioned with new GUIDs (canonical table:
+`docs/SP_Adaptation_Notes.md`). The Doc Index GUID was swapped in
+`testplangen/flow/v1_0/definition.json`,
+`testplangen/flow/core_v1_0/definition.json` and
+`TestPlanGen_Setup.md`, and `TestPlanGen_v1_0.zip` /
+`TestPlanGenCore_v1_0.zip` were re-cut the usual way
+(`definition.json` payloads byte-identical to their folders, every
+other entry byte-identical to the previous cut;
+`TestPlanGenAgentFlow_v1_0.zip` carries no list binding and is
+untouched). A flow already imported from the old package needs its
+Doc Index pickers re-pointed.

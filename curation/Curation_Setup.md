@@ -25,7 +25,7 @@ Everything below is manual portal/designer work in the
 `designer-edits.md` mold: apply in order, check after each step. All
 expressions are pure WDL. List GUIDs and build mechanics are from
 `docs/SP_Adaptation_Notes.md` (Keywords =
-`e096ab26-27d2-4ef4-ae40-c24e35fa2fb7`).
+`a7bd004b-84e0-408f-b32d-3f1d791e2af6`).
 
 ---
 
@@ -61,7 +61,7 @@ writes ONLY `CurationStatus`/`ProposedCanonical`, via field-scoped
 MERGE. Disjoint writers — no coordination needed.
 
 Check: the usual signed-in REST fields query
-(`.../_api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/fields?$filter=InternalName eq 'CurationStatus' or InternalName eq 'ProposedCanonical'`)
+(`.../_api/web/lists(guid'a7bd004b-84e0-408f-b32d-3f1d791e2af6')/fields?$filter=InternalName eq 'CurationStatus' or InternalName eq 'ProposedCanonical'`)
 returns both with the exact internal names.
 
 ## 2 — The AI Builder prompt
@@ -97,7 +97,7 @@ is fresh for Monday.
 ```json
 {
   "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-  "KeywordsList": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+  "KeywordsList": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
   "DigestFolder": "/Shared Documents",
   "DigestName": "Keyword_Curation_Digest.md",
   "MaxProposals": 20,
@@ -133,7 +133,7 @@ From `@body('Get_keywords_all')?['value']`, where (advanced mode):
   headers). Site `Config_cur.SiteUrl`, method `POST`, uri:
 
   ```
-  _api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/items(@{items('For_each_approved')?['ID']})
+  _api/web/lists(guid'a7bd004b-84e0-408f-b32d-3f1d791e2af6')/items(@{items('For_each_approved')?['ID']})
   ```
 
   Headers: `Accept` and `Content-Type` both
@@ -235,7 +235,7 @@ every digest) —
 
   - **`Write_proposal`** — HttpRequest MERGE, identical shape to
     `Clear_state`, uri
-    `_api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/items(@{first(body('Find_alias'))?['ID']})`,
+    `_api/web/lists(guid'a7bd004b-84e0-408f-b32d-3f1d791e2af6')/items(@{first(body('Find_alias'))?['ID']})`,
     body `@{string(outputs('Body_proposal'))}`.
   - **`Append_proposal_line`** — Append to string `ProposalLines`:
     `- '@{first(body('Find_alias'))?['Title']}' → '@{first(body('Find_canon'))?['Title']}' — @{outputs('Why_capped')}@{decodeUriComponent('%0A')}`
@@ -411,7 +411,7 @@ Record the run in `curation/CHANGES.md` (date, tenant, steps passed).
 
 - **Junction re-point (the librarian backfill piece)** — in the C2/C3
   cleanup pass, for each approved alias row A with canonical C:
-  `Get items` DocKeywords (`68752782-6d2d-4c65-b4e8-361c0df706ec`)
+  `Get items` DocKeywords (`4eabc799-c856-49ea-bf25-65942b363ec6`)
   `$filter: KeywordId eq {A.ID}`, `$top 5000`; for each row R — if a
   row with `KWKey eq '{R.DocumentId}|{C.ID}'` already exists, DELETE R
   (HttpRequest DELETE, `IF-MATCH: *`) since the doc already carries

@@ -49,7 +49,7 @@
             },
             "parameters": {
               "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a"
+              "table": "b98fb2a1-1c91-48f9-9b9b-323656557171"
             },
             "schema": {
               "type": "object",
@@ -66,7 +66,7 @@
           "type": "Compose",
           "inputs": {
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-            "DocIndexList": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+            "DocIndexList": "b98fb2a1-1c91-48f9-9b9b-323656557171",
             "DraftFolder": "/Shared Documents/Test Plan Drafts",
             "StoryCap": 30000,
             "ExemplarCap": 20000,
@@ -157,7 +157,7 @@
               "inputs": {
                 "parameters": {
                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                  "table": "b98fb2a1-1c91-48f9-9b9b-323656557171",
                   "id": "@triggerBody()?['entity']?['ID']"
                 },
                 "host": {
@@ -290,7 +290,7 @@
                           "inputs": {
                             "parameters": {
                               "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                              "table": "b98fb2a1-1c91-48f9-9b9b-323656557171",
                               "id": "@items('For_each_rel')?['doc']"
                             },
                             "host": {
@@ -381,7 +381,7 @@
                       "inputs": {
                         "parameters": {
                           "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                          "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                          "table": "b98fb2a1-1c91-48f9-9b9b-323656557171",
                           "$filter": "DocKind eq 'Test Plan' and IndexStatus eq 'Indexed' and Surface eq '@{outputs('Surface_escaped')}'",
                           "$orderby": "Modified desc",
                           "$top": 12
