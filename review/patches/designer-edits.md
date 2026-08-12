@@ -389,7 +389,8 @@ mode): `@concat('ID eq ', coalesce(item()?['Keyword']?['Id'], 0))`
 `@concat('CanonicalRefId eq ', coalesce(item()?['Keyword']?['Id'], 0))`
 
 **Get items `Get_kw_meta`** — Site the usual, List **Keywords**
-(GUID `e096ab26-27d2-4ef4-ae40-c24e35fa2fb7`), Top Count `200`,
+(GUID `a7bd004b-84e0-408f-b32d-3f1d791e2af6` — the re-provisioned
+schema; see `docs/SP_Adaptation_Notes.md` GUID table), Top Count `200`,
 Filter Query:
 
 ```

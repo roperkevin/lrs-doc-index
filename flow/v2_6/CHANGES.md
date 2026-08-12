@@ -18,6 +18,17 @@ v2.1 alone and adds the two deltas (see
 else in this document reads as written, with "v2.0" as the wiring
 generation v2.6 was designed against.
 
+**GUID re-cut (2026-08-12)**: the lrsworkspace lists were
+re-provisioned (new list GUIDs), so the five list bindings in this
+definition — Doc Index, Keywords, Doc IDs, Doc Links, Doc Keywords —
+were swapped to the new GUIDs (23 `table` occurrences; the canonical
+table lives in `docs/SP_Adaptation_Notes.md`) and
+`DocIndexSweep_v2_6.zip` was re-cut the usual way (payload
+byte-identical to this folder, every other entry untouched). Issue
+Refs is not referenced by this flow. The pre-v2.6 definitions keep
+the old GUIDs as the record of what was authored against the old
+lists.
+
 v2.6 is v2.5 plus one feature: the related-documents branch feeds and
 drives RelatedRank v2.0 (`review/patches/RelatedRank_v2_0.ts`, gated
 by `check_batch_r3.py`). Everything outside `If_related_signals`, the

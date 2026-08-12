@@ -12,12 +12,18 @@ except Issue Refs, whose feeder — flow #2 — is not yet built):
 
 | List | GUID |
 |---|---|
-| Doc Index | `245a4082-53c5-49f0-90e1-1abe62698c4a` |
-| Keywords | `e096ab26-27d2-4ef4-ae40-c24e35fa2fb7` |
-| Doc IDs | `87b75cd7-5e84-4a65-adb5-dcd0de08321d` |
-| Issue Refs | `c1f265b5-1fcf-4b28-b6e1-c14289b002cf` |
-| Doc Keywords | `68752782-6d2d-4c65-b4e8-361c0df706ec` |
-| Doc Links | `3c50c3fe-a4e8-4ae2-9668-43987c9bff60` |
+| Doc Index | `b98fb2a1-1c91-48f9-9b9b-323656557171` |
+| Keywords | `a7bd004b-84e0-408f-b32d-3f1d791e2af6` |
+| Doc IDs | `6263eeac-471a-489e-96c7-1448f45378d4` |
+| Issue Refs | `4d0e6561-80e3-49f4-aa20-e5889cc88414` |
+| Doc Keywords | `4eabc799-c856-49ea-bf25-65942b363ec6` |
+| Doc Links | `c49367dc-c267-4f5b-8935-4fad47fb0d34` |
+
+GUIDs updated 2026-08-12 for the re-provisioned lrsworkspace schema
+(the Copilot provisioning prompt in `schemas/`). The v2.6 import
+package carries these; pre-v2.6 definitions (`flow/v2_3`–`v2_5`)
+and the curation/testplangen guides still quote the pre-provisioning
+GUIDs as the record of what was authored against the old lists.
 
 ## What changed, and two changes that are upgrades
 
