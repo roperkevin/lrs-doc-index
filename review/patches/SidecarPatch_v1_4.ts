@@ -3,10 +3,7 @@
  * markdown sidecars, batched over every file touched for one doc
  * ------------------------------------------------------------------
  * r2 batch (REVIEW_v2_5_r2.md SB-2, SB-3) — gated by
- * check_batch_r2.py. Gate PASSED (check_batch_r2.py, 2026-08-11).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md).
+ * check_batch_r2.py. DO NOT PASTE until the gate is green.
  * v1.4: (SB-2) patchFrontmatter recognizes ANY root `related:` form
  * (inline with extra spaces, bare key, block sequence, null) and
  * replaces the whole node — previously only the exact `related: [`

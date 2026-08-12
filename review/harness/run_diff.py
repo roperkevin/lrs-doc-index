@@ -60,7 +60,13 @@ for f in FILES if zte_pair else []:
     print(f"{src:<22} {('IDENTICAL' if same else 'DIFF!'):<10} {a['ms']:>8} {b['ms']:>8} {rec[0]:>12} {rec[1]:>12}")
 
 print()
-for f in MEDIA_FILES:
+# The MediaExtract pair is likewise historical — both wraps must be
+# deliberately generated (from git history) or the half is skipped,
+# mirroring the ZTE guard above (r2: HG-5).
+me_pair = os.path.exists('me_v10.ts') and os.path.exists('me_v11.ts')
+if not me_pair:
+    print('me_v10.ts / me_v11.ts not present — skipping the historical MediaExtract gate (see README).')
+for f in MEDIA_FILES if me_pair else []:
     a = run('me_v10.ts', f)
     b = run('me_v11.ts', f)
     same = a['out'] == b['out']

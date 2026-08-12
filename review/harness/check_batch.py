@@ -42,6 +42,18 @@ import subprocess
 import sys
 import zipfile
 
+# r2 (2026-08-11): once a NEWER batch is promoted over scripts/, this
+# gate's premises break by design — the staged v1.9 patches no longer
+# equal the shipped scripts, and the standing suites carry folded
+# assertions the v1.9 generation predates. Skip gracefully (the
+# run_diff.py precedent); to re-run the v1.9 gate for the record,
+# check out the promotion-era commit from git history.
+if 'ZipTextExtract v1.9' not in open('../../scripts/ZipTextExtract.ts',
+                                     encoding='utf-8').read(200):
+    print('scripts/ has moved past the v1.9 generation — this HISTORICAL '
+          'gate is superseded (see the r2 note in its docstring); skipping.')
+    sys.exit(0)
+
 PATCHES = {
     'ZipTextExtract.ts': '../patches/ZipTextExtract_v1_9.ts',
     'MediaExtract.ts': '../patches/MediaExtract_v1_2.ts',

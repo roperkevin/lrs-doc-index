@@ -3,10 +3,7 @@
  *                       + document core properties
  * --------------------------------------------------------------------
  * r2 batch (REVIEW_v2_5_r2.md SB-5..SB-8) — gated by check_batch_r2.py.
- * Gate PASSED (check_batch_r2.py, 2026-08-11).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md). v2.0 deltas, all
+ * DO NOT PASTE until the gate is green. v2.0 deltas, all
  * output-identical on well-formed inputs:
  *   SB-5  stored-block NLEN (ones-complement of LEN) is now verified —
  *         a corrupted length field previously emitted garbled text as

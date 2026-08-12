@@ -4,7 +4,7 @@ Mirrors the flow's Sidecar_header template (flow/v2_5/definition.json)
 in Python — same fields, same YAML escaping rules as the WDL
 expressions, including the v2.4 authorship lines (author /
 last_edited_by / last_edited), the subfolder-routed URLs, and the v2.5
-row-id `doc_id` — over the real_deck.pptx v1.8 extraction, and writes
+row-id `doc_id` — over the real_deck.pptx extraction (current ZipTextExtract), and writes
 sample_sidecar.md. Asserts:
 
   - the metadata block is the fenced ```yaml frame (PromptVersion
@@ -17,13 +17,13 @@ sample_sidecar.md. Asserts:
     pair, in order, between ## Related documents and the seam
   - the '---' header/body seam is present
 
-Then runs SidecarPatch v1.2 in set mode over the rendered sample with
+Then runs SidecarPatch (current scripts/ version) in set mode over the rendered sample with
 three synthetic ranked entries and writes sample_sidecar_related.md —
 the eyeball artifact for a POPULATED related list — re-asserting the
 metadata still parses (`related` = 3 entry dicts) and the file
 still has exactly one H1.
 
-Prereqs: make_fixtures.py and check_format.py have run (zte_v18.ts).
+Prereqs: make_fixtures.py and check_format.py have run (zte_cur.ts).
 """
 import json
 import re
@@ -44,7 +44,7 @@ def kw_quote(s):
     return '"' + s.replace('\\', '').replace('"', '') + '"'
 
 
-out = subprocess.run(['node', '--experimental-strip-types', 'zte_v18.ts',
+out = subprocess.run(['node', '--experimental-strip-types', 'zte_cur.ts',
                       'real_deck.pptx.b64', '../media/doc42_'],
                      capture_output=True, text=True, encoding='utf-8', check=True)
 body = json.loads(out.stdout)['out']['text']
@@ -174,7 +174,7 @@ else:
     print('FAIL related markers missing, duplicated, or misplaced')
     ok = False
 
-# ---- populate via SidecarPatch v1.2 (set mode, synthetic entries) -------
+# ---- populate via SidecarPatch (set mode, synthetic entries) -------
 scp = open('../../scripts/SidecarPatch.ts', encoding='utf-8').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 scp += '''

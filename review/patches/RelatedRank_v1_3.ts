@@ -2,10 +2,7 @@
  * RelatedRank v1.3 — score and rank a document's related documents
  * ------------------------------------------------------------------
  * r2 batch (REVIEW_v2_5_r2.md SB-9) — gated by check_batch_r2.py.
- * Gate PASSED (check_batch_r2.py, 2026-08-11).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md). Output byte-identical to
+ * DO NOT PASTE until the gate is green. Output byte-identical to
  * v1.2; the only change is perf (kwWeight precomputed per doc
  * instead of re-derived inside the sort comparator).
  * ------------------------------------------------------------------

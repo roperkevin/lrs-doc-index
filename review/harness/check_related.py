@@ -1,7 +1,7 @@
-"""Assertions for the v2.3 related-documents scripts.
+"""Assertions for the related-documents scripts (current scripts/ versions).
 
 Wraps scripts/RelatedRank.ts and scripts/SidecarPatch.ts into
-standalone Node runners (same pattern as rex_v12.ts) and asserts the
+standalone Node runners (same pattern as rex_cur.ts) and asserts the
 v2.3 contract:
 
   RelatedRank:
@@ -94,8 +94,8 @@ SCP_ARGS = ("null as unknown, JSON.stringify(p.files), p.selfId, "
             "JSON.stringify(p.ranked), JSON.stringify(p.docsMeta), "
             "JSON.stringify(p.selfMeta), p.topN")
 
-for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_v11.ts', RR_ARGS),
-                          (f'{SCRIPTS}/SidecarPatch.ts', 'scp_v12.ts', SCP_ARGS)):
+for src, runner, args in ((f'{SCRIPTS}/RelatedRank.ts', 'rr_cur.ts', RR_ARGS),
+                          (f'{SCRIPTS}/SidecarPatch.ts', 'scp_cur.ts', SCP_ARGS)):
     body = open(src, encoding='utf-8').read().replace(
         'workbook: ExcelScript.Workbook', 'workbook: unknown')
     open(runner, 'w', encoding='utf-8').write(body + APPENDIX % args)
@@ -122,7 +122,7 @@ def idlink(a, b, shared):
 
 
 # ==== RelatedRank =========================================================
-print('== RelatedRank v1.1 ==')
+print('== RelatedRank ==')
 
 KW = [(1, 'locks'), (2, 'routes'), (3, 'conflict prevention'), (4, 'route editing'),
       (5, 'events'), (6, 'calibration'), (7, 'gaps'), (8, 'measures')]
@@ -133,7 +133,7 @@ sharers = ([kwrow(10, kid, t) for kid, t in KW]
            + [kwrow(42, 1, 'locks')])          # self rows must be ignored
 links = [idlink(11, 42, 'ArcGISPro/ps-location-referencing#4855')]
 
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
                       'idLinks': links, 'topN': 5})
 check(r['count'] == 2 and r['docIds'][0] == 11 and r['docIds'][1] == 10,
       'id link (1 issue) outranks 8 shared keywords')
@@ -145,7 +145,7 @@ check('+4 more' in r['related'][1]['why'] and
       'why caps keyword names at 4 + "+k more"')
 
 # doc 10 with BOTH signals -> one merged entry
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': my_kws,
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': my_kws,
                       'sharers': [kwrow(10, 1, 'locks'), kwrow(10, 2, 'routes')],
                       'idLinks': [idlink(10, 42, 'a#1;b#2')], 'topN': 5})
 check(r['count'] == 1 and r['related'][0]['s'] == 2002,
@@ -157,7 +157,7 @@ check('shared issue a#1, b#2' in r['related'][0]['why'] and
 
 # tie -> higher item id first; cap at topN
 sharers = [kwrow(d, 1, 'locks') for d in (20, 21, 22, 23, 24, 25, 26)]
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': my_kws, 'sharers': sharers,
                       'idLinks': [], 'topN': 5})
 check(r['docIds'] == [26, 25, 24, 23, 22], 'tie-break newer id first, cap at 5')
 
@@ -169,7 +169,7 @@ rarity_sharers = ([kwrow(30, 3, 'conflict prevention')]
                   + [kwrow(31, 1, 'testing'), kwrow(31, 2, 'routes')]
                   + [kwrow(32, 2, 'routes')]
                   + [kwrow(d, 1, 'testing') for d in range(100, 115)])
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': rarity_kws,
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': rarity_kws,
                       'sharers': rarity_sharers, 'idLinks': [], 'topN': 5})
 check(r['docIds'] == [30, 31, 32, 114, 113],
       'one rare keyword outranks two common ones (rarity ranking + ties)')
@@ -182,26 +182,26 @@ check(by_doc[31]['why'] == '2 shared keywords: routes, testing' and
 check(all(e['s'] < 1000 for e in r['related']),
       'keyword-only scores stay below the id-link floor (1000)')
 
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
                       'idLinks': [], 'topN': 5})
 check(r['count'] == 0 and r['related'] == [], 'empty inputs -> count 0')
 
 # malformed params must not throw — the *Raw fields skip the appendix's
 # JSON.stringify, so genuinely invalid JSON reaches parseRows' try/catch
 # (a stringified junk string would arrive as VALID JSON and never hit it)
-r = run('rr_v11.ts', {'selfId': '42', 'myKwsRaw': 'not json',
+r = run('rr_cur.ts', {'selfId': '42', 'myKwsRaw': 'not json',
                       'sharersRaw': '[{"Document":', 'idLinksRaw': 'null',
                       'topN': 5})
 check(r['count'] == 0 and r['related'] == [],
       'malformed JSON params -> empty result, no throw (parse guard exercised)')
 # valid-JSON-but-wrong-type params degrade the same way
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': 'not json', 'sharers': 42,
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': 'not json', 'sharers': 42,
                       'idLinks': None, 'topN': 5})
 check(r['count'] == 0 and r['related'] == [],
       'wrong-type params -> empty result, no throw')
 
 # ==== SidecarPatch ========================================================
-print('== SidecarPatch v1.1 ==')
+print('== SidecarPatch ==')
 
 BEGIN = '<!-- related:begin -->'
 END = '<!-- related:end -->'
@@ -257,7 +257,7 @@ SELF_META = {'doc': 42, 'title': 'Conflict "Prevention": Acquire Locks for New R
 
 
 def patch(files, ranked=RANKED, meta=META, top=5):
-    return run('scp_v12.ts', {'files': files, 'selfId': '42', 'ranked': ranked,
+    return run('scp_cur.ts', {'files': files, 'selfId': '42', 'ranked': ranked,
                               'docsMeta': meta, 'selfMeta': SELF_META,
                               'topN': top})['files']
 
@@ -443,12 +443,12 @@ check(fa['folder'] == '/LRS Doc Index/User Stories' and
 check(fc['folder'] == '', 'folder-less file object comes back with folder ""')
 
 # -- v1.2: idLinks row with neither endpoint = self -----------------------
-r = run('rr_v11.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
                       'idLinks': [idlink(7, 8, 'a#1')], 'topN': 5})
 check(r['count'] == 0, 'idLinks row with neither endpoint = self credits nobody')
 
 # -- v1.2: title-less keywords score but never surface raw ids ------------
-r = run('rr_v11.ts', {'selfId': '42',
+r = run('rr_cur.ts', {'selfId': '42',
                       'myKws': [kwrow(42, 1, 'locks'),
                                 {'Document': {'Id': 42}, 'Keyword': {'Id': 5}}],
                       'sharers': [kwrow(10, 1, 'locks'),
@@ -490,10 +490,27 @@ fb_line = [ln for ln in out['content'].split('\n') if 'rel:99' in ln]
 check(bool(fb_line) and '](' not in fb_line[0] and 'other__doc99.md' in fb_line[0],
       'meta-less entry renders as plain text, not a bare-filename link')
 
+# -- v1.4 (SB-2, folded from check_batch_r2.py): every root related: form
+# is REPLACED, never duplicated ------------------------------------------
+for tag, rel in (('block-sequence', 'related:\n  - doc: 9\n    file: x.md\n    s: 1'),
+                 ('null-value', 'related: null'),
+                 ('extra-space inline', 'related:  [{"doc": 9, "file": "x.md", "s": 1}]')):
+    [out] = patch([{'doc': 17, 'name': 'n.md', 'content': sidecar(related_line=rel)}])
+    fm2 = out['content'].split('```')[1]
+    n_rel = sum(1 for ln in fm2.split('\n') if ln.startswith('related:'))
+    check(n_rel == 1, f'v1.4: one related: key after patching a {tag} form (got {n_rel})')
+    check('  - doc: 9' not in fm2, f'v1.4: {tag} continuation lines consumed')
+
+# -- v1.4 (SB-3): duplicate doc ids in ranked dedupe, highest score wins --
+dup_ranked = [{'doc': 17, 's': 900.0, 'why': 'w1'}, {'doc': 17, 's': 5.0, 'why': 'w2'}]
+[out] = patch([{'doc': 42, 'name': 's.md', 'content': sidecar()}], ranked=dup_ranked)
+check(out['content'].count('rel:17') == 1 and '"s":900' in out['content'],
+      f"v1.4: duplicate ranked doc renders once at its best score (x{out['content'].count('rel:17')})")
+
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
-for runner in ('rr_v11.ts', 'scp_v12.ts'):
-    tsc = subprocess.run(['npx', '--yes', 'tsc', '--noEmit', '--target', 'es2017',
+for runner in ('rr_cur.ts', 'scp_cur.ts'):
+    tsc = subprocess.run(['npx', '--yes', '--package', 'typescript', 'tsc', '--noEmit', '--target', 'es2017',
                           '--lib', 'es2017,dom', runner],
                          capture_output=True, text=True, encoding='utf-8')
     check(tsc.returncode == 0, f'{runner} type-checks at ES2017'

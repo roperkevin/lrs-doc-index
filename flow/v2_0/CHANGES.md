@@ -61,3 +61,13 @@ runAfter dependency graph resolves in every scope; every
 `outputs()`/`body()`/`result()` reference resolves to an existing action;
 all expressions paren-balanced; zip structure matches v1.9 (only
 `definition.json` replaced) and parses.
+
+---
+
+**Addendum (2026-08-11, r2 PV-1):** the sibling import zip was re-cut
+with the connection `displayName` (a personal work email) scrubbed
+from its `manifest.json`. The `definition.json` payload is
+byte-identical to the pre-scrub zip; only the manifest changed, so
+the zip is no longer the byte-exact export artifact (git history
+holds the original). Import behavior is unaffected — connections are
+re-mapped at import time.

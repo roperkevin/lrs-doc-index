@@ -1,4 +1,6 @@
-# Keyword Curation Setup — build and deploy (v1.0)
+# Keyword Curation Setup — build and deploy
+
+Current component version: **v1.1** (see `CHANGES.md`).
 
 A new, separate Power Automate flow, **KeywordCuration**: weekly, one
 AI Builder call over the full canonical vocabulary, proposing
@@ -61,7 +63,7 @@ returns both with the exact internal names.
 
 Create a custom prompt named `LRS Keyword Curation`. Two input
 parameters, exact names: **Vocabulary**, **DoNotPropose**. Paste the
-delimited block from `curation/KeywordCuration_Prompt_v1_0.md`
+delimited block from `prompts/KeywordCuration_Prompt.md`
 verbatim. Record `CurationPromptVersion: v1.0` in
 `curation/CHANGES.md`.
 

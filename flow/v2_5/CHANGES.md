@@ -320,3 +320,28 @@ restore, rerun → the row heals to Indexed with `LastError` empty.
 
 The definition and `DocIndexSweep_v2_5.zip` in this folder carry
 R13a–R13c. No PromptVersion change (row plumbing, not format).
+
+---
+
+**Addendum (2026-08-11, r2 PV-1):** the sibling import zip was re-cut
+with the connection `displayName` (a personal work email) scrubbed
+from its `manifest.json`. The `definition.json` payload is
+byte-identical to the pre-scrub zip; only the manifest changed, so
+the zip is no longer the byte-exact export artifact (git history
+holds the original). Import behavior is unaffected — connections are
+re-mapped at import time.
+
+---
+
+**Addendum (2026-08-11, r2 script batch — R14):** review round r2
+(`review/REVIEW_v2_5_r2.md`) shipped a six-script batch: RegexExtract
+v1.3 (SB-1 phantom-revision guard), WorkbookDump v1.2 (SB-4 empty-
+sheet GFM), RelatedRank v1.3 (SB-9 perf, byte-identical), SidecarPatch
+v1.4 (SB-2/SB-3 related-node forms + dedupe), MediaExtract v1.3 and
+ZipTextExtract v2.0 (SB-5..SB-8 zip-reader integrity + heading-forgery
+escape + truncation marker). Gated by `check_batch_r2.py` (equivalence
+IDENTICAL on every existing fixture), promoted over `scripts/`.
+**No flow edit and no PromptVersion bump** — same script names and
+signatures, no format change on well-formed inputs, so no backfill.
+Paste per `review/patches/designer-edits.md` §r2-1; the live flow
+runs the previous batch until then (STATUS.md tracks it).

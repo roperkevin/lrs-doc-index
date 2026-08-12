@@ -1,4 +1,6 @@
-# Q&A Agent Setup — Copilot Studio over the sidecar corpus (v1.0)
+# Q&A Agent Setup — Copilot Studio over the sidecar corpus
+
+Current component version: **v1.1** (instructions v1.1 — see `CHANGES.md`).
 
 A Copilot Studio agent, **LRS Doc Index Q&A**, grounded on the LRS Doc
 Index sidecar library and published to Teams. Everything here is

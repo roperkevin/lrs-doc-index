@@ -1,5 +1,8 @@
 # Doc Index System — Release v2.5
 
+> Deployed-version questions? `STATUS.md` is the single
+> source-of-truth table (scripts, prompts, components, open actions).
+
 Everything the document-indexing pipeline needs, in one bundle.
 Current as of 2026-08-11. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
@@ -15,43 +18,47 @@ sidecar to its related documents.
 |---|---|---|
 | flow/v2_5/definition.json | Flow definition | v2.5 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
-| scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.2 |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v1.9 |
-| scripts/MediaExtract.ts | Bounded raster image extraction | v1.2 |
-| scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.1 |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.2 |
-| scripts/SidecarPatch.ts | Surgical related-section patching | v1.3 |
+| scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.3 (paste pending) |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v2.0 (paste pending) |
+| scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
+| scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking | v1.3 (paste pending) |
+| scripts/SidecarPatch.ts | Surgical related-section patching | v1.4 (paste pending) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
 | review/patches/ZipTextExtract_v1_9.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.9 |
 | review/patches/MediaExtract_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/RelatedRank_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
-| DocIndex_Prompt.md | AI Builder prompt (superseded by v1.2) | v1.1 |
+| prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
+| prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
+| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy) | v1.0 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio) | v1.1 |
-| agent/QA_Agent_Setup.md | Q&A agent deployment guide | v1.0 |
+| agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
-| curation/KeywordCuration_Prompt_v1_0.md | Keyword curation prompt (AI Builder) | v1.0 |
-| curation/Curation_Setup.md | Curation flow build + deploy guide | v1.0 |
+| curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/CHANGES.md | Curation release notes | v1.1 |
-| testplangen/TestPlanGen_Prompt_v1_0.md | Test-plan generation prompt (AI Builder) | v1.0 |
-| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | v1.0 |
+| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v1.7) |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |
-| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v1.0 |
-| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v1.0 |
-| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v1.0 |
-| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v1.0 |
+| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v1.7 (filename frozen at v1_0) |
+| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v1.7 (dirname frozen at v1_0) |
+| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v1.7 (filename frozen at v1_0) |
+| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v1.7 (dirname frozen at v1_0) |
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.1 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v1.7 |
 
-Older flow versions (`flow/definition.json` v1.9, `flow/v2_0/`,
+Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
+`flow/definition.json` in review round r2 — `flow/v2_0/`,
 `flow/v2_1/`, `flow/v2_2/`, `flow/v2_3/`, `flow/v2_4/` and their
-zips) remain for provenance; see each `CHANGES.md`.
+zips) remain for provenance; see each `CHANGES.md`. All import zips
+were re-cut 2026-08-11 with the connection display name (a personal
+email) scrubbed from their manifests — payloads byte-identical, see
+the r2 PV-1 addenda.
 
 Retired, not included: TagStrip (superseded by ZipTextExtract; the
 script may remain in Excel harmlessly). Issue Refs list is present
@@ -68,8 +75,9 @@ that only looked interchangeable (the fix for feeding a sidecar's
 `doc_id` to the TestPlanGen agent and landing on the wrong row).
 The row upsert now runs before the sidecar write, a `Set_text_url`
 update patches `TextFileUrl` back after the save, and the error
-catch is duplicate-proofed. The PromptVersion bump (now `v1.7`) is
-format-only (no prompt re-paste) and drives the converging backfill
+catch is duplicate-proofed. The v2.5 PromptVersion bump (to `v1.7`;
+Config has since moved to `v1.8` with the 2026-08-11 prompt v1.3
+paste — see the Runbook) is format-only and drives the converging backfill
 that renames the corpus to row-id names — until a sidecar migrates,
 its `doc_id` may still be the old file id, so the list's ID column
 stays authoritative; see `flow/v2_5/CHANGES.md`. Plus the v2.4 base:
@@ -143,7 +151,7 @@ The vocabulary curates itself — with a human veto: a second, tiny
 flow, **KeywordCuration** (built from `curation/Curation_Setup.md` —
 no import package; new flows have no skeleton), runs Saturdays 08:00
 Mountain, makes ONE AI Builder call over the full canonical
-vocabulary (`curation/KeywordCuration_Prompt_v1_0.md`), and writes
+vocabulary (`prompts/KeywordCuration_Prompt.md`), and writes
 merge proposals onto the Keywords rows via two new flow-owned columns
 (`CurationStatus`, `ProposedCanonical` — see the updated
 `schemas/SPList_Keywords.csv`). It never writes `CanonicalRef`: a
@@ -169,7 +177,7 @@ the sidecar's machine-readable `related:` line to gather context
 style/coverage exemplars, with an exact
 `DocKind eq 'Test Plan' and Surface eq ...` query as fallback), and
 makes ONE AI Builder call
-(`testplangen/TestPlanGen_Prompt_v1_0.md`) that returns a complete
+(`prompts/TestPlanGen_Prompt.md`) that returns a complete
 markdown draft — every test case carrying a mandatory Trace line back
 to a story statement or exemplar pattern, every gap surfaced as a
 `[VERIFY]` item instead of an invention. The draft lands timestamped
@@ -234,6 +242,11 @@ from v2.3 or earlier, do the v2.4 steps first
   Skipped rows wait for a source-file change; Indexed rows
   reprocess when the file's Modified advances OR the row's
   PromptVersion trails Config's (the v2.2 backfill gate).
+- **Error diagnosis**: Error rows carry `LastError` (since R13,
+  2026-08-11) — the failing action's name and message from the
+  catch scope. The field clears on the next successful index, so a
+  non-empty `LastError` on an Indexed row means the clear predates
+  R13; a fresh reprocess resolves it.
 - **Budget**: MaxDocsPerRun (150) counts only docs actually
   processed; the daily 17:00 Mountain trigger walks the corpus
   ~150/day until done. Since the v2.5 addendum the walk is
@@ -307,12 +320,14 @@ from v2.3 or earlier, do the v2.4 steps first
   next run. The flow writes only its two columns; the sweep never
   reads them.
 - **CurationPromptVersion**: bumps like AgentInstructionsVersion — new
-  `curation/KeywordCuration_Prompt_vX_Y.md`, re-paste into AI Builder,
+  `review/patches/KeywordCuration_Prompt_vX_Y.md`, re-paste into AI
+  Builder, promote to `prompts/KeywordCuration_Prompt.md`,
   re-run the curation smoke suite, record in `curation/CHANGES.md`.
   Never bump `Config.PromptVersion` for curation — nothing here
   reindexes the corpus.
 - **TestPlanGenPromptVersion**: bumps the same way — new
-  `testplangen/TestPlanGen_Prompt_vX_Y.md`, re-paste into AI Builder,
+  `review/patches/TestPlanGen_Prompt_vX_Y.md`, re-paste into AI
+  Builder, promote to `prompts/TestPlanGen_Prompt.md`,
   re-run the generation smoke suite, record in
   `testplangen/CHANGES.md`. Never bump `Config.PromptVersion` for
   generation — nothing here changes the sidecar format or reindexes
@@ -343,7 +358,8 @@ alias fixes the vocabulary and all future junction rows, but
 historical rows stay on the alias id, and a reindex adds canonical
 rows without deleting stale ones, until the backfill re-points
 them; mechanics specified in `curation/Curation_Setup.md`) are the
-queued follow-ons. Test-plan generation's own deferred work — a
-Copilot Studio front end for TestPlanGen, docx conversion of drafts,
-and the IssueRefs-driven coverage matrix — is specified in
-`testplangen/TestPlanGen_Setup.md`'s Queued follow-ons.
+queued follow-ons. Test-plan generation's own deferred work — docx
+conversion of drafts and the IssueRefs-driven coverage matrix — is
+specified in `testplangen/TestPlanGen_Setup.md`'s Queued follow-ons
+(the Copilot Studio front end shipped in v1.1; see
+`testplangen/agent/Agent_Setup.md`).

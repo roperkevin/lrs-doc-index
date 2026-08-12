@@ -24,4 +24,18 @@ rr_v12*
 scp_v13*
 zte_v19.ts
 me_v12.ts
-me_cur.ts
+# version-neutral runners (r2 rename) + r2 batch staging
+*_cur.ts
+rex_cases.json
+stage_r2/
+# r2 gate generated runners/cases
+*_old.ts
+*_new.ts
+*_tsc.ts
+rex_eq_cases.json
+rex_sb1_cases.json
+sheets_empty.json
+storednlen*
+lyingcd_deck*
+hashheading_deck*
+manytables*

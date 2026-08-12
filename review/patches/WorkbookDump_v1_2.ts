@@ -2,10 +2,7 @@
  * WorkbookDump v1.2 — xlsx → markdown (the free xlsx extraction lane)
  * ------------------------------------------------------------------
  * r2 batch (REVIEW_v2_5_r2.md SB-4) — gated by check_batch_r2.py.
- * Gate PASSED (check_batch_r2.py, 2026-08-11).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md).
+ * DO NOT PASTE until the gate is green.
  * ------------------------------------------------------------------
  * Dumps every worksheet's used range as a GFM pipe table:
  *

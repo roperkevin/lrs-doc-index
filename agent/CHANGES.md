@@ -21,11 +21,15 @@ prompt changes; no PromptVersion touch; no backfill.
 | Agent instructions | **v1.1** | `agent/QA_Agent_Instructions_v1_1.md` |
 | Everything else | unchanged | — |
 
-Re-paste record:
+Re-paste record — **OPEN ACTION (r2)**: the v1.1 paste is required by
+the v2.5 install order (`flow/v2_5/CHANGES.md` install step 4) and
+`QA_Agent_Setup.md` §3 already instructs pasting v1.1, but no paste
+was ever recorded here. Confirm whether it happened on the live
+tenant and fill the row (tracked in `STATUS.md`):
 
 | Date | Tenant | Pasted | Smoke re-run |
 |---|---|---|---|
-| — | — | pending | pending |
+| — | — | pending — confirm + record | pending |
 
 # Agent v1.0 — Q&A over the sidecar corpus
 

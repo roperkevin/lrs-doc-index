@@ -180,7 +180,9 @@ The topic file now ships the flow node commented out with add-via-
 canvas instructions, and `Agent_Setup.md` §3 is retitled "Add and
 bind the flow node" to match. Found during the first live agent
 deployment; agent file set still pre-first-import on any other
-tenant, so TestPlanGenAgentVersion stays v1.0.
+tenant, so TestPlanGenAgentVersion stays v1.0. *(True when written;
+the v1.5 correction above later bumped the file set to v1.1 — that
+note, not this one, states the current version.)*
 
 ---
 
@@ -427,3 +429,12 @@ Live-tenant smoke run (fill in at deployment; suite =
 | Date | Tenant | Rows passed (of 8) | TestPlanGenPromptVersion |
 |---|---|---|---|
 | — | — | — | v1.0 |
+
+---
+
+**Addendum (2026-08-11, r2 PV-1):** `TestPlanGen_v1_0.zip` and
+`TestPlanGenCore_v1_0.zip` were re-cut with the connection
+`displayName` (a personal work email) scrubbed from their
+`manifest.json`; `definition.json` payloads byte-identical, import
+behavior unaffected (`TestPlanGenAgentFlow_v1_0.zip` never carried
+the email). Originals in git history.

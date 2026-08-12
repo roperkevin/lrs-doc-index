@@ -2,10 +2,7 @@
  * MediaExtract v1.3 — pull raster images out of a pptx/docx, bounded
  * ------------------------------------------------------------
  * r2 batch (REVIEW_v2_5_r2.md SB-5, SB-8) — gated by
- * check_batch_r2.py. Gate PASSED (check_batch_r2.py, 2026-08-11).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md). v1.3:
+ * check_batch_r2.py. DO NOT PASTE until the gate is green. v1.3:
  *   SB-8  the MAX_TOTAL accumulator now counts the central
  *         directory's uncompSize claim (matching ZipTextExtract's
  *         SC-4 prediction arithmetic exactly), and every inflated
