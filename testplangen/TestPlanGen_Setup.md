@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v2.0** (see `CHANGES.md`).
+Current component version: **v2.3** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -561,8 +561,9 @@ pass/fail per row).
   restructures this guide's §3 flow into a child flow
   (`TestPlanGenCore`) with two thin parents once the agent is
   deployed — the G-step bodies above stay the single source for the
-  core's actions. Title→id resolution via list-query actions remains
-  queued there.
+  core's actions. Title→id resolution shipped there too (agent v1.4,
+  `Agent_Setup.md` §1d `StoryLookupFlow` — doc id, devtopia issue #,
+  or title text, all resolved deterministically).
 - **Provenance export** — CLOSED in v1.2, inverted:
   `testplangen/flow/v1_0/definition.json` is now checked in as the
   authored source (the §3 Path A package carries it byte-identical);

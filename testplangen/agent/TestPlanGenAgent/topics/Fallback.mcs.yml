@@ -1,5 +1,5 @@
 # Topic: Fallback — everything that isn't a generation request.
-# TestPlanGenAgentVersion: v1.3
+# TestPlanGenAgentVersion: v1.4
 #
 # This agent has no knowledge sources and general knowledge is off
 # (settings.mcs.yml), so the fallback's job is the redirect: corpus
@@ -19,8 +19,8 @@ beginDialog:
       id: sendRedirect
       activity: |-
         I only start test-plan drafts from indexed user stories — say
-        "draft a test plan" and have the story's Doc Index item id
-        ready.
+        "draft a test plan" and have the story's Doc Index item id,
+        its devtopia issue number, or its title ready.
 
         For questions about document content — what a story says,
         which test plans cover a feature, releases, PEs — use the

@@ -1,0 +1,554 @@
+{
+  "name": "3f8c2a75-1d94-4e6a-b0c7-9a52e4d81f36",
+  "id": "/providers/Microsoft.Flow/flows/3f8c2a75-1d94-4e6a-b0c7-9a52e4d81f36",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "StoryLookupFlow",
+    "definition": {
+      "metadata": {
+        "workflowEntityId": null,
+        "processAdvisorMetadata": null,
+        "flowChargedByPaygo": null,
+        "flowclientsuspensionreason": "None",
+        "flowclientsuspensiontime": null,
+        "flowclientsuspensionreasondetails": null,
+        "creator": {
+          "id": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+          "type": "User",
+          "tenantId": "aee6e3c9-711e-4c7c-bd27-04f2307db20d"
+        },
+        "provisioningMethod": "FromDefinition",
+        "failureAlertSubscription": true,
+        "clientLastModifiedTime": "2026-08-12T00:00:00.0000000Z",
+        "lastModifiedBy": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+        "connectionKeySavedTimeKey": "2026-08-12T00:00:00.0000000Z",
+        "creationSource": "Portal",
+        "modifiedSources": "Portal"
+      },
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "manual": {
+          "type": "Request",
+          "kind": "Skills",
+          "inputs": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "text": {
+                  "title": "LookupKind",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "issue | title — which lookup lane to run"
+                },
+                "text_1": {
+                  "title": "LookupQuery",
+                  "type": "string",
+                  "x-ms-dynamically-added": true,
+                  "description": "issue lane: the devtopia issue number, digits only; title lane: a fragment of the story title"
+                }
+              },
+              "required": [
+                "text",
+                "text_1"
+              ]
+            }
+          }
+        }
+      },
+      "actions": {
+        "Config_lookup": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": {
+            "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
+            "DocIndexList": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+            "DocIdsList": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
+            "CandidateCap": 8
+          }
+        },
+        "Init_MatchIds": {
+          "runAfter": {
+            "Config_lookup": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "MatchIds",
+                "type": "array",
+                "value": "@json('[]')"
+              }
+            ]
+          }
+        },
+        "Init_Matches": {
+          "runAfter": {
+            "Init_MatchIds": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "Matches",
+                "type": "array",
+                "value": "@json('[]')"
+              }
+            ]
+          }
+        },
+        "Init_CandidateLines": {
+          "runAfter": {
+            "Init_Matches": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "CandidateLines",
+                "type": "string",
+                "value": "@string('')"
+              }
+            ]
+          }
+        },
+        "Try_lookup": {
+          "runAfter": {
+            "Init_CandidateLines": [
+              "Succeeded"
+            ]
+          },
+          "type": "Scope",
+          "actions": {
+            "If_issue_kind": {
+              "runAfter": {},
+              "type": "If",
+              "expression": {
+                "equals": [
+                  "@toLower(trim(coalesce(triggerBody()?['text'], '')))",
+                  "issue"
+                ]
+              },
+              "actions": {
+                "Issue_num": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": "@int(trim(coalesce(triggerBody()?['text_1'], '0')))"
+                },
+                "Get_id_rows": {
+                  "runAfter": {
+                    "Issue_num": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                      "table": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
+                      "$filter": "IssueNumber eq @{outputs('Issue_num')}",
+                      "$top": 50
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "GetItems"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "For_each_id_row": {
+                  "runAfter": {
+                    "Get_id_rows": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "foreach": "@body('Get_id_rows')?['value']",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Doc_item_id": {
+                      "runAfter": {},
+                      "type": "Compose",
+                      "inputs": "@coalesce(items('For_each_id_row')?['Document']?['Id'], 0)"
+                    },
+                    "If_new_doc": {
+                      "runAfter": {
+                        "Doc_item_id": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "If",
+                      "expression": "@and(greater(outputs('Doc_item_id'), 0), not(contains(variables('MatchIds'), outputs('Doc_item_id'))))",
+                      "actions": {
+                        "Try_id_doc": {
+                          "runAfter": {},
+                          "type": "Scope",
+                          "actions": {
+                            "Get_doc_row": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                  "id": "@outputs('Doc_item_id')"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetItem"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_story_ok": {
+                              "runAfter": {
+                                "Get_doc_row": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@and(equals(coalesce(body('Get_doc_row')?['DocKind']?['Value'], ''), 'User Story'), equals(coalesce(body('Get_doc_row')?['IndexStatus']?['Value'], ''), 'Indexed'))",
+                              "actions": {
+                                "Note_match_id": {
+                                  "runAfter": {},
+                                  "type": "AppendToArrayVariable",
+                                  "inputs": {
+                                    "name": "MatchIds",
+                                    "value": "@outputs('Doc_item_id')"
+                                  }
+                                },
+                                "If_line_budget_id": {
+                                  "runAfter": {
+                                    "Note_match_id": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "If",
+                                  "expression": "@less(length(variables('Matches')), int(outputs('Config_lookup')?['CandidateCap']))",
+                                  "actions": {
+                                    "Add_candidate_line_id": {
+                                      "runAfter": {},
+                                      "type": "AppendToStringVariable",
+                                      "inputs": {
+                                        "name": "CandidateLines",
+                                        "value": "- doc @{outputs('Doc_item_id')} — \"@{replace(coalesce(body('Get_doc_row')?['Title'], ''), '\"', '')}\" (surface @{coalesce(body('Get_doc_row')?['Surface']?['Value'], '')}, release @{coalesce(body('Get_doc_row')?['TargetRelease'], '')})@{decodeUriComponent('%0A')}"
+                                      }
+                                    }
+                                  },
+                                  "else": {
+                                    "actions": {}
+                                  }
+                                },
+                                "Add_match_id": {
+                                  "runAfter": {
+                                    "If_line_budget_id": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "AppendToArrayVariable",
+                                  "inputs": {
+                                    "name": "Matches",
+                                    "value": {
+                                      "id": "@outputs('Doc_item_id')",
+                                      "title": "@{replace(coalesce(body('Get_doc_row')?['Title'], ''), '\"', '')}"
+                                    }
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {}
+                              }
+                            }
+                          }
+                        },
+                        "Id_row_done": {
+                          "runAfter": {
+                            "Try_id_doc": [
+                              "Succeeded",
+                              "Failed",
+                              "Skipped",
+                              "TimedOut"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "ok"
+                        }
+                      },
+                      "else": {
+                        "actions": {}
+                      }
+                    }
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Query_text": {
+                    "runAfter": {},
+                    "type": "Compose",
+                    "inputs": "@toLower(trim(coalesce(triggerBody()?['text_1'], '')))"
+                  },
+                  "If_query_ok": {
+                    "runAfter": {
+                      "Query_text": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "If",
+                    "expression": "@greater(length(outputs('Query_text')), 1)",
+                    "actions": {
+                      "Get_story_rows": {
+                        "runAfter": {},
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "parameters": {
+                            "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                            "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                            "$filter": "DocKind eq 'User Story' and IndexStatus eq 'Indexed'",
+                            "$orderby": "Modified desc",
+                            "$top": 100
+                          },
+                          "host": {
+                            "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                            "connectionName": "shared_sharepointonline",
+                            "operationId": "GetItems"
+                          },
+                          "authentication": "@parameters('$authentication')"
+                        }
+                      },
+                      "Filter_title_match": {
+                        "runAfter": {
+                          "Get_story_rows": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Query",
+                        "inputs": {
+                          "from": "@body('Get_story_rows')?['value']",
+                          "where": "@contains(toLower(coalesce(item()?['Title'], '')), outputs('Query_text'))"
+                        }
+                      },
+                      "For_each_story": {
+                        "runAfter": {
+                          "Filter_title_match": [
+                            "Succeeded"
+                          ]
+                        },
+                        "type": "Foreach",
+                        "foreach": "@body('Filter_title_match')",
+                        "runtimeConfiguration": {
+                          "concurrency": {
+                            "repetitions": 1
+                          }
+                        },
+                        "actions": {
+                          "Note_story_id": {
+                            "runAfter": {},
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "MatchIds",
+                              "value": "@int(items('For_each_story')?['ID'])"
+                            }
+                          },
+                          "If_line_budget_title": {
+                            "runAfter": {
+                              "Note_story_id": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "If",
+                            "expression": "@less(length(variables('Matches')), int(outputs('Config_lookup')?['CandidateCap']))",
+                            "actions": {
+                              "Add_candidate_line_title": {
+                                "runAfter": {},
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                  "name": "CandidateLines",
+                                  "value": "- doc @{items('For_each_story')?['ID']} — \"@{replace(coalesce(items('For_each_story')?['Title'], ''), '\"', '')}\" (surface @{coalesce(items('For_each_story')?['Surface']?['Value'], '')}, release @{coalesce(items('For_each_story')?['TargetRelease'], '')})@{decodeUriComponent('%0A')}"
+                                }
+                              }
+                            },
+                            "else": {
+                              "actions": {}
+                            }
+                          },
+                          "Add_match_title": {
+                            "runAfter": {
+                              "If_line_budget_title": [
+                                "Succeeded"
+                              ]
+                            },
+                            "type": "AppendToArrayVariable",
+                            "inputs": {
+                              "name": "Matches",
+                              "value": {
+                                "id": "@int(items('For_each_story')?['ID'])",
+                                "title": "@{replace(coalesce(items('For_each_story')?['Title'], ''), '\"', '')}"
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "else": {
+                      "actions": {}
+                    }
+                  }
+                }
+              }
+            },
+            "Match_count": {
+              "runAfter": {
+                "If_issue_kind": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@length(variables('MatchIds'))"
+            },
+            "Lookup_status": {
+              "runAfter": {
+                "Match_count": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(equals(outputs('Match_count'), 0), 'none', if(equals(outputs('Match_count'), 1), 'one', 'many'))"
+            },
+            "Candidates_out": {
+              "runAfter": {
+                "Lookup_status": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(greater(outputs('Match_count'), int(outputs('Config_lookup')?['CandidateCap'])), concat(variables('CandidateLines'), '(first ', outputs('Config_lookup')?['CandidateCap'], ' of ', outputs('Match_count'), ' matches — give a doc id, or narrow the title text)'), variables('CandidateLines'))"
+            }
+          }
+        },
+        "Respond_lookup": {
+          "runAfter": {
+            "Try_lookup": [
+              "Succeeded"
+            ]
+          },
+          "type": "Response",
+          "kind": "Skills",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "LookupStatus": "@{outputs('Lookup_status')}",
+              "StoryId": "@{if(equals(outputs('Match_count'), 1), string(first(variables('Matches'))?['id']), '')}",
+              "StoryTitle": "@{if(equals(outputs('Match_count'), 1), string(first(variables('Matches'))?['title']), '')}",
+              "Candidates": "@{outputs('Candidates_out')}"
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "LookupStatus": {
+                  "title": "LookupStatus",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "StoryId": {
+                  "title": "StoryId",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "StoryTitle": {
+                  "title": "StoryTitle",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "Candidates": {
+                  "title": "Candidates",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "Respond_lookup_error": {
+          "runAfter": {
+            "Try_lookup": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Response",
+          "kind": "Skills",
+          "inputs": {
+            "statusCode": 200,
+            "body": {
+              "LookupStatus": "error",
+              "StoryId": "",
+              "StoryTitle": "",
+              "Candidates": ""
+            },
+            "schema": {
+              "type": "object",
+              "properties": {
+                "LookupStatus": {
+                  "title": "LookupStatus",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "StoryId": {
+                  "title": "StoryId",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "StoryTitle": {
+                  "title": "StoryTitle",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                },
+                "Candidates": {
+                  "title": "Candidates",
+                  "x-ms-dynamically-added": true,
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "connectionName": "9c9bfea530b9428aa0c7c2a438b2c0a8",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "tier": "NotSpecified",
+        "apiName": "sharepointonline",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      }
+    },
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}

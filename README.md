@@ -45,7 +45,7 @@ sidecar to its related documents.
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
-| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.0) |
+| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.3) |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.2 |
 | testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v2.0 (filename frozen at v1_0) |
 | testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
@@ -53,9 +53,10 @@ sidecar to its related documents.
 | testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
-| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.3 |
+| testplangen/flow/lookup_v1_0/definition.json | StoryLookupFlow definition (issue-#/title → doc id; contract reference, build in Copilot Studio per Agent_Setup §1d) | v1.0 |
+| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.4 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v1.7 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.3 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,
@@ -209,8 +210,12 @@ Copilot Studio agent shipped as an importable file set
 (`testplangen/agent/TestPlanGenAgent/`, wired per
 `testplangen/agent/Agent_Setup.md` — which also splits the flow into
 a child flow so the list menu and the agent share one body). The
-agent takes a story's item id in chat, runs the flow, and relays the
-draft location; it has no knowledge sources and never drafts content
+agent takes a story reference in chat — its item id, its devtopia
+issue number, or words from its title (issue and title references
+resolve to an id through `StoryLookupFlow`'s deterministic list
+queries: the Doc IDs list for issues, a title contains-match over
+indexed User Story rows) — runs the flow, and relays the draft
+location; it has no knowledge sources and never drafts content
 itself — corpus questions stay with LRS Doc Index Q&A (optional and
 independent: nothing in test-plan generation requires the Q&A agent
 to be deployed).
