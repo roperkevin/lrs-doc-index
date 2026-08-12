@@ -1,3 +1,40 @@
+# TestPlanGen v2.1 — declare the flow outputs at paste time (agent v1.2)
+
+Live-deployment fix, found on the first paste-path (no VS Code
+extension) deployment, 2026-08-12: pasting
+`topics/GenerateTestPlan.mcs.yml` into the topic code editor failed
+with "unrecognized identifier" on every `Topic.Status` /
+`Topic.DraftUrl` / `Topic.GenSummary` reference. Cause: the v1.4-era
+GuidParseError fix shipped the topic with the `InvokeFlowAction` node
+commented out (flowId must be a real, environment-specific GUID) —
+but that node's output bindings were the ONLY thing declaring those
+three variables, so the checked-in YAML read variables that nothing
+defines and the paste validator rightly rejected it. `Topic.StoryId`
+and `Topic.Confirmed` never hit this because their Question nodes
+declare them.
+
+Fix: three `SetVariable` nodes (`initGenStatus` / `initGenDraftUrl` /
+`initGenSummary`) in the confirmed-Yes branch, right after the
+`ackRunning` message, each setting its variable to `=""`. The paste
+now validates standalone; the §3 canvas-added flow node binds its
+outputs to the same (now pre-existing) variables and overwrites the
+empty strings at runtime, so behavior is unchanged. The initializers
+stay in the topic permanently — they are the declaration, not
+scaffolding. `Agent_Setup.md` §3 now says to place the flow node
+between the initializers and the status condition and to pick the
+existing variables in the output mapping instead of minting new ones.
+
+No flow, package, prompt, or schema changes. Tenants that imported
+the v1.1 topic via the VS Code extension path are unaffected
+(behavior identical); paste-path deployments need the v1.2 topic
+text.
+
+| Piece | Version | Where |
+|---|---|---|
+| GenerateTestPlan topic (+ file-set headers) | **TestPlanGenAgentVersion v1.2** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent_Setup §3 wording | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else | unchanged | — |
+
 # TestPlanGen v2.0 — reference-functionality input lane (prompt v1.3)
 
 Motivated by a live PE workflow (2026-08-12, the doc 1 revision that

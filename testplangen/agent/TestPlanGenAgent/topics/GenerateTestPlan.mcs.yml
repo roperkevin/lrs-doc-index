@@ -1,19 +1,24 @@
 # Topic: GenerateTestPlan — collect a story id, confirm, run the flow,
 # report the draft location.
-# TestPlanGenAgentVersion: v1.1
+# TestPlanGenAgentVersion: v1.2
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
 # topic canvas). This file ships WITHOUT an active flow node: the
 # parser requires flowId to be a real GUID, which is environment-
 # specific, so a placeholder fails paste validation (GuidParseError).
+# Because the flow node is absent, the three initGen* SetVariable
+# nodes below declare its output variables — without them the paste
+# fails with "unrecognized identifier" on every Topic.Status /
+# Topic.DraftUrl / Topic.GenSummary reference (v1.2 fix). At runtime
+# the flow node's output bindings overwrite the empty strings.
 # After pasting, add the flow node in the CANVAS (Agent_Setup.md §3):
-# in the confirmed-Yes branch, between the ackRunning message and the
+# in the confirmed-Yes branch, between the initGen* nodes and the
 # checkStatus condition, + → Call an action → TestPlanGenAgentFlow;
-# map input StoryId = Topic.StoryId and save the outputs into
-# variables named exactly Topic.Status / Topic.DraftUrl /
-# Topic.GenSummary — the downstream nodes reference those names. The
-# commented block below shows the node's intended shape for
-# comparison with what the canvas generates.
+# map input StoryId = Topic.StoryId and save the outputs into the
+# EXISTING variables Topic.Status / Topic.DraftUrl / Topic.GenSummary
+# (pick them, don't create new ones — the downstream nodes reference
+# those names). The commented block below shows the node's intended
+# shape for comparison with what the canvas generates.
 
 kind: AdaptiveDialog
 beginDialog:
@@ -71,6 +76,23 @@ beginDialog:
               activity: |-
                 Starting generation for doc {Topic.StoryId} — this
                 usually takes a minute or two.
+
+            # Declare the flow-node output variables so the paste
+            # validates with the flow node absent (see file header).
+            - kind: SetVariable
+              id: initGenStatus
+              variable: Topic.Status
+              value: =""
+
+            - kind: SetVariable
+              id: initGenDraftUrl
+              variable: Topic.DraftUrl
+              value: =""
+
+            - kind: SetVariable
+              id: initGenSummary
+              variable: Topic.GenSummary
+              value: =""
 
             # Add the flow node HERE via the canvas after pasting —
             # Call an action → TestPlanGenAgentFlow (see file header).
