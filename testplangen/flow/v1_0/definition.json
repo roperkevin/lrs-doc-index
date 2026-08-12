@@ -70,9 +70,10 @@
             "DraftFolder": "/Shared Documents/Test Plan Drafts",
             "StoryCap": 30000,
             "ExemplarCap": 20000,
+            "ReferenceCap": 12000,
             "NeighborCap": 5,
             "DigestSummaryCap": 400,
-            "TestPlanGenPromptVersion": "v1.2"
+            "TestPlanGenPromptVersion": "v1.3"
           }
         },
         "Init_NeighborDigest": {
@@ -143,9 +144,60 @@
             ]
           }
         },
-        "Try_gen": {
+        "Init_ReferenceText": {
           "runAfter": {
             "Init_ExemplarCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ReferenceText",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_ReferenceUrls": {
+          "runAfter": {
+            "Init_ReferenceText": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ReferenceUrls",
+                "type": "array",
+                "value": []
+              }
+            ]
+          }
+        },
+        "Init_ReferenceCount": {
+          "runAfter": {
+            "Init_ReferenceUrls": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ReferenceCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Try_gen": {
+          "runAfter": {
+            "Init_ReferenceCount": [
               "Succeeded"
             ]
           },
@@ -329,14 +381,44 @@
                             ]
                           },
                           "type": "If",
-                          "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), less(length(variables('ExemplarUrls')), 2), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))",
+                          "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))",
                           "actions": {
-                            "Collect_exemplar_url": {
+                            "If_exemplar_slot": {
                               "runAfter": {},
-                              "type": "AppendToArrayVariable",
-                              "inputs": {
-                                "name": "ExemplarUrls",
-                                "value": "@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}"
+                              "type": "If",
+                              "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), 2))",
+                              "actions": {
+                                "Collect_exemplar_url": {
+                                  "runAfter": {},
+                                  "type": "AppendToArrayVariable",
+                                  "inputs": {
+                                    "name": "ExemplarUrls",
+                                    "value": "@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}"
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {
+                                  "If_reference_slot": {
+                                    "runAfter": {},
+                                    "type": "If",
+                                    "expression": "@and(not(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], ''))), less(length(variables('ReferenceUrls')), 2))",
+                                    "actions": {
+                                      "Collect_reference_url": {
+                                        "runAfter": {},
+                                        "type": "AppendToArrayVariable",
+                                        "inputs": {
+                                          "name": "ReferenceUrls",
+                                          "value": {
+                                            "url": "@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}",
+                                            "surface": "@{coalesce(body('Get_neighbor_row')?['Surface']?['Value'], '')}",
+                                            "title": "@{replace(coalesce(body('Get_neighbor_row')?['Title'], ''), '\"', '')}"
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -539,9 +621,107 @@
                     }
                   }
                 },
-                "Story_meta": {
+                "For_each_reference": {
+                  "foreach": "@variables('ReferenceUrls')",
                   "runAfter": {
                     "For_each_exemplar": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Try_reference": {
+                      "runAfter": {},
+                      "type": "Scope",
+                      "actions": {
+                        "Ref_path": {
+                          "runAfter": {},
+                          "type": "Compose",
+                          "inputs": "@{replace(coalesce(items('For_each_reference')?['url'], ''), outputs('Config_gen')?['SiteUrl'], '')}"
+                        },
+                        "If_ref_path_ok": {
+                          "runAfter": {
+                            "Ref_path": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@startsWith(outputs('Ref_path'), '/')",
+                          "actions": {
+                            "Get_reference_md": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "path": "@outputs('Ref_path')",
+                                  "inferContentType": false
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetFileContentByPath"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_ref_budget": {
+                              "runAfter": {
+                                "Get_reference_md": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@less(length(variables('ReferenceText')), int(outputs('Config_gen')?['ReferenceCap']))",
+                              "actions": {
+                                "Append_reference": {
+                                  "runAfter": {},
+                                  "type": "AppendToStringVariable",
+                                  "inputs": {
+                                    "name": "ReferenceText",
+                                    "value": "--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), int(outputs('Config_gen')?['ReferenceCap']))}@{decodeUriComponent('%0A%0A')}"
+                                  }
+                                },
+                                "Inc_reference": {
+                                  "runAfter": {
+                                    "Append_reference": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "IncrementVariable",
+                                  "inputs": {
+                                    "name": "ReferenceCount",
+                                    "value": 1
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Reference_done": {
+                      "runAfter": {
+                        "Try_reference": [
+                          "Succeeded",
+                          "Failed",
+                          "Skipped",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "ok"
+                    }
+                  }
+                },
+                "Story_meta": {
+                  "runAfter": {
+                    "For_each_reference": [
                       "Succeeded"
                     ]
                   },
@@ -581,6 +761,7 @@
                       "item/requestv2/StoryText": "@{outputs('Story_text_capped')}",
                       "item/requestv2/RelatedDigest": "@{if(empty(variables('NeighborDigest')), '(none)', variables('NeighborDigest'))}",
                       "item/requestv2/ExemplarText": "@{if(empty(variables('ExemplarText')), '(none)', variables('ExemplarText'))}",
+                      "item/requestv2/ReferenceText": "@{if(empty(variables('ReferenceText')), '(none)', variables('ReferenceText'))}",
                       "item/source": {
                         "consumptionSource": "PowerAutomate",
                         "partnerSource": "AIBuilder",
@@ -754,7 +935,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}"
+          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}"
         }
       }
     },

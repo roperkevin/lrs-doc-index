@@ -36,7 +36,7 @@ sidecar to its related documents.
 | review/patches/RelatedRank_v2_1.ts | r4 patch (gated + promoted 2026-08-12; tenant paste pending, fenced to the v2.6 window — same signature as v2.0) | v2.1 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
-| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending) | v1.2 |
+| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.3 adds a fifth input parameter) | v1.3 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio) | v1.1 |
@@ -45,12 +45,12 @@ sidecar to its related documents.
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
-| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v1.9) |
-| testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.1 |
-| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v1.9 (filename frozen at v1_0) |
-| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v1.9 (dirname frozen at v1_0) |
-| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v1.9 (filename frozen at v1_0) |
-| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v1.9 (dirname frozen at v1_0) |
+| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.0) |
+| testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.2 |
+| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v2.0 (filename frozen at v1_0) |
+| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
+| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v2.0 (filename frozen at v1_0) |
+| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.1 |
@@ -190,7 +190,12 @@ must also cover every workflow, pathway, and event type the story
 enumerates (the enumeration-coverage rule) and carries conditional
 `Automation Notes` / `Documentation Impacts` sections when the story
 has such plans — the doc 1 coverage review
-(`review/REVIEW_TestPlanGen_doc1_coverage.md`) is why. The draft lands timestamped
+(`review/REVIEW_TestPlanGen_doc1_coverage.md`) is why. Since v2.0 the
+flow also routes related Test Plans by surface: same-surface plans
+stay style/coverage exemplars, while cross-surface plans feed a fifth
+prompt input — REFERENCE FUNCTIONALITY — that the model may ground
+expected behavior on (input methods, field semantics), with cited
+Traces, a surface-parity `[VERIFY]`, and no tool-name carryover. The draft lands timestamped
 in **Shared Documents/Test Plan Drafts/** — deliberately outside the
 LRS Doc Index library so the Q&A agent never ingests unreviewed
 drafts. A PE reviews, finalizes into the team's normal format, and
