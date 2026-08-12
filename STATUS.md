@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-12 (round r4 — related-ranking upgrade, RelatedRank v2.1)**.
+Last updated: **2026-08-12 (round r4 — related-ranking upgrade, RelatedRank v2.1; Q&A agent v2.0 authored — deploy pending)**.
 
 ## Core sweep
 
@@ -72,7 +72,7 @@ unchanged.
 
 | Component | Version | Prompt | Notes |
 |---|---|---|---|
-| Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
+| Q&A agent | tenant at v1.x (v1.1 paste unconfirmed) — **v2.0 authored** (instructions v1.2, smoke v1.1, Doc Query + feedback tools) | — | **OPEN**: deploy v2.0 per `agent/QA_Agent_Setup.md` §10; its v1.2 paste supersedes the old v1.1 re-paste confirmation — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
 | TestPlanGen | v2.0 | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1. **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0 |
 
@@ -85,7 +85,12 @@ unchanged.
 
 ## Open actions
 
-1. Confirm + record the Q&A agent v1.1 instruction paste (`agent/CHANGES.md`).
+1. Deploy Q&A agent v2.0 (`agent/QA_Agent_Setup.md` §10: generative
+   orchestration, the LRS Doc Query + LRS Log QA Feedback agent flows,
+   the QA Feedback list per `schemas/SPList_QAFeedback.csv`, paste
+   instructions v1.2 — which supersedes the old "confirm the v1.1
+   paste" action — then smoke v1.1 rows 1–13) and record the run in
+   `agent/CHANGES.md`.
 2. Confirm the curation v1.1 fix on the next all-resolved Saturday run (`curation/CHANGES.md`).
 3. r2 script batch: gate PASSED, promoted — **paste the six scripts** (`review/REVIEW_v2_5_r2.md` checklist step 5; for RelatedRank paste the r2 artifact `review/patches/RelatedRank_v1_3.ts`, or skip it — see the r3 amendment above).
 4. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).

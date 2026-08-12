@@ -37,11 +37,12 @@ sidecar to its related documents.
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.3 adds a fifth input parameter) | v1.3 |
-| schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
+| schemas/SPList_*.csv | The six sweep list definitions (lrsworkspace) | — |
+| schemas/SPList_QAFeedback.csv | QA Feedback list (Q&A agent v2.0 feedback loop — component-scoped, NOT one of the six; created in agent setup §9) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
-| agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio) | v1.1 |
-| agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
-| agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
+| agent/QA_Agent_Instructions_v1_2.md | Q&A agent instructions (Copilot Studio; tenant paste pending — the §10 deploy) | v1.2 |
+| agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v2.0) |
+| agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.1 |
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
@@ -135,19 +136,35 @@ review designer edits (v2.0) and createArray hardening (v2.1);
 all GUIDs and script references real — zero placeholders, imports
 break nothing.
 
-## Q&A agent (v1.0)
+## Q&A agent (v2.0)
 
-The corpus answers questions now: a Copilot Studio agent, **LRS Doc
-Index Q&A**, grounded on the sidecar library and published to Teams
-(`agent/QA_Agent_Setup.md`). It grounds on the sidecars, not the raw
-source library — clean markdown with AI summaries and metadata beats
-binary decks for retrieval, and every sidecar carries `source_url`,
-so answers cite the original file through it. Read-only over the
-corpus: no flow, script, schema, or prompt changes, and instruction
-bumps (`agent/QA_Agent_Instructions_v1_1.md`) never touch
+The corpus answers questions now — and exactly: a Copilot Studio
+agent, **LRS Doc Index Q&A**, grounded on the sidecar library and
+published to Teams (`agent/QA_Agent_Setup.md`). It grounds on the
+sidecars, not the raw source library — clean markdown with AI
+summaries and metadata beats binary decks for retrieval, and every
+sidecar carries `source_url`, so answers cite the original file
+through it. Since v2.0 (authored; §10 deploy pending — the STATUS.md
+open action) the agent also carries two model-invoked agent-flow
+tools under generative orchestration: **LRS Doc Query** runs real
+OData against the Doc Index list (kind / surface / target release /
+PE-or-Dev name / title fragment; QueryTop 60 with announced
+truncation), so "list ALL test plans for 3.8" is deterministic and
+complete where semantic retrieval only samples — and returns row ids,
+the number TestPlanGen takes, which also closes the generator agent's
+queued title→id follow-on (one implementation, two agents). **LRS
+Log QA Feedback** logs misses and wrong answers — with the asker's
+consent, never silently — to a **QA Feedback** list
+(`schemas/SPList_QAFeedback.csv`, component-scoped: a list, so it can
+never enter the library-scoped knowledge) that librarians triage into
+keyword aliases, doc-upload nudges, or properly-released format
+tweaks. Still read-only over the corpus: no flow, script,
+sweep-schema, or prompt changes, and instruction bumps
+(`agent/QA_Agent_Instructions_v1_2.md`) never touch
 `Config.PromptVersion`. Deployment is portal work in the
 designer-edits mold — numbered steps, a check after each, then the
-smoke suite (`agent/QA_Smoke_Questions.md`), recorded in
+smoke suite (`agent/QA_Smoke_Questions.md`, v1.1 — exhaustive-roster,
+count-honesty, and consent rows included), recorded in
 `agent/CHANGES.md`.
 
 ## Keyword curation (v1.0)
@@ -349,7 +366,11 @@ from v2.3 or earlier, do the v2.4 steps first
   re-paste into Copilot Studio, re-run the smoke suite, record in
   `agent/CHANGES.md`. Independent of PromptVersion — but a sidecar
   format change that adds/renames metadata fields needs a matching
-  instructions bump (the agent describes those fields).
+  instructions bump (the agent describes those fields), and so does
+  a v2.0 tool-contract change (the Doc Query / feedback flows' names,
+  input order, and output names are bound in the instructions' TOOLS
+  section — change one, change both; `agent/QA_Agent_Setup.md`
+  §8f/§9b).
 - **CurationStatus** (Keywords list): empty = uncurated, `Proposed` =
   awaiting review, `Rejected` = never re-proposed. Approving = setting
   `CanonicalRef`; the curation flow clears the curation columns on its

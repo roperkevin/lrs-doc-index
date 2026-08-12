@@ -86,6 +86,16 @@ agent's instructions describe the metadata fields, so a sidecar format
 change now means the usual PromptVersion-bumped backfill *plus* a
 matching `QA_Agent_Instructions` bump; neither is an ad-hoc edit.
 
+*Agent v2.0 addendum:* the Doc Index LIST gains a consumer too — the
+agent's **LRS Doc Query** tool reads it live over OData (read-only;
+filters on DocKind/Surface/TargetRelease/PE/Dev/Title, all already
+indexed-or-small). And a seventh, component-scoped list appears:
+**QA Feedback** (`schemas/SPList_QAFeedback.csv`) — plain columns
+only, written by the agent's logging flow, read by humans, invisible
+to the sweep and to the agent's knowledge (a list, not a library).
+The "six lists" phrasing throughout these notes stays sweep-scoped
+on purpose.
+
 *Curation v1.0 addendum:* the Keywords list gains two flow-owned
 columns, `CurationStatus` (Choice: Proposed/Rejected) and
 `ProposedCanonical` (single line) — see `schemas/SPList_Keywords.csv`.

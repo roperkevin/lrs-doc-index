@@ -1,0 +1,7 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"First ~250 chars of the question; flow truncates",Yes
+FullQuestion,FullQuestion,Multiple lines of text,"PLAIN text (not enhanced); the user's question verbatim",Yes
+Kind,Kind,Choice,"miss; wrong-answer; suggestion — default miss; flow maps unknown values to miss",Yes
+AgentNotes,AgentNotes,Multiple lines of text,"PLAIN text; flow-written context — what the agent searched or answered before logging",No
+Status,Status,Choice,"New; Reviewed; Done — default New; humans move rows, the flow only ever writes New",Yes
+ReviewNotes,ReviewNotes,Multiple lines of text,"PLAIN text; librarian triage notes — e.g. 'alias added to Keywords', 'doc uploaded', 'answered in Teams'",No

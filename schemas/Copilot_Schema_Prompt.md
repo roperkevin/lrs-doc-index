@@ -11,6 +11,12 @@ same commit):
 - **One-shot version (further down)** — for surfaces without a
   character limit (GitHub Copilot chat, Copilot in VS Code).
 
+Scope: the SIX sweep lists only. `schemas/SPList_QAFeedback.csv`
+(Q&A agent v2.0's feedback list) is component-scoped and deliberately
+NOT in this prompt — no lookups, so it needs no scripted
+provisioning; create it per `agent/QA_Agent_Setup.md` §9 when
+deploying that component.
+
 ---
 
 ## Chunked version — paste each part as its own message
