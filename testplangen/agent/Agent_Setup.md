@@ -1,6 +1,6 @@
 # Test Plan Generator Agent Setup — import and wire
 
-Current versions: agent file set **v1.1**, component **v1.7** (see `../CHANGES.md`).
+Current versions: agent file set **v1.2**, component **v2.1** (see `../CHANGES.md`).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story's Doc Index item
@@ -219,16 +219,26 @@ node shows unbound — that's §3).
 
 The topic file ships WITHOUT an active flow node — the topic parser
 requires `flowId` to be a real GUID, which is environment-specific,
-so a placeholder would fail paste validation. Add the node in the
-canvas: open the **GenerateTestPlan** topic → in the confirmed-Yes
-branch, between the "Starting generation…" message and the status
-condition, **+ → Call an action** → pick **TestPlanGenAgentFlow**
-(only solution flows with the agent trigger appear — §1's work). Map
-input `StoryId` = `Topic.StoryId`; save the outputs into variables
-named exactly `Topic.Status` / `Topic.DraftUrl` / `Topic.GenSummary`
-— the downstream condition and messages reference those names, so
-rename any auto-created variables to match. The commented block in
-the topic file shows the node's intended final shape.
+so a placeholder would fail paste validation. Because the node is
+absent, the topic declares its three output variables itself: the
+`initGen*` **Set variable** nodes right after the "Starting
+generation…" message set `Topic.Status` / `Topic.DraftUrl` /
+`Topic.GenSummary` to empty strings — without them the paste fails
+with "unrecognized identifier" on every reference to those names
+(v1.2 fix). Leave the initializers in place; the flow node's outputs
+overwrite them at runtime.
+
+Add the node in the canvas: open the **GenerateTestPlan** topic → in
+the confirmed-Yes branch, between the three Set variable nodes and
+the status condition, **+ → Call an action** → pick
+**TestPlanGenAgentFlow** (only solution flows with the agent trigger
+appear — §1's work). Map input `StoryId` = `Topic.StoryId`; save the
+outputs into the EXISTING variables `Topic.Status` /
+`Topic.DraftUrl` / `Topic.GenSummary` (pick them from the variable
+picker rather than letting the canvas mint new ones — the downstream
+condition and messages reference those names, so rename any
+auto-created variables to match). The commented block in the topic
+file shows the node's intended final shape.
 
 Check: Test pane → "draft a test plan" → agent asks for the id → give
 `42` → confirm → draft link comes back with the review reminder, and
