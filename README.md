@@ -38,6 +38,7 @@ sidecar to its related documents.
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy) | v1.0 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
+| docs/Build_From_Scratch.md | Consolidated fresh-tenant build walkthrough (all components, dependency order) | — |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio) | v1.1 |
 | agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
