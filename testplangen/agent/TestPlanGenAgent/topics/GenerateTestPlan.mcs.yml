@@ -1,33 +1,51 @@
-# Topic: GenerateTestPlan — collect a story id, confirm, run the flow,
-# report the draft location.
-# TestPlanGenAgentVersion: v1.3
+# Topic: GenerateTestPlan — collect a story reference (doc id,
+# devtopia issue #, or title text), resolve it to a Doc Index item id,
+# confirm, run the flow, report the draft location.
+# TestPlanGenAgentVersion: v1.4
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
-# topic canvas). This file ships WITHOUT an active flow node: the
-# parser requires flowId to be a real GUID, which is environment-
-# specific, so a placeholder fails paste validation (GuidParseError).
-# Because the flow node is absent, the three initGen* SetVariable
-# nodes below declare its output variables — without them the paste
-# fails with "unrecognized identifier" on every Topic.Status /
-# Topic.DraftUrl / Topic.GenSummary reference (v1.2 fix). At runtime
-# the flow node's output bindings overwrite the empty strings.
-# After pasting, add the flow node in the CANVAS (Agent_Setup.md §3):
-# in the confirmed-Yes branch, between the initGen* nodes and the
-# checkStatus condition, + → Call an action → TestPlanGenAgentFlow;
-# map input StoryId = Topic.StoryId and save the outputs into the
-# EXISTING variables Topic.Status / Topic.DraftUrl / Topic.GenSummary
-# (pick them, don't create new ones — the downstream nodes reference
-# those names). The commented block below shows the node's intended
-# shape for comparison with what the canvas generates.
+# topic canvas). This file ships WITHOUT active flow nodes: the parser
+# requires flowId to be a real GUID, which is environment-specific, so
+# a placeholder fails paste validation (GuidParseError). Because the
+# flow nodes are absent, the init* SetVariable nodes below declare
+# their output variables — without them the paste fails with
+# "unrecognized identifier" on every Topic.* reference (v1.2 fix). At
+# runtime the flow nodes' output bindings overwrite the empty strings.
+# After pasting, add TWO flow nodes in the CANVAS (Agent_Setup.md §3):
 #
-# v1.3: checkStatus now branches on the full Status contract —
-# ok / guard / nodraft / error — instead of ok-vs-everything, with a
-# final else that names the wiring fault when Status comes back empty
-# or unrecognized (the first live transcript's failure mode: the agent
-# flow's error respond firing on success hands the topic an unusable
-# status; see Agent_Setup.md §1c run-after discipline). The draft link
-# is now a markdown link so Teams renders one clickable link without
-# relying on bare-URL auto-linking.
+#   1. StoryLookupFlow — in the needLookup branch, between the four
+#      initLookup* nodes and the checkLookup condition: + → Call an
+#      action → StoryLookupFlow; map inputs LookupKind =
+#      Topic.LookupKind, LookupQuery = Topic.LookupQuery, and save the
+#      outputs into the EXISTING variables Topic.LookupStatus /
+#      Topic.ResolvedId / Topic.ResolvedTitle / Topic.Candidates.
+#   2. TestPlanGenAgentFlow — in the confirmed-Yes branch, between the
+#      three initGen* nodes and the checkStatus condition: + → Call an
+#      action → TestPlanGenAgentFlow; map input StoryId = Topic.StoryId
+#      and save the outputs into the EXISTING variables Topic.Status /
+#      Topic.DraftUrl / Topic.GenSummary.
+#
+# In both cases pick the existing variables, don't create new ones —
+# the downstream nodes reference those names. The commented blocks
+# below show each node's intended shape for comparison with what the
+# canvas generates.
+#
+# v1.4: the topic accepts three reference forms and classifies them
+# with deterministic Power Fx (no generative parsing — orchestration
+# is Classic):
+#   - a bare number, or "doc 42" / "id 42"  → Doc Index item id,
+#     used directly (bare numbers stay doc ids for backward
+#     compatibility — an issue number needs a marker, see next);
+#   - "#4855", "issue 4855", "devtopia 4855", or a devtopia issue URL
+#     → devtopia issue number, resolved via StoryLookupFlow's issue
+#     lane (the Doc IDs list, IssueNumber indexed);
+#   - anything else → title text, resolved via StoryLookupFlow's
+#     title lane (contains-match over indexed User Story titles).
+# One match proceeds to the existing confirm; several matches list
+# candidates (capped, with doc ids) and ask for the id; none coaches
+# and stops without invoking generation. The generation contract
+# (StoryId → Status/DraftUrl/GenSummary) is unchanged from v1.3, as
+# is the status-branched reporting below it.
 
 kind: AdaptiveDialog
 beginDialog:
@@ -43,170 +61,410 @@ beginDialog:
       - make a test plan from a story
       - start a test plan draft
       - test plan draft for doc
+      - test plan for an issue
+      - draft a test plan for a devtopia issue
+      - test plan from a story title
   actions:
     - kind: Question
-      id: askStoryId
+      id: askStoryRef
       interruptionPolicy:
         allowInterruption: true
-      variable: Topic.StoryId
-      entity: NumberPrebuiltEntity
+      variable: Topic.StoryRef
+      entity: StringPrebuiltEntity
       prompt: |-
-        Which user story? Give me its Doc Index item id — the number
-        in the list's ID column. To find one: Doc Index list → filter
-        DocKind = User Story. (Sidecars extracted at prompt_version
-        v1.7+ carry the same number as their doc_id and filename
-        docNN; older sidecars stamped a different id, so when in
-        doubt trust the list's ID column, not the sidecar.)
+        Which user story? Give me any one of:
+        - its Doc Index item id — the number in the list's ID column
+          (for example: 42),
+        - its devtopia issue — write it as #4855, issue 4855, or the
+          full devtopia URL (a bare number is read as a doc id, not an
+          issue number),
+        - or part of the story's title (for example: conflict
+          prevention).
       repromptCount: 2
       unrecognizedPrompt: |-
-        I need the numeric item id (for example: 42). I can't look a
-        story up by title yet — the Doc Index list, filtered to
-        DocKind = User Story, shows the id.
+        I need a doc id (42), an issue reference (#4855 or the
+        devtopia URL), or a few words from the story's title.
 
-    - kind: Question
-      id: confirmRun
-      variable: Topic.Confirmed
-      entity: BooleanPrebuiltEntity
-      prompt: |-
-        Generate a test-plan draft from user story doc
-        {Topic.StoryId}? The flow reads that story's sidecar, its
-        related documents, and exemplar test plans, and writes a
-        timestamped draft to Shared Documents/Test Plan Drafts. It
-        only accepts Indexed rows with DocKind = User Story.
+    - kind: SetVariable
+      id: setRefText
+      variable: Topic.RefText
+      value: =Trim(Topic.StoryRef)
+
+    - kind: SetVariable
+      id: setRefLower
+      variable: Topic.RefLower
+      value: =Lower(Topic.RefText)
+
+    # Declared here (and overwritten by exactly one classify branch
+    # below); 0 = "no story yet" and gates both the lookup and the
+    # generation sections.
+    - kind: SetVariable
+      id: initStoryId
+      variable: Topic.StoryId
+      value: =0
+
+    - kind: SetVariable
+      id: initLookupKind
+      variable: Topic.LookupKind
+      value: =""
+
+    - kind: SetVariable
+      id: initLookupQuery
+      variable: Topic.LookupQuery
+      value: =""
+
+    # Deterministic classification. IsMatch matches the COMPLETE
+    # string unless MatchOptions.Contains is passed; branch order
+    # matters only in that the URL test must run before the title
+    # fallback (a URL is never all-digits or issue-tag-complete, so
+    # the first two orderings are free).
+    - kind: ConditionGroup
+      id: classifyRef
+      conditions:
+        - id: refIsDocId
+          condition: =IsMatch(Topic.RefLower, "\d+")
+          actions:
+            - kind: SetVariable
+              id: setDocIdBare
+              variable: Topic.StoryId
+              value: =Value(Topic.RefText)
+
+        - id: refIsDocTag
+          condition: =IsMatch(Topic.RefLower, "(doc|id)\s*#?\s*\d+")
+          actions:
+            - kind: SetVariable
+              id: setDocIdTagged
+              variable: Topic.StoryId
+              value: =Value(Match(Topic.RefLower, "(?<num>\d+)").num)
+
+        - id: refIsIssueUrl
+          condition: =IsMatch(Topic.RefLower, "devtopia\.esri\.com/[^/\s]+/[^/\s]+/issues/\d+", MatchOptions.Contains)
+          actions:
+            - kind: SetVariable
+              id: setIssueKindUrl
+              variable: Topic.LookupKind
+              value: ="issue"
+            - kind: SetVariable
+              id: setIssueNumUrl
+              variable: Topic.LookupQuery
+              value: =Match(Topic.RefLower, "issues/(?<num>\d+)").num
+
+        - id: refIsIssueTag
+          condition: =IsMatch(Topic.RefLower, "(#|issue|devtopia)\s*#?\s*\d+")
+          actions:
+            - kind: SetVariable
+              id: setIssueKindTag
+              variable: Topic.LookupKind
+              value: ="issue"
+            - kind: SetVariable
+              id: setIssueNumTag
+              variable: Topic.LookupQuery
+              value: =Match(Topic.RefLower, "(?<num>\d+)").num
+
+      elseActions:
+        - kind: SetVariable
+          id: setTitleKind
+          variable: Topic.LookupKind
+          value: ="title"
+        - kind: SetVariable
+          id: setTitleQuery
+          variable: Topic.LookupQuery
+          value: =Topic.RefText
 
     - kind: ConditionGroup
-      id: checkConfirmed
+      id: checkNeedLookup
       conditions:
-        - id: confirmedYes
-          condition: =Topic.Confirmed = true
+        - id: needLookup
+          condition: =Topic.StoryId = 0
           actions:
             - kind: SendActivity
-              id: ackRunning
+              id: ackLookup
               activity: |-
-                Starting generation for doc {Topic.StoryId} — this
-                usually takes a minute or two.
+                Looking that up in the Doc Index
+                ({Topic.LookupKind}: {Topic.LookupQuery})…
 
-            # Declare the flow-node output variables so the paste
-            # validates with the flow node absent (see file header).
+            # Declare the lookup flow-node output variables so the
+            # paste validates with the flow node absent (see file
+            # header).
             - kind: SetVariable
-              id: initGenStatus
-              variable: Topic.Status
+              id: initLookupStatus
+              variable: Topic.LookupStatus
               value: =""
 
             - kind: SetVariable
-              id: initGenDraftUrl
-              variable: Topic.DraftUrl
+              id: initResolvedId
+              variable: Topic.ResolvedId
               value: =""
 
             - kind: SetVariable
-              id: initGenSummary
-              variable: Topic.GenSummary
+              id: initResolvedTitle
+              variable: Topic.ResolvedTitle
               value: =""
 
-            # Add the flow node HERE via the canvas after pasting —
-            # Call an action → TestPlanGenAgentFlow (see file header).
-            # Intended shape once added (binding key casing follows
-            # whatever the canvas generates from the flow's respond
-            # schema — lowercase status/drafturl/gensummary has been
-            # observed live; the casing is fine, what matters is that
-            # each output lands in the EXISTING Topic.* variable):
+            - kind: SetVariable
+              id: initCandidates
+              variable: Topic.Candidates
+              value: =""
+
+            # Add the StoryLookupFlow node HERE via the canvas after
+            # pasting (see file header). Intended shape once added
+            # (binding key casing follows the flow's respond schema —
+            # lowercase keys are fine, only the Topic.* side matters):
             #   - kind: InvokeFlowAction
-            #     id: runTestPlanGen
-            #     flowId: <your environment's TestPlanGenAgentFlow guid>
+            #     id: runStoryLookup
+            #     flowId: <your environment's StoryLookupFlow guid>
             #     input:
             #       binding:
-            #         StoryId: =Topic.StoryId
+            #         LookupKind: =Topic.LookupKind
+            #         LookupQuery: =Topic.LookupQuery
             #     output:
             #       binding:
-            #         Status: Topic.Status
-            #         DraftUrl: Topic.DraftUrl
-            #         GenSummary: Topic.GenSummary
+            #         LookupStatus: Topic.LookupStatus
+            #         StoryId: Topic.ResolvedId
+            #         StoryTitle: Topic.ResolvedTitle
+            #         Candidates: Topic.Candidates
 
             - kind: ConditionGroup
-              id: checkStatus
+              id: checkLookup
               conditions:
-                - id: statusOk
-                  condition: =Topic.Status = "ok"
+                - id: lookupOne
+                  condition: =Topic.LookupStatus = "one"
+                  actions:
+                    - kind: SetVariable
+                      id: setResolvedStoryId
+                      variable: Topic.StoryId
+                      value: =Value(Topic.ResolvedId)
+                    - kind: SendActivity
+                      id: sendFoundOne
+                      activity: |-
+                        Matched doc {Topic.StoryId} —
+                        "{Topic.ResolvedTitle}".
+
+                - id: lookupMany
+                  condition: =Topic.LookupStatus = "many"
                   actions:
                     - kind: SendActivity
-                      id: sendDraftReady
+                      id: sendCandidates
                       activity: |-
-                        Draft ready: [test-plan draft for doc {Topic.StoryId}]({Topic.DraftUrl})
+                        More than one indexed user story matches:
 
-                        It is machine-generated and UNREVIEWED. Before
-                        the plan is finalized: verify every test
-                        case's Trace line against the story, resolve
-                        every [VERIFY] item, then transfer the
-                        reviewed content into the team test-plan
-                        format and upload it to the LocationReferencing
-                        Documents library (the nightly sweep indexes
-                        it from there).
+                        {Topic.Candidates}
+                    - kind: Question
+                      id: askPickId
+                      variable: Topic.PickedId
+                      entity: NumberPrebuiltEntity
+                      prompt: |-
+                        Which one? Give me its doc id (the number
+                        after "doc" in the list above).
+                      repromptCount: 2
+                      unrecognizedPrompt: |-
+                        I need the numeric doc id from the list above
+                        (for example: 42).
+                    - kind: SetVariable
+                      id: setPickedStoryId
+                      variable: Topic.StoryId
+                      value: =Topic.PickedId
 
-                        Run detail: {Topic.GenSummary}
-
-                - id: statusGuard
-                  condition: =Topic.Status = "guard"
+                - id: lookupNone
+                  condition: =Topic.LookupStatus = "none"
                   actions:
                     - kind: SendActivity
-                      id: sendGuardMessage
+                      id: sendNoMatch
                       activity: |-
-                        The flow declined doc {Topic.StoryId}:
+                        No indexed user story matched
+                        ({Topic.LookupKind}: {Topic.LookupQuery}).
+                        Nothing was generated.
 
-                        {Topic.GenSummary}
+                        For a title: I match on the title as indexed
+                        in the Doc Index list (filter DocKind = User
+                        Story) — try fewer or different words, or
+                        give the doc id directly. For an issue
+                        number: the story must already be swept and
+                        its sidecar must carry the devtopia issue
+                        reference — if it was indexed before the
+                        issue link was added to the document, the
+                        Doc IDs row may not exist yet.
 
-                        To find a qualifying row: Doc Index list →
-                        filter DocKind = User Story and IndexStatus =
-                        Indexed → note the ID column value, then say
-                        "draft a test plan" with that id.
-
-                - id: statusNoDraft
-                  condition: =Topic.Status = "nodraft"
+                - id: lookupError
+                  condition: =Topic.LookupStatus = "error"
                   actions:
                     - kind: SendActivity
-                      id: sendNoDraftMessage
+                      id: sendLookupError
                       activity: |-
-                        Generation ran on doc {Topic.StoryId} but no
-                        draft was written:
-
-                        {Topic.GenSummary}
-
-                        Re-run once; if it repeats, a maker should
-                        test the prompt in the AI Builder pane —
-                        testplangen/TestPlanGen_Smoke.md failure
-                        triage.
-
-                - id: statusError
-                  condition: =Topic.Status = "error"
-                  actions:
-                    - kind: SendActivity
-                      id: sendErrorMessage
-                      activity: |-
-                        The flow hit an error and no draft was
-                        written. Error detail:
-
-                        {Topic.GenSummary}
-
-                        Re-run once; if it repeats, a maker should
-                        check the flow run history —
-                        testplangen/TestPlanGen_Smoke.md failure
-                        triage.
+                        The lookup flow hit an error, so I couldn't
+                        resolve that reference. Try again in a
+                        minute, or give the doc id directly; if it
+                        repeats, a maker should check the
+                        StoryLookupFlow run history
+                        (Agent_Setup.md §1d).
 
               elseActions:
                 - kind: SendActivity
-                  id: sendContractBroken
+                  id: sendLookupContractBroken
                   activity: |-
-                    I got an unreadable status back from the flow
-                    (status: "{Topic.Status}"). That's a wiring
-                    fault, not a story problem — the flow node's
-                    output mapping or the agent flow's respond
-                    outputs have drifted from the
-                    Status/DraftUrl/GenSummary contract. A maker
-                    should re-check Agent_Setup.md §1c (the two
-                    responds and their run-after settings) and §3
-                    (the output bindings).
-      elseActions:
-        - kind: SendActivity
-          id: sendCancelled
-          activity: |-
-            Okay, nothing was generated. Tell me a Doc Index item id
-            whenever you want a draft.
+                    I got an unreadable status back from the lookup
+                    flow (status: "{Topic.LookupStatus}"). That's a
+                    wiring fault — the lookup flow node's output
+                    mapping or StoryLookupFlow's respond outputs have
+                    drifted from the LookupStatus/StoryId/StoryTitle/
+                    Candidates contract. A maker should re-check
+                    Agent_Setup.md §1d and §3.
+
+    # Everything from here runs only once a story id is in hand; the
+    # none/error/wiring branches above leave Topic.StoryId at 0 and
+    # the topic ends after this condition falls through.
+    - kind: ConditionGroup
+      id: checkHaveStory
+      conditions:
+        - id: haveStory
+          condition: =Topic.StoryId > 0
+          actions:
+            - kind: Question
+              id: confirmRun
+              variable: Topic.Confirmed
+              entity: BooleanPrebuiltEntity
+              prompt: |-
+                Generate a test-plan draft from user story doc
+                {Topic.StoryId}? The flow reads that story's sidecar,
+                its related documents, and exemplar test plans, and
+                writes a timestamped draft to Shared Documents/Test
+                Plan Drafts. It only accepts Indexed rows with
+                DocKind = User Story.
+
+            - kind: ConditionGroup
+              id: checkConfirmed
+              conditions:
+                - id: confirmedYes
+                  condition: =Topic.Confirmed = true
+                  actions:
+                    - kind: SendActivity
+                      id: ackRunning
+                      activity: |-
+                        Starting generation for doc {Topic.StoryId} — this
+                        usually takes a minute or two.
+
+                    # Declare the flow-node output variables so the paste
+                    # validates with the flow node absent (see file header).
+                    - kind: SetVariable
+                      id: initGenStatus
+                      variable: Topic.Status
+                      value: =""
+
+                    - kind: SetVariable
+                      id: initGenDraftUrl
+                      variable: Topic.DraftUrl
+                      value: =""
+
+                    - kind: SetVariable
+                      id: initGenSummary
+                      variable: Topic.GenSummary
+                      value: =""
+
+                    # Add the flow node HERE via the canvas after pasting —
+                    # Call an action → TestPlanGenAgentFlow (see file header).
+                    # Intended shape once added (binding key casing follows
+                    # whatever the canvas generates from the flow's respond
+                    # schema — lowercase status/drafturl/gensummary has been
+                    # observed live; the casing is fine, what matters is that
+                    # each output lands in the EXISTING Topic.* variable):
+                    #   - kind: InvokeFlowAction
+                    #     id: runTestPlanGen
+                    #     flowId: <your environment's TestPlanGenAgentFlow guid>
+                    #     input:
+                    #       binding:
+                    #         StoryId: =Topic.StoryId
+                    #     output:
+                    #       binding:
+                    #         Status: Topic.Status
+                    #         DraftUrl: Topic.DraftUrl
+                    #         GenSummary: Topic.GenSummary
+
+                    - kind: ConditionGroup
+                      id: checkStatus
+                      conditions:
+                        - id: statusOk
+                          condition: =Topic.Status = "ok"
+                          actions:
+                            - kind: SendActivity
+                              id: sendDraftReady
+                              activity: |-
+                                Draft ready: [test-plan draft for doc {Topic.StoryId}]({Topic.DraftUrl})
+
+                                It is machine-generated and UNREVIEWED. Before
+                                the plan is finalized: verify every test
+                                case's Trace line against the story, resolve
+                                every [VERIFY] item, then transfer the
+                                reviewed content into the team test-plan
+                                format and upload it to the LocationReferencing
+                                Documents library (the nightly sweep indexes
+                                it from there).
+
+                                Run detail: {Topic.GenSummary}
+
+                        - id: statusGuard
+                          condition: =Topic.Status = "guard"
+                          actions:
+                            - kind: SendActivity
+                              id: sendGuardMessage
+                              activity: |-
+                                The flow declined doc {Topic.StoryId}:
+
+                                {Topic.GenSummary}
+
+                                To find a qualifying row: Doc Index list →
+                                filter DocKind = User Story and IndexStatus =
+                                Indexed → note the ID column value, then say
+                                "draft a test plan" with that id.
+
+                        - id: statusNoDraft
+                          condition: =Topic.Status = "nodraft"
+                          actions:
+                            - kind: SendActivity
+                              id: sendNoDraftMessage
+                              activity: |-
+                                Generation ran on doc {Topic.StoryId} but no
+                                draft was written:
+
+                                {Topic.GenSummary}
+
+                                Re-run once; if it repeats, a maker should
+                                test the prompt in the AI Builder pane —
+                                testplangen/TestPlanGen_Smoke.md failure
+                                triage.
+
+                        - id: statusError
+                          condition: =Topic.Status = "error"
+                          actions:
+                            - kind: SendActivity
+                              id: sendErrorMessage
+                              activity: |-
+                                The flow hit an error and no draft was
+                                written. Error detail:
+
+                                {Topic.GenSummary}
+
+                                Re-run once; if it repeats, a maker should
+                                check the flow run history —
+                                testplangen/TestPlanGen_Smoke.md failure
+                                triage.
+
+                      elseActions:
+                        - kind: SendActivity
+                          id: sendContractBroken
+                          activity: |-
+                            I got an unreadable status back from the flow
+                            (status: "{Topic.Status}"). That's a wiring
+                            fault, not a story problem — the flow node's
+                            output mapping or the agent flow's respond
+                            outputs have drifted from the
+                            Status/DraftUrl/GenSummary contract. A maker
+                            should re-check Agent_Setup.md §1c (the two
+                            responds and their run-after settings) and §3
+                            (the output bindings).
+              elseActions:
+                - kind: SendActivity
+                  id: sendCancelled
+                  activity: |-
+                    Okay, nothing was generated. Tell me a Doc Index item
+                    id, a devtopia issue number, or a story title whenever
+                    you want a draft.

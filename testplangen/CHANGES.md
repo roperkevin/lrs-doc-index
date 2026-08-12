@@ -1,3 +1,81 @@
+# TestPlanGen v2.3 — story lookup: doc id, devtopia issue #, or title (agent v1.4)
+
+Closes the "Title → id resolution" follow-on queued in
+`agent/Agent_Setup.md` since v1.1 — and folds devtopia issue numbers
+into the same lookup, since the plumbing for those already exists:
+the nightly sweep's RegexExtract mints a **Doc IDs** row
+(`Document` lookup + `IssueNumber`, both indexed) for every devtopia
+reference it finds, so "which story is issue 4855" has been a cheap
+indexed query all along. The agent can now be told any of:
+
+- a **Doc Index item id** (`42`, `doc 42`, `id 42`) — used directly,
+  exactly as before;
+- a **devtopia issue** (`#4855`, `issue 4855`, `devtopia 4855`, or
+  the full devtopia URL) — resolved via the Doc IDs list;
+- **story-title text** (anything else) — resolved by contains-match
+  over indexed User Story titles.
+
+Two deliberate calls. **A bare number is always a doc id, never an
+issue number** — the pre-v1.4 dialog took bare ids, and guessing
+between the two readings would silently draft from the wrong story;
+issue numbers need one of the markers above (the ask-prompt says so).
+And **nothing generative touches the reference**: the topic
+classifies with deterministic Power Fx (`IsMatch`/`Match` on the
+trimmed, lowercased input — orchestration stays Classic), and the
+resolution is SharePoint list queries in a flow. Ambiguity goes back
+to the human: several matches → a capped candidate list
+(`- doc NN — "Title" (surface …, release …)`, first 8, flagged past
+the cap) and a which-id question; zero matches → coaching (title:
+narrow the words / use the id; issue: the story's sidecar must
+already carry the devtopia reference — Doc IDs rows are minted at
+sweep time), and generation is NOT invoked.
+
+**New agent flow `StoryLookupFlow`** (Agent_Setup §1d; built in
+Copilot Studio per the 1c lesson; authored shape reference checked in
+at `testplangen/flow/lookup_v1_0/definition.json`): inputs
+`LookupKind` (`issue`|`title` — the flow never parses free text) and
+`LookupQuery`; outputs `LookupStatus` (`one`/`many`/`none`, `error`
+from the failure respond) + `StoryId` + `StoryTitle` + `Candidates`.
+Issue lane: `IssueNumber eq N` on Doc IDs (int-cast input — nothing
+user-typed is interpolated into `$filter` as a string), dedup by
+document, per-row Try + neutralizer (a row pointing at a recycled doc
+degrades silently, the G5 pattern), kind-filtered to
+User Story + Indexed. Title lane: `DocKind eq 'User Story' and
+IndexStatus eq 'Indexed'` top 100 by Modified, then an in-memory
+contains-filter (the curation §1 rule — no `substringof` on a
+non-indexed column, no user text in OData). Read-only over both
+lists; SharePoint connector only (zero-new-connectors rule holds);
+responds on every path.
+
+**Topic v1.4** (`topics/GenerateTestPlan.mcs.yml`): the ask-id
+question becomes an ask-reference question (String entity), followed
+by the Power Fx classify group, a lookup section (its own
+init-declared output variables, canvas-added flow node, and a
+status-branched condition with a wiring-fault else — the v1.3
+checkStatus pattern applied to the lookup contract), and the
+unchanged confirm → generate → report body now gated behind
+`Topic.StoryId > 0`. The generation contract
+(`StoryId` → `Status`/`DraftUrl`/`GenSummary`) and both generation
+flows are untouched — TestPlanGenCore, TestPlanGen (list-menu
+parent), TestPlanGenAgentFlow, the AI Builder prompt, and every
+sweep artifact are all unchanged.
+
+Deploy delta for a v1.3 tenant: build `StoryLookupFlow` (§1d),
+re-paste/push the four changed agent files, re-add BOTH canvas flow
+nodes (§3 — re-pasting the topic drops the old generation node), run
+smoke rows 1–2c and 7. No prompt, package, or schema changes.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent file set (topic restructure + instructions + fallback + connection refs) | **TestPlanGenAgentVersion v1.4** | `testplangen/agent/TestPlanGenAgent/` |
+| StoryLookupFlow (new; shape/contract reference) | v1.0 | `testplangen/flow/lookup_v1_0/definition.json` |
+| Agent_Setup (§1d, §3 two-node bind, smoke rows 2–2c/7, limits, follow-on closure) | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else (flows, packages, prompt, schemas) | unchanged | — |
+
+| Date | Tenant | Rows passed (of 9) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.4 (build + paste pending) |
+
 # TestPlanGen v2.2 — status-branched agent replies + live-transcript triage (agent v1.3)
 
 Root-caused from the first live Teams transcript (2026-08-12, the
