@@ -1,5 +1,12 @@
 # Copilot prompts — provision the LRS Doc Index SharePoint schema
 
+> **A hand-verified provisioning script already exists:**
+> `schemas/Provision_LrsDocIndex.ps1`. Prefer running it directly —
+> Copilot chat can only *generate* a script anyway (no Copilot surface
+> can execute changes against the site), and the checked-in one is
+> validated column-by-column against the CSVs. The prompts below remain
+> for regenerating a script when the schema changes.
+
 Two formats, same schema (mirrored verbatim from
 `schemas/SPList_*.csv` — if a CSV changes, update this file in the
 same commit):
