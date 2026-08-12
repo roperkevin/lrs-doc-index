@@ -1,11 +1,174 @@
-# Copilot prompt — provision the LRS Doc Index SharePoint schema
+# Copilot prompts — provision the LRS Doc Index SharePoint schema
 
-Paste everything below the rule into Copilot (GitHub Copilot chat or
-M365 Copilot) when you need it to generate the provisioning artifacts
-for the six lists + sidecar library. The schema is embedded verbatim
-from `schemas/SPList_*.csv` so Copilot needs no repo access and has
-nothing to guess. If the CSVs change, regenerate the tables here —
-this file must stay a byte-faithful mirror.
+Two formats, same schema (mirrored verbatim from
+`schemas/SPList_*.csv` — if a CSV changes, update this file in the
+same commit):
+
+- **Chunked version (below)** — for Copilot in SharePoint / M365
+  Copilot chat, which cap the prompt box. Four messages, each under
+  ~1,800 characters; paste them one at a time, in order, in ONE chat
+  session. Copilot acknowledges parts 1–3 and generates after part 4.
+- **One-shot version (further down)** — for surfaces without a
+  character limit (GitHub Copilot chat, Copilot in VS Code).
+
+---
+
+## Chunked version — paste each part as its own message
+
+### Part 1 of 4
+
+```text
+Multi-part task, part 1 of 4 (the schema arrives in parts 2-4 because
+of message length limits). Just acknowledge each part; generate only
+after part 4.
+
+Deliverable: ONE idempotent PnP.PowerShell script that provisions a
+SharePoint schema on https://esriis.sharepoint.com/sites/lrsworkspace
+EXACTLY as specified. This is transcription, not design: no renames,
+no added or skipped columns, no reordered choice values, no
+improvements. Columns marked "reserved" are intentionally unused —
+create them anyway.
+
+Rules:
+1. Create each column using its Internal Name as the creation-time
+   name (display and internal names are identical here except the
+   native Title columns).
+2. Choice columns: dropdown, NO fill-in choices, values exactly as
+   listed, order preserved.
+3. Multi-line text columns: plain text, NOT enhanced rich text
+   (RichText FALSE).
+4. Number columns: 0 decimal places.
+5. Date and Time columns: include time (not date-only).
+6. Lookup columns: single value, show the target list's Title.
+7. Index every column marked INDEXED, plus Title on the Keywords
+   list, before any data exists.
+8. Required only where marked Req; everything else optional.
+9. No uniqueness enforcement on any column.
+10. End the script by printing every list's GUID (Get-PnPList) and a
+    per-list Get-PnPField dump of internal names and types.
+
+Creation order: document library "LRS Doc Index" first, then lists
+Doc Index, Keywords, Doc IDs, Issue Refs, Doc Keywords, Doc Links
+(lookups target existing lists; the Keywords self-lookup is added
+after the Keywords list exists).
+
+Library "LRS Doc Index": standard document library, no custom
+columns, root folders: media, Test Plans, User Stories, Design
+Spikes, Data Templates, Schedules, Doc Reviews, Other.
+
+Reply "ready" and wait for part 2.
+```
+
+### Part 2 of 4
+
+```text
+Part 2 of 4 — list "Doc Index". Format: Name | Type | notes.
+
+Title | native single line | Req
+DocKey | single line | Req, INDEXED (identity/dedup key)
+FileName | single line | Req
+SourceLink | hyperlink
+Library | single line | reserved, unused - create anyway
+FileType | choice: pptx; docx; xlsx; pdf; msg; txt; html; image; other
+DocKind | choice: Test Plan; User Story; Design Spike; Data Template; Schedule; Doc Review; Other
+IndexStatus | choice: Pending; Indexed; Skipped; Error | Req, default Pending
+SourceETag | single line | reserved, unused - create anyway
+SourceModified | date and time
+TextPreview | multi-line plain text
+TextFileUrl | hyperlink
+Summary | multi-line plain text
+DocRevision | single line
+TargetRelease | single line
+PE | single line
+Dev | single line
+SourceAuthor | single line
+SourceEditor | single line
+SourceEdited | date and time
+Surface | choice: Pro; Experience Builder; Server; Enterprise; Other
+ExtractionLane | choice: xmlstrip; workbookdump; plaintext; htmltotext; ocr; none
+PromptVersion | single line
+IndexedOn | date and time
+LastError | multi-line plain text
+
+Indexed columns: DocKey.
+
+Reply "ready" and wait for part 3.
+```
+
+### Part 3 of 4
+
+```text
+Part 3 of 4 — three lists.
+
+List "Keywords":
+Title | native single line | Req (the keyword or alias, lowercase)
+Kind | choice: topic; tool; product | Req
+CanonicalRef | lookup -> Keywords (this same list), show Title
+Notes | multi-line plain text
+CurationStatus | choice: Proposed; Rejected
+ProposedCanonical | single line
+Indexed columns: Title.
+
+List "Doc IDs":
+Title | native single line | Req
+Document | lookup -> Doc Index, show Title | Req, INDEXED
+Repo | single line | Req
+IssueNumber | number, 0 decimals | Req, INDEXED
+Source | choice: url; filename; hashtag; titlematch; manual | Req
+IdKey | single line | Req, INDEXED (dedup key {DocItemId}|{repo}#{number})
+Indexed columns: Document, IssueNumber, IdKey.
+
+List "Issue Refs":
+Title | native single line | Req
+Repo | single line | Req
+IssueNumber | number, 0 decimals | Req
+IssueKey | single line | Req, INDEXED (upsert key {repo}#{number})
+IssueTitle | single line | Req
+PE | single line
+Dev | single line
+IterationLabel | single line
+StatusSummary | single line
+DoneFlag | yes/no
+SourceDocument | lookup -> Doc Index, show Title
+Indexed columns: IssueKey.
+
+Reply "ready" and wait for part 4.
+```
+
+### Part 4 of 4
+
+```text
+Part 4 of 4 — last two lists, then generate.
+
+List "Doc Keywords":
+Title | native single line | Req
+Document | lookup -> Doc Index, show Title | Req, INDEXED
+Keyword | lookup -> Keywords, show Title | Req, INDEXED
+KWKey | single line | Req, INDEXED (dedup key {DocItemId}|{KeywordItemId})
+Indexed columns: Document, Keyword, KWKey.
+
+List "Doc Links":
+Title | native single line | Req
+DocA | lookup -> Doc Index, show Title | Req
+DocB | lookup -> Doc Index, show Title | Req
+LinkType | choice: id; gantt; titlematch; review | Req
+SharedValues | multi-line plain text
+Strength | number, 0 decimals
+LinkKey | single line | Req, INDEXED (dedup key {minItemId}|{maxItemId}|{linktype})
+Indexed columns: LinkKey.
+
+That is the complete schema: 1 library + 6 lists. Now produce the
+single complete PnP.PowerShell script per the part-1 rules —
+runnable, no placeholder ellipses, with the GUID printout and
+per-list field verification at the end.
+```
+
+---
+
+## One-shot version — for surfaces without a character limit
+
+Paste everything between the next rule and the "Notes for the human"
+section as a single message.
 
 ---
 
@@ -171,8 +334,16 @@ spec.
 
 ---
 
-## Notes for the human (not part of the prompt)
+## Notes for the human (not part of either prompt)
 
+- **If instead you're using Microsoft Lists' "Create a list with
+  Copilot" box** (also character-limited): the per-list parts 2–4
+  above fit the box one list at a time, but that Copilot cannot
+  create lookup columns, indexes, or defaults, and its column names
+  become the internal names only if typed without spaces. Expect to
+  add the lookups (via CLASSIC list settings — see next note), the
+  indexes, and the IndexStatus default by hand afterward. The
+  chunked-chat → PnP script route avoids all of that.
 - One thing no script fixes: on this tenant, **lookup columns created
   through the modern UI are broken** (silent write drops, spinning
   pickers) — the fresh-tenant install order in the README says to
