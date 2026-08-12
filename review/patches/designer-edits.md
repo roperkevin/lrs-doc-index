@@ -496,5 +496,7 @@ Config → SmokeFile on a doc known to have keywords and an id edge:
    keys, list still score-descending).
 
 Then update STATUS.md (RelatedRank paste column, flow version) and
-append the deployment record. Export the flow and cut
-`flow/DocIndexSweep_v2_6.zip` per the provenance convention.
+append the deployment record. `flow/DocIndexSweep_v2_6.zip` is
+already authored (v2.5 skeleton + v2.6 payload — see
+`flow/v2_6/CHANGES.md`); optionally refresh it from the live export
+if the applied flow drifts from the authored definition.

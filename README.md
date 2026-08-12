@@ -19,6 +19,7 @@ sidecar to its related documents.
 | flow/v2_5/definition.json | Flow definition (deployed) | v2.5 |
 | flow/v2_6/definition.json | Flow definition (authored — related-ranking overhaul; designer application pending, one window with the RelatedRank v2.0 paste) | v2.6 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
+| flow/DocIndexSweep_v2_6.zip | Import package (v2.5 package skeleton + the v2.6 definition, payload byte-identical to the folder; post-import verification still needed — re-pick every Run-script action) | v2.6 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.3 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v2.0 (paste pending) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
