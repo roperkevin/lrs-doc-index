@@ -1,3 +1,63 @@
+# TestPlanGen v2.2 — status-branched agent replies + live-transcript triage (agent v1.3)
+
+Root-caused from the first live Teams transcript (2026-08-12, the
+deployment that followed the v2.1 paste fix). Three symptoms, three
+causes:
+
+**S1 — a successful run reported "The flow didn't produce a draft",
+with the child's entire JSON response
+(`{"status":"ok","drafturl":...,"gensummary":...}`) dumped into the
+reply — while the draft sat in the folder.** That JSON-in-GenSummary
+payload is exactly the §1c ERROR respond's expression
+(`take(string(coalesce(outputs('Run_a_Child_Flow')?['body'], ...)))`)
+— `TestPlanGenAgentFlow`'s error respond executed on a run whose
+child SUCCEEDED, so the topic received `Status: error` and correctly
+took its non-ok branch. Tenant-side fix (the agent flow is built in
+Copilot Studio, no repo artifact to patch): the success respond keeps
+the default run-after and maps the three outputs from the child's
+individual fields; the error respond runs ONLY after the child-flow
+action has Failed / Timed out. `Agent_Setup.md` §1c now states this
+run-after discipline and its §1 check exercises the agent flow
+directly (success run must return `Status: ok` as three separate
+fields, never `error` + JSON blob).
+
+**S2 — messages the file set never authored**: "Shall I proceed?"
+appended to the confirm, an elaborated guard message, a re-ask for
+the story id immediately after a confirmation, and a second, styled
+"✅ draft generated" summary contradicting the topic's own (wrong,
+per S1) reply. All one cause: generative orchestration / message
+rephrasing enabled on the live agent, contradicting
+`settings.mcs.yml` (`generativeAIOrchestration: Classic`). Tenant-side
+fix: restore classic orchestration + general knowledge OFF. Triage
+(f) and smoke row 1's check now catch it (exactly ONE reply reports
+the result).
+
+**S3 — the topic lumped every non-ok status into one generic branch**
+and interpolated the raw payload into prose, which Teams' auto-linking
+mangled (the transcript's `?web=1[`-spliced URL). Topic v1.3
+(`topics/GenerateTestPlan.mcs.yml`) branches on the full contract:
+`ok` (draft link now a MARKDOWN link — one clickable link without
+relying on bare-URL auto-linking), `guard` (relays the child's
+message + qualifying-row coaching), `nodraft` (re-run + AI Builder
+pane pointer), `error` (relays detail + run-history pointer), and an
+else that names the wiring fault when Status is empty/unrecognized —
+the S1 failure mode made self-diagnosing in chat. Paste-path
+deployments re-paste the topic body and re-add the §3 flow node;
+extension-path deployments re-push.
+
+No flow, package, prompt, or schema changes — the
+`StoryId` → `Status`/`DraftUrl`/`GenSummary` contract is unchanged.
+
+| Piece | Version | Where |
+|---|---|---|
+| GenerateTestPlan topic (+ file-set headers) | **TestPlanGenAgentVersion v1.3** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent_Setup §§1c/1-check/3/5 (run-after discipline, triage e–f, smoke row 1) | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 6) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.3 (re-paste pending) |
+
 # TestPlanGen v2.1 — declare the flow outputs at paste time (agent v1.2)
 
 Live-deployment fix, found on the first paste-path (no VS Code

@@ -1,6 +1,6 @@
 # Topic: GenerateTestPlan — collect a story id, confirm, run the flow,
 # report the draft location.
-# TestPlanGenAgentVersion: v1.2
+# TestPlanGenAgentVersion: v1.3
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
 # topic canvas). This file ships WITHOUT an active flow node: the
@@ -19,6 +19,15 @@
 # (pick them, don't create new ones — the downstream nodes reference
 # those names). The commented block below shows the node's intended
 # shape for comparison with what the canvas generates.
+#
+# v1.3: checkStatus now branches on the full Status contract —
+# ok / guard / nodraft / error — instead of ok-vs-everything, with a
+# final else that names the wiring fault when Status comes back empty
+# or unrecognized (the first live transcript's failure mode: the agent
+# flow's error respond firing on success hands the topic an unusable
+# status; see Agent_Setup.md §1c run-after discipline). The draft link
+# is now a markdown link so Teams renders one clickable link without
+# relying on bare-URL auto-linking.
 
 kind: AdaptiveDialog
 beginDialog:
@@ -96,7 +105,11 @@ beginDialog:
 
             # Add the flow node HERE via the canvas after pasting —
             # Call an action → TestPlanGenAgentFlow (see file header).
-            # Intended shape once added:
+            # Intended shape once added (binding key casing follows
+            # whatever the canvas generates from the flow's respond
+            # schema — lowercase status/drafturl/gensummary has been
+            # observed live; the casing is fine, what matters is that
+            # each output lands in the EXISTING Topic.* variable):
             #   - kind: InvokeFlowAction
             #     id: runTestPlanGen
             #     flowId: <your environment's TestPlanGenAgentFlow guid>
@@ -118,7 +131,7 @@ beginDialog:
                     - kind: SendActivity
                       id: sendDraftReady
                       activity: |-
-                        Draft ready: {Topic.DraftUrl}
+                        Draft ready: [test-plan draft for doc {Topic.StoryId}]({Topic.DraftUrl})
 
                         It is machine-generated and UNREVIEWED. Before
                         the plan is finalized: verify every test
@@ -130,18 +143,67 @@ beginDialog:
                         it from there).
 
                         Run detail: {Topic.GenSummary}
+
+                - id: statusGuard
+                  condition: =Topic.Status = "guard"
+                  actions:
+                    - kind: SendActivity
+                      id: sendGuardMessage
+                      activity: |-
+                        The flow declined doc {Topic.StoryId}:
+
+                        {Topic.GenSummary}
+
+                        To find a qualifying row: Doc Index list →
+                        filter DocKind = User Story and IndexStatus =
+                        Indexed → note the ID column value, then say
+                        "draft a test plan" with that id.
+
+                - id: statusNoDraft
+                  condition: =Topic.Status = "nodraft"
+                  actions:
+                    - kind: SendActivity
+                      id: sendNoDraftMessage
+                      activity: |-
+                        Generation ran on doc {Topic.StoryId} but no
+                        draft was written:
+
+                        {Topic.GenSummary}
+
+                        Re-run once; if it repeats, a maker should
+                        test the prompt in the AI Builder pane —
+                        testplangen/TestPlanGen_Smoke.md failure
+                        triage.
+
+                - id: statusError
+                  condition: =Topic.Status = "error"
+                  actions:
+                    - kind: SendActivity
+                      id: sendErrorMessage
+                      activity: |-
+                        The flow hit an error and no draft was
+                        written. Error detail:
+
+                        {Topic.GenSummary}
+
+                        Re-run once; if it repeats, a maker should
+                        check the flow run history —
+                        testplangen/TestPlanGen_Smoke.md failure
+                        triage.
+
               elseActions:
                 - kind: SendActivity
-                  id: sendFlowMessage
+                  id: sendContractBroken
                   activity: |-
-                    The flow didn't produce a draft. Its message:
-
-                    {Topic.GenSummary}
-
-                    If that's the User-Story/Indexed guard, pick a row
-                    with DocKind = User Story and IndexStatus =
-                    Indexed. Otherwise re-run once; if it repeats, see
-                    testplangen/TestPlanGen_Smoke.md failure triage.
+                    I got an unreadable status back from the flow
+                    (status: "{Topic.Status}"). That's a wiring
+                    fault, not a story problem — the flow node's
+                    output mapping or the agent flow's respond
+                    outputs have drifted from the
+                    Status/DraftUrl/GenSummary contract. A maker
+                    should re-check Agent_Setup.md §1c (the two
+                    responds and their run-after settings) and §3
+                    (the output bindings).
       elseActions:
         - kind: SendActivity
           id: sendCancelled
