@@ -3,13 +3,13 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-11 (review round r2)**.
+Last updated: **2026-08-12 (round r3 — related-ranking overhaul)**.
 
 ## Core sweep
 
 | Piece | Deployed | Authoritative file |
 |---|---|---|
-| Flow (DocIndexSweep) | v2.5 + R8–R13 addenda | `flow/v2_5/definition.json` |
+| Flow (DocIndexSweep) | v2.5 + R8–R13 addenda — **v2.6 authored, designer application pending** | `flow/v2_5/definition.json` (deployed) / `flow/v2_6/definition.json` (authored) |
 | Config.PromptVersion | **v1.8** | `flow/v2_5/definition.json` (Config) |
 | AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) | `prompts/DocIndex_Prompt.md` |
 
@@ -19,7 +19,7 @@ Last updated: **2026-08-11 (review round r2)**.
 |---|---|---|
 | ZipTextExtract | **v2.0** (r2) | **PENDING** — tenant runs v1.9 (pasted 2026-08-11) |
 | MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
-| RelatedRank | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
+| RelatedRank | **v2.0** (r3) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11); paste is fenced to the v2.6 flow window, see below |
 | SidecarPatch | **v1.4** (r2) | **PENDING** — tenant runs v1.3 (pasted 2026-08-11) |
 | RegexExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pre-v2.2) |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
@@ -35,6 +35,22 @@ alter sidecar bodies only on inputs the corpus should not contain
 revisions), so no backfill is required; changed docs converge as
 their sources change.
 
+**r3 amendment (2026-08-12)**: RelatedRank has since been promoted to
+**v2.0** (`check_batch_r3.py` gate PASSED; `check_batch_r2.py` now
+skips as superseded, like `check_batch.py` before it). For the r2
+paste above, RelatedRank still pastes its r2 artifact
+`review/patches/RelatedRank_v1_3.ts` — same signature as the live
+v1.2, safe under the v2.5 flow (or skip it: v1.3 is output-identical
+to the running v1.2). RelatedRank **v2.0 must NOT be pasted alone**:
+its signature changed, so the paste and the flow v2.6 designer edits
+are one maintenance window (`review/patches/designer-edits.md`
+§v2_6). No PromptVersion bump and no backfill for r3 either — scores
+and `why` prose change but the sidecar format does not; lists
+converge doc-by-doc via normal reindex + reciprocal merges (verified
+against both downstream consumers: TestPlanGen line-slices
+`related: [` and needs only score-descending order; the Q&A agent
+reads the rendered section generically).
+
 ## Components
 
 | Component | Version | Prompt | Notes |
@@ -47,12 +63,14 @@ their sources change.
 
 | Suite | Last green |
 |---|---|
-| check_format.py / check_related.py / check_regex.py / check_batch.py | 2026-08-11 (see `review/harness/README.md` run records) |
+| check_format.py / check_related.py / check_regex.py / check_batch_r3.py | 2026-08-12 (see `review/harness/README.md` run records) |
+| check_batch.py / check_batch_r2.py | skip as superseded by design (v1.9 / r2 generations) |
 
 ## Open actions
 
 1. Confirm + record the Q&A agent v1.1 instruction paste (`agent/CHANGES.md`).
 2. Confirm the curation v1.1 fix on the next all-resolved Saturday run (`curation/CHANGES.md`).
-3. r2 script batch: gate PASSED, promoted — **paste the six scripts** (`review/REVIEW_v2_5_r2.md` checklist step 5).
+3. r2 script batch: gate PASSED, promoted — **paste the six scripts** (`review/REVIEW_v2_5_r2.md` checklist step 5; for RelatedRank paste the r2 artifact `review/patches/RelatedRank_v1_3.ts`, or skip it — see the r3 amendment above).
 4. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).
 5. ~~PV-1 residual~~ — **CLOSED (owner decision, 2026-08-12): accepted.** The repo stays public; the pre-scrub zips (containing the work email) remain reachable in git history, knowingly. Current-tree manifests stay scrubbed. Revisit only if circumstances change (`review/REVIEW_v2_5_r2.md` §PV-1).
+6. r3 (after action 3): **paste RelatedRank v2.0 + apply the flow v2.6 designer edits in ONE maintenance window** (`review/patches/designer-edits.md` §v2_6), smoke, full run, export → cut `flow/DocIndexSweep_v2_6.zip`, then update this table (flow row, RelatedRank paste column).

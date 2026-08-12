@@ -47,6 +47,20 @@ v2.3 contract:
        ] --> > metacharacters; meta-less fallback entries render
        unlinked (folded from check_batch.py on the 2026-08-11
        promotion)
+   12. RelatedRank v2.0 (r3 overhaul; the legacy cases 1-10 above run
+       UNCHANGED through the new signature — kind-less keywords read
+       as topic x1.0 and empty new params are the legacy behavior):
+       every Doc Links edge type scores by its config weight (id
+       keeps unique-shared-value counting; others count Strength,
+       else SharedValues, else 1; unknown types are ignored); the
+       soft cap (999) is exercised exactly and an id link outranks
+       it (HA-9); keyword kinds weigh topic/tool/product; alias
+       keyword ids fold onto their canonical (DX-2); metadata
+       affinity and pair-min recency re-rank in final mode only,
+       stay symmetric, and a non-empty candsMeta restricts the
+       final universe to the fetched shortlist; configJson
+       deep-merges over defaults and shrugs off garbage; `flags`
+       reports inputs at their configured ceilings
 
 Both wrapped runners must type-check at ES2017.
 
@@ -86,9 +100,14 @@ console.log(JSON.stringify(main(%s)));
 # *Raw fields (when present) bypass the appendix's JSON.stringify so a
 # payload can ship genuinely invalid JSON into the script's parse guards.
 RR_ARGS = ("null as unknown, p.selfId, "
+           "p.mode !== undefined ? p.mode : 'final', "
            "p.myKwsRaw !== undefined ? p.myKwsRaw : JSON.stringify(p.myKws), "
            "p.sharersRaw !== undefined ? p.sharersRaw : JSON.stringify(p.sharers), "
            "p.idLinksRaw !== undefined ? p.idLinksRaw : JSON.stringify(p.idLinks), "
+           "p.kwMetaRaw !== undefined ? p.kwMetaRaw : JSON.stringify(p.kwMeta !== undefined ? p.kwMeta : []), "
+           "p.candsMetaRaw !== undefined ? p.candsMetaRaw : JSON.stringify(p.candsMeta !== undefined ? p.candsMeta : []), "
+           "JSON.stringify(p.selfMeta !== undefined ? p.selfMeta : {}), "
+           "p.configRaw !== undefined ? p.configRaw : JSON.stringify(p.config !== undefined ? p.config : {}), "
            "p.topN")
 SCP_ARGS = ("null as unknown, JSON.stringify(p.files), p.selfId, "
             "JSON.stringify(p.ranked), JSON.stringify(p.docsMeta), "
@@ -199,6 +218,228 @@ r = run('rr_cur.ts', {'selfId': '42', 'myKws': 'not json', 'sharers': 42,
                       'idLinks': None, 'topN': 5})
 check(r['count'] == 0 and r['related'] == [],
       'wrong-type params -> empty result, no throw')
+
+# ==== RelatedRank v2.0 (r3) ==============================================
+print('== RelatedRank v2.0 ==')
+
+
+def link(a, b, ltype, shared='', strength=None):
+    row = {'DocA': {'Id': a}, 'DocB': {'Id': b}, 'SharedValues': shared,
+           'LinkType': ltype}
+    if strength is not None:
+        row['Strength'] = strength
+    return row
+
+
+def kwmeta(kid, kind=None, canonical=None, title=''):
+    row = {'ID': kid, 'Title': title}
+    if kind is not None:
+        row['Kind'] = {'Value': kind}
+    if canonical is not None:
+        row['CanonicalRef'] = {'Id': canonical}
+    return row
+
+
+def candrow(doc, **fields):
+    row = {'ID': doc}
+    for k in ('DocKind', 'Surface'):
+        if k in fields:
+            row[k] = {'Value': fields[k]}
+    for k in ('TargetRelease', 'PE', 'Dev', 'SourceModified'):
+        if k in fields:
+            row[k] = fields[k]
+    return row
+
+
+# -- per-edge-type weights (default id 1000 / review 100 / gantt 60 /
+#    titlematch 40; unknown ignored; id still beats the lot combined) -----
+edge_links = [link(42, 64, 'id', 'x#1'),
+              link(42, 60, 'gantt', strength=3),
+              link(42, 62, 'review'),
+              link(42, 61, 'titlematch'),
+              link(42, 63, 'wormhole', 'a;b'),
+              link(42, 65, 'gantt', strength=3), link(42, 65, 'review'),
+              link(42, 65, 'titlematch')]
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': edge_links, 'topN': 10})
+by_doc = {e['doc']: e for e in r['related']}
+check(r['docIds'] == [64, 65, 60, 62, 61],
+      f"per-type weights rank id > combined(320) > gantt > review > titlematch (got {r['docIds']})")
+check(by_doc[64]['s'] == 1000 and by_doc[65]['s'] == 320 and
+      by_doc[60]['s'] == 180 and by_doc[62]['s'] == 100 and by_doc[61]['s'] == 40,
+      'per-type scores: 1000 / 320 / 180 (Strength 3) / 100 / 40')
+check(63 not in by_doc, 'unknown LinkType weighs 0 — row ignored, never crashes')
+check(by_doc[60]['why'] == 'gantt link (3 shared)' and
+      by_doc[61]['why'] == 'titlematch link' and
+      by_doc[65]['why'] == 'gantt link (3 shared) · review link · titlematch link',
+      'non-id edges explain themselves in why')
+
+# -- Strength vs SharedValues fallback chain -------------------------------
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [link(42, 70, 'gantt', 'a;b', strength=4),
+                                  link(42, 71, 'gantt', 'a;b'),
+                                  link(42, 72, 'gantt')], 'topN': 5})
+by_doc = {e['doc']: e for e in r['related']}
+check(by_doc[70]['s'] == 240 and by_doc[71]['s'] == 120 and by_doc[72]['s'] == 60,
+      'edge count: Strength (4) beats SharedValues (2) beats implicit 1')
+
+# -- GetItems choice shape: LinkType as {Value} object ---------------------
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [{'DocA': {'Id': 42}, 'DocB': {'Id': 80},
+                                   'SharedValues': 'x#9',
+                                   'LinkType': {'Value': 'id'}}], 'topN': 5})
+check(r['count'] == 1 and r['related'][0]['s'] == 1000,
+      'LinkType arriving as a {Value} choice object still scores')
+
+# -- HA-9: the soft cap is reachable, exact, and id-dominated --------------
+big_kws = [kwrow(42, i, 'kw%04d' % i) for i in range(1, 1201)]
+big_sharers = [kwrow(50, i, 'kw%04d' % i) for i in range(1, 1201)]
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': big_kws, 'sharers': big_sharers,
+                      'idLinks': [idlink(51, 42, 'x#1')], 'topN': 5})
+by_doc = {e['doc']: e for e in r['related']}
+check(by_doc[50]['s'] == 999, '1200 rare keywords cap at exactly 999 (HA-9)')
+check(r['docIds'] == [51, 50],
+      'one id link (1000) still outranks a capped keyword pile (999)')
+check(', +1196 more' in by_doc[50]['why'], 'capped entry keeps the compact why')
+
+# -- truncation flags: inputs at their configured ceilings -----------------
+tight = {'tops': {'myKws': 2, 'sharers': 3, 'links': 1}}
+r = run('rr_cur.ts', {'selfId': '42',
+                      'myKws': [kwrow(42, 1, 'locks'), kwrow(42, 2, 'routes')],
+                      'sharers': [kwrow(10, 1, 'locks'), kwrow(10, 2, 'routes'),
+                                  kwrow(11, 1, 'locks')],
+                      'idLinks': [idlink(11, 42, 'x#1')],
+                      'config': tight, 'topN': 5})
+check(r['flags'] == 'myKws-at-top,sharers-at-top,links-at-top',
+      f"every input at its ceiling is flagged (got '{r['flags']}')")
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [kwrow(42, 1, 'locks')],
+                      'sharers': [kwrow(10, 1, 'locks')],
+                      'idLinks': [], 'topN': 5})
+check(r['flags'] == '', 'inputs below every ceiling -> flags empty')
+
+# -- keyword kind multipliers (topic 1.0 / tool 0.6 / product 0.4) ---------
+kind_payload = {'selfId': '42',
+                'myKws': [kwrow(42, 1, 'arcgis pro'), kwrow(42, 2, 'calibration')],
+                'sharers': [kwrow(70, 1, 'arcgis pro'), kwrow(71, 2, 'calibration')],
+                'idLinks': [],
+                'kwMeta': [kwmeta(1, kind='product'), kwmeta(2, kind='topic')],
+                'topN': 5}
+r = run('rr_cur.ts', kind_payload)
+by_doc = {e['doc']: e for e in r['related']}
+check(r['docIds'] == [71, 70] and by_doc[71]['s'] == 1 and by_doc[70]['s'] == 0.4,
+      'same rarity: a topic keyword outranks a product keyword (1.0 vs 0.4)')
+r = run('rr_cur.ts', dict(kind_payload, config={'kwKind': {'product': 0.9}}))
+check({e['doc']: e['s'] for e in r['related']}[70] == 0.9,
+      'kind multipliers read from config (product overridden to 0.9)')
+
+# -- DX-2: alias keyword ids fold onto their canonical ---------------------
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [kwrow(42, 1, 'locks')],
+                      'sharers': [kwrow(10, 900, '')],
+                      'idLinks': [],
+                      'kwMeta': [kwmeta(1, kind='topic'),
+                                 kwmeta(900, canonical=1)], 'topN': 5})
+check(r['count'] == 1 and r['related'][0]['s'] == 1 and
+      r['related'][0]['sharedKeywords'] == ['locks'],
+      'alias-only sharer folds onto the canonical (df=1, canonical title)')
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [kwrow(42, 1, 'locks')],
+                      'sharers': [kwrow(10, 900, ''), kwrow(11, 1, 'locks')],
+                      'idLinks': [],
+                      'kwMeta': [kwmeta(1, kind='topic'),
+                                 kwmeta(900, canonical=1)], 'topN': 5})
+check([e['s'] for e in r['related']] == [0.631, 0.631],
+      'alias and direct sharers share one df (both docs at 1/log2(3))')
+
+# -- metadata affinity re-ranks the final phase ----------------------------
+meta_payload = {'selfId': '42', 'mode': 'final',
+                'myKws': [kwrow(42, 1, 'locks')],
+                'sharers': [kwrow(80, 1, 'locks'), kwrow(81, 1, 'locks'),
+                            kwrow(82, 1, 'locks')],
+                'idLinks': [],
+                'candsMeta': [candrow(80, TargetRelease='3.8', Surface='pro'),
+                              candrow(81, DocKind='Test Plan')],
+                'selfMeta': {'kind': 'User Story', 'surface': 'Pro',
+                             'release': '3.8', 'pe': '', 'dev': '',
+                             'modified': ''},
+                'topN': 5}
+r = run('rr_cur.ts', meta_payload)
+by_doc = {e['doc']: e for e in r['related']}
+check(r['docIds'] == [80, 81],
+      'final mode: shortlist metadata re-ranks; non-shortlist doc 82 drops')
+check(by_doc[80]['s'] == 2.0 and by_doc[81]['s'] == 0.5,
+      'df=3 base 0.5; release match +1.0, case-insensitive surface +0.5 (2.0)')
+check(by_doc[80]['why'].endswith('also: same surface, release 3.8'),
+      'meta tail names the matches')
+check('also:' not in by_doc[81]['why'],
+      'kind mismatch (Test Plan vs User Story) earns no meta tail')
+check(by_doc[81]['s'] == 0.5,
+      'empty-vs-empty pe/dev never matches (no phantom +0.75s on doc 81)')
+r = run('rr_cur.ts', dict(meta_payload, mode='shortlist'))
+check(r['docIds'] == [82, 81, 80] and
+      all(e['s'] == 0.5 for e in r['related']),
+      'shortlist mode: no metadata, full universe, pure keyword ties')
+
+# -- recency: pair-min ages, day granularity, pinned today -----------------
+rec_exp = round(1 + 2 ** (-365 / 180), 3)
+rec_payload = {'selfId': '42', 'mode': 'final',
+               'myKws': [kwrow(42, 1, 'locks')],
+               'sharers': [kwrow(80, 1, 'locks')],
+               'idLinks': [],
+               'candsMeta': [candrow(80, SourceModified='2025-08-12T00:00:00Z')],
+               'selfMeta': {'kind': '', 'surface': '', 'release': '', 'pe': '',
+                            'dev': '', 'modified': '2026-08-10T00:00:00Z'},
+               'config': {'today': '2026-08-12'}, 'topN': 5}
+r = run('rr_cur.ts', rec_payload)
+check(r['related'][0]['s'] == rec_exp,
+      f'recency: 365-day-old pair-min decays to +{round(rec_exp - 1, 3)} (3 decimals)')
+swapped = dict(rec_payload,
+               candsMeta=[candrow(80, SourceModified='2026-08-10T00:00:00Z')],
+               selfMeta=dict(rec_payload['selfMeta'],
+                             modified='2025-08-12T00:00:00Z'))
+r2 = run('rr_cur.ts', swapped)
+check(r2['related'][0]['s'] == rec_exp,
+      'recency is pair-min: swapping which doc is stale changes nothing')
+r3 = run('rr_cur.ts', dict(rec_payload, selfMeta=dict(rec_payload['selfMeta'],
+                                                      modified='')))
+check(r3['related'][0]['s'] == 1, 'missing self date -> no recency bonus')
+
+# -- symmetry: s(A->B) == s(B->A) with meta + recency enabled --------------
+def sym_side(me, other):
+    return {'selfId': str(me), 'mode': 'final',
+            'myKws': [kwrow(me, 1, 'locks')],
+            'sharers': [kwrow(other, 1, 'locks')],
+            'idLinks': [link(min(me, other), max(me, other), 'gantt', strength=2)],
+            'candsMeta': [candrow(other, DocKind='Test Plan', TargetRelease='3.8',
+                                  SourceModified='2026-06-01T00:00:00Z' if other == 17
+                                  else '2026-08-01T00:00:00Z')],
+            'selfMeta': {'kind': 'Test Plan', 'surface': '', 'release': '3.8',
+                         'pe': '', 'dev': '',
+                         'modified': '2026-06-01T00:00:00Z' if me == 17
+                         else '2026-08-01T00:00:00Z'},
+            'config': {'today': '2026-08-12'}, 'topN': 5}
+
+
+ra = run('rr_cur.ts', sym_side(42, 17))
+rb = run('rr_cur.ts', sym_side(17, 42))
+check(ra['related'][0]['s'] == rb['related'][0]['s'] and ra['count'] == 1,
+      f"symmetry: s(42->17) == s(17->42) == {ra['related'][0]['s']}")
+
+# -- config hardening: garbage/partial/unknown-mode degrade gracefully -----
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [idlink(11, 42, 'x#1')],
+                      'configRaw': '{{{not json', 'topN': 5})
+check(r['count'] == 1 and r['related'][0]['s'] == 1000,
+      'garbage configJson -> defaults, no throw')
+r = run('rr_cur.ts', {'selfId': '42', 'myKws': [], 'sharers': [],
+                      'idLinks': [idlink(11, 42, 'x#1')],
+                      'config': {'edge': {'id': 5}}, 'topN': 5})
+check(r['related'][0]['s'] == 5,
+      'partial config deep-merges (edge.id alone overridden)')
+r = run('rr_cur.ts', {'selfId': '42', 'mode': 'banana',
+                      'myKws': [kwrow(42, 1, 'locks')],
+                      'sharers': [kwrow(10, 1, 'locks'), kwrow(11, 1, 'locks')],
+                      'idLinks': [], 'candsMeta': [candrow(10)], 'topN': 5})
+check(r['docIds'] == [10],
+      'unknown mode reads as final (candsMeta restriction applies)')
 
 # ==== SidecarPatch ========================================================
 print('== SidecarPatch ==')

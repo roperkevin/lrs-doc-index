@@ -10,6 +10,11 @@ promoted batch) and the "fixture discriminates" assertions — which
 need the genuinely-old scripts — are skipped via the PROMOTED guard.
 The tenant PASTE may still be pending independently; see STATUS.md.
 
+SUPERSEDED since 2026-08-12 (r3): scripts/RelatedRank.ts is v2.0 —
+a signature change this gate's premises predate — so the whole gate
+now skips via the guard below, exactly as check_batch.py did when r2
+itself moved scripts/ past the v1.9 generation.
+
 Stages the six patch files —
 
   ../patches/RegexExtract_v1_3.ts     (SB-1)
@@ -43,6 +48,19 @@ import os
 import shutil
 import subprocess
 import sys
+
+# r3 (2026-08-12): once a NEWER batch is promoted over scripts/, this
+# gate's premises break by design — the staged r2 patches no longer
+# equal the shipped scripts (RelatedRank moved to v2.0, a signature
+# change), and the standing suites carry folded v2.0 assertions the
+# r2 generation predates. Skip gracefully (the check_batch.py
+# precedent); to re-run the r2 gate for the record, check out the
+# r2-promotion-era commit from git history.
+if 'RelatedRank v1.3' not in open('../../scripts/RelatedRank.ts',
+                                  encoding='utf-8').read(200):
+    print('scripts/ has moved past the r2 generation — this HISTORICAL '
+          'gate is superseded (see the r3 note in its docstring); skipping.')
+    sys.exit(0)
 
 PATCHES = {
     'RegexExtract.ts': '../patches/RegexExtract_v1_3.ts',
