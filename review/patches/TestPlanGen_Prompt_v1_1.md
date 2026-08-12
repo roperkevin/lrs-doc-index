@@ -1,38 +1,33 @@
-# Test Plan Generation Prompt — v1.1
+# TestPlanGen Prompt — v1.1 (sanitizer-safe output markers) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.1`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+Minimal diff of v1.0, fixing one live failure (2026-08-12): a run
+terminated `NoDraftMarkers` on a complete, well-formed draft. The raw
+`Gen_text_raw` began and ended with a bare `<<>>` — AI Builder
+sanitizes HTML-tag-like sequences out of the prompt REPLY, and
+`<<<DRAFT BEGIN>>>` / `<<<DRAFT END>>>` each contain a tag-shaped
+inner run (`<DRAFT BEGIN>` / `<DRAFT END>`) that the sanitizer
+removed, leaving only the outer `<<`+`>>`. The flow's G9 slice then
+found no markers and (correctly) failed closed. TestPlanGen is the
+first prompt to put angle-bracket sentinels in the OUTPUT direction —
+the other two prompts brace-slice JSON out and use `<<<...>>>` only
+as input fences, which travel flow→model and are never sanitized.
 
-Four item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**.
+The fix: square-bracket output sentinels, `[[[DRAFT BEGIN]]]` /
+`[[[DRAFT END]]]`. Same lengths as the old markers (17 / 15), so the
+flow's `Draft_body` arithmetic (the hardcoded 17) is unchanged — only
+the two literals in `Draft_begin` / `Draft_end` change (guide §3 G9;
+both checked-in definitions and packages carry it). Input fences stay
+angle-bracketed. Everything else is byte-identical to v1.0. Same four
+inputs, unchanged names: **StoryMeta**, **StoryText**,
+**RelatedDigest**, **ExemplarText**.
 
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
-
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written, then wire per the build guide §2.
+Deploy: paste into the `LRS Test Plan Generation` AI Builder prompt,
+update `Draft_begin` / `Draft_end` and `Config_gen`'s
+`TestPlanGenPromptVersion` in the live flows (designer edit), then
+re-run the smoke suite (`testplangen/TestPlanGen_Smoke.md`) — rows 5
+and 6 use the new markers. NEVER bump `Config.PromptVersion` for
+this — nothing here changes the sidecar format or reindexes the
+corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 

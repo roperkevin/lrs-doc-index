@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v1.7** (see `CHANGES.md`).
+Current component version: **v1.8** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -73,16 +73,21 @@ Create a custom prompt named `LRS Test Plan Generation`. Four input
 parameters, exact names: **StoryMeta**, **StoryText**,
 **RelatedDigest**, **ExemplarText**. Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.0` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.1` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
 reindexes the corpus).
 
 Unlike the other two prompts, the reply is MARKDOWN between
-`<<<DRAFT BEGIN>>>` / `<<<DRAFT END>>>` markers, not JSON — the
+`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` markers, not JSON — the
 rationale is in the prompt file's header; the flow's G9 slice below is
-the F3 pattern with different sentinels, and it fails closed.
+the F3 pattern with different sentinels, and it fails closed. The
+output sentinels are square-bracketed (v1.8): AI Builder strips
+HTML-tag-like sequences from the REPLY, so the original
+`<<<DRAFT BEGIN>>>` came back as a bare `<<>>` (the tag-shaped
+`<DRAFT BEGIN>` inside it was sanitized away) and every run failed
+closed. Angle-bracket fences remain fine on the INPUT side.
 
 Check: test in the AI Builder pane with a three-line StoryMeta
 (`title: Smoke Story`, `surface: Pro`, `target_release: 3.8`), a
@@ -146,7 +151,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "ExemplarCap": 20000,
   "NeighborCap": 5,
   "DigestSummaryCap": 400,
-  "TestPlanGenPromptVersion": "v1.0"
+  "TestPlanGenPromptVersion": "v1.1"
 }
 ```
 
@@ -326,15 +331,15 @@ neutralizer pattern as G5:
   One call per run.
 
 **G9 — marker slice** (the F3 pattern with draft sentinels; the BEGIN
-marker `<<<DRAFT BEGIN>>>` is 17 characters):
+marker `[[[DRAFT BEGIN]]]` is 17 characters):
 - **`Gen_text_raw`** (Compose):
   `@coalesce(outputs('Run_testplangen_prompt')?['body/responsev2/predictionOutput/text'], '')`
 - **`Draft_begin`** (Compose):
-  `@indexOf(outputs('Gen_text_raw'), '<<<DRAFT BEGIN>>>')`
+  `@indexOf(outputs('Gen_text_raw'), '[[[DRAFT BEGIN]]]')`
 - **`Draft_end`** (Compose) — `lastIndexOf`, so a marker echoed inside
   the draft body cannot truncate it (the brace-slice's greedy-close
   rule):
-  `@lastIndexOf(outputs('Gen_text_raw'), '<<<DRAFT END>>>')`
+  `@lastIndexOf(outputs('Gen_text_raw'), '[[[DRAFT END]]]')`
 - **`Draft_body`** (Compose):
   `@if(and(greater(outputs('Draft_begin'), -1), greater(outputs('Draft_end'), add(outputs('Draft_begin'), 17))), trim(substring(outputs('Gen_text_raw'), add(outputs('Draft_begin'), 17), sub(outputs('Draft_end'), add(outputs('Draft_begin'), 17)))), '')`
 - **`If_draft_ok`** (Condition:

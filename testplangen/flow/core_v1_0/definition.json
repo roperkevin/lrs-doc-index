@@ -73,7 +73,7 @@
             "ExemplarCap": 20000,
             "NeighborCap": 5,
             "DigestSummaryCap": 400,
-            "TestPlanGenPromptVersion": "v1.0"
+            "TestPlanGenPromptVersion": "v1.1"
           }
         },
         "Init_NeighborDigest": {
@@ -613,7 +613,7 @@
                     ]
                   },
                   "type": "Compose",
-                  "inputs": "@indexOf(outputs('Gen_text_raw'), '<<<DRAFT BEGIN>>>')"
+                  "inputs": "@indexOf(outputs('Gen_text_raw'), '[[[DRAFT BEGIN]]]')"
                 },
                 "Draft_end": {
                   "runAfter": {
@@ -622,7 +622,7 @@
                     ]
                   },
                   "type": "Compose",
-                  "inputs": "@lastIndexOf(outputs('Gen_text_raw'), '<<<DRAFT END>>>')"
+                  "inputs": "@lastIndexOf(outputs('Gen_text_raw'), '[[[DRAFT END]]]')"
                 },
                 "Draft_body": {
                   "runAfter": {
