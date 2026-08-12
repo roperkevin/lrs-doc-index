@@ -1,0 +1,716 @@
+{
+  "name": "e3a71f5c-8b24-4d69-9c07-2f8b5a3d6e41",
+  "id": "/providers/Microsoft.Flow/flows/e3a71f5c-8b24-4d69-9c07-2f8b5a3d6e41",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "KeywordCuration",
+    "definition": {
+      "metadata": {
+        "workflowEntityId": null,
+        "processAdvisorMetadata": null,
+        "flowChargedByPaygo": null,
+        "flowclientsuspensionreason": "None",
+        "flowclientsuspensiontime": null,
+        "flowclientsuspensionreasondetails": null,
+        "creator": {
+          "id": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+          "type": "User",
+          "tenantId": "aee6e3c9-711e-4c7c-bd27-04f2307db20d"
+        },
+        "provisioningMethod": "FromDefinition",
+        "failureAlertSubscription": true,
+        "clientLastModifiedTime": "2026-08-07T23:23:32.8102362Z",
+        "lastModifiedBy": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+        "connectionKeySavedTimeKey": "2026-08-07T23:23:32.8102362Z",
+        "creationSource": "Portal",
+        "modifiedSources": "Portal"
+      },
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "interval": 1,
+            "frequency": "Week",
+            "schedule": {
+              "weekDays": [
+                "Saturday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            },
+            "timeZone": "US Mountain Standard Time"
+          },
+          "evaluatedRecurrence": {
+            "interval": 1,
+            "frequency": "Week",
+            "schedule": {
+              "weekDays": [
+                "Saturday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            },
+            "timeZone": "US Mountain Standard Time"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Config_cur": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": {
+            "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
+            "KeywordsList": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+            "DigestFolder": "/Shared Documents",
+            "DigestName": "Keyword_Curation_Digest.md",
+            "MaxProposals": 20,
+            "CurationPromptVersion": "v1.0"
+          }
+        },
+        "Init_ProposalLines": {
+          "runAfter": {
+            "Config_cur": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ProposalLines",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_WrittenCount": {
+          "runAfter": {
+            "Init_ProposalLines": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "WrittenCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_DroppedCount": {
+          "runAfter": {
+            "Init_WrittenCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "DroppedCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_ClearedCount": {
+          "runAfter": {
+            "Init_DroppedCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ClearedCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Try_curation": {
+          "runAfter": {
+            "Init_ClearedCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "Scope",
+          "actions": {
+            "Get_keywords_all": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                  "table": "e096ab26-27d2-4ef4-ae40-c24e35fa2fb7",
+                  "$top": 5000
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Filter_stale_state": {
+              "runAfter": {
+                "Get_keywords_all": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_keywords_all')?['value']",
+                "where": "@and(not(empty(item()?['CanonicalRef'])), or(not(empty(item()?['CurationStatus']?['Value'])), not(empty(item()?['ProposedCanonical']))))"
+              }
+            },
+            "For_each_approved": {
+              "foreach": "@body('Filter_stale_state')",
+              "runAfter": {
+                "Filter_stale_state": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Clear_state": {
+                  "runAfter": {},
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                      "parameters/method": "POST",
+                      "parameters/uri": "_api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/items(@{items('For_each_approved')?['ID']})",
+                      "parameters/headers": {
+                        "Accept": "application/json;odata=nometadata",
+                        "Content-Type": "application/json;odata=nometadata",
+                        "IF-MATCH": "*",
+                        "X-HTTP-Method": "MERGE"
+                      },
+                      "parameters/body": "{\"CurationStatus\": null, \"ProposedCanonical\": null}"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "HttpRequest"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                },
+                "Inc_cleared": {
+                  "runAfter": {
+                    "Clear_state": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "IncrementVariable",
+                  "inputs": {
+                    "name": "ClearedCount",
+                    "value": 1
+                  }
+                }
+              }
+            },
+            "Filter_canonical_cur": {
+              "runAfter": {
+                "For_each_approved": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_keywords_all')?['value']",
+                "where": "@empty(item()?['CanonicalRef'])"
+              }
+            },
+            "Select_vocab": {
+              "runAfter": {
+                "Filter_canonical_cur": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Filter_canonical_cur')",
+                "select": "@concat(item()?['Title'], ' [', coalesce(item()?['Kind']?['Value'], ''), ']')"
+              }
+            },
+            "Vocab_lines": {
+              "runAfter": {
+                "Select_vocab": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@join(body('Select_vocab'), decodeUriComponent('%0A'))"
+            },
+            "Filter_blocked": {
+              "runAfter": {
+                "Vocab_lines": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Filter_canonical_cur')",
+                "where": "@not(empty(coalesce(item()?['CurationStatus']?['Value'], '')))"
+              }
+            },
+            "Select_blocked": {
+              "runAfter": {
+                "Filter_blocked": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Select",
+              "inputs": {
+                "from": "@body('Filter_blocked')",
+                "select": "@item()?['Title']"
+              }
+            },
+            "Blocked_lines": {
+              "runAfter": {
+                "Select_blocked": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@join(body('Select_blocked'), decodeUriComponent('%0A'))"
+            },
+            "Run_curation_prompt": {
+              "runAfter": {
+                "Blocked_lines": [
+                  "Succeeded"
+                ]
+              },
+              "metadata": {
+                "flowSystemMetadata": {
+                  "portalOperationId": "aibuilderpredict_customprompt",
+                  "portalOperationGroup": "aibuilder",
+                  "portalOperationApiDisplayNameOverride": "AI Builder",
+                  "portalOperationIconOverride": "https://content.powerapps.com/resource/makerx/static/pauto/images/designeroperations/aibuilderIcon2026.8e878397.png",
+                  "portalOperationBrandColorOverride": "#0A76C4",
+                  "portalOperationApiTierOverride": "Standard"
+                }
+              },
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "recordId": "00000000-0000-0000-0000-000000000000",
+                  "item/requestv2/Vocabulary": "@{outputs('Vocab_lines')}",
+                  "item/requestv2/DoNotPropose": "@{outputs('Blocked_lines')}",
+                  "item/source": {
+                    "consumptionSource": "PowerAutomate",
+                    "partnerSource": "AIBuilder",
+                    "consumptionSourceVersion": "Flow",
+                    "partnerSourceVersion": "00000000-0000-0000-0000-000000000000"
+                  }
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+                  "connectionName": "shared_commondataserviceforapps",
+                  "operationId": "aibuilderpredict_customprompt"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "Cur_text_raw": {
+              "runAfter": {
+                "Run_curation_prompt": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@coalesce(outputs('Run_curation_prompt')?['body/responsev2/predictionOutput/text'], '{}')"
+            },
+            "Cur_json_slice": {
+              "runAfter": {
+                "Cur_text_raw": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@if(and(greater(indexOf(outputs('Cur_text_raw'), '{'), -1), greater(lastIndexOf(outputs('Cur_text_raw'), '}'), indexOf(outputs('Cur_text_raw'), '{'))), substring(outputs('Cur_text_raw'), indexOf(outputs('Cur_text_raw'), '{'), add(sub(lastIndexOf(outputs('Cur_text_raw'), '}'), indexOf(outputs('Cur_text_raw'), '{')), 1)), '{}')"
+            },
+            "Parse_proposals": {
+              "runAfter": {
+                "Cur_json_slice": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@json(outputs('Cur_json_slice'))"
+            },
+            "Proposals": {
+              "runAfter": {
+                "Parse_proposals": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@take(coalesce(outputs('Parse_proposals')?['proposals'], json('[]')), outputs('Config_cur')?['MaxProposals'])"
+            },
+            "Filter_pending": {
+              "runAfter": {
+                "Proposals": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Query",
+              "inputs": {
+                "from": "@body('Get_keywords_all')?['value']",
+                "where": "@and(empty(item()?['CanonicalRef']), equals(coalesce(item()?['CurationStatus']?['Value'], ''), 'Proposed'))"
+              }
+            },
+            "For_each_pending": {
+              "foreach": "@body('Filter_pending')",
+              "runAfter": {
+                "Filter_pending": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Append_pending_line": {
+                  "runAfter": {},
+                  "type": "AppendToStringVariable",
+                  "inputs": {
+                    "name": "ProposalLines",
+                    "value": "- (pending) '@{items('For_each_pending')?['Title']}' \u2192 @{items('For_each_pending')?['ProposedCanonical']}@{decodeUriComponent('%0A')}"
+                  }
+                }
+              }
+            },
+            "For_each_proposal": {
+              "foreach": "@outputs('Proposals')",
+              "runAfter": {
+                "For_each_pending": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "Alias_lower": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": "@toLower(trim(coalesce(items('For_each_proposal')?['alias'], '')))"
+                },
+                "Canon_lower": {
+                  "runAfter": {
+                    "Alias_lower": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@toLower(trim(coalesce(items('For_each_proposal')?['canonical'], '')))"
+                },
+                "Find_alias": {
+                  "runAfter": {
+                    "Canon_lower": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Get_keywords_all')?['value']",
+                    "where": "@equals(toLower(item()?['Title']), outputs('Alias_lower'))"
+                  }
+                },
+                "Find_canon": {
+                  "runAfter": {
+                    "Find_alias": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Get_keywords_all')?['value']",
+                    "where": "@equals(toLower(item()?['Title']), outputs('Canon_lower'))"
+                  }
+                },
+                "If_valid_proposal": {
+                  "runAfter": {
+                    "Find_canon": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "If",
+                  "expression": "@and(not(empty(body('Find_alias'))), not(empty(body('Find_canon'))), not(equals(outputs('Alias_lower'), outputs('Canon_lower'))), empty(first(body('Find_alias'))?['CanonicalRef']), empty(coalesce(first(body('Find_alias'))?['CurationStatus']?['Value'], '')), empty(first(body('Find_canon'))?['CanonicalRef']))",
+                  "actions": {
+                    "Why_capped": {
+                      "runAfter": {},
+                      "type": "Compose",
+                      "inputs": "@take(replace(replace(coalesce(items('For_each_proposal')?['why'], ''), '\"', ''), decodeUriComponent('%0A'), ' '), 160)"
+                    },
+                    "Body_proposal": {
+                      "runAfter": {
+                        "Why_capped": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": {
+                        "CurationStatus": "Proposed",
+                        "ProposedCanonical": "@{concat(first(body('Find_canon'))?['Title'], ' \u2014 ', outputs('Why_capped'))}"
+                      }
+                    },
+                    "Write_proposal": {
+                      "runAfter": {
+                        "Body_proposal": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                          "parameters/method": "POST",
+                          "parameters/uri": "_api/web/lists(guid'e096ab26-27d2-4ef4-ae40-c24e35fa2fb7')/items(@{first(body('Find_alias'))?['ID']})",
+                          "parameters/headers": {
+                            "Accept": "application/json;odata=nometadata",
+                            "Content-Type": "application/json;odata=nometadata",
+                            "IF-MATCH": "*",
+                            "X-HTTP-Method": "MERGE"
+                          },
+                          "parameters/body": "@{string(outputs('Body_proposal'))}"
+                        },
+                        "host": {
+                          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                          "connectionName": "shared_sharepointonline",
+                          "operationId": "HttpRequest"
+                        },
+                        "authentication": "@parameters('$authentication')"
+                      }
+                    },
+                    "Append_proposal_line": {
+                      "runAfter": {
+                        "Write_proposal": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "AppendToStringVariable",
+                      "inputs": {
+                        "name": "ProposalLines",
+                        "value": "- '@{first(body('Find_alias'))?['Title']}' \u2192 '@{first(body('Find_canon'))?['Title']}' \u2014 @{outputs('Why_capped')}@{decodeUriComponent('%0A')}"
+                      }
+                    },
+                    "Inc_written": {
+                      "runAfter": {
+                        "Append_proposal_line": [
+                          "Succeeded"
+                        ]
+                      },
+                      "type": "IncrementVariable",
+                      "inputs": {
+                        "name": "WrittenCount",
+                        "value": 1
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Inc_dropped": {
+                        "runAfter": {},
+                        "type": "IncrementVariable",
+                        "inputs": {
+                          "name": "DroppedCount",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "If_any_lines": {
+              "runAfter": {
+                "For_each_proposal": [
+                  "Succeeded"
+                ]
+              },
+              "type": "If",
+              "expression": "@not(empty(variables('ProposalLines')))",
+              "actions": {
+                "Digest_body": {
+                  "runAfter": {},
+                  "type": "Compose",
+                  "inputs": "@concat('# Keyword curation digest', decodeUriComponent('%0A%0A'), 'Run: ', utcNow(), '  \u00b7  CurationPromptVersion: ', outputs('Config_cur')?['CurationPromptVersion'], decodeUriComponent('%0A%0A'), 'Approve: open the Keywords row, set CanonicalRef to the named row.', decodeUriComponent('%0A'), 'Reject: set CurationStatus = Rejected.', decodeUriComponent('%0A'), 'Review view: Keywords \u2192 Curation queue.', decodeUriComponent('%0A%0A'), variables('ProposalLines'))"
+                },
+                "Save_digest": {
+                  "runAfter": {
+                    "Digest_body": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                      "folderPath": "@{outputs('Config_cur')?['DigestFolder']}",
+                      "name": "@outputs('Config_cur')?['DigestName']",
+                      "body": "@{outputs('Digest_body')}"
+                    },
+                    "host": {
+                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                      "connectionName": "shared_sharepointonline",
+                      "operationId": "CreateFile"
+                    },
+                    "authentication": "@parameters('$authentication')"
+                  }
+                }
+              },
+              "else": {
+                "actions": {
+                  "Digest_body_empty": {
+                    "runAfter": {},
+                    "type": "Compose",
+                    "inputs": "@concat('# Keyword curation digest', decodeUriComponent('%0A%0A'), 'Run: ', utcNow(), '  \u00b7  CurationPromptVersion: ', outputs('Config_cur')?['CurationPromptVersion'], decodeUriComponent('%0A%0A'), 'The queue is EMPTY \u2014 no pending proposals. All previously proposed merges have been approved or rejected; the next Saturday run may propose new ones.')"
+                  },
+                  "Save_digest_empty": {
+                    "runAfter": {
+                      "Digest_body_empty": [
+                        "Succeeded"
+                      ]
+                    },
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                        "folderPath": "@{outputs('Config_cur')?['DigestFolder']}",
+                        "name": "@outputs('Config_cur')?['DigestName']",
+                        "body": "@{outputs('Digest_body_empty')}"
+                      },
+                      "host": {
+                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                        "connectionName": "shared_sharepointonline",
+                        "operationId": "CreateFile"
+                      },
+                      "authentication": "@parameters('$authentication')"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Catch_curation": {
+          "runAfter": {
+            "Try_curation": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Scope",
+          "actions": {
+            "Filter_failed_cur": {
+              "runAfter": {},
+              "type": "Query",
+              "inputs": {
+                "from": "@result('Try_curation')",
+                "where": "@or(equals(item()?['status'], 'Failed'), equals(item()?['status'], 'TimedOut'))"
+              }
+            },
+            "Err_detail_cur": {
+              "runAfter": {
+                "Filter_failed_cur": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@take(concat(coalesce(first(body('Filter_failed_cur'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed_cur'))?['error'], first(body('Filter_failed_cur'))?['outputs'], ''))), 4000)"
+            },
+            "Terminate_failed": {
+              "runAfter": {
+                "Err_detail_cur": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Terminate",
+              "inputs": {
+                "runStatus": "Failed",
+                "runError": {
+                  "code": "CurationFailed",
+                  "message": "@{outputs('Err_detail_cur')}"
+                }
+              }
+            }
+          }
+        },
+        "Cur_summary": {
+          "runAfter": {
+            "Try_curation": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@{concat('canon=', length(body('Filter_canonical_cur')), ' blocked=', length(body('Filter_blocked')), ' proposed_by_model=', length(outputs('Proposals')), ' written=', variables('WrittenCount'), ' dropped=', variables('DroppedCount'), ' cleared=', variables('ClearedCount'))}"
+        }
+      },
+      "outputs": {}
+    },
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "connectionName": "9c9bfea530b9428aa0c7c2a438b2c0a8",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "tier": "NotSpecified",
+        "apiName": "sharepointonline",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      },
+      "shared_commondataserviceforapps": {
+        "connectionName": "shared-commondataser-ebf2bddd-de06-4bb4-a085-3ef4a329003e",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_commondataserviceforapps",
+        "tier": "NotSpecified",
+        "apiName": "commondataserviceforapps",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      }
+    },
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}
