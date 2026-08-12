@@ -42,6 +42,7 @@ sidecar to its related documents.
 | agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
+| curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
 | testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v1.7) |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.0 |

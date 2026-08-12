@@ -9,12 +9,17 @@ alias→canonical merges for a human to approve. The flow NEVER writes
 `ProposedCanonical`); a human approves by setting the lookup, and the
 flow cleans up after them on the next run.
 
-This component ships as a build guide, not a `definition.json`: a
-brand-new flow has no package skeleton to import (the `flow/` zips are
-re-cuts of a prior package), and the flow is ~30 actions — buildable
-from §3 in under an hour. Once built, exporting it and checking in
-`curation/flow/v1_0/definition.json` for provenance is a queued
-follow-on.
+This component ships primarily as a build guide. Since 2026-08-12 an
+**authored** `curation/flow/v1_1/definition.json` accompanies it —
+transcribed from §3, not exported from the tenant (see
+`CHANGES.md`): use it as a structural reference or an import
+starting point, but designer-verify against this guide, and re-pick
+the AI Builder prompt binding (its `recordId` is a placeholder — a
+tenant-minted id this repo cannot know). The original rationale
+stands for the *package*: a brand-new flow has no exported zip
+skeleton, so no import package is fabricated; when the built flow is
+eventually exported, diff it against the authored definition and cut
+the zip from the export.
 
 Everything below is manual portal/designer work in the
 `designer-edits.md` mold: apply in order, check after each step. All
@@ -418,8 +423,10 @@ Record the run in `curation/CHANGES.md` (date, tenant, steps passed).
   propose/approve loop has bedded in — DocKeywords is RelatedRank's
   input, and a re-point bug silently reshapes related-doc ranking
   corpus-wide.
-- **Provenance export**: export the built flow and check in
-  `curation/flow/v1_0/definition.json`, the way `flow/` versions
-  accrete.
+- **Provenance export**: ~~export the built flow and check in
+  `curation/flow/v1_0/definition.json`~~ — closed 2026-08-12 by the
+  authored `curation/flow/v1_1/definition.json` (see the intro note
+  and `CHANGES.md`). The residual: on the next tenant export, diff
+  against the authored file and record any drift RL-4-style.
 - **Usage counts as a prompt input** (junction rows per keyword) to
   inform merge direction — cheap once the re-point pass exists.

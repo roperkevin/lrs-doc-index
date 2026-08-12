@@ -1,3 +1,39 @@
+# Curation flow definition authored — `curation/flow/v1_1/definition.json` (2026-08-12)
+
+Closes the "provenance export" queued follow-on from
+`Curation_Setup.md`, with one honest caveat: the definition is
+**authored from the guide, not exported from the tenant**. Every
+action name, expression, and connector shape is transcribed verbatim
+from §3 (at v1.1 — the C11 No branch included), in the same
+packaged-resource format as the `flow/` and `testplangen/flow/`
+definitions (wrapper, `Recurrence` trigger Week/Saturday/08:00
+Mountain, SharePoint + Dataverse connection references copied from
+the sweep definition; no Excel connector — this flow runs no
+scripts). Validated structurally: JSON well-formed, every WDL
+expression paren-balanced, every `runAfter` resolves within its
+scope, every `outputs()`/`body()`/`items()`/`variables()` reference
+targets a real action or variable, and the guide's fenced
+expressions appear byte-for-byte.
+
+Two things this definition can NOT carry, by nature:
+
+- **The AI Builder prompt binding**: `Run_curation_prompt.recordId`
+  (and `partnerSourceVersion`) are zeroed placeholders — the real ids
+  are minted by the tenant when the `LRS Keyword Curation` prompt is
+  created. Anyone importing or rebuilding from this definition must
+  re-pick the prompt in the designer, exactly like the sweep's
+  script re-picks after an import.
+- **A package zip**: not cut. The guide's own note stands — a
+  brand-new flow has no exported package skeleton, and fabricating a
+  manifest for a package that never left a tenant would produce a
+  provenance artifact with no provenance. If/when the built flow is
+  exported, diff it against this file (RL-4 style: record drift,
+  don't hide it) and cut the zip from that export.
+
+No live-flow change, no version bump: the tenant flow already IS
+v1.1 (built from the guide; DX-11 applied 2026-08-11). This entry
+adds the checked-in artifact only.
+
 # Curation v1.1 — an emptied queue overwrites the digest (DX-11)
 
 Review fix (`review/REVIEW_v2_5.md` DX-11), applied to the live flow
