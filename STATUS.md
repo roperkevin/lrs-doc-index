@@ -55,3 +55,4 @@ their sources change.
 2. Confirm the curation v1.1 fix on the next all-resolved Saturday run (`curation/CHANGES.md`).
 3. r2 script batch: gate PASSED, promoted — **paste the six scripts** (`review/REVIEW_v2_5_r2.md` checklist step 5).
 4. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).
+5. PV-1 residual: the repo is **public** and pre-scrub zips (containing the work email) remain in git history — decide accept / history rewrite / make private (`review/REVIEW_v2_5_r2.md` §PV-1).
