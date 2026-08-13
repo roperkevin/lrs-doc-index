@@ -1,55 +1,43 @@
-# TestPlanGen Prompt — v1.3 (reference-functionality input lane) — superseded in-repo by v1.4 before tenant paste
+# TestPlanGen Prompt — v1.4 (GFM draft shape) — CURRENT, awaiting tenant paste
 
-Motivated by the doc 1 draft revision (2026-08-12, follow-up to
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): a PE had three Pro-surface
-test plans defining the expected tool functionality (input methods,
-per-method referent-population semantics) for an Experience Builder
-story, and the pipeline had no sanctioned way to use them — exemplars
-are style/coverage ONLY ("never their feature-specific content", the
-hallucination guard), so functional grounding could only happen in the
-§4 human-review pass. This version adds a fifth input lane that makes
-cross-surface functional grounding a first-class, cited, guarded
-generation input; supersedes v1.2 IN-REPO before its tenant paste
-(v1.2's enumeration-coverage rule and conditional sections, and v1.1's
-marker fix, are carried forward unchanged — paste THIS version).
+Part of the flow v2.7 / PromptVersion v1.9 formatting upgrade: the
+pipeline's markdown outputs now target GitHub-style viewers (VS Code,
+GitHub) instead of SharePoint's preview, so drafts pick up the GFM
+features that upgrade makes safe — alerts and task-list checkboxes.
+Supersedes v1.3 IN-REPO (v1.3's reference-functionality lane, v1.2's
+enumeration coverage + conditional sections, and v1.1's marker fix are
+all carried forward unchanged — paste THIS version).
 
-Changes against v1.2:
+Changes against v1.3 (draft shape only — no input, grounding, or
+sentinel changes):
 
-1. **Fifth input key: `ReferenceText`** — REFERENCE FUNCTIONALITY
-   docs: test plans or design docs describing the expected behavior of
-   this story's feature area, possibly on ANOTHER surface. Unlike
-   exemplars, the model MAY ground expected functional behavior on
-   them (input methods, field-population semantics, validation rules),
-   applied within the story's scope.
-2. **New grounding rules for the lane**: every reference-grounded case
-   cites its reference doc in the Trace; a reference doc whose surface
-   differs from the story's surface forces a surface-parity
-   [VERIFY] item in Open Questions; the story always wins on conflict
-   (conflicts become [VERIFY] items, never silent preference); the
-   lane supplies BEHAVIOR, never tool names — the existing tools rule
-   is unchanged, so a Pro tool named in a reference doc never becomes
-   a named widget in an EXB draft.
-3. Trace rule and untrusted-data rule extended to the fourth text
-   block; new `<<<REFERENCE FUNCTIONALITY BEGIN/END>>>` input fence
-   after the exemplar fence. Empty lane (`(none)`) drafts exactly as
-   v1.2 did.
+1. **Overview table**: the Overview opens with a one-row
+   `| Surface | Target release | PE |` table copying StoryMeta
+   verbatim, then the 2–4 prose sentences.
+2. **Task-list steps**: Setup / Prerequisites items and per-case
+   Steps render as GFM task lists (`- [ ] 1. ...`) so testers check
+   items off in the rendered view; Expected Result and Trace become
+   standalone bold-labeled lines (no longer bullets).
+3. **CAUTION alert**: Negative Tests opens with a fixed
+   `> [!CAUTION]` alert ("A pass below is the described denial or
+   error — never the edit succeeding.") before TC-N1.
+4. **Checkbox VERIFY items**: every Open Questions entry renders as
+   `- [ ] [VERIFY: ...]` so resolution is trackable.
+5. Worked example rewritten in the new shape.
 
 Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`).
-Input keys are now FIVE, exact names: **StoryMeta**, **StoryText**,
+Input keys unchanged, FIVE, exact names: **StoryMeta**, **StoryText**,
 **RelatedDigest**, **ExemplarText**, **ReferenceText**.
 
-Deploy (this is a CONTRACT change, not just a paste — component v2.0):
-add the fifth input parameter **ReferenceText** to the
-`LRS Test Plan Generation` AI Builder prompt, paste this text
-(replaces the pending v1.2 paste), apply the §3 flow additions in BOTH
-live flows (or re-import the re-cut packages): `ReferenceCap` +
-version stamp in `Config_gen`, three new variables, the
-`If_testplan_neighbor` surface split, the `For_each_reference` fetch
-loop, the fifth prompt-call binding, and the `Gen_summary`
-`references=` count — guide §3 G0/G0b/G5b/G7b/G8. Then re-run the
-smoke suite (row 10 exercises this lane). NEVER bump
-`Config.PromptVersion` — nothing here changes the sidecar format or
-reindexes the corpus.
+Deploy (simple paste + one designer edit, both live flows): paste this
+text into the `LRS Test Plan Generation` AI Builder prompt (replaces
+the pending v1.3 paste — no parameter changes), set
+`Config_gen.TestPlanGenPromptVersion` to `v1.4`, and apply the
+`Draft_banner` `> [!WARNING]` designer edit
+(review/patches/designer-edits.md §testplangen-v2_8) so the banner
+renders as a GFM alert. Then smoke one draft and eyeball it in a GFM
+viewer. NEVER bump `Config.PromptVersion` — nothing here changes the
+sidecar format or reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 
@@ -96,36 +84,57 @@ every other section always appears:
 # Test Plan — <feature name from the story>
 
 ## Overview
-2–4 sentences: what feature is under test, which surface, what the
-story's core requirement is. State the target release and PE exactly
-as given in StoryMeta.
+Open with a one-row table copying Surface, target release, and PE
+exactly as given in StoryMeta:
+
+| Surface | Target release | PE |
+| --- | --- | --- |
+| <surface> | <target release> | <PE> |
+
+Then 2–4 sentences: what feature is under test, which surface, what
+the story's core requirement is.
 
 ## Setup / Prerequisites
-A numbered list of the data, configuration, and application state a
-tester needs before the first case: LRS network and route state,
-required tools or widgets, permissions/locks state, services. Derive
-from the story, exemplars, and reference functionality; where the
-sources are silent on a needed precondition, include the step with a
-[VERIFY: ...] note rather than inventing specifics.
+A numbered TASK LIST — `- [ ] 1. <step>` — of the data,
+configuration, and application state a tester needs before the first
+case: LRS network and route state, required tools or widgets,
+permissions/locks state, services. Derive from the story, exemplars,
+and reference functionality; where the sources are silent on a needed
+precondition, include the step with a [VERIFY: ...] note rather than
+inventing specifics.
 
 ## Positive Tests
 Cases proving the story's workflow behaves as specified. Each case:
 
 ### TC-P1 — <short case name>
-- **Steps:** numbered tester actions.
-- **Expected Result:** the observable outcome, specific enough to
-  judge pass/fail.
-- **Trace:** the story statement this case verifies, quoted or closely
-  paraphrased — or the exemplar pattern it applies (e.g. "exemplar
-  covers the multi-user variant of each edit"), or the reference-
-  functionality statement it grounds on, cited by document title.
+**Steps:**
+- [ ] 1. <tester action>
+- [ ] 2. <tester action>
 
-Number sequentially: TC-P1, TC-P2, ...
+**Expected Result:** the observable outcome, specific enough to
+judge pass/fail.
+
+**Trace:** the story statement this case verifies, quoted or closely
+paraphrased — or the exemplar pattern it applies (e.g. "exemplar
+covers the multi-user variant of each edit"), or the reference-
+functionality statement it grounds on, cited by document title.
+
+Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
+(one checkbox per numbered action); Expected Result and Trace are
+standalone bold-labeled lines, never checkboxes.
 
 ## Negative Tests
-Cases proving correct behavior on invalid input, conflicts, denied
-permissions, and boundary conditions. Same shape, numbered TC-N1,
-TC-N2, ... Every case carries the same mandatory **Trace:** line.
+Directly under the heading, before TC-N1, emit this fixed alert
+verbatim:
+
+> [!CAUTION]
+> A pass below is the described denial or error — never the edit
+> succeeding.
+
+Then cases proving correct behavior on invalid input, conflicts,
+denied permissions, and boundary conditions. Same shape, numbered
+TC-N1, TC-N2, ... Every case carries the same mandatory **Trace:**
+line.
 
 ## Automation Notes
 CONDITIONAL — include ONLY when the story contains automation plans
@@ -142,10 +151,12 @@ the same mandatory **Trace:** line. When the story says nothing about
 documentation, omit this section entirely (no empty heading).
 
 ## Open Questions
-Bullet list of every [VERIFY: ...] item plus anything the story leaves
-ambiguous that a PE must resolve before this plan is final. Empty is
-wrong — a draft with no open questions almost certainly invented
-answers instead of flagging them.
+A TASK LIST — `- [ ] [VERIFY: ...]` — of every [VERIFY: ...] item
+plus anything the story leaves ambiguous that a PE must resolve
+before this plan is final (one checkbox per item, so resolution is
+trackable in the rendered view). Empty is wrong — a draft with no
+open questions almost certainly invented answers instead of flagging
+them.
 
 GROUNDING RULES
 - Every test case MUST trace to an explicit statement in STORY TEXT /
@@ -214,38 +225,52 @@ no reference-grounded cases appear)
 # Test Plan — Conflict Prevention: Acquire Locks for New Routes
 
 ## Overview
+
+| Surface | Target release | PE |
+| --- | --- | --- |
+| Pro | 3.8 | Claire Wang |
+
 Verifies lock acquisition when new routes are created in ArcGIS Pro
 via Create Route, Extend Route, Realign Route, and Reassign Route.
-Target release 3.8. PE: Claire Wang.
 
 ## Setup / Prerequisites
-1. LRS network with conflict prevention enabled. [VERIFY: minimum
-   lock-root configuration]
-2. Two Pro sessions signed in as different users against the same
-   network.
+- [ ] 1. LRS network with conflict prevention enabled. [VERIFY:
+      minimum lock-root configuration]
+- [ ] 2. Two Pro sessions signed in as different users against the
+      same network.
 
 ## Positive Tests
 
 ### TC-P1 — Lock acquired on Create Route
-- **Steps:** 1. As user A, run Create Route on a new route name.
-  2. Inspect the lock table before saving edits.
-- **Expected Result:** A lock for the new route is held by user A at
-  creation time, not deferred to save.
-- **Trace:** "acquire locks when creating a new route" — story
-  workflow section.
+**Steps:**
+- [ ] 1. As user A, run Create Route on a new route name.
+- [ ] 2. Inspect the lock table before saving edits.
+
+**Expected Result:** A lock for the new route is held by user A at
+creation time, not deferred to save.
+
+**Trace:** "acquire locks when creating a new route" — story
+workflow section.
 
 ## Negative Tests
 
+> [!CAUTION]
+> A pass below is the described denial or error — never the edit
+> succeeding.
+
 ### TC-N1 — Second user blocked on locked new route
-- **Steps:** 1. As user A, create a route without saving. 2. As user
-  B, attempt Reassign Route onto the same route.
-- **Expected Result:** User B is denied with a lock conflict; no edit
-  is applied.
-- **Trace:** exemplar pattern — multi-user denial case for each
-  lock-acquiring edit.
+**Steps:**
+- [ ] 1. As user A, create a route without saving.
+- [ ] 2. As user B, attempt Reassign Route onto the same route.
+
+**Expected Result:** User B is denied with a lock conflict; no edit
+is applied.
+
+**Trace:** exemplar pattern — multi-user denial case for each
+lock-acquiring edit.
 
 ## Open Questions
-- [VERIFY: minimum lock-root configuration for setup]
+- [ ] [VERIFY: minimum lock-root configuration for setup]
 [[[DRAFT END]]]
 
 <<<STORY TEXT BEGIN>>>

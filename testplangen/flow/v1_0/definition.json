@@ -73,7 +73,7 @@
             "ReferenceCap": 12000,
             "NeighborCap": 5,
             "DigestSummaryCap": 400,
-            "TestPlanGenPromptVersion": "v1.3"
+            "TestPlanGenPromptVersion": "v1.4"
           }
         },
         "Init_NeighborDigest": {
@@ -825,7 +825,7 @@
                     "Draft_banner": {
                       "runAfter": {},
                       "type": "Compose",
-                      "inputs": "@{concat('<!-- machine-generated test-plan draft — TestPlanGen prompt ', outputs('Config_gen')?['TestPlanGenPromptVersion'], ' -->', decodeUriComponent('%0A'), '> **DRAFT — machine-generated, unreviewed.** Generated ', utcNow(), ' from user story doc ', body('Get_story_row')?['ID'], ' — \"', replace(coalesce(body('Get_story_row')?['Title'], ''), '\"', ''), '\". Source sidecar: <', outputs('Story_url'), '>', if(greater(length(outputs('Story_md')), int(outputs('Config_gen')?['StoryCap'])), ' [story text truncated at StoryCap]', ''), decodeUriComponent('%0A'), '> Review every case and resolve all [VERIFY] items before use. Do NOT upload this file to the LocationReferencing Documents library or the LRS Doc Index library — finalize into the team test-plan format first (TestPlanGen_Setup.md §4).', decodeUriComponent('%0A%0A'), outputs('Draft_body'), decodeUriComponent('%0A'))}"
+                      "inputs": "@{concat('<!-- machine-generated test-plan draft — TestPlanGen prompt ', outputs('Config_gen')?['TestPlanGenPromptVersion'], ' -->', decodeUriComponent('%0A'), '> [!WARNING]', decodeUriComponent('%0A'), '> **DRAFT — machine-generated, unreviewed.** Generated ', utcNow(), ' from user story doc ', body('Get_story_row')?['ID'], ' — \"', replace(coalesce(body('Get_story_row')?['Title'], ''), '\"', ''), '\". Source sidecar: <', outputs('Story_url'), '>', if(greater(length(outputs('Story_md')), int(outputs('Config_gen')?['StoryCap'])), ' [story text truncated at StoryCap]', ''), decodeUriComponent('%0A'), '> Review every case and resolve all [VERIFY] items before use. Do NOT upload this file to the LocationReferencing Documents library or the LRS Doc Index library — finalize into the team test-plan format first (TestPlanGen_Setup.md §4).', decodeUriComponent('%0A%0A'), outputs('Draft_body'), decodeUriComponent('%0A'))}"
                     },
                     "Save_draft": {
                       "runAfter": {

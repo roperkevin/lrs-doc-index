@@ -526,3 +526,176 @@ append the deployment record. `flow/DocIndexSweep_v2_6.zip` is
 already authored (v2.5 skeleton + v2.6 payload — see
 `flow/v2_6/CHANGES.md`); optionally refresh it from the live export
 if the applied flow drifts from the authored definition.
+
+# v2_7 round — GFM sidecar format (info-card header, collapsed metadata, issue links)
+
+`flow/v2_7/definition.json` is the authoritative result; these are
+the same edits as designer actions, in dependency order. Prereqs:
+the v2_6 window above fully applied; `scripts/SidecarPatch.ts` v1.5
+pasted (gate `check_batch_r5.py` PASSED 2026-08-13 — v1.5 is a
+strict superset of v1.4, safe to paste any time BEFORE this round;
+never apply this round while the tenant still runs v1.4 or earlier,
+or every new-format sidecar silently no-ops in the patcher).
+
+W1–W4 are one window (the template references the three new actions,
+so the flow errors mid-sequence); do them with the flow OFF or well
+clear of the 17:00 trigger, then smoke.
+
+## W1 — Select_issue_links
+
+New **Select** action `Select_issue_links` after `H1_title`
+(re-point `Sidecar_header`'s runAfter in W4):
+
+- From: `@coalesce(outputs('Run_regex')?['body/result/ids'], json('[]'))`
+- Map (switch to text mode — the single-value map): `@concat('[', item()?['repo'], '#', item()?['number'], '](https://devtopia.esri.com/', item()?['repo'], '/issues/', item()?['number'], ')')`
+
+## W2 — Select_issue_yaml
+
+New **Select** action `Select_issue_yaml` after `Select_issue_links`:
+
+- From: `@coalesce(outputs('Run_regex')?['body/result/ids'], json('[]'))`
+- Map (text mode): `@concat('"', item()?['repo'], '#', item()?['number'], '"')`
+
+## W3 — Issue_row
+
+New **Compose** action `Issue_row` after `Select_issue_yaml`:
+
+```
+@if(empty(coalesce(outputs('Run_regex')?['body/result/ids'], json('[]'))), '', concat('| **Issue** | ', join(body('Select_issue_links'), ' · '), ' |', decodeUriComponent('%0A')))
+```
+
+(The non-empty branch ends with a newline so the template can embed
+the row flush against the Source row — an id-less doc loses the row
+without leaving a blank table line.)
+
+## W4 — Sidecar_header template
+
+**Sidecar_header** compose — set runAfter to `Issue_row`, then
+replace the ENTIRE inputs with the block below, EXACTLY — paste into
+the expression-free text view, not per-line:
+
+~~~~
+# @{outputs('H1_title')}
+
+|   |   |
+| --- | --- |
+| **Kind** | @{outputs('Doc_kind_safe')} · @{outputs('Surface_safe')} |
+| **Release** | @{if(empty(replace(coalesce(outputs('Parse_prompt_output')?['targetRelease'], ''), '"', '')), '—', replace(replace(coalesce(outputs('Parse_prompt_output')?['targetRelease'], ''), '"', ''), '|', '/'))} |
+@{outputs('Issue_row')}| **Source** | [@{items('For_each_file')?['{FilenameWithExtension}']}](<@{items('For_each_file')?['{Link}']}>) |
+| **Edited** | @{if(empty(variables('SrcEdited')), 'unknown', formatDateTime(variables('SrcEdited'), 'yyyy-MM-dd HH:mm'))} by @{if(empty(variables('SrcEditor')), 'unknown', replace(variables('SrcEditor'), '|', '/'))} |
+| **Extracted** | @{formatDateTime(utcNow(), 'yyyy-MM-dd')} · lane `@{variables('LaneUsed')}` |
+
+<details><summary>Metadata</summary>
+
+```yaml
+title: @{outputs('Yaml_title')}
+source_file: @{outputs('Yaml_file')}
+source_url: "@{items('For_each_file')?['{Link}']}"
+doc_id: @{outputs('Doc_item_id')}
+doc_kind: "@{outputs('Doc_kind_safe')}"
+surface: "@{outputs('Surface_safe')}"
+doc_revision: "@{coalesce(outputs('Run_regex')?['body/result/docRevision'], '')}"
+target_release: "@{replace(coalesce(outputs('Parse_prompt_output')?['targetRelease'], ''), '"', '')}"
+pe: "@{replace(coalesce(outputs('Parse_prompt_output')?['pe'], ''), '"', '')}"
+dev: "@{replace(coalesce(outputs('Parse_prompt_output')?['dev'], ''), '"', '')}"
+author: "@{replace(variables('SrcAuthor'), '"', '')}"
+last_edited_by: "@{replace(variables('SrcEditor'), '"', '')}"
+last_edited: "@{variables('SrcEdited')}"
+extracted: @{formatDateTime(utcNow(), 'yyyy-MM-dd')}
+extraction_lane: @{variables('LaneUsed')}
+prompt_version: "@{outputs('Config')?['PromptVersion']}"
+keywords: [@{join(body('Select_kw_yaml'), ', ')}]
+tools: [@{join(body('Select_tools_yaml'), ', ')}]
+issues: [@{join(body('Select_issue_yaml'), ', ')}]
+related: []
+```
+
+</details>
+
+## Summary
+
+@{if(empty(coalesce(outputs('Parse_prompt_output')?['summary'], '')), concat('> [!WARNING]', decodeUriComponent('%0A'), '> No AI summary was generated for this document.'), coalesce(outputs('Parse_prompt_output')?['summary'], ''))}
+
+## Related documents
+
+<!-- related:begin -->
+_None yet._
+<!-- related:end -->
+
+---
+
+~~~~
+
+(The template ends with the `---` seam line, a blank line, and a
+final trailing newline — keep them.)
+
+**Blank-line checklist — every one is load-bearing:**
+
+- [ ] blank line between the H1 and the table
+- [ ] blank line between the table and `<details>...`
+- [ ] blank line between `<details><summary>Metadata</summary>` and
+      ```` ```yaml ```` (without it GitHub renders the yaml as loose
+      text AND SidecarPatch v1.5 returns `not-frontmatter` forever —
+      silently dead related sections)
+- [ ] blank line between the closing ```` ``` ```` and `</details>`
+- [ ] blank line between `</details>` and `## Summary`
+- [ ] `@{outputs('Issue_row')}` sits at the START of its line, flush
+      against `| **Source** |` on the SAME template line
+
+## W5 — Config.PromptVersion
+
+**Config** compose: `"PromptVersion": "v1.8"` → `"v1.9"`. This is
+the backfill trigger — every existing row reindexes into the new
+format at MaxDocsPerRun (150) per run.
+
+## Smoke (after W5, one pass)
+
+Config → SmokeFile on a doc known to carry an issue reference:
+
+1. Run succeeds; download the smoke sidecar.
+2. Byte-check the header shape: regenerate
+   `review/harness/sample_sidecar.md` (`python3 render_sample.py`)
+   and diff the two headers — H1 line, table rows, the exact
+   `<details><summary>Metadata</summary>` + blank-line frame, seam.
+3. Eyeball in a GFM viewer (VS Code preview): collapsed Metadata
+   disclosure, info table, working devtopia Issue link, Source link.
+4. Confirm the yaml still parses (any yaml linter) and shows
+   `issues: ["..."]` + `related: []`.
+5. Next nightly run: reindex volume ≈ MaxDocsPerRun in Run_summary
+   (the backfill working through the corpus).
+
+Then update STATUS.md (flow row, PromptVersion row) and paste
+`agent/QA_Agent_Instructions_v1_2.md` per its own header.
+
+Rollback: revert W5 (PromptVersion → v1.8), then W4→W1 in reverse.
+SidecarPatch v1.5 may stay pasted — byte-equivalent to v1.4 on every
+pre-v2.7 frame.
+
+# testplangen-v2_8 round — GFM draft banner (both live TestPlanGen flows)
+
+Paired with the TestPlanGen prompt v1.4 paste
+(`review/patches/TestPlanGen_Prompt_v1_4.md`); apply to BOTH live
+flows (standalone + agent core). See `testplangen/CHANGES.md` v2.8.
+
+## T1 — Draft_banner WARNING line
+
+**Draft_banner** compose — in the `concat(...)`, immediately after
+the first `decodeUriComponent('%0A'), ` (the newline that closes the
+HTML comment), insert:
+
+```
+'> [!WARNING]', decodeUriComponent('%0A'),
+```
+
+The two existing `> `-prefixed banner lines then render as the
+alert's body. No other change to the expression.
+
+## T2 — Config_gen version stamp
+
+**Config_gen** compose: `"TestPlanGenPromptVersion": "v1.3"` →
+`"v1.4"` (stamps the banner's HTML comment).
+
+Smoke: generate one draft; the banner renders as a WARNING alert in
+a GFM viewer, Overview opens with the StoryMeta table, steps are
+checkboxes, Negative Tests carries the CAUTION alert, Open Questions
+items are checkboxes.

@@ -3,14 +3,14 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-13 (TestPlanGen v2.7 — routed conversation starters + About topic; deploy in progress)**.
+Last updated: **2026-08-13 (flow v2.7 authored — GFM sidecar format + TestPlanGen v2.8 GFM drafts; r5 gate PASSED)**.
 
 ## Core sweep
 
 | Piece | Deployed | Authoritative file |
 |---|---|---|
-| Flow (DocIndexSweep) | v2.5 + R8–R13 addenda — **v2.6 authored, designer application pending** | `flow/v2_5/definition.json` (deployed) / `flow/v2_6/definition.json` (authored) |
-| Config.PromptVersion | **v1.8** | `flow/v2_5/definition.json` (Config) |
+| Flow (DocIndexSweep) | v2.5 + R8–R13 addenda — **v2.6 authored (pending), then v2.7 authored (GFM format; sequenced AFTER the v2.6 window)** | `flow/v2_5/definition.json` (deployed) / `flow/v2_6/definition.json`, `flow/v2_7/definition.json` (authored) |
+| Config.PromptVersion | **v1.8** — v1.9 authored, lands with the v2.7 window (backfill trigger) | `flow/v2_5/definition.json` (Config, deployed) / `flow/v2_7/definition.json` (authored) |
 | AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) | `prompts/DocIndex_Prompt.md` |
 
 ## Office Scripts (pasted into the Automate-tab workbook)
@@ -20,7 +20,7 @@ Last updated: **2026-08-13 (TestPlanGen v2.7 — routed conversation starters + 
 | ZipTextExtract | **v2.0** (r2) | **PENDING** — tenant runs v1.9 (pasted 2026-08-11) |
 | MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
 | RelatedRank | **v2.1** (r4) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11); paste is fenced to the v2.6 flow window, see below |
-| SidecarPatch | **v1.4** (r2) | **PENDING** — tenant runs v1.3 (pasted 2026-08-11) |
+| SidecarPatch | **v1.5** (r5) | **PENDING** — tenant runs v1.3 (pasted 2026-08-11); v1.5 supersedes the v1.4 paste and is safe to paste any time BEFORE the flow v2.7 window (strict superset of v1.4 — see the r5 amendment below) |
 | RegexExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pre-v2.2) |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
 
@@ -68,19 +68,39 @@ tenant-producible payload shape, so everything in the r3 amendment
 about PromptVersion, backfill and downstream consumers carries over
 unchanged.
 
+**r5 amendment (2026-08-13)**: SidecarPatch has since been promoted
+to **v1.5** (`check_batch_r5.py` gate PASSED 2026-08-13), paired with
+the flow v2.7 GFM sidecar format (`flow/v2_7/CHANGES.md`): sidecars
+gain a third metadata frame — H1 title + info table head, yaml block
+collapsed inside `<details><summary>Metadata</summary>` — and v1.5
+patches all three frames, preserving whichever a file carries. Same
+7-param signature; the gate proves v1.4-vs-v1.5 byte-identical on
+every fenced/dashed payload (the genuinely-old
+`review/patches/SidecarPatch_v1_4.ts` is the comparison side, so the
+equivalence leg stays meaningful post-promotion). Paste order is the
+REVERSE of the RelatedRank fencing: v1.5 pastes safely ANY time
+before the v2.7 designer edits (even under the v2.5 flow), while
+flow v2.7 live against v1.4-or-older silently no-ops every
+new-format sidecar in the patcher. The v2.7 window bumps
+`Config.PromptVersion` v1.8 → v1.9, triggering the corpus backfill
+into the new layout; TestPlanGen's `related: [` slice and the Q&A
+agent read both shapes during the transition (agent instructions
+v1.2 describes them — paste with the window, step 6).
+
 ## Components
 
 | Component | Version | Prompt | Notes |
 |---|---|---|---|
-| Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
+| Q&A agent | v1.1 (instructions) — **v1.2 authored** (describes the v2.7 sidecar layout; paste with the v2.7 window) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
-| TestPlanGen | v2.0 deployed — **v2.7 authored, deploy in progress** | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1 live (**v1.8 authored**; the v1.6 topic body + both flow nodes are pasted and checker-clean on the live tenant as of 2026-08-13 — test-pane/smoke verification is the open step). **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0. Then finish the v2.3–v2.5 delta: StoryLookupFlow is built and wired (`180ed782-9c96-f111-8075-6045bd0706c5`; generation agent flow `0e279e86-9096-f111-8075-6045bd0706c5`); run agent smoke rows 1–2c and 7 and record in `testplangen/CHANGES.md` v2.6-v2.7 (re-paste the v1.7 classify group first, add the v1.8 starters + About topic — the v1.6 classification crashes on issue references) |
+| TestPlanGen | v2.0 deployed — **v2.7 authored, deploy in progress; v2.8 authored (GFM drafts)** | v1.3 pending paste — **v1.4 authored** (`prompts/TestPlanGen_Prompt.md`; v1.4 paste replaces the pending v1.3 one, see `testplangen/CHANGES.md` v2.8) | agent file set v1.1 live (**v1.8 authored**; the v1.6 topic body + both flow nodes are pasted and checker-clean on the live tenant as of 2026-08-13 — test-pane/smoke verification is the open step). **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0. Then finish the v2.3–v2.5 delta: StoryLookupFlow is built and wired (`180ed782-9c96-f111-8075-6045bd0706c5`; generation agent flow `0e279e86-9096-f111-8075-6045bd0706c5`); run agent smoke rows 1–2c and 7 and record in `testplangen/CHANGES.md` v2.6-v2.7 (re-paste the v1.7 classify group first, add the v1.8 starters + About topic — the v1.6 classification crashes on issue references) |
 
 ## Harness
 
 | Suite | Last green |
 |---|---|
 | check_format.py / check_related.py / check_regex.py / check_batch_r4.py | 2026-08-12 (see `review/harness/README.md` run records) |
+| check_batch_r5.py / render_sample.py (v2.7 format) + full re-run of the standing suites | 2026-08-13 (see `review/harness/README.md` run records) |
 | check_batch.py / check_batch_r2.py / check_batch_r3.py | skip as superseded by design (v1.9 / r2 / r3 generations) |
 
 ## Open actions
@@ -91,3 +111,5 @@ unchanged.
 4. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).
 5. ~~PV-1 residual~~ — **CLOSED (owner decision, 2026-08-12): accepted.** The repo stays public; the pre-scrub zips (containing the work email) remain reachable in git history, knowingly. Current-tree manifests stay scrubbed. Revisit only if circumstances change (`review/REVIEW_v2_5_r2.md` §PV-1).
 6. r3/r4 (after action 3): **paste RelatedRank v2.1 + apply the flow v2.6 designer edits in ONE maintenance window** (`review/patches/designer-edits.md` §v2_6 — V1 pastes v2.1 per the r4 amendment), smoke, full run, then update this table (flow row, RelatedRank paste column). `flow/DocIndexSweep_v2_6.zip` is already authored (v2.5 skeleton + v2.6 payload, amended for r4).
+7. r5 / flow v2.7 (after action 6; SidecarPatch v1.5 may be pasted early, with the action-3 batch): **apply the flow v2.7 GFM-format window** — SidecarPatch v1.5 paste, designer edits §v2_7 (W1–W5, incl. PromptVersion → v1.9), smoke with the header byte-check, let the backfill converge, paste Q&A agent instructions v1.2 + re-run the agent smoke — then update this table (flow row, PromptVersion row, SidecarPatch paste column, Q&A agent row). `flow/DocIndexSweep_v2_7.zip` is already authored (v2.6 skeleton + v2.7 payload).
+8. TestPlanGen v2.8 (independent window): paste prompt v1.4 + designer edits §testplangen-v2_8 (both live flows), smoke one draft in a GFM viewer, then update the TestPlanGen row (`testplangen/CHANGES.md` v2.8).

@@ -43,3 +43,5 @@ manytables*
 stage_r3/
 # r4 gate staging
 stage_r4/
+# r5 gate staging
+stage_r5/
