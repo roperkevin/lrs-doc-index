@@ -12,9 +12,9 @@
 # v1.6 (live paste fix, same condition): the v1.5 anchored
 # two-argument IsMatch was ALSO rejected on the live canvas
 # ("Expected operator"), while the file's simpler IsMatch conditions
-# validated. The condition is now the live-validated, regex-free
-# function-style form — Find for the two URL fragments, And/Not
-# instead of &&/! — chosen from a variant ladder tried on the tenant
+# validated. The condition is now the regex-free `in` substring form
+# adopted on the live tenant — And with two case-insensitive `in`
+# tests for the URL fragments — chosen from a variant ladder
 # (Agent_Setup.md schema-drift caution records the ladder). The
 # Match(...).num extraction beneath it validated live and is
 # unchanged.
@@ -155,7 +155,7 @@ beginDialog:
               value: =Value(Match(Topic.RefLower, "(?<num>\d+)").num)
 
         - id: refIsIssueUrl
-          condition: =And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))
+          condition: =And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)
           actions:
             - kind: SetVariable
               id: setIssueKindUrl

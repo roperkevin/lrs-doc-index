@@ -51,17 +51,18 @@ absence.
 > `MatchOptions.Contains`, and the anchored two-argument URL pattern
 > was then ALSO rejected ("Expected operator") while the simpler
 > `IsMatch` conditions validated. The checked-in `refIsIssueUrl`
-> condition is therefore the live-validated, regex-free
-> function-style form —
-> `=And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))`
-> — and every remaining `IsMatch` stays two-argument. If a formula is
-> flagged on your tenant, walk the variant ladder in order and keep
-> the first that validates, then carry it back to the file:
-> (1) the checked-in form; (2) operator style
-> (`!`/`&&` instead of `And`/`Not`); (3) `IsMatch` with a simplified
-> pattern (`.*devtopia.esri.com/.+/issues/[0-9]+.*`); (4) the `in`
-> substring operator
-> (`And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)`).
+> condition is therefore the regex-free `in` substring form adopted
+> on the live tenant —
+> `=And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)`
+> (`in` is case-insensitive) — and every remaining `IsMatch` stays
+> two-argument. If a formula is flagged on your tenant, walk the
+> variant ladder in order and keep the first that validates, then
+> carry it back to the file: (1) the checked-in `in` form;
+> (2) function style
+> (`And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))`);
+> (3) operator style (`!`/`&&` with the same Find tests);
+> (4) `IsMatch` with a simplified pattern
+> (`.*devtopia.esri.com/.+/issues/[0-9]+.*`).
 > One transit trap masquerades as all of these failing: quotes that
 > arrive as curly quotes from a clipboard hop fail every variant with
 > "Expected operator" — retype the quote characters in the formula
