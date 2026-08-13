@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v2.7** (see `CHANGES.md`).
+Current component version: **v2.11** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -78,7 +78,7 @@ parameters, exact names: **StoryMeta**, **StoryText**,
 new in v2.0 — an upgrade from a pre-v1.3 paste must CREATE the
 parameter, not just re-paste the text). Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.3` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.5` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -99,10 +99,13 @@ Check: test in the AI Builder pane with a three-line StoryMeta
 two-sentence StoryText ("As an editor, I need to merge two routes.
 The merge must preserve measures."), empty RelatedDigest, ExemplarText
 and ReferenceText → the reply is wrapped in the two markers, contains the
-five core draft sections (the smoke story has no automation or
+six core draft sections (the smoke story has no automation or
 documentation plans, so the two conditional sections — Automation
 Notes, Documentation Impacts — are correctly absent), every test case
-carries a **Trace:** line, and Open Questions is non-empty.
+carries a **Trace:** line, Open Questions is non-empty, and the reply
+ends with a `## Coverage Map` table (prompt v1.5) whose rows cover
+both story statements ("merge two routes", "preserve measures") with
+no empty Covered by cell.
 
 ## 3 — The flow: import the package, or build by hand
 
@@ -159,7 +162,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "ReferenceCap": 12000,
   "NeighborCap": 5,
   "DigestSummaryCap": 400,
-  "TestPlanGenPromptVersion": "v1.3"
+  "TestPlanGenPromptVersion": "v1.5"
 }
 ```
 
@@ -484,13 +487,20 @@ the Doc Index list (rename the flow's menu label to
   view by DocKind) → Automate → **TestPlanGen**. The draft lands in
   `Shared Documents/Test Plan Drafts/` within a couple of minutes;
   the run history's `Gen_summary` shows what grounded it.
-- **Review**: open the draft (SharePoint renders the markdown). Work
-  top to bottom: verify every case's **Trace:** line actually points
-  at something the story says; resolve every `[VERIFY: ...]` item;
-  delete cases that don't survive scrutiny; add the cases only a
-  human would know to add. Check enumeration coverage (the prompt
-  v1.2 rule): every workflow, edit pathway, input method, and
-  event/geometry type the story enumerates has at least one case —
+- **Review**: open the draft (SharePoint renders the markdown). START
+  from the draft's `## Coverage Map` (prompt v1.5): it is the
+  requirement→case trace matrix the doc 1 review had to build by
+  hand — verify each row's requirement really is quoted from the
+  story and its Covered by cases actually exercise it, and scan the
+  story once for requirement-bearing statements the map MISSED (the
+  map proves nothing about statements the model never listed). Then
+  work the cases top to bottom: verify every case's **Trace:** line
+  actually points at something the story says; resolve every
+  `[VERIFY: ...]` item; delete cases that don't survive scrutiny; add
+  the cases only a human would know to add. Check enumeration
+  coverage (the prompt v1.2 rule, cross-product from v1.5): every
+  workflow, edit pathway, input method, and event/geometry type the
+  story enumerates has at least one case —
   the doc 1 review (`review/REVIEW_TestPlanGen_doc1_coverage.md`)
   shows how grouped pathways ("Dynamic Segmentation & Attribute
   Table") silently collapse without this check. When the story has

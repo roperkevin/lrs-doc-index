@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.4
+# Test Plan Generation Prompt — v1.5
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.4`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.5`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -11,6 +11,22 @@ FIVE item/requestv2 input keys, exact names: **StoryMeta**,
 **StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
 (the fifth added in v1.3 — the AI Builder prompt needs the parameter
 created, not just the text re-pasted).
+
+v1.5 (requirement-driven coverage — no input, shape-order, or
+sentinel changes): case count stops being a target and becomes an
+output of coverage — the fixed "4–10 positive / 3–8 negative, prefer
+fewer" range (the RC-3 consolidation bias,
+`review/REVIEW_TestPlanGen_doc1_coverage.md`) is replaced by
+one-case-per-requirement rules with a floor and no ceiling; a new
+always-on final section, `## Coverage Map`, renders the
+requirement→case trace table the reviewer previously built by hand
+(the converse of the Trace rule, and the prompt-side realization of
+the Setup guide's queued "coverage matrix" follow-on); ENUMERATION
+COVERAGE gains a cross-product clause (two enumeration axes = every
+pairing exercised or explicitly parameterized); RELATED DIGEST
+entries must each be evaluated for interaction cases instead of "may
+inspire". Length is controlled by terse steps and parameterization,
+never by dropping or merging requirements.
 
 v1.4 (GFM draft shape — no input, grounding, or sentinel changes):
 drafts now target GitHub-style markdown viewers, matching the flow
@@ -191,6 +207,26 @@ trackable in the rendered view). Empty is wrong — a draft with no
 open questions almost certainly invented answers instead of flagging
 them.
 
+## Coverage Map
+ALWAYS the final section. BEFORE writing any test case, enumerate
+every requirement-bearing statement in STORY TEXT and StoryMeta —
+acceptance criteria, workflow lines, testing, automation, and
+documentation items — and write cases against that list; this
+section renders the list as a GFM table proving nothing was dropped:
+
+| # | Requirement (source) | Covered by |
+| --- | --- | --- |
+
+One row per statement, the requirement quoted or closely paraphrased
+with its source (slide/section) named; enumerated items share their
+statement's row when the Covered by cell spells out the
+parameterization. The Covered by cell lists every TC id exercising
+the row (plus "Automation Notes" / "Documentation Impacts" where
+those sections' bullets carry it) — or, for a requirement no case
+can reach, the matching Open Questions entry. An EMPTY Covered by
+cell is invalid output: add the missing case or the Open Questions
+entry, then fill the cell.
+
 GROUNDING RULES
 - Every test case MUST trace to an explicit statement in STORY TEXT /
   StoryMeta, to an exemplar pattern applied to this story's feature,
@@ -204,9 +240,20 @@ GROUNDING RULES
   own case, or a case explicitly parameterized over the enumeration
   ("repeat for point and line events"). Grouped items in one story
   statement (e.g. "Dynamic Segmentation & Attribute Table") are
-  separate pathways, each needing coverage. An enumerated item that
-  cannot be tested from the story's content becomes an Open Questions
-  entry — never a silent drop.
+  separate pathways, each needing coverage. When the story enumerates
+  along TWO axes at once (e.g. six edit pathways × point and line
+  event types), every pairing must be exercised or explicitly
+  parameterized ("repeat each edit pathway for point and line
+  events") — a pairing that silently disappears is a coverage gap.
+  An enumerated item that cannot be tested from the story's content
+  becomes an Open Questions entry — never a silent drop.
+- REQUIREMENT COVERAGE (the Trace rule's converse): every
+  requirement-bearing statement in STORY TEXT / StoryMeta must be
+  exercised by at least one case or carried as an Open Questions
+  entry — the Coverage Map section proves it. Build the map's
+  requirement list FIRST, then write cases against it; a case-first
+  draft consolidates exactly where an enumeration-heavy story needs
+  expansion.
 - REFERENCE FUNCTIONALITY: these documents define expected tool
   functionality for this story's feature area. You may derive
   expected behavior from them — input methods, field-population
@@ -229,13 +276,25 @@ GROUNDING RULES
 - Missing information becomes a [VERIFY: ...] item in Open Questions —
   never a fabricated specific (no invented field names, limits,
   defaults, or error text).
-- RELATED DIGEST entries may inspire interaction/regression cases
-  (e.g. this feature crossing an adjacent feature) — cite the digest
-  line in the Trace when they do.
-- 4–10 positive and 3–8 negative cases is the expected range; prefer
-  fewer, well-grounded cases over padded coverage — but never at the
-  cost of an enumerated item: enumeration coverage wins over the
-  preferred range.
+- RELATED DIGEST: evaluate EVERY entry. When an entry's feature
+  plausibly interacts with this story's feature, add an
+  interaction/regression case (e.g. this feature crossing the
+  adjacent one) citing the digest line in its Trace; when the
+  interaction is plausible but the one-line summary is too thin to
+  ground a case, add an Open Questions entry naming the document
+  instead. Skipping an entry is a judgment that it does not interact
+  — make it deliberately, never by not reading the digest.
+- CASE COUNT is an OUTPUT of coverage, never a target. Write at
+  least one positive case per distinct workflow or
+  acceptance-criterion statement the story states, and at least one
+  negative case per validation, denial, conflict, or boundary
+  condition the story states or implies. Never merge two distinct
+  requirements into one case to keep the draft short — a longer
+  complete draft always beats a shorter consolidated one. A draft
+  with fewer than 4 positive or 3 negative cases almost certainly
+  under-covers its story; there is NO upper limit. Control length
+  with terse steps and explicit parameterization ("repeat for point
+  and line events"), never by dropping or merging requirements.
 
 ESRI TERMINOLOGY
 - Official product casing: ArcGIS Pro, ArcGIS Server, Experience
@@ -252,7 +311,10 @@ release 3.8; story states locks must be acquired when a new route is
 created via Create/Extend/Realign/Reassign Route. This story has no
 automation or documentation plans and no reference-functionality
 documents, so the two CONDITIONAL sections are correctly absent and
-no reference-grounded cases appear)
+no reference-grounded cases appear. A full draft would carry one
+lock-acquisition case per enumerated pathway — Create, Extend,
+Realign, Reassign — plus their denial counterparts; only the first
+of each is shown here, and the Coverage Map is abbreviated to match)
 
 [[[DRAFT BEGIN]]]
 # Test Plan — Conflict Prevention: Acquire Locks for New Routes
@@ -304,6 +366,13 @@ lock-acquiring edit.
 
 ## Open Questions
 - [ ] [VERIFY: minimum lock-root configuration for setup]
+
+## Coverage Map
+
+| # | Requirement (source) | Covered by |
+| --- | --- | --- |
+| 1 | "acquire locks when creating a new route" via Create, Extend, Realign, Reassign Route (workflow section) | TC-P1 (Create — abbreviated; the full draft carries one case per pathway) |
+| 2 | a lock held by one user blocks another user's edit on the same route (conflict-prevention statement) | TC-N1 |
 [[[DRAFT END]]]
 
 <<<STORY TEXT BEGIN>>>
