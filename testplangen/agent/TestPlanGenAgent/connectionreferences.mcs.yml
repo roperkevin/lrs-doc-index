@@ -1,23 +1,26 @@
 # LRS Test Plan Generator — connection references
-# TestPlanGenAgentVersion: v1.8
+# TestPlanGenAgentVersion: v1.9
 #
 # The external dependencies are the two agent flows built in
 # Agent_Setup.md §1: TestPlanGenAgentFlow (generation) and
 # StoryLookupFlow (issue-#/title → doc id resolution, §1d). Flow ids
 # are environment-specific — the OneDrive-item-link rule from the
-# sweep's script bindings applies here too — so this file ships
-# REBIND placeholders: after import, open the GenerateTestPlan topic
-# in the canvas, re-pick each flow on its "Run a flow" node
-# (Agent_Setup.md §3), and the platform rewrites the references. Do
-# not hand-edit the placeholder ids.
+# sweep's script bindings applies here too. Since v1.9 this file (and
+# the GenerateTestPlan topic, which embeds the same GUIDs on its two
+# InvokeFlowAction nodes) carries the LIVE tenant's flow ids, captured
+# 2026-08-13. On the live tenant no re-pick is needed. For any OTHER
+# environment, swap both GUIDs here AND in the topic before pasting —
+# or fall back to the pre-v1.9 procedure: canvas re-pick each flow on
+# its "Run a flow" node (Agent_Setup.md §3) and let the platform
+# rewrite the references.
 
 kind: ConnectionReferences
 references:
   - name: testplangen_agentflow
     kind: Flow
     displayName: TestPlanGenAgentFlow
-    flowId: REBIND-AT-IMPORT   # re-pick in the topic canvas, §3
+    flowId: e31f2b0e-5397-f111-8075-6045bd0706c5   # live tenant, 2026-08-13
   - name: testplangen_storylookupflow
     kind: Flow
     displayName: StoryLookupFlow
-    flowId: REBIND-AT-IMPORT   # re-pick in the topic canvas, §3
+    flowId: a9e637bb-5197-f111-8075-6045bd0706c5   # live tenant, 2026-08-13

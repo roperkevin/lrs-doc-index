@@ -1,3 +1,51 @@
+# TestPlanGen v2.9 — flow nodes embedded in the topic YAML (agent v1.9)
+
+The GenerateTestPlan topic now ships with its two `InvokeFlowAction`
+nodes EMBEDDED, bound to the live tenant's flow GUIDs (captured from
+the canvas-generated skeleton, 2026-08-13):
+
+- **StoryLookupFlow** `a9e637bb-5197-f111-8075-6045bd0706c5`
+  (node `invokeFlowAction_SZcLsX`, needLookup branch)
+- **TestPlanGenAgentFlow** `e31f2b0e-5397-f111-8075-6045bd0706c5`
+  (node `invokeFlowAction_pSaLyd`, confirmed-Yes branch)
+
+This retires the paste-then-canvas-add two-step (Agent_Setup §3) **on
+the live tenant**: pasting the v1.9 topic YAML brings the nodes with
+it. The §3 canvas procedure remains the fallback for any other
+environment — flowId must be a real GUID at paste time
+(GuidParseError otherwise), so a foreign environment swaps both GUIDs
+in the topic + `connectionreferences.mcs.yml` (which now carries the
+same live ids instead of REBIND placeholders) or re-picks in the
+canvas.
+
+Binding shapes, fixed by the flows' schemas: inputs use the trigger
+schema property names (`text`/`text_1` = LookupKind/LookupQuery on
+the lookup flow; `number` = StoryId on the generation flow); outputs
+use the lowercased respond schema names. The lookup node's
+`storyid`/`storytitle` outputs land in `Topic.ResolvedId` /
+`Topic.ResolvedTitle` (strings, per the respond schema) — NOT
+`Topic.StoryId`, which stays numeric and is set only via
+`Value(Topic.ResolvedId)` in the lookupOne branch (the
+canvas-generated skeleton had bound storyid straight to
+Topic.StoryId; that would have broken the `= 0` / `> 0` gates). The
+init* declarations stay: they keep the paste valid if a node is ever
+removed, and the node bindings overwrite them at runtime. No flow,
+package, prompt, or schema changes.
+
+Deploy delta: re-paste the v1.9 GenerateTestPlan topic via Open code
+editor (no canvas node re-add needed on the live tenant), confirm the
+two flow nodes render bound in the canvas, re-run smoke rows 1–2c
+and 7.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent file set (topic flow nodes + connection refs + headers) | **TestPlanGenAgentVersion v1.9** | `testplangen/agent/TestPlanGenAgent/` |
+| Everything else (flows, packages, prompt, schemas) | unchanged | — |
+
+| Date | Tenant | Rows passed (of 10) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.9 (paste pending) |
+
 # TestPlanGen v2.8 — GFM draft shape (prompt v1.4 + WARNING banner)
 
 Part of the repo-wide formatting upgrade to GitHub-style markdown

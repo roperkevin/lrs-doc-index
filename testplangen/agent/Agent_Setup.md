@@ -1,6 +1,6 @@
 # Test Plan Generator Agent Setup — import and wire
 
-Current versions: agent file set **v1.8**, component **v2.7** (see `../CHANGES.md`).
+Current versions: agent file set **v1.9**, component **v2.9** (see `../CHANGES.md`). Since v1.9 the GenerateTestPlan topic embeds both flow nodes with the live tenant's GUIDs, so the §3 canvas-add is only needed on other environments (or after a flow rebuild changes the GUIDs).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story reference in
@@ -18,7 +18,7 @@ Unlike the Q&A agent (all portal work), this agent ships as an
 |---|---|
 | `TestPlanGenAgent/agent.mcs.yml` | Identity, instructions, conversation starters |
 | `TestPlanGenAgent/settings.mcs.yml` | General knowledge OFF, no knowledge sources, classic orchestration |
-| `TestPlanGenAgent/connectionreferences.mcs.yml` | The two flow references (REBIND placeholders) |
+| `TestPlanGenAgent/connectionreferences.mcs.yml` | The two flow references (live tenant GUIDs since v1.9; swap for other environments) |
 | `TestPlanGenAgent/topics/GenerateTestPlan.mcs.yml` | The ask-reference → resolve → confirm → run-flow → report dialog |
 | `TestPlanGenAgent/topics/AboutTestPlanGen.mcs.yml` | Static answers for the informational conversation starters (v1.8) |
 | `TestPlanGenAgent/topics/Fallback.mcs.yml` | Everything else → redirect to the Q&A agent |
