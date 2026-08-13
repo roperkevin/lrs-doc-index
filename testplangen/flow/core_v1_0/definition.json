@@ -67,7 +67,7 @@
           "type": "Compose",
           "inputs": {
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-            "DocIndexList": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+            "DocIndexList": "b98fb2a1-1c91-48f9-9b9b-323656557171",
             "DraftFolder": "/Shared Documents/Test Plan Drafts",
             "StoryCap": 30000,
             "ExemplarCap": 20000,
@@ -209,8 +209,8 @@
               "type": "OpenApiConnection",
               "inputs": {
                 "parameters": {
-                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                  "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
+                  "table": "@{outputs('Config_gen')?['DocIndexList']}",
                   "id": "@triggerBody()?['number']"
                 },
                 "host": {
@@ -253,7 +253,7 @@
                   "type": "OpenApiConnection",
                   "inputs": {
                     "parameters": {
-                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                      "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
                       "path": "@outputs('Story_path')",
                       "inferContentType": false
                     },
@@ -342,8 +342,8 @@
                           "type": "OpenApiConnection",
                           "inputs": {
                             "parameters": {
-                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                              "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                              "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
+                              "table": "@{outputs('Config_gen')?['DocIndexList']}",
                               "id": "@items('For_each_rel')?['doc']"
                             },
                             "host": {
@@ -463,8 +463,8 @@
                       "type": "OpenApiConnection",
                       "inputs": {
                         "parameters": {
-                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                          "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                          "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
+                          "table": "@{outputs('Config_gen')?['DocIndexList']}",
                           "$filter": "DocKind eq 'Test Plan' and IndexStatus eq 'Indexed' and Surface eq '@{outputs('Surface_escaped')}'",
                           "$orderby": "Modified desc",
                           "$top": 12
@@ -561,7 +561,7 @@
                               "type": "OpenApiConnection",
                               "inputs": {
                                 "parameters": {
-                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
                                   "path": "@outputs('Ex_path')",
                                   "inferContentType": false
                                 },
@@ -659,7 +659,7 @@
                               "type": "OpenApiConnection",
                               "inputs": {
                                 "parameters": {
-                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                  "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
                                   "path": "@outputs('Ref_path')",
                                   "inferContentType": false
                                 },
@@ -837,7 +837,7 @@
                       "type": "OpenApiConnection",
                       "inputs": {
                         "parameters": {
-                          "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                          "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
                           "folderPath": "@{outputs('Config_gen')?['DraftFolder']}",
                           "name": "@outputs('Draft_name')",
                           "body": "@outputs('Draft_banner')"

@@ -1,3 +1,56 @@
+# TestPlanGen v2.10 — rebuilt-list GUIDs + config-driven list bindings (flows v2.1 / lookup v1.1)
+
+The tenant's SharePoint lists were rebuilt, changing their GUIDs —
+the FX-6 discovery (`review/patches/designer-edits.md`), now
+confirmed to reach further than the sweep's three raw-REST creates:
+
+| List | OLD GUID (authored until now) | CURRENT GUID |
+|---|---|---|
+| Doc Index | `245a4082-53c5-49f0-90e1-1abe62698c4a` | `b98fb2a1-1c91-48f9-9b9b-323656557171` |
+| Doc IDs | `87b75cd7-5e84-4a65-adb5-dcd0de08321d` | `6263eeac-471a-489e-96c7-1448f45378d4` |
+
+Two changes in all three flow definitions (standalone `v1_0`, core
+`core_v1_0`, lookup `lookup_v1_0`):
+
+1. **Current GUIDs in the config composes** — `Config_gen.DocIndexList`
+   and `Config_lookup.DocIndexList`/`DocIdsList` now hold the rebuilt
+   lists' GUIDs (`Config_lookup` site/caps and everything else
+   unchanged).
+2. **Config-driven site/list bindings** — every SharePoint action's
+   hardcoded `dataset`/`table` literal becomes an expression through
+   its flow's config compose: `@{outputs('Config_gen')?['SiteUrl']}` /
+   `?['DocIndexList']` (7 actions in each generation flow:
+   Get_story_row, Get_story_sidecar, Get_neighbor_row, Get_exemplars_q,
+   Get_exemplar_md, Get_reference_md, Save_draft) and
+   `@{outputs('Config_lookup')?['SiteUrl']}` / `?['DocIdsList']` /
+   `?['DocIndexList']` (Get_id_rows, Get_doc_row, Get_story_rows).
+   The next list rebuild is a one-line config edit. All actions run
+   downstream of their config compose, so the outputs are always
+   available. The ONE exception: the standalone flow's
+   `For_a_selected_item` trigger cannot evaluate `outputs()` (triggers
+   fire before any action), so its `table` stays a LITERAL — swapped
+   to the new Doc Index GUID; a future rebuild re-picks it in the
+   designer.
+
+All three import packages re-cut with the updated payloads
+(byte-identical to their folder definitions, the provenance
+convention). `TestPlanGenAgentFlow` and its package are untouched —
+it binds no lists (its only external reference is the
+child-flow re-pick placeholder).
+
+Deploy delta, live tenant: EITHER apply the same custom-value
+expressions to the live flows in the designer (Site Address / List
+Name per action, the table above — plus the standalone trigger
+re-pick) — OR re-import the re-cut packages. Fresh imports on any
+tenant now land on the current lists out of the box.
+
+| Piece | Version | Where |
+|---|---|---|
+| Standalone flow + package | **v2.1** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Core child flow + package | **v2.1** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| StoryLookupFlow + package | **v1.1** | `testplangen/flow/lookup_v1_0/`, `StoryLookupFlow_v1_0.zip` |
+| Agent flow + package, agent file set, prompt, schemas | unchanged | — |
+
 # TestPlanGen v2.9 — flow nodes embedded in the topic YAML (agent v1.9)
 
 The GenerateTestPlan topic now ships with its two `InvokeFlowAction`

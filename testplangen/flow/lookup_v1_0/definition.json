@@ -73,8 +73,8 @@
           "type": "Compose",
           "inputs": {
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-            "DocIndexList": "245a4082-53c5-49f0-90e1-1abe62698c4a",
-            "DocIdsList": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
+            "DocIndexList": "b98fb2a1-1c91-48f9-9b9b-323656557171",
+            "DocIdsList": "6263eeac-471a-489e-96c7-1448f45378d4",
             "CandidateCap": 8
           }
         },
@@ -161,8 +161,8 @@
                   "type": "OpenApiConnection",
                   "inputs": {
                     "parameters": {
-                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                      "table": "87b75cd7-5e84-4a65-adb5-dcd0de08321d",
+                      "dataset": "@{outputs('Config_lookup')?['SiteUrl']}",
+                      "table": "@{outputs('Config_lookup')?['DocIdsList']}",
                       "$filter": "IssueNumber eq @{outputs('Issue_num')}",
                       "$top": 50
                     },
@@ -211,8 +211,8 @@
                               "type": "OpenApiConnection",
                               "inputs": {
                                 "parameters": {
-                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                                  "dataset": "@{outputs('Config_lookup')?['SiteUrl']}",
+                                  "table": "@{outputs('Config_lookup')?['DocIndexList']}",
                                   "id": "@outputs('Doc_item_id')"
                                 },
                                 "host": {
@@ -325,8 +325,8 @@
                         "type": "OpenApiConnection",
                         "inputs": {
                           "parameters": {
-                            "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                            "table": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+                            "dataset": "@{outputs('Config_lookup')?['SiteUrl']}",
+                            "table": "@{outputs('Config_lookup')?['DocIndexList']}",
                             "$filter": "DocKind eq 'User Story' and IndexStatus eq 'Indexed'",
                             "$orderby": "Modified desc",
                             "$top": 100
