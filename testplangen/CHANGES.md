@@ -1,3 +1,49 @@
+# TestPlanGen v2.6 — IsMatch-free classification (agent v1.7)
+
+The first live RUN of the v1.6 topic (2026-08-13, conversation
+35788304) crashed with ContentValidationError on `setDocIdBare`:
+input `#32989` satisfied `IsMatch(Topic.RefLower, "\d+")`, took the
+bare-doc-id branch, and `Value("#32989")` threw. The finding behind
+the crash: **on this runtime, `IsMatch` matches as CONTAINS, not the
+documented complete-match** — so "contains any digits" was
+classifying every issue reference (and would have taken any
+digit-bearing title) as a bare doc id, and the first non-numeric hit
+crashed the topic rather than misrouting quietly.
+
+Fix (topic v1.7): the classify group uses NO `IsMatch` at all —
+semantics no longer depend on the contains/complete question:
+
+- bare doc id: `=IsNumeric(Topic.RefText)`;
+- issue URL: the v1.6 `in` form (unchanged);
+- issue tag (`#N` / `issue N` / `devtopia N`): `StartsWith` on the
+  marker + `Substitute`-strip of `devtopia`/`issue`/`#` +
+  `IsNumeric` on the remainder — the stripped remainder IS the
+  lookup query, which also retires that branch's `Match` extraction;
+- doc tag (`doc N` / `id N`): same strip pattern with `doc`/`id`.
+
+Anything failing all four tests — including digit-bearing titles
+like "3.8 route merge" — falls to the title lane, which is the safe
+default. The one remaining regex is the URL branch's
+`Match(..., "issues/(?<num>\d+)").num` digit extraction, correct
+under contains semantics by design. Agent_Setup's schema-drift
+caution now leads with the runtime finding; the paste-time ladder
+records fold under it.
+
+No flow, package, prompt, or schema changes — this is again all
+topic-side. Tenants mid-deploy: re-paste the classify group (or the
+topic body) and re-run the test-pane paths, starting with the exact
+crasher: `#32989`-style input must now route to the issue lane.
+
+| Piece | Version | Where |
+|---|---|---|
+| GenerateTestPlan topic (IsMatch-free classify group; + file-set headers) | **TestPlanGenAgentVersion v1.7** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent_Setup (schema-drift caution: runtime contains-semantics finding) | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 9) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.7 (paste in progress) |
+
 # TestPlanGen v2.5 — live-validated URL condition + canonical binding keys (agent v1.6)
 
 Second and third findings from the same live v2.3 deployment

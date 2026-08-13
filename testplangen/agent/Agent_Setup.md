@@ -1,6 +1,6 @@
 # Test Plan Generator Agent Setup — import and wire
 
-Current versions: agent file set **v1.6**, component **v2.5** (see `../CHANGES.md`).
+Current versions: agent file set **v1.7**, component **v2.6** (see `../CHANGES.md`).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story reference in
@@ -45,24 +45,30 @@ absence.
 > paste), so the files always work as paste sources. This is the
 > repo's designer-verify posture applied to a new surface.
 >
-> The same caution covers the Power Fx *inside* topics. Two live
-> canvas findings shaped the classify group (v2.4/v2.5 records):
-> the three-argument `IsMatch` form was rejected on
-> `MatchOptions.Contains`, and the anchored two-argument URL pattern
-> was then ALSO rejected ("Expected operator") while the simpler
-> `IsMatch` conditions validated. The checked-in `refIsIssueUrl`
-> condition is therefore the regex-free `in` substring form adopted
-> on the live tenant —
-> `=And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)`
-> (`in` is case-insensitive) — and every remaining `IsMatch` stays
-> two-argument. If a formula is flagged on your tenant, walk the
-> variant ladder in order and keep the first that validates, then
-> carry it back to the file: (1) the checked-in `in` form;
-> (2) function style
-> (`And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))`);
-> (3) operator style (`!`/`&&` with the same Find tests);
-> (4) `IsMatch` with a simplified pattern
-> (`.*devtopia.esri.com/.+/issues/[0-9]+.*`).
+> The same caution covers the Power Fx *inside* topics. Three live
+> findings shaped the classify group (v2.4–v2.6 records). Two at
+> paste time: the three-argument `IsMatch` form was rejected on
+> `MatchOptions.Contains`, then the anchored two-argument URL
+> pattern was rejected too ("Expected operator"). One at RUNTIME,
+> and it's the decisive one: `IsMatch` on this runtime matches as
+> CONTAINS, not the documented complete-match — input `#32989`
+> satisfied `IsMatch(RefLower, "\d+")`, took the bare-doc-id branch,
+> and `Value("#32989")` crashed the topic with
+> ContentValidationError. The classify group therefore uses NO
+> `IsMatch` at all: `IsNumeric` for the bare id,
+> `StartsWith` + `Substitute`-strip + `IsNumeric` for the tagged
+> forms, and the case-insensitive `in` operator for the URL test
+> (`=And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)`).
+> The one remaining regex — the URL branch's
+> `Match(Topic.RefLower, "issues/(?<num>\d+)").num` extraction — is
+> correct under contains semantics by design. If any of these
+> primitives is flagged on a future tenant, substitute the nearest
+> equivalent (`Find`-based tests for `in`, `Value`+`IfError` for
+> `IsNumeric`) and carry it back to the file. And one transit trap
+> mimics total failure: quotes that arrive as curly quotes from a
+> clipboard hop fail every formula with "Expected operator" — retype
+> the quote characters in the formula bar before concluding a
+> function is unsupported.
 > One transit trap masquerades as all of these failing: quotes that
 > arrive as curly quotes from a clipboard hop fail every variant with
 > "Expected operator" — retype the quote characters in the formula
