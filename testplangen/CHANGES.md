@@ -1,3 +1,95 @@
+# TestPlanGen v2.12 — design-doc references, slot config, budget fix (flows v2.2)
+
+The flow half of the coverage push (v2.11 is the prompt half; the
+deployed-state half is `Coverage_Runbook.md`). Even with retrieval
+revived and prompt v1.5 pasted, the v2.1 flows under-deliver
+supporting documentation three ways: only `DocKind = 'Test Plan'`
+neighbors ever contribute full text (the prompt has promised "test
+plans **or design docs**" in the reference lane since v1.3 — Design
+Spikes could never arrive); a same-surface plan arriving after both
+exemplar slots fill fails both routing conditions and silently
+degrades to a 400-char digest line (the documented G5b fall-through);
+and the slot counts are hard-coded literals. Plus one real bug: the
+G7/G7b budget conditions gate correctly on "remaining > 0" but the
+appends re-`take()` the FULL cap each iteration, so `ExemplarText`
+could reach ~2× ExemplarCap (~40k chars) and `ReferenceText` ~2×
+ReferenceCap — oversized context that both wastes the budget the
+caps exist to enforce and pressures the model toward consolidation.
+
+**Both flows → v2.2** (`flow/v1_0/definition.json`,
+`flow/core_v1_0/definition.json` — seven expression-level edits,
+mirrored; no new actions, no renames, no runAfter changes; the
+authored pair re-verified action-identical outside the five known
+structural deltas):
+
+- **`If_testplan_neighbor`** admits `Design Spike` alongside
+  `Test Plan` (the one other DocKind that describes expected
+  behavior; Data Template / Schedule / Doc Review / Other / adjacent
+  User Story stay digest-only).
+- **`If_exemplar_slot`** gains a `DocKind = 'Test Plan'` conjunct (a
+  spike must never become a style exemplar) and reads
+  `Config_gen.ExemplarSlots` instead of the literal 2.
+- **`If_reference_slot`** drops the cross-surface requirement and
+  reads `Config_gen.ReferenceSlots`: same-surface plans past the
+  exemplar slots now OVERFLOW into the reference lane instead of
+  vanishing (score-ordered arrival keeps the best plans in the
+  exemplar slots), and Design Spikes on any surface land here.
+  Prompt v1.3+ already supports same-surface references — the
+  surface-parity [VERIFY] keys on each reference block's own surface
+  header, so no spurious VERIFYs.
+- **`Config_gen`**: new `ExemplarSlots: 2`, `ReferenceSlots: 3` (the
+  third reference slot is the cheapest more-supporting-docs lever —
+  bounded by ReferenceCap, which is now actually enforced);
+  `StoryCap` 30000 → 45000 (a truncated story tail loses acceptance
+  criteria = silently lost cases; post-fix worst-case context ≈
+  45k + 20k + 12k + digest ≈ 80k chars ≈ ~20k tokens, comfortably in
+  the model window). `Exemplar_rows`' two literal takes read
+  `ExemplarSlots` too.
+- **Budget fix** — `Append_exemplar` / `Append_reference` `take()`
+  the REMAINING budget (`sub(cap, length(variable))`) instead of the
+  full cap; the gates already guarantee it is positive.
+- **`Gen_summary`** appends ` exChars=` / ` refChars=` so the fix
+  and the widened lanes are observable in run history
+  (`exChars ≤ ExemplarCap` is the post-check).
+
+**Docs** — Setup §3 G0 (config block + knob prose), G5b (two-lane
+router + overflow rule replacing the fall-through parenthetical), G6
+`Exemplar_rows`, G7/G7b append expressions, G13 (new fields +
+reading), reference-lane no-fallback prose, Known limits (amended
+v2.2); Smoke suite v1.4: rows 3 and 10 amended, new row 11 (Design
+Spike / same-surface overflow end-to-end, `exChars`/`refChars` cap
+check). NeighborCap/RelatedTopN deliberately NOT raised: the sweep's
+`RelatedTopN: 5` is the true ceiling on the `related:` list, and
+raising either is inert until the FX-5 backfill converges — revisit
+when `Gen_summary` shows `neighbors=5` routinely. A reference
+fallback query stays rejected (the v2.0 rationale: blind
+cross-surface retrieval grounds drafts on unrelated features).
+
+Both packages re-cut with the v2.2 definitions (byte-identical to
+their folder definitions, the provenance convention) — this re-cut
+also carries the v2.11 stamp, closing the deferral noted there.
+
+Deploy delta, live tenant (requires the v2.0 contract on the tenant
+— `Coverage_Runbook.md` step 3; commutes with the v1.5 paste, so it
+rides that window or its own): apply
+`review/patches/designer-edits.md` §testplangen-v2_12 (U1–U7) in
+BOTH live flows — or re-import the re-cut packages (post-import
+checks I1–I4) — then run smoke rows 3, 10, 11 and record below.
+NEVER bump `Config.PromptVersion` — nothing here changes the sidecar
+format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Standalone flow + package | **v2.2** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Core child flow + package | **v2.2** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Designer edits | §testplangen-v2_12 (U1–U7) | `review/patches/designer-edits.md` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.4, 11 rows) |
+| Prompt, agent file set, schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 11) | Flows |
+|---|---|---|---|
+| — | — | — | v2.2 (deploy pending) |
+
 # TestPlanGen v2.11 — requirement-driven coverage (prompt v1.5)
 
 Motivated by the standing coverage complaint (2026-08-13): live

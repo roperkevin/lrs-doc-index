@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v2.11** (see `CHANGES.md`).
+Current component version: **v2.12** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -157,11 +157,13 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
   "DocIndexList": "b98fb2a1-1c91-48f9-9b9b-323656557171",
   "DraftFolder": "/Shared Documents/Test Plan Drafts",
-  "StoryCap": 30000,
+  "StoryCap": 45000,
   "ExemplarCap": 20000,
   "ReferenceCap": 12000,
   "NeighborCap": 5,
   "DigestSummaryCap": 400,
+  "ExemplarSlots": 2,
+  "ReferenceSlots": 3,
   "TestPlanGenPromptVersion": "v1.5"
 }
 ```
@@ -169,6 +171,11 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
 The caps are the token-budget knobs (Known limits below). Trim
 priority when a generation feels starved: the story always wins, then
 the first exemplar, then the digest, then the second exemplar.
+`ExemplarSlots` / `ReferenceSlots` (v2.2) bound how many document
+BODIES each lane fetches — the caps still bound total characters, so
+raising a slot count widens variety, not the budget; StoryCap is
+45000 (v2.2, was 30000) because a truncated story tail loses
+acceptance criteria — i.e. silently loses cases.
 
 **G0b — Initialize variables** (seven, top level — variables cannot
 initialize inside a scope): `NeighborDigest` (String, value
@@ -253,20 +260,26 @@ run:
     `NeighborDigest`:
     `- [@{coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], 'Other')}] "@{body('Get_neighbor_row')?['Title']}" — surface @{coalesce(body('Get_neighbor_row')?['Surface']?['Value'], '')}, release @{coalesce(body('Get_neighbor_row')?['TargetRelease'], '')}, PE @{coalesce(body('Get_neighbor_row')?['PE'], '')}: @{outputs('Neighbor_summary_capped')}@{decodeUriComponent('%0A')}`
   - **`If_testplan_neighbor`** (Condition):
-    `@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))`
-    — Yes branch (**G5b, the v2.0 surface split**): related Test Plans
-    route by surface — same-surface plans are the best style/coverage
-    exemplars (topically closest, taken before the fallback query is
-    even considered); cross-surface plans describe the same feature
-    area on another surface, which makes them REFERENCE FUNCTIONALITY,
-    not style exemplars:
-    - **`If_exemplar_slot`** (Condition):
-      `@and(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), 2))`
+    `@and(or(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Design Spike')), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))`
+    — the name predates v2.2, which admits Design Spikes too (the one
+    other DocKind that describes expected behavior — the reference
+    lane has promised "test plans or design docs" since prompt v1.3);
+    Data Template / Schedule / Doc Review / Other / adjacent User
+    Story stay digest-only. Yes branch (**G5b — the v2.0 surface
+    split, widened in v2.2 to a two-lane router**): same-surface Test
+    Plans are the best style/coverage exemplars (topically closest,
+    taken before the fallback query is even considered); everything
+    else admitted — cross-surface plans, same-surface plans past the
+    exemplar slots (the v2.2 overflow rule), and Design Spikes on any
+    surface — is REFERENCE FUNCTIONALITY:
+    - **`If_exemplar_slot`** (Condition — the DocKind conjunct is
+      v2.2: a Design Spike must never become a style exemplar):
+      `@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), int(outputs('Config_gen')?['ExemplarSlots'])))`
       — Yes: **`Collect_exemplar_url`** (Append to array variable
       `ExemplarUrls`, value
       `@{coalesce(body('Get_neighbor_row')?['TextFileUrl'], '')}`).
       — No: **`If_reference_slot`** (Condition):
-      `@and(not(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], ''))), less(length(variables('ReferenceUrls')), 2))`
+      `@less(length(variables('ReferenceUrls')), int(outputs('Config_gen')?['ReferenceSlots']))`
       — Yes: **`Collect_reference_url`** (Append to array variable
       `ReferenceUrls`) — the value is an OBJECT, because the reference
       header needs title and surface at fetch time:
@@ -279,9 +292,16 @@ run:
       }
       ```
 
-      (A same-surface plan arriving after both exemplar slots are
-      full falls through both conditions and stays digest-only — it
-      is never mis-slotted as a reference.)
+      (Until v2.2 this condition also required a DIFFERENT surface,
+      so a same-surface plan arriving after the exemplar slots were
+      full failed both conditions and silently stayed digest-only.
+      The overflow rule replaces that: score-ordered arrival means
+      the highest-scored same-surface plans still win the exemplar
+      slots, and the next ones land as references — which prompt
+      v1.3+ already supports ("possibly on ANOTHER surface"; the
+      surface-parity [VERIFY] keys on each reference block's own
+      surface header, so a same-surface reference forces no spurious
+      VERIFY).)
 - **`Neighbor_done`** (Compose, inputs `ok`) — configure run after:
   `Try_neighbor` has **Succeeded, Failed, Skipped, Timed out**. This
   is the neutralizer; without it a single failed iteration fails the
@@ -308,8 +328,8 @@ retrieval samples):
   `@body('Get_exemplars_q')?['value']`, where
   `@and(not(empty(coalesce(body('Get_story_row')?['TargetRelease'], ''))), equals(coalesce(item()?['TargetRelease'], ''), coalesce(body('Get_story_row')?['TargetRelease'], '')))`
 - **`Exemplar_rows`** (Compose) — release-matched rows win outright,
-  else the two newest for the surface:
-  `@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), 2), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), 2))`
+  else the newest `ExemplarSlots` for the surface:
+  `@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), int(outputs('Config_gen')?['ExemplarSlots'])), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), int(outputs('Config_gen')?['ExemplarSlots'])))`
 - **`For_each_exemplar_row`** (Apply to each over
   `@outputs('Exemplar_rows')`, concurrency 1): **`Queue_exemplar_url`**
   (Append to array variable `ExemplarUrls`, value
@@ -320,11 +340,13 @@ the catalog generates with `ExemplarText` empty — the prompt tolerates
 it (structure comes from the DRAFT SHAPE rules), the draft just leans
 harder on the story alone; `Gen_summary` shows `exemplars=0`.
 
-The reference lane has NO fallback query, deliberately: cross-surface
+The reference lane has NO fallback query, deliberately: reference
 functional grounding is only ever taken from documents RelatedRank
 actually linked to this story (shared keywords/issue ids) — a blind
 "any test plan from another surface" query would ground drafts on
-unrelated features. A story with no cross-surface related Test Plan
+unrelated features. A story whose `related:` list carries no
+reference-eligible document (v2.2: cross-surface Test Plan,
+same-surface plan past the exemplar slots, or Design Spike)
 generates with `ReferenceText` empty (`Gen_summary` shows
 `references=0`), exactly as every story did before v2.0.
 
@@ -340,9 +362,11 @@ neutralizer pattern as G5:
       Content Type **No**, File Path `@{outputs('Ex_path')}`)
     - **`If_ex_budget`** (Condition:
       `@less(length(variables('ExemplarText')), int(outputs('Config_gen')?['ExemplarCap']))`),
-      Yes branch:
+      Yes branch — note the append takes the REMAINING budget
+      (v2.2; taking the full cap per iteration let `ExemplarText`
+      reach ~2× ExemplarCap):
       - **`Append_exemplar`** — Append to string `ExemplarText`:
-        `--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), int(outputs('Config_gen')?['ExemplarCap']))}@{decodeUriComponent('%0A%0A')}`
+        `--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText'))))}@{decodeUriComponent('%0A%0A')}`
       - **`Inc_exemplar`** — Increment variable `ExemplarCount` by 1.
 - **`Exemplar_done`** (Compose, inputs `ok`, run after `Try_exemplar`
   has **Succeeded, Failed, Skipped, Timed out**).
@@ -363,8 +387,9 @@ note the `items(...)?['url']` reads, since the array holds objects:
       Yes branch:
       - **`Append_reference`** — Append to string `ReferenceText` —
         the header carries title AND surface, which the prompt's
-        surface-parity rule keys on:
-        `--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), int(outputs('Config_gen')?['ReferenceCap']))}@{decodeUriComponent('%0A%0A')}`
+        surface-parity rule keys on; the take is the remaining
+        budget (v2.2, same fix as G7):
+        `--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText'))))}@{decodeUriComponent('%0A%0A')}`
       - **`Inc_reference`** — Increment variable `ReferenceCount` by 1.
 - **`Reference_done`** (Compose, inputs `ok`, run after
   `Try_reference` has **Succeeded, Failed, Skipped, Timed out**).
@@ -454,13 +479,18 @@ out** — the curation Catch verbatim, names swapped):
 the F11 pattern):
 
 ```
-@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}
+@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')), ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText')))}
 ```
 
 `exemplars=0` on a story that should have peers = check §3-G6's
-Surface value against the catalog; `references=0` is normal unless the
-story's `related:` list actually carries a cross-surface Test Plan;
-`draftChars` near zero never happens (G9 fails closed first).
+Surface value against the catalog; `references=0` is normal only when
+the story's `related:` list carries no cross-surface Test Plan, no
+same-surface plan beyond the exemplar slots, and no Design Spike
+(v2.2 — before it, only cross-surface plans landed here);
+`draftChars` near zero never happens (G9 fails closed first);
+`exChars`/`refChars` (v2.2) must sit at or under ExemplarCap /
+ReferenceCap — over the cap means the G7/G7b remaining-budget take
+regressed to the full-cap form.
 
 **Cost**: 1 trigger + ~28 fixed actions + ~3 per related neighbor +
 ~5 per exemplar + ~5 per reference + ONE AI Builder call ≈ **35–65
@@ -535,14 +565,18 @@ Run every row of `testplangen/TestPlanGen_Smoke.md` before trusting
 the flow; record the run in `testplangen/CHANGES.md` (date, tenant,
 pass/fail per row).
 
-## Known limits (v1.0)
+## Known limits (v1.0, amended v2.2)
 
 - **Input caps are blunt**: `StoryCap` truncates the story text tail
-  (the banner flags it when it happens), `ExemplarCap` truncates or
-  drops the second exemplar, and the digest carries summaries only —
-  never neighbor bodies (they'd cost 50× the tokens for marginal
-  signal). The caps in `Config_gen` are the knobs; trim priority is
-  story > exemplar 1 > digest > exemplar 2.
+  (the banner flags it when it happens), `ExemplarCap` truncates
+  later exemplars down to the remaining budget (v2.2 — before that
+  each append re-took the full cap, so the total could reach ~2×),
+  and the digest carries summaries only — never neighbor bodies
+  (they'd cost 50× the tokens for marginal signal; since v2.2
+  Design Spikes are the one non-Test-Plan kind whose bodies ride
+  the reference lane). The caps and slot counts in `Config_gen` are
+  the knobs; trim priority is story > exemplar 1 > digest > later
+  exemplars.
 - **The hallucination guard is prompt-side only** — mandatory Trace
   lines, no-invented-tools, `[VERIFY]`-not-fabricate — plus the human
   review gate. Unlike curation there is no row-validation equivalent:
