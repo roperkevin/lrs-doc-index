@@ -1,3 +1,41 @@
+# Agent v1.3 — describe the v2.8 hidden-metadata layout + products
+
+Instructions-only bump (`agent/QA_Agent_Instructions_v1_3.md`,
+supersedes v1.2 before its paste), companion to the flow v2.8 /
+PromptVersion v2.0 format upgrade (`flow/v2_8/CHANGES.md`):
+SIDECAR STRUCTURE now describes the yaml block hidden inside an HTML
+comment (`<!-- metadata` ... `-->`, invisible when rendered but
+present in retrieved text — the agent is told to read the yaml lines
+as data and treat the comment delimiters as formatting), the new
+`products` field (LRS product lines Roads & Highways / Pipeline
+Referencing / Utility Network, with the acronym map RH/ADMRH/APR/
+UNAPR/UN spelled out) plus its Product info-table row, and fenced
+code blocks (```arcade / bare) with inline-code list items in bodies
+— the agent quotes code verbatim from inside fences. USING THE
+METADATA gains a product-filter rule (products field beats body
+name-drops; fall back with a caveat on pre-backfill sidecars). The
+transition note now covers BOTH older shapes (details-wrapped and
+yaml-first) until the v2.0 backfill converges.
+
+Runbook per v1.0 conventions: re-paste the delimited block into the
+agent's Instructions field, record `AgentInstructionsVersion: v1.3`,
+re-run `agent/QA_Smoke_Questions.md`. No flow, script, schema, or
+prompt changes in THIS bump (the format change itself is the flow
+v2.8 window); no PromptVersion touch here; pasting early is harmless
+since all shapes are described. The v1.2 paste (never confirmed on
+tenant) is superseded — paste v1.3 instead with the v2.8 window.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent instructions | **v1.3** | `agent/QA_Agent_Instructions_v1_3.md` |
+| Everything else | unchanged | — |
+
+Re-paste record (deploy with flow v2.8, see its window):
+
+| Date | Tenant | Pasted | Smoke re-run |
+|---|---|---|---|
+| — | — | pending — part of the v2.8 window | pending |
+
 # Agent v1.2 — describe the v2.7 GFM sidecar layout
 
 Instructions-only bump (`agent/QA_Agent_Instructions_v1_2.md`,

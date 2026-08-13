@@ -1,31 +1,54 @@
-# Doc Index System — Release v2.5
+# Doc Index System — Release v2.7 (deployed) / v2.8 (authored)
 
 > Deployed-version questions? `STATUS.md` is the single
 > source-of-truth table (scripts, prompts, components, open actions).
 
 Everything the document-indexing pipeline needs, in one bundle.
-Current as of 2026-08-12. The system: a daily Power Automate flow
+Current as of 2026-08-13. The system: a daily Power Automate flow
 sweeps the LocationReferencing Documents library, extracts text
 in-script, classifies and keywords each doc via AI Builder, mints
 issue-ID rows and doc-to-doc edges, writes markdown sidecars with
 images — filed into per-kind subfolders, stamped with the source
-document's author/editor/last-edited trail — and cross-links each
-sidecar to its related documents.
+document's author/editor/last-edited trail and product lines — and
+cross-links each sidecar to its related documents.
+
+## Flow v2.8 (authored) at a glance
+
+Authored from the 2026-08-13 live export (`flow/v2_8/CHANGES.md`):
+the sidecar's yaml metadata block moves inside an HTML comment
+(`<!-- metadata` ... `-->`) so **no renderer displays it** — readers
+see only the H1 + info table header; machine consumers keep the same
+yaml lines. Extracted bodies become **code-aware**: pasted Arcade/JS
+scripts render as fenced code blocks (```arcade) and code-shaped
+bullets as inline code (ZipTextExtract v2.1). Documents are
+**categorized by product line** — Roads & Highways, Pipeline
+Referencing, Utility Network — detected deterministically from
+filename/title/text acronyms (RH, APR, UN, UNAPR, ADMRH) and full
+names (RegexExtract v1.4), surfaced as an info-table Product row, a
+`products:` yaml line, and a new Doc Index `Products` column. The
+same round records the §v2_7-fixes: four designer mis-picks and the
+stuck SmokeFile found in the live export (STATUS open action 1 —
+until FX-5 clears it, the v1.9 backfill is stalled and the corpus
+keeps the old yaml-on-top layout).
 
 ## Bundle contents
 
 | Path | What | Version |
 |---|---|---|
-| flow/v2_5/definition.json | Flow definition (deployed) | v2.5 |
-| flow/v2_6/definition.json | Flow definition (authored — related-ranking overhaul; designer application pending, one window with the RelatedRank v2.1 paste; amended for r4: Self_rank_meta title line + title weights) | v2.6 |
+| flow/v2_5/definition.json | Flow definition (previous deployed baseline) | v2.5 |
+| flow/v2_6/definition.json | Flow definition (authored; window applied on tenant per the 2026-08-13 export) | v2.6 |
+| flow/v2_7/definition.json | Flow definition (authored; window applied on tenant per the 2026-08-13 export — with the mis-picks listed in designer-edits §v2_7-fixes) | v2.7 |
+| flow/v2_8/definition.json | Flow definition (authored FROM the 2026-08-13 live export — real tenant bindings + §v2_7-fixes + hidden metadata comment frame, Product row/column, PromptVersion v2.0) | v2.8 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
 | flow/DocIndexSweep_v2_6.zip | Import package (v2.5 package skeleton + the v2.6 definition, payload byte-identical to the folder; post-import verification still needed — re-pick every Run-script action) | v2.6 |
-| scripts/RegexExtract.ts | ID + revision extraction + title slug | v1.3 (paste pending) |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties | v2.0 (paste pending) |
+| flow/DocIndexSweep_v2_7.zip | Import package (v2.6 package skeleton + the v2.7 definition, payload byte-identical to the folder) | v2.7 |
+| flow/DocIndexSweep_v2_8.zip | Import package (the 2026-08-13 live export's OWN skeleton, PV-1 scrubbed, + the v2.8 definition — payload byte-identical to the folder) | v2.8 |
+| scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing | v2.1 (paste pending — v2.8 window) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
-| scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (paste pending — one window with the v2.6 designer edits) |
-| scripts/SidecarPatch.ts | Surgical related-section patching | v1.4 (paste pending) |
+| scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
+| scripts/SidecarPatch.ts | Surgical related-section patching (four metadata frames) | v1.6 (paste pending — safe any time before the v2.8 window) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
 | review/patches/ZipTextExtract_v1_9.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.9 |
@@ -33,13 +56,17 @@ sidecar to its related documents.
 | review/patches/RelatedRank_v1_2.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.2 |
 | review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
 | review/patches/RelatedRank_v2_0.ts | r3 patch (gated; superseded in-repo by v2.1 before its paste) | v2.0 |
-| review/patches/RelatedRank_v2_1.ts | r4 patch (gated + promoted 2026-08-12; tenant paste pending, fenced to the v2.6 window — same signature as v2.0) | v2.1 |
+| review/patches/RelatedRank_v2_1.ts | r4 patch (gated + promoted 2026-08-12; pasted with the v2.6 window per the export evidence) | v2.1 |
+| review/patches/ZipTextExtract_v2_1.ts | r6 patch (gated + promoted 2026-08-13; paste with the v2.8 window) | v2.1 |
+| review/patches/RegexExtract_v1_4.ts | r6 patch (gated + promoted 2026-08-13; paste with the v2.8 window) | v1.4 |
+| review/patches/SidecarPatch_v1_6.ts | r6 patch (gated + promoted 2026-08-13; safe to paste any time before the v2.8 window) | v1.6 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.3 adds a fifth input parameter) | v1.3 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
-| agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio) | v1.1 |
+| agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio; deployed) | v1.1 |
+| agent/QA_Agent_Instructions_v1_3.md | Q&A agent instructions (authored — describes the v2.8 layout + products; supersedes the unpasted v1.2; paste with the v2.8 window) | v1.3 |
 | agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite | v1.0 |
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |

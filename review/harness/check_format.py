@@ -342,6 +342,43 @@ check(wlines2[wlines2.index('## Sheet: Styled Empty') + 1] == '(empty)'
       and '| a | b |' in wb2 and '|  |' not in wb2,
       'formatted-but-empty sheet renders "(empty)"')
 
+# ---- 11: the r6 batch behaviors (ZipTextExtract v2.1 — CF-1 code
+# fencing; folded from check_batch_r6.py on promotion) ---------------------
+ct = run_node('zte_cur.ts', 'code_deck.pptx.b64', '')['out']['text']
+clines = ct.split('\n')
+fence_at = [i for i, ln in enumerate(clines) if ln.startswith('```')]
+check(len(fence_at) == 2 and clines[fence_at[0]] == '```arcade',
+      f'code_deck: exactly one fence pair, tagged arcade ({len(fence_at)} markers)')
+if len(fence_at) == 2:
+    inside = clines[fence_at[0] + 1:fence_at[1]]
+    check('var station = $feature.MEASURE' in inside and
+          'if (station < 0) {' in inside and '}' in inside and
+          'return Stationlb' in inside,
+          'code_deck: the whole script run lands inside the fence')
+    check('' in inside, 'code_deck: internal blank line preserved inside the fence')
+    check('# stationing format note' in inside and
+          '\\# stationing format note' not in ct,
+          'code_deck: sandwiched # line joins the fence with its escape reverted')
+    before = '\n'.join(clines[:fence_at[0]])
+    check('Input expression for the stationing calculation below:' in before,
+          'code_deck: leading prose line stays outside the fence')
+check(len(fence_at) == 2 and
+      'Test with UNAPR data and Pipeline Referencing centerlines today' in
+      '\n'.join(clines[fence_at[1] + 1:]),
+      'code_deck: trailing prose line stays outside, after the closing fence')
+check(any(ln.rstrip() == '  - `$feature.Depth + $feature.Width / 10`' for ln in clines),
+      'code_deck: code-shaped bullet renders as inline code')
+check(any(ln.rstrip() == '  - positive case expected result route measure' for ln in clines),
+      'code_deck: prose bullet is not wrapped')
+check('| a = b; c = d; | plain cell |' in ct and '| var x = 1; | referent |' in ct,
+      'code_deck: table rows never absorbed into a fence')
+
+pt = run_node('zte_cur.ts', 'prose_deck.pptx.b64', '')['out']['text']
+check('```' not in pt and
+      'Select the route; click Save; verify the label renders;' in pt and
+      'return to the map view and verify the resulting label' in pt,
+      'prose_deck: instruction-shaped prose gains no fence at all')
+
 print()
 if failures:
     print(f'RESULT: FAIL — {len(failures)} assertion(s) failed')

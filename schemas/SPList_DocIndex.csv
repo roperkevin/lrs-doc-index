@@ -24,3 +24,4 @@ ExtractionLane,ExtractionLane,Choice,"xmlstrip; workbookdump; plaintext; htmltot
 PromptVersion,PromptVersion,Single line of text,"Prompt rev that produced semantic fields — selective re-run lever",No
 IndexedOn,IndexedOn,Date and Time,"Include time",No
 LastError,LastError,Multiple lines of text,"PLAIN text (not enhanced); last failure captured by Catch_index — failing action name + connector error (Err_detail, capped 4000 chars); cleared by Set_text_url on recovery and by Update_doc_skipped; empty on healthy rows",No
+Products,Products,Single line of text,"v2.8: LRS product lines detected by RegexExtract v1.4 (filename/title/text acronyms + full names) — '; '-joined canonical names from Roads & Highways / Pipeline Referencing / Utility Network; empty when none detected",No

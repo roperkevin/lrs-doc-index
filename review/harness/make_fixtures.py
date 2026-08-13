@@ -452,6 +452,57 @@ print('r2 fixtures:', {f: os.path.getsize(f) for f in
                        ('hashheading_deck.pptx', 'storednlen.docx',
                         'lyingcd_deck.pptx', 'manytables.docx')})
 
+# ---- r6 batch fixtures (check_batch_r6.py) -------------------------------
+# CF-1: code_deck — an Arcade script pasted across slide paragraphs
+# (internal blank line, a '# ...' comment line that SB-6 will escape,
+# indented lines), code-shaped level-1 bullets, and prose/table control
+# content that must never be absorbed into a fence.
+
+prs_c = Presentation()
+s_c = prs_c.slides.add_slide(prs_c.slide_layouts[5])
+s_c.shapes.title.text = "CodeTitle Arcade Sample"
+tf_c = s_c.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(8), Inches(4)).text_frame
+tf_c.text = "Input expression for the stationing calculation below:"
+for txt in ["var station = $feature.MEASURE",
+            "var IsNegative = 0 //tracks values",
+            " ",  # space-only run -> a blank line inside the script
+            "if (station < 0) {",
+            "  station = station * -1",
+            "}",
+            "# stationing format note",
+            "return Stationlb",
+            "Test with UNAPR data and Pipeline Referencing centerlines today"]:
+    tf_c.add_paragraph().text = txt
+p_c = tf_c.add_paragraph()
+p_c.text = "$feature.Depth + $feature.Width / 10"
+p_c.level = 1
+p_c = tf_c.add_paragraph()
+p_c.text = "positive case expected result route measure"
+p_c.level = 1
+tbl_c = s_c.shapes.add_table(2, 2, Inches(0.5), Inches(6), Inches(6), Inches(1)).table
+tbl_c.cell(0, 0).text = "a = b; c = d;"
+tbl_c.cell(0, 1).text = "plain cell"
+tbl_c.cell(1, 0).text = "var x = 1;"
+tbl_c.cell(1, 1).text = "referent"
+prs_c.save('code_deck.pptx')
+_b64('code_deck.pptx')
+
+# CF-1 control deck: prose that superficially flirts with code shapes —
+# instruction lines ending in ';', a lowercase 'return to ...' sentence
+# — must come through byte-identically to a fence-free extraction
+prs_p = Presentation()
+s_p = prs_p.slides.add_slide(prs_p.slide_layouts[5])
+s_p.shapes.title.text = "ProseTitle"
+tf_p = s_p.shapes.add_textbox(Inches(0.5), Inches(1.5), Inches(8), Inches(3)).text_frame
+tf_p.text = "Select the route; click Save; verify the label renders;"
+tf_p.add_paragraph().text = "return to the map view and verify the resulting label"
+tf_p.add_paragraph().text = "Numerous scripts can be found at https://github.com/Esri/arcade-expressions today"
+prs_p.save('prose_deck.pptx')
+_b64('prose_deck.pptx')
+
+print('r6 fixtures:', {f: os.path.getsize(f) for f in
+                       ('code_deck.pptx', 'prose_deck.pptx')})
+
 # SB-5 (MediaExtract leg): storednlen_img.pptx — a single media entry
 # whose deflate stream is a stored block with a wrong NLEN. MediaExtract
 # only inflates media entries, so the docx variant never reaches its

@@ -589,6 +589,8 @@ END = '<!-- related:end -->'
 
 DETAILS_OPEN = '<details><summary>Metadata</summary>\n\n```yaml\n'
 DETAILS_CLOSE = '\n```\n\n</details>\n'
+COMMENT_OPEN = '<!-- metadata\n```yaml\n'
+COMMENT_CLOSE = '\n```\n-->\n'
 
 
 def sidecar(related_line='related: []', region='_None yet._', markers=True,
@@ -615,9 +617,12 @@ related: [decoy]
 ### Notes
 stray seams and related-lookalikes everywhere
 '''
-    if frame == 'details':
-        # the flow v2.7 / PromptVersion v1.9 shape: H1 + info table
-        # head, then the yaml block wrapped in <details>
+    if frame in ('details', 'comment'):
+        # the headed shapes: flow v2.7 / PromptVersion v1.9 wraps the
+        # yaml in <details>; flow v2.8 / PromptVersion v2.0 hides it in
+        # an HTML comment. Same H1 + info table head either way.
+        opener, closer = ((DETAILS_OPEN, DETAILS_CLOSE) if frame == 'details'
+                          else (COMMENT_OPEN, COMMENT_CLOSE))
         return f'''# Conflict "Prevention": Acquire Locks for New Routes
 
 |   |   |
@@ -626,7 +631,7 @@ stray seams and related-lookalikes everywhere
 | **Issue** | [ArcGISPro/x#101](https://devtopia.esri.com/ArcGISPro/x/issues/101) |
 | **Extracted** | 2026-08-13 · lane `xmlstrip` |
 
-{DETAILS_OPEN}{fm}{DETAILS_CLOSE}
+{opener}{fm}{closer}
 {tail}'''
     fm_open, fm_close = ('```yaml', '```') if frame == 'fence' else ('---', '---')
     return f'''{fm_open}
@@ -664,8 +669,10 @@ def patch(files, ranked=RANKED, meta=META, top=5):
 def fm_of(text):
     """Inner YAML of the metadata block, whichever frame the file carries."""
     if text.startswith('# '):
-        start = text.index(DETAILS_OPEN) + len(DETAILS_OPEN)
-        return text[start:text.index(DETAILS_CLOSE, start)]
+        opener, closer = ((COMMENT_OPEN, COMMENT_CLOSE) if COMMENT_OPEN in text
+                          else (DETAILS_OPEN, DETAILS_CLOSE))
+        start = text.index(opener) + len(opener)
+        return text[start:text.index(closer, start)]
     if text.startswith('```yaml\n'):
         return text[len('```yaml\n'):text.index('\n```\n')]
     return text[4:text.index('\n---\n', 3)]
@@ -1000,6 +1007,89 @@ det_crlf = '﻿' + sidecar(frame='details').replace('\n', '\r\n')
 check(out['changed'] and '\r' not in out['content'] and
       '<!-- rel:17 -->' in out['content'],
       'v1.5: BOM+CRLF details-frame sidecar is normalized and patched')
+
+# -- v1.6: comment-frame sidecar (flow v2.8 / PromptVersion v2.0) ---------
+com = sidecar(frame='comment')
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': com}])
+check(out['changed'] and out['note'] == 'set' and
+      out['content'].startswith('# Conflict "Prevention"'),
+      'v1.6: comment frame patches in set mode; H1 stays at byte 0')
+check(out['content'].count(COMMENT_OPEN) == 1 and
+      out['content'].count(COMMENT_CLOSE) == 1 and
+      '<details>' not in out['content'],
+      'v1.6: comment frame preserved on rewrite (no conversion)')
+check(out['content'][:out['content'].index(COMMENT_OPEN)] ==
+      com[:com.index(COMMENT_OPEN)],
+      'v1.6: head (H1 + info table) is byte-identical after patching')
+com_fm = yaml.safe_load(fm_of(out['content']))
+check([e['doc'] for e in com_fm['related']] == [17, 23, 9],
+      'v1.6: comment-frame related line yaml-parses to the ranked entries')
+check(out['content'].count('related: [decoy]') == 1 and
+      strip_patchable(out['content']) == strip_patchable(com),
+      'v1.6: comment-frame body decoys byte-untouched (integrity)')
+[again] = patch([{'doc': 42, 'name': 'self.md', 'content': out['content']}])
+check(not again['changed'] and again['content'] == out['content'],
+      'v1.6: idempotent on the comment frame')
+
+com_neighbor = sidecar(
+    frame='comment',
+    related_line='related: [{"doc":99,"file":"other__doc99.md","s":1}]',
+    region='- [Other](<https://x/o.md>) — 1 shared keyword: locks <!-- rel:99 -->')
+[out] = patch([{'doc': 17, 'name': 'n.md', 'content': com_neighbor}])
+com_nfm = yaml.safe_load(fm_of(out['content']))
+check(out['changed'] and out['note'] == 'merged' and
+      [e['doc'] for e in com_nfm['related']] == [42, 99] and
+      out['content'].startswith('# Conflict "Prevention"'),
+      'v1.6: merge into a comment-frame neighbor; frame + head preserved')
+
+# mixed-frame quartet in one batch: each file keeps its own frame
+quartet = patch([
+    {'doc': 42, 'name': 'self.md', 'content': sidecar(frame='comment')},
+    {'doc': 17, 'name': 'a.md', 'content': sidecar(frame='details')},
+    {'doc': 23, 'name': 'b.md', 'content': sidecar(
+        related_line='related: []', frame='fence')},
+    {'doc': 9, 'name': 'c.md', 'content': sidecar(
+        related_line='related: []', frame='dash')},
+])
+check(COMMENT_OPEN in quartet[0]['content'] and
+      '<details>' not in quartet[0]['content'] and
+      '<details>' in quartet[1]['content'] and
+      COMMENT_OPEN not in quartet[1]['content'] and
+      quartet[2]['content'].startswith('```yaml\n') and
+      quartet[3]['content'].startswith('---\n'),
+      'v1.6: mixed-frame batch — every file keeps the frame it arrived in')
+check(all(f['changed'] for f in quartet) and quartet[0]['note'] == 'set' and
+      all(f['note'] == 'merged' for f in quartet[1:]),
+      'v1.6: mixed-frame batch patches all four files')
+
+# comment frame that never closes -> no-op, original bytes
+com_broken = com.replace('\n```\n-->\n', '\n```\n')
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': com_broken}])
+check(not out['changed'] and out['content'] == com_broken and
+      out['note'] == 'not-frontmatter',
+      'v1.6: comment frame missing --> -> byte-identical no-op')
+
+# H1-first file whose ONLY comment opener sits in body text after a
+# section heading -> anchored out, no-op
+com_decoy = ('# Decoy Doc\n\n## Summary\n\nprose\n\n' +
+             COMMENT_OPEN + 'related: []' + COMMENT_CLOSE + '\nmore prose\n')
+[out] = patch([{'doc': 42, 'name': 'x.md', 'content': com_decoy}])
+check(not out['changed'] and out['content'] == com_decoy and
+      out['note'] == 'not-frontmatter',
+      'v1.6: comment opener after a section heading is body text, not a frame')
+
+# the related markers are single-line comments — never mistaken for the
+# frame opener (every fenced sidecar contains them)
+check(patch([{'doc': 42, 'name': 'self.md', 'content': sidecar()}])[0]['content']
+      .startswith('```yaml\n'),
+      'v1.6: <!-- related:begin --> markers never read as a comment frame')
+
+# BOM/CRLF normalization applies to the comment frame too
+com_crlf = '﻿' + sidecar(frame='comment').replace('\n', '\r\n')
+[out] = patch([{'doc': 42, 'name': 's.md', 'content': com_crlf}])
+check(out['changed'] and '\r' not in out['content'] and
+      '<!-- rel:17 -->' in out['content'],
+      'v1.6: BOM+CRLF comment-frame sidecar is normalized and patched')
 
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------
