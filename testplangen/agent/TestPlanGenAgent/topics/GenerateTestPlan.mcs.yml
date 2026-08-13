@@ -1,23 +1,24 @@
 # Topic: GenerateTestPlan — collect a story reference (doc id,
 # devtopia issue #, or title text), resolve it to a Doc Index item id,
 # confirm, run the flow, report the draft location.
-# TestPlanGenAgentVersion: v1.6
+# TestPlanGenAgentVersion: v1.7
 #
-# v1.5 (live paste fix): the refIsIssueUrl condition was the file's
-# only three-argument IsMatch, and the canvas rejected its
-# MatchOptions.Contains argument — Copilot Studio's Power Fx surface
-# doesn't reliably expose the MatchOptions enum. Keep every IsMatch
-# in this file two-argument.
+# v1.5/v1.6 (live paste fixes): the canvas rejected the
+# three-argument IsMatch (MatchOptions.Contains), then the anchored
+# two-argument URL pattern too ("Expected operator"); the URL test
+# became the regex-free `in` substring form.
 #
-# v1.6 (live paste fix, same condition): the v1.5 anchored
-# two-argument IsMatch was ALSO rejected on the live canvas
-# ("Expected operator"), while the file's simpler IsMatch conditions
-# validated. The condition is now the regex-free `in` substring form
-# adopted on the live tenant — And with two case-insensitive `in`
-# tests for the URL fragments — chosen from a variant ladder
-# (Agent_Setup.md schema-drift caution records the ladder). The
-# Match(...).num extraction beneath it validated live and is
-# unchanged.
+# v1.7 (live RUNTIME fix): the first live run proved IsMatch matches
+# as CONTAINS on this runtime, not the documented complete-match —
+# input "#32989" satisfied IsMatch(RefLower, "\d+"), took the doc-id
+# branch, and Value("#32989") crashed the topic
+# (ContentValidationError). The classify group now uses NO IsMatch at
+# all: IsNumeric for the bare-id test, StartsWith + Substitute-strip
+# + IsNumeric for the tagged forms (which also replaces the Match
+# extraction in the tag branch), and `in` for the URL test. The only
+# remaining regex is the URL branch's Match(...).num digit
+# extraction, whose contains semantics are correct by design.
+# Agent_Setup.md's schema-drift caution records the finding.
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
 # topic canvas). This file ships WITHOUT active flow nodes: the parser
@@ -129,30 +130,23 @@ beginDialog:
       variable: Topic.LookupQuery
       value: =""
 
-    # Deterministic classification. IsMatch matches the COMPLETE
-    # string (two-argument only — the v1.5 rule); the URL test is the
-    # regex-free Find/And form (v1.6, live-validated). Branch order
-    # matters only in that the URL test must run before the title
-    # fallback (a URL is never all-digits or issue-tag-complete, so
-    # the first two orderings are free).
+    # Deterministic classification — NO IsMatch (v1.7: the live
+    # runtime matches IsMatch as contains, so "contains digits"
+    # hijacked every branch; these primitives are exact). Branch
+    # order: bare number, URL, issue tag, doc tag, else title. The
+    # tag branches strip their marker words + '#' and require the
+    # remainder to be purely numeric — anything else (including
+    # digit-bearing titles) falls through to the title lane.
     - kind: ConditionGroup
       id: classifyRef
       conditions:
         - id: refIsDocId
-          condition: =IsMatch(Topic.RefLower, "\d+")
+          condition: =IsNumeric(Topic.RefText)
           actions:
             - kind: SetVariable
               id: setDocIdBare
               variable: Topic.StoryId
               value: =Value(Topic.RefText)
-
-        - id: refIsDocTag
-          condition: =IsMatch(Topic.RefLower, "(doc|id)\s*#?\s*\d+")
-          actions:
-            - kind: SetVariable
-              id: setDocIdTagged
-              variable: Topic.StoryId
-              value: =Value(Match(Topic.RefLower, "(?<num>\d+)").num)
 
         - id: refIsIssueUrl
           condition: =And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)
@@ -167,7 +161,7 @@ beginDialog:
               value: =Match(Topic.RefLower, "issues/(?<num>\d+)").num
 
         - id: refIsIssueTag
-          condition: =IsMatch(Topic.RefLower, "(#|issue|devtopia)\s*#?\s*\d+")
+          condition: =And(Or(StartsWith(Topic.RefLower, "#"), StartsWith(Topic.RefLower, "issue"), StartsWith(Topic.RefLower, "devtopia")), IsNumeric(Trim(Substitute(Substitute(Substitute(Topic.RefLower, "devtopia", ""), "issue", ""), "#", ""))))
           actions:
             - kind: SetVariable
               id: setIssueKindTag
@@ -176,7 +170,15 @@ beginDialog:
             - kind: SetVariable
               id: setIssueNumTag
               variable: Topic.LookupQuery
-              value: =Match(Topic.RefLower, "(?<num>\d+)").num
+              value: =Trim(Substitute(Substitute(Substitute(Topic.RefLower, "devtopia", ""), "issue", ""), "#", ""))
+
+        - id: refIsDocTag
+          condition: =And(Or(StartsWith(Topic.RefLower, "doc"), StartsWith(Topic.RefLower, "id")), IsNumeric(Trim(Substitute(Substitute(Substitute(Topic.RefLower, "doc", ""), "id", ""), "#", ""))))
+          actions:
+            - kind: SetVariable
+              id: setDocIdTagged
+              variable: Topic.StoryId
+              value: =Value(Trim(Substitute(Substitute(Substitute(Topic.RefLower, "doc", ""), "id", ""), "#", "")))
 
       elseActions:
         - kind: SetVariable

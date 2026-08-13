@@ -1,5 +1,5 @@
 # LRS Test Plan Generator — Copilot Studio agent definition
-# TestPlanGenAgentVersion: v1.6  (record bumps in testplangen/CHANGES.md)
+# TestPlanGenAgentVersion: v1.7  (record bumps in testplangen/CHANGES.md)
 #
 # Import per testplangen/agent/Agent_Setup.md §2: clone a blank agent
 # with the Copilot Studio VS Code extension, overlay this folder, let
