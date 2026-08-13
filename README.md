@@ -45,7 +45,7 @@ sidecar to its related documents.
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
-| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.6) |
+| testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.7) |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.2 |
 | testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v2.0 (filename frozen at v1_0) |
 | testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
@@ -55,9 +55,9 @@ sidecar to its related documents.
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/flow/lookup_v1_0/definition.json | StoryLookupFlow definition (issue-#/title → doc id; contract reference, build in Copilot Studio per Agent_Setup §1d) | v1.0 |
 | testplangen/StoryLookupFlow_v1_0.zip | StoryLookupFlow import package (authored re-cut; agent-flow import caveat, Agent_Setup §1d) | v1.0 |
-| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.7 |
+| testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v2.6 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.7 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,

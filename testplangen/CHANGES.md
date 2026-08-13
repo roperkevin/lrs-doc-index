@@ -1,3 +1,42 @@
+# TestPlanGen v2.7 — routed conversation starters + About topic (agent v1.8)
+
+Starters are REAL messages under classic orchestration: clicking one
+sends its text, which must land on a topic's trigger phrases or the
+user gets the fallback redirect — exactly what the two informational
+starters ("What do I need before generating?", "Where do drafts
+land?") had been doing since v1.1. v1.8 makes every starter route
+deliberately:
+
+- **Six starters** (`agent.mcs.yml`): three generation entries — one
+  per reference form (generic, devtopia issue, story title), each
+  phrased on a GenerateTestPlan trigger — and three question entries
+  (accepted inputs / prerequisites / where drafts land).
+- **New static topic `AboutTestPlanGen`**
+  (`topics/AboutTestPlanGen.mcs.yml`) answers the question starters:
+  pre-authored text only (accepted reference forms, the
+  Indexed + User Story prerequisite, the sweep-sees-the-issue-first
+  caveat, the drafts folder + review loop, the Q&A-agent redirect for
+  content questions). It generates nothing — the thin-agent rule
+  holds — and its triggers are question-shaped so they never steal
+  "draft/generate a test plan…" utterances from GenerateTestPlan.
+- Smoke row 8: click all six starters; none may land in the fallback
+  redirect.
+
+Deploy delta: overlay/paste the updated `agent.mcs.yml` starters,
+create the AboutTestPlanGen topic (paste its YAML via Open code
+editor), re-run smoke rows 5 and 8. No flow, package, prompt, or
+schema changes.
+
+| Piece | Version | Where |
+|---|---|---|
+| Conversation starters + About topic (+ file-set headers) | **TestPlanGenAgentVersion v1.8** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent_Setup (file table, smoke row 8) | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 10) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.8 (paste pending) |
+
 # TestPlanGen v2.6 — IsMatch-free classification (agent v1.7)
 
 The first live RUN of the v1.6 topic (2026-08-13, conversation

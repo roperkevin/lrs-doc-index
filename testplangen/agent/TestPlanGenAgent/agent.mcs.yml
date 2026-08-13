@@ -1,5 +1,5 @@
 # LRS Test Plan Generator — Copilot Studio agent definition
-# TestPlanGenAgentVersion: v1.7  (record bumps in testplangen/CHANGES.md)
+# TestPlanGenAgentVersion: v1.8  (record bumps in testplangen/CHANGES.md)
 #
 # Import per testplangen/agent/Agent_Setup.md §2: clone a blank agent
 # with the Copilot Studio VS Code extension, overlay this folder, let
@@ -81,10 +81,21 @@ instructions: |-
   - Official product casing: ArcGIS Pro, ArcGIS Server, Experience
     Builder, Roads and Highways, Pipeline Referencing.
 
+# Starters are REAL messages under classic orchestration: each text
+# must land on a topic's trigger phrases or the click dead-ends in
+# the fallback redirect. The first three enter GenerateTestPlan (one
+# per reference form); the last three are answered by the static
+# AboutTestPlanGen topic (v1.8).
 conversationStarters:
-  - title: Draft a test plan for a user story
-    text: Draft a test plan for a user story
-  - title: What do I need before generating?
+  - title: Draft a test plan
+    text: Draft a test plan
+  - title: Draft from a devtopia issue
+    text: Draft a test plan for a devtopia issue
+  - title: Draft from a story title
+    text: Make a test plan from a story title
+  - title: What can I give you?
+    text: What can I give the test plan generator — a doc id, an issue number, or a title?
+  - title: What do I need first?
     text: What do I need before generating a test plan draft?
   - title: Where do drafts land?
     text: Where do generated test plan drafts land, and what happens after?

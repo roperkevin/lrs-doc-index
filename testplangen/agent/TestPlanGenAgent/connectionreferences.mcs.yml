@@ -1,5 +1,5 @@
 # LRS Test Plan Generator — connection references
-# TestPlanGenAgentVersion: v1.7
+# TestPlanGenAgentVersion: v1.8
 #
 # The external dependencies are the two agent flows built in
 # Agent_Setup.md §1: TestPlanGenAgentFlow (generation) and

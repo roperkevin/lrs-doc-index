@@ -1,7 +1,7 @@
 # Topic: GenerateTestPlan — collect a story reference (doc id,
 # devtopia issue #, or title text), resolve it to a Doc Index item id,
 # confirm, run the flow, report the draft location.
-# TestPlanGenAgentVersion: v1.7
+# TestPlanGenAgentVersion: v1.8
 #
 # v1.5/v1.6 (live paste fixes): the canvas rejected the
 # three-argument IsMatch (MatchOptions.Contains), then the anchored
