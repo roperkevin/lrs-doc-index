@@ -1,6 +1,6 @@
 # Test Plan Generator Agent Setup — import and wire
 
-Current versions: agent file set **v1.5**, component **v2.4** (see `../CHANGES.md`).
+Current versions: agent file set **v1.6**, component **v2.5** (see `../CHANGES.md`).
 
 The conversational front door to TestPlanGen: a Copilot Studio agent,
 **LRS Test Plan Generator**, that takes a user story reference in
@@ -45,17 +45,27 @@ absence.
 > paste), so the files always work as paste sources. This is the
 > repo's designer-verify posture applied to a new surface.
 >
-> The same caution covers the Power Fx *inside* topics. Keep every
-> `IsMatch` in the GenerateTestPlan classify group two-argument — a
-> live canvas rejected the three-argument form's
-> `MatchOptions.Contains` (v2.4 record), so contains semantics are
-> written as `.*` anchors on a complete-match pattern instead. If a
-> tenant's canvas rejects even the anchored URL test, the regex-free
-> fallback is
-> `=!IsBlank(Find("devtopia.esri.com/", Topic.RefLower)) && !IsBlank(Find("/issues/", Topic.RefLower))`
-> — swap it into the `refIsIssueUrl` condition (the digit extraction
-> below it is unchanged) and carry the substitution back to the
-> checked-in file.
+> The same caution covers the Power Fx *inside* topics. Two live
+> canvas findings shaped the classify group (v2.4/v2.5 records):
+> the three-argument `IsMatch` form was rejected on
+> `MatchOptions.Contains`, and the anchored two-argument URL pattern
+> was then ALSO rejected ("Expected operator") while the simpler
+> `IsMatch` conditions validated. The checked-in `refIsIssueUrl`
+> condition is therefore the live-validated, regex-free
+> function-style form —
+> `=And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))`
+> — and every remaining `IsMatch` stays two-argument. If a formula is
+> flagged on your tenant, walk the variant ladder in order and keep
+> the first that validates, then carry it back to the file:
+> (1) the checked-in form; (2) operator style
+> (`!`/`&&` instead of `And`/`Not`); (3) `IsMatch` with a simplified
+> pattern (`.*devtopia.esri.com/.+/issues/[0-9]+.*`); (4) the `in`
+> substring operator
+> (`And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)`).
+> One transit trap masquerades as all of these failing: quotes that
+> arrive as curly quotes from a clipboard hop fail every variant with
+> "Expected operator" — retype the quote characters in the formula
+> bar before concluding a variant is unsupported.
 
 ---
 
@@ -433,15 +443,23 @@ In both mappings pick the existing variables from the variable picker
 rather than letting the canvas mint new ones — the downstream
 conditions and messages reference those names, so rename any
 auto-created variables to match. The commented blocks in the topic
-file show each node's intended final shape. Two notes: the binding
-KEYS the canvas writes may surface lowercased
-(`status`/`drafturl`/`gensummary`, and likewise for the lookup
-outputs) — that follows each flow's respond schema and is fine, only
-the Topic.* variable side matters; and each flow call is followed by
-a status condition with a branch per contract value plus an else that
-reports a contract/wiring fault — if an else fires in testing, the
-§1c/§1d run-after discipline or this section's output mapping is what
-broke.
+file show each node's intended final shape. Three notes. First, the
+binding KEYS follow each flow's schema, not the display names — the
+first live v1.6 bind validated with INPUT keys `number` (the
+generation flow's StoryId) and `text` / `text_1` (the lookup flow's
+LookupKind / LookupQuery, in the order the trigger inputs were
+created — added in the other order, the lanes cross and every issue
+lookup returns `error` from the int() cast), and OUTPUT keys as the
+lowercased respond names (`status`/`drafturl`/`gensummary`, and
+likewise for the lookup outputs). A key mismatch surfaces as the
+topic checker error `InvalidBindingInvokeAction` — as does a
+required input left unbound (`input: {}`); the canvas UI writes
+canonical keys, so when in doubt bind there and read the code editor
+back. Second, only the Topic.* variable side of each mapping is
+contractual. Third, each flow call is followed by a status condition
+with a branch per contract value plus an else that reports a
+contract/wiring fault — if an else fires in testing, the §1c/§1d
+run-after discipline or this section's output mapping is what broke.
 
 Check: Test pane → "draft a test plan" → agent asks for the story →
 give `42` → confirm → draft link comes back with the review

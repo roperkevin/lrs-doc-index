@@ -1,3 +1,48 @@
+# TestPlanGen v2.5 — live-validated URL condition + canonical binding keys (agent v1.6)
+
+Second and third findings from the same live v2.3 deployment
+(2026-08-13, continuing the v2.4 record):
+
+**F1 — the v2.4 anchored IsMatch also failed canvas validation**
+("Expected operator"), while the file's simpler `IsMatch` conditions
+and the named-group `Match(...).num` extractions validated. A variant
+ladder was run on the live canvas; the winner — now the checked-in
+`refIsIssueUrl` condition — is the regex-free, function-style form:
+
+    =And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))
+
+The full ladder (operator style, simplified pattern, `in` operator)
+is recorded in Agent_Setup's schema-drift caution for the next
+tenant, along with the trap that mimics total failure: curly quotes
+from a clipboard hop fail EVERY variant with "Expected operator" —
+retype the quotes before concluding anything.
+
+**F2 — canonical flow-node binding keys confirmed.** The first
+tenant bind surfaced `InvalidBindingInvokeAction` from the topic
+checker until the bindings used the flows' SCHEMA keys, not display
+names: inputs `number` (generation StoryId) and `text` / `text_1`
+(lookup LookupKind / LookupQuery, creation-order-dependent — swapped
+order crosses the lanes and every issue lookup returns `error`);
+outputs are the lowercased respond names. An unbound required input
+(`input: {}`) throws the same checker error. Agent_Setup §3 now
+records the keys and the diagnosis path (bind in the canvas UI, read
+the code editor back).
+
+No flow, package, prompt, or schema changes — both flow contracts
+are untouched; this is all topic-side Power Fx and binding-key
+reality. Tenants mid-v2.3/v2.4 paste: replace the one condition,
+confirm the binding keys, continue at §3's checks.
+
+| Piece | Version | Where |
+|---|---|---|
+| GenerateTestPlan topic (refIsIssueUrl live-validated form; + file-set headers) | **TestPlanGenAgentVersion v1.6** | `testplangen/agent/TestPlanGenAgent/` |
+| Agent_Setup (variant ladder, quote trap, §3 canonical binding keys + InvalidBindingInvokeAction triage) | updated | `testplangen/agent/Agent_Setup.md` |
+| Everything else | unchanged | — |
+
+| Date | Tenant | Rows passed (of 9) | TestPlanGenAgentVersion |
+|---|---|---|---|
+| — | — | — | v1.6 (paste in progress) |
+
 # TestPlanGen v2.4 — two-argument IsMatch in the classify group (agent v1.5)
 
 Live-deployment fix, found on the first v1.4 canvas paste

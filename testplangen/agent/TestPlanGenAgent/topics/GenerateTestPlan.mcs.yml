@@ -1,17 +1,23 @@
 # Topic: GenerateTestPlan — collect a story reference (doc id,
 # devtopia issue #, or title text), resolve it to a Doc Index item id,
 # confirm, run the flow, report the draft location.
-# TestPlanGenAgentVersion: v1.5
+# TestPlanGenAgentVersion: v1.6
 #
 # v1.5 (live paste fix): the refIsIssueUrl condition was the file's
 # only three-argument IsMatch, and the canvas rejected its
 # MatchOptions.Contains argument — Copilot Studio's Power Fx surface
-# doesn't reliably expose the MatchOptions enum. Contains semantics
-# are now expressed with .* anchors on a two-argument IsMatch
-# (complete-match is the IsMatch default), behavior identical. Keep
-# every IsMatch in this file two-argument; the regex-free fallback if
-# a tenant rejects even the anchored form is in Agent_Setup.md's
-# schema-drift caution.
+# doesn't reliably expose the MatchOptions enum. Keep every IsMatch
+# in this file two-argument.
+#
+# v1.6 (live paste fix, same condition): the v1.5 anchored
+# two-argument IsMatch was ALSO rejected on the live canvas
+# ("Expected operator"), while the file's simpler IsMatch conditions
+# validated. The condition is now the live-validated, regex-free
+# function-style form — Find for the two URL fragments, And/Not
+# instead of &&/! — chosen from a variant ladder tried on the tenant
+# (Agent_Setup.md schema-drift caution records the ladder). The
+# Match(...).num extraction beneath it validated live and is
+# unchanged.
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
 # topic canvas). This file ships WITHOUT active flow nodes: the parser
@@ -124,11 +130,11 @@ beginDialog:
       value: =""
 
     # Deterministic classification. IsMatch matches the COMPLETE
-    # string; the URL test gets contains semantics from its .*
-    # anchors (two-argument IsMatch only — the v1.5 rule). Branch
-    # order matters only in that the URL test must run before the
-    # title fallback (a URL is never all-digits or
-    # issue-tag-complete, so the first two orderings are free).
+    # string (two-argument only — the v1.5 rule); the URL test is the
+    # regex-free Find/And form (v1.6, live-validated). Branch order
+    # matters only in that the URL test must run before the title
+    # fallback (a URL is never all-digits or issue-tag-complete, so
+    # the first two orderings are free).
     - kind: ConditionGroup
       id: classifyRef
       conditions:
@@ -149,7 +155,7 @@ beginDialog:
               value: =Value(Match(Topic.RefLower, "(?<num>\d+)").num)
 
         - id: refIsIssueUrl
-          condition: =IsMatch(Topic.RefLower, ".*devtopia\.esri\.com/[^/\s]+/[^/\s]+/issues/\d+.*")
+          condition: =And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))
           actions:
             - kind: SetVariable
               id: setIssueKindUrl
