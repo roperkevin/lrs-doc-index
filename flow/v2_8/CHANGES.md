@@ -133,6 +133,25 @@ NOTE: the backfill only runs once FX-5 clears SmokeFile.
 - **AI Builder prompt** — text unchanged; the v2.0 bump is
   format-only, no re-paste.
 
+## Scripts.xlsx rebind addendum (2026-08-13, second)
+
+The Scripts.xlsx workbook (and the SidecarPatch script) were
+re-created on the tenant, so the packaged identities were partially
+stale. All seven Scripts.xlsx-hosted script actions
+(Zip_extract_pptx/docx, Extract_media_pptx/docx,
+Run_related_shortlist/rank, Run_sidecar_patch) were rebound to the
+identities captured from the live designer: workbook item
+`01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL` (drive `b!KE5hUhQX…`), plus
+per-action scriptIds — notably Zip_extract_docx and
+Run_sidecar_patch had pointed at an old workbook item
+(`01UO6O4P7JEK…`), and Run_sidecar_patch at an old script id. Each
+action also gains the designer's `metadata` block (file-id →
+`/Scripts.xlsx`, operationMetadataId). `Run_regex` (already on the
+new workbook) and `Dump_workbook` (source-library site, dynamic
+file) verified correct and untouched; every `ScriptParameters/*`
+expression preserved verbatim (FX-1/FX-2/FX-3 bindings included).
+Zip re-cut, payload byte-identical.
+
 ## r2 hygiene addendum (2026-08-13)
 
 The two never-baked r2 designer edits are now folded into this
