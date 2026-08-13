@@ -1,6 +1,6 @@
 # Topic: AboutTestPlanGen — static answers for the informational
 # conversation starters (and organic "how does this work" asks).
-# TestPlanGenAgentVersion: v1.8
+# TestPlanGenAgentVersion: v1.9
 #
 # New in v1.8. This agent has no knowledge sources and classic
 # orchestration (settings.mcs.yml), so question-shaped starters need

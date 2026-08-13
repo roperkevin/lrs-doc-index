@@ -1,5 +1,5 @@
 # LRS Test Plan Generator — agent settings
-# TestPlanGenAgentVersion: v1.8
+# TestPlanGenAgentVersion: v1.9
 #
 # Grounding posture mirrors the Q&A agent's, taken further: this agent
 # has NO knowledge sources at all — it is a front door to a flow, not
