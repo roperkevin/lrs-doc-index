@@ -29,7 +29,10 @@ Everything below is manual portal/designer work in the
 `designer-edits.md` mold: apply in order, check after each step. All
 expressions are pure WDL. List GUIDs are from
 `docs/SP_Adaptation_Notes.md` (Doc Index =
-`245a4082-53c5-49f0-90e1-1abe62698c4a`).
+`b98fb2a1-1c91-48f9-9b9b-323656557171` — the lists were rebuilt on
+the tenant, so any pre-rebuild `245a4082-…` reference is stale; since
+v2.10 every action binds site/list through `Config_gen`, so only the
+trigger and the G0 config carry the GUID directly).
 
 ---
 
@@ -137,7 +140,7 @@ environment and SharePoint connection as the sweep. Actions in order
 
 **Trigger — For a selected item** (SharePoint): site
 `https://esriis.sharepoint.com/sites/lrsworkspace`, list **Doc Index**
-(`245a4082-53c5-49f0-90e1-1abe62698c4a`). No input fields. The
+(`b98fb2a1-1c91-48f9-9b9b-323656557171`). No input fields. The
 selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
 
 > Designer-verify (first test run): peek at the trigger's raw outputs
@@ -149,7 +152,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
 ```json
 {
   "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-  "DocIndexList": "245a4082-53c5-49f0-90e1-1abe62698c4a",
+  "DocIndexList": "b98fb2a1-1c91-48f9-9b9b-323656557171",
   "DraftFolder": "/Shared Documents/Test Plan Drafts",
   "StoryCap": 30000,
   "ExemplarCap": 20000,

@@ -255,9 +255,14 @@ exact WDL for every expression below.
   > over) — peek at a test run's raw outputs and confirm which key is
   > which on your tenant before trusting the expressions below.
 - **`Config_lookup`** (Compose): `SiteUrl`, `DocIndexList`
-  (`245a4082-53c5-49f0-90e1-1abe62698c4a`), `DocIdsList`
-  (`87b75cd7-5e84-4a65-adb5-dcd0de08321d` — GUIDs from
-  `docs/SP_Adaptation_Notes.md`), `CandidateCap: 8`.
+  (`b98fb2a1-1c91-48f9-9b9b-323656557171`), `DocIdsList`
+  (`6263eeac-471a-489e-96c7-1448f45378d4` — GUIDs from
+  `docs/SP_Adaptation_Notes.md`; the lists were rebuilt, so
+  pre-rebuild `245a4082-…`/`87b75cd7-…` references are stale),
+  `CandidateCap: 8`. Since v2.10 the three SharePoint actions below
+  bind Site Address / List Name through this compose
+  (`@{outputs('Config_lookup')?['SiteUrl']}` etc.), so the GUIDs
+  live ONLY here.
 - **Initialize variables** (three, top level): `MatchIds` (Array,
   `@json('[]')`), `Matches` (Array, `@json('[]')`), `CandidateLines`
   (String, `@string('')`).
