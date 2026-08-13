@@ -705,9 +705,12 @@ items are checkboxes.
 The DocIndexSweep export of 2026-08-13 (the flow after the v2.6 and
 v2.7 windows were applied on the tenant) shows four designer
 mis-picks plus a stuck smoke knob. Apply these ON THE LIVE FLOW
-before (or with) the §v2_8 window — the authored
-`flow/v2_8/definition.json` already carries all five corrections, so
-a tenant that re-imports v2.8 instead gets them for free.
+before (or with) the §v2_8 window — or import
+`flow/DocIndexSweep_v2_7_fix.zip`, the live export with exactly
+these five corrections applied and nothing else (still PromptVersion
+v1.9; see `flow/v2_7_fix/CHANGES.md`). The authored
+`flow/v2_8/definition.json` also carries all five corrections, so a
+tenant that re-imports v2.8 instead gets them for free.
 
 ## FX-1 — Extract_media_pptx: zipBase64 carries the prefix, not the file
 
