@@ -25,6 +25,15 @@ when a batch is promoted:
    promotion; `check_batch_r5.py` — r5 era, SidecarPatch v1.5 /
    the flow v2.7 details frame) — the template any future script
    batch clones before its patches may be pasted.
+6. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
+   downloaded TestPlanGen draft .md and asserts the prompt v1.5
+   coverage contract (section order incl. `## Coverage Map`, Trace
+   on every case, CAUTION alert, no empty/dangling Covered by cells,
+   sequential TC ids) and prints positive/negative/[VERIFY]/map-row
+   counters for before/after comparison on a prompt bump
+   (`testplangen/Coverage_Runbook.md` step 5). `--baseline` scores a
+   pre-v1.5 draft (skips the Coverage Map checks, keeps counters).
+   Pure stdlib, no fixtures — CI-friendly.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for

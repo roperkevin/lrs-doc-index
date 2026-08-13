@@ -1,5 +1,24 @@
 # Designer edits — exact patches (apply in this order)
 
+> **You probably don't need this document (2026-08-13).** Every edit
+> below is BAKED into the current authored definitions and their
+> import packages — deploying is imports and pastes, per
+> `testplangen/Coverage_Runbook.md`. This doc remains only for
+> patching a live flow IN PLACE (to keep its run history) instead of
+> re-importing, and as the per-edit rationale record. Where each
+> section is baked:
+>
+> | Section(s) | Baked into | Import package |
+> |---|---|---|
+> | F1–F12, r2-1, v2_6 V1–V10, v2_7 W1–W5 | superseded generations, folded into `flow/v2_8/definition.json` (authored from the post-v2.6/v2.7 live export) | `flow/DocIndexSweep_v2_8.zip` |
+> | r2-2 (option a), r2-3 | `flow/v2_8/definition.json` (2026-08-13: SourceSiteUrl deleted, trigger concurrency 1) | `flow/DocIndexSweep_v2_8.zip` |
+> | §v2_7-fixes FX-1..FX-6 | `flow/v2_7_fix/definition.json` AND `flow/v2_8/definition.json` | `DocIndexSweep_v2_7_fix.zip` / `DocIndexSweep_v2_8.zip` |
+> | v2_8 X1–X5 | `flow/v2_8/definition.json` | `flow/DocIndexSweep_v2_8.zip` |
+> | §testplangen-v2_8 T1–T2, §testplangen-v2_12 U1–U7 | `testplangen/flow/v1_0/definition.json` + `core_v1_0/definition.json` | `TestPlanGen_v1_0.zip` / `TestPlanGenCore_v1_0.zip` |
+>
+> Every listed package's payload is byte-identical to its folder
+> definition (verified 2026-08-13).
+
 All edits are made in the live flow in the designer; no re-import, no package re-cut.
 Every expression below is pure WFL (no statements). After each edit, run once in smoke
 mode (Config → SmokeFile) before moving to the next — one variable at a time.
@@ -272,6 +291,9 @@ deployment record per the round checklist.
 
 ## r2-2 — PV-3: the dead `Config.SourceSiteUrl` (pick ONE)
 
+> Baked 2026-08-13: option (a) taken in `flow/v2_8/definition.json`
+> (+ re-cut zip). Live-flow edit only needed if patching in place.
+
 `Config.SourceSiteUrl` is referenced by nothing; `Get_files` hardcodes
 the same URL (the connector's dataset field must be a literal picker
 value, so the key cannot actually be wired in). Either:
@@ -285,6 +307,10 @@ value, so the key cannot actually be wired in). Either:
 Test: save; the flow's next run behaves identically.
 
 ## r2-3 — DD-8 (optional): pin trigger concurrency
+
+> Baked 2026-08-13 into `flow/v2_8/definition.json` (+ re-cut zip):
+> Recurrence trigger `runtimeConfiguration.concurrency.runs: 1`.
+> Live-flow edit only needed if patching in place.
 
 `docs/SP_Adaptation_Notes.md` now documents that overlapping runs are
 fenced only by the daily cadence. To make the original claim true:
@@ -943,3 +969,168 @@ pasted — byte-equivalent to v1.5 on every pre-v2.8 frame.
 ZipTextExtract v2.1 / RegexExtract v1.4 may also stay — their output
 changes only materialize in sidecar bodies, which the reverted
 PromptVersion re-converges.
+
+# testplangen-v2_12 round — design-doc references, slot config, budget fix (both live TestPlanGen flows)
+
+Paired with `testplangen/CHANGES.md` v2.12; apply to BOTH live
+generation flows (standalone TestPlanGen + the agent core
+TestPlanGenCore — their retrieval logic is identical). Requires the
+v2.0 ReferenceText contract on the tenant
+(`testplangen/Coverage_Runbook.md` step 3); rides the prompt v1.5
+paste window (`Coverage_Runbook.md` step 4) cheaply, or lands in its
+own window later — the v2.2 flows are safe under prompt v1.4 (extra
+references are just more of an existing lane) and prompt v1.5 is
+safe under the v2.0/v2.1 flows, so the two windows commute. All
+seven edits are expression-level: no new actions, no renames, no
+runAfter changes.
+
+## U1 — Config_gen: slot keys + StoryCap raise
+
+**Config_gen** compose — add two keys and raise one:
+
+```
+"StoryCap": 45000,          (was 30000)
+"ExemplarSlots": 2,         (new)
+"ReferenceSlots": 3,        (new)
+```
+
+StoryCap 45000: a truncated story tail loses acceptance criteria =
+silently lost cases; post-U6 the worst-case total prompt context is
+bounded (~45k + 20k + 12k + digest ≈ 80k chars ≈ ~20k tokens),
+comfortably inside the model window, so the story gets the room.
+
+## U2 — If_testplan_neighbor: admit Design Spikes
+
+Condition expression, was:
+
+```
+@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))
+```
+
+now:
+
+```
+@and(or(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Design Spike')), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))
+```
+
+Only Design Spike joins Test Plan — of the seven DocKinds it is the
+one that describes expected behavior (the prompt has promised
+"test plans **or design docs**" in the reference lane since v1.3;
+this makes the flow deliver on it). Data Template / Schedule /
+Doc Review / Other / adjacent User Story stay digest-only.
+
+## U3 — If_exemplar_slot: Test-Plan-only + config slots
+
+Condition expression, was:
+
+```
+@and(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), 2))
+```
+
+now:
+
+```
+@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), int(outputs('Config_gen')?['ExemplarSlots'])))
+```
+
+The new DocKind conjunct matters because U2 widened the outer
+condition: a Design Spike must NEVER become a style exemplar
+(exemplars teach draft shape; spikes describe behavior), so
+same-surface spikes fall through to the reference lane.
+
+## U4 — If_reference_slot: overflow lane, config slots
+
+Condition expression, was:
+
+```
+@and(not(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], ''))), less(length(variables('ReferenceUrls')), 2))
+```
+
+now:
+
+```
+@less(length(variables('ReferenceUrls')), int(outputs('Config_gen')?['ReferenceSlots']))
+```
+
+Dropping the cross-surface requirement fixes the documented
+fall-through (a same-surface Test Plan arriving after the exemplar
+slots fill used to fail both conditions and vanish into the digest —
+Setup §3 G5b): it now overflows into the reference lane, which
+prompt v1.3+ already supports ("possibly on ANOTHER surface" — the
+surface-parity [VERIFY] keys on each reference block's own surface
+header, so a same-surface reference forces no spurious VERIFY).
+Design Spikes (any surface) land here too, via U2+U3.
+
+## U5 — Exemplar_rows: fallback takes from config
+
+Compose expression — both literal `2`s become the config read, was:
+
+```
+@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), 2), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), 2))
+```
+
+now:
+
+```
+@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), int(outputs('Config_gen')?['ExemplarSlots'])), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), int(outputs('Config_gen')?['ExemplarSlots'])))
+```
+
+## U6 — Append_exemplar / Append_reference: take the REMAINING budget
+
+Two edits, same shape. The `If_ex_budget` / `If_ref_budget` gate
+expressions are correct as-is (they gate on "remaining > 0") — the
+bug is inside the appends, which `take()` the FULL cap again on
+every iteration: exemplar #1 can land 20,000 chars and exemplar #2
+another 20,000 (ExemplarText ≈ 2× ExemplarCap; references ≈ 2×
+ReferenceCap) — and with U4 admitting a third reference the
+overshoot would grow. Oversized context is itself a consolidation
+pressure on the model. In **Append_exemplar**, change the take's
+second argument:
+
+```
+int(outputs('Config_gen')?['ExemplarCap'])
+```
+
+to:
+
+```
+sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText')))
+```
+
+In **Append_reference**, likewise:
+
+```
+int(outputs('Config_gen')?['ReferenceCap'])
+```
+
+to:
+
+```
+sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText')))
+```
+
+(The gate guarantees the subtraction is positive. The `---
+EXEMPLAR/REFERENCE:` header lines stay outside the budget
+arithmetic — the caps remain approximate by a line, as before.)
+
+## U7 — Gen_summary: budget telemetry
+
+Append two fields to the concat, after `draftChars`:
+
+```
+, ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText'))
+```
+
+`exChars ≤ ExemplarCap` / `refChars ≤ ReferenceCap` is the U6
+post-check; a reference-lane story showing `references>0` with
+`refChars` near the cap says the third slot is earning its keep.
+
+Smoke (one pass, after U7): run on a story whose `related:` list
+carries a Design Spike or 3+ same-surface Test Plans
+(`testplangen/TestPlanGen_Smoke.md` row 11) — `Gen_summary` shows
+`references≥1`, `exChars` ≤ ExemplarCap, and the run history's
+`Append_reference` header carries the spike's (or overflow plan's)
+title. Rollback: revert U4→U2 (the conditions), then U1's new keys
+are inert and U5–U7 are behavior-identical at the default slot
+counts once U4 is reverted — or restore all seven from this section
+in reverse.

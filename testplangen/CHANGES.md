@@ -1,3 +1,188 @@
+# TestPlanGen v2.12 — design-doc references, slot config, budget fix (flows v2.2)
+
+The flow half of the coverage push (v2.11 is the prompt half; the
+deployed-state half is `Coverage_Runbook.md`). Even with retrieval
+revived and prompt v1.5 pasted, the v2.1 flows under-deliver
+supporting documentation three ways: only `DocKind = 'Test Plan'`
+neighbors ever contribute full text (the prompt has promised "test
+plans **or design docs**" in the reference lane since v1.3 — Design
+Spikes could never arrive); a same-surface plan arriving after both
+exemplar slots fill fails both routing conditions and silently
+degrades to a 400-char digest line (the documented G5b fall-through);
+and the slot counts are hard-coded literals. Plus one real bug: the
+G7/G7b budget conditions gate correctly on "remaining > 0" but the
+appends re-`take()` the FULL cap each iteration, so `ExemplarText`
+could reach ~2× ExemplarCap (~40k chars) and `ReferenceText` ~2×
+ReferenceCap — oversized context that both wastes the budget the
+caps exist to enforce and pressures the model toward consolidation.
+
+**Both flows → v2.2** (`flow/v1_0/definition.json`,
+`flow/core_v1_0/definition.json` — seven expression-level edits,
+mirrored; no new actions, no renames, no runAfter changes; the
+authored pair re-verified action-identical outside the five known
+structural deltas):
+
+- **`If_testplan_neighbor`** admits `Design Spike` alongside
+  `Test Plan` (the one other DocKind that describes expected
+  behavior; Data Template / Schedule / Doc Review / Other / adjacent
+  User Story stay digest-only).
+- **`If_exemplar_slot`** gains a `DocKind = 'Test Plan'` conjunct (a
+  spike must never become a style exemplar) and reads
+  `Config_gen.ExemplarSlots` instead of the literal 2.
+- **`If_reference_slot`** drops the cross-surface requirement and
+  reads `Config_gen.ReferenceSlots`: same-surface plans past the
+  exemplar slots now OVERFLOW into the reference lane instead of
+  vanishing (score-ordered arrival keeps the best plans in the
+  exemplar slots), and Design Spikes on any surface land here.
+  Prompt v1.3+ already supports same-surface references — the
+  surface-parity [VERIFY] keys on each reference block's own surface
+  header, so no spurious VERIFYs.
+- **`Config_gen`**: new `ExemplarSlots: 2`, `ReferenceSlots: 3` (the
+  third reference slot is the cheapest more-supporting-docs lever —
+  bounded by ReferenceCap, which is now actually enforced);
+  `StoryCap` 30000 → 45000 (a truncated story tail loses acceptance
+  criteria = silently lost cases; post-fix worst-case context ≈
+  45k + 20k + 12k + digest ≈ 80k chars ≈ ~20k tokens, comfortably in
+  the model window). `Exemplar_rows`' two literal takes read
+  `ExemplarSlots` too.
+- **Budget fix** — `Append_exemplar` / `Append_reference` `take()`
+  the REMAINING budget (`sub(cap, length(variable))`) instead of the
+  full cap; the gates already guarantee it is positive.
+- **`Gen_summary`** appends ` exChars=` / ` refChars=` so the fix
+  and the widened lanes are observable in run history
+  (`exChars ≤ ExemplarCap` is the post-check).
+
+**Docs** — Setup §3 G0 (config block + knob prose), G5b (two-lane
+router + overflow rule replacing the fall-through parenthetical), G6
+`Exemplar_rows`, G7/G7b append expressions, G13 (new fields +
+reading), reference-lane no-fallback prose, Known limits (amended
+v2.2); Smoke suite v1.4: rows 3 and 10 amended, new row 11 (Design
+Spike / same-surface overflow end-to-end, `exChars`/`refChars` cap
+check). NeighborCap/RelatedTopN deliberately NOT raised: the sweep's
+`RelatedTopN: 5` is the true ceiling on the `related:` list, and
+raising either is inert until the FX-5 backfill converges — revisit
+when `Gen_summary` shows `neighbors=5` routinely. A reference
+fallback query stays rejected (the v2.0 rationale: blind
+cross-surface retrieval grounds drafts on unrelated features).
+
+Both packages re-cut with the v2.2 definitions (byte-identical to
+their folder definitions, the provenance convention) — this re-cut
+also carries the v2.11 stamp, closing the deferral noted there.
+
+Deploy delta, live tenant (requires the v2.0 contract on the tenant
+— `Coverage_Runbook.md` step 3; commutes with the v1.5 paste, so it
+rides that window or its own): apply
+`review/patches/designer-edits.md` §testplangen-v2_12 (U1–U7) in
+BOTH live flows — or re-import the re-cut packages (post-import
+checks I1–I4) — then run smoke rows 3, 10, 11 and record below.
+NEVER bump `Config.PromptVersion` — nothing here changes the sidecar
+format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Standalone flow + package | **v2.2** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Core child flow + package | **v2.2** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Designer edits | §testplangen-v2_12 (U1–U7) | `review/patches/designer-edits.md` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.4, 11 rows) |
+| Prompt, agent file set, schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 11) | Flows |
+|---|---|---|---|
+| — | — | — | v2.2 (deploy pending) |
+
+# TestPlanGen v2.11 — requirement-driven coverage (prompt v1.5)
+
+Motivated by the standing coverage complaint (2026-08-13): live
+drafts generate too few test cases and visibly under-use supporting
+documentation. The deployed-state half — dead keyword retrieval
+(FX-3), the stalled backfill (FX-5), the never-created ReferenceText
+parameter, every prompt paste since v1.0 pending — is sequenced in
+the new **`testplangen/Coverage_Runbook.md`** (STATUS open action 9).
+This entry is the authored half: even fully pasted, prompt v1.4
+keeps the RC-3 consolidation bias
+(`review/REVIEW_TestPlanGen_doc1_coverage.md`) — "4–10 positive and
+3–8 negative … prefer fewer" pushes toward merging exactly when an
+enumeration-heavy story needs expansion — and RELATED DIGEST entries
+are only "may inspire", so a model can ignore the whole digest
+without violating a rule.
+
+**Prompt v1.5** (authored as
+`review/patches/TestPlanGen_Prompt_v1_5.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.4 in-repo BEFORE its
+pending paste; v1.4's GFM shape, v1.3's reference lane, v1.2's
+enumeration coverage + conditional sections, and v1.1's marker fix
+all carry forward unchanged):
+
+- **CASE COUNT rule replaced**: case count is an OUTPUT of coverage,
+  never a target — at least one positive case per distinct
+  workflow/acceptance-criterion statement, at least one negative
+  case per stated-or-implied validation/denial/conflict/boundary;
+  never merge two requirements into one case for length. Floor kept
+  (fewer than 4 positive / 3 negative flags under-coverage), ceiling
+  dropped; length is controlled by terse steps and explicit
+  parameterization.
+- **New always-on `## Coverage Map` final section + REQUIREMENT
+  COVERAGE rule** (the Trace rule's converse; the prompt-side
+  realization of the Setup guide's queued "coverage matrix"
+  follow-on): requirements are enumerated FIRST, cases written
+  against the list, and the list rendered as a
+  `| # | Requirement (source) | Covered by |` table — every row
+  cites covering TC ids or an Open Questions entry; an empty
+  Covered by cell is invalid output. Hands the §4 reviewer the trace
+  matrix the doc 1 review built by hand.
+- **ENUMERATION COVERAGE cross-product clause**: two enumeration
+  axes (e.g. six edit pathways × point/line events) = every pairing
+  exercised or explicitly parameterized (CG-4's generalization).
+- **RELATED DIGEST strengthened**: evaluate EVERY entry — plausible
+  interaction becomes a cited interaction/regression case, or an
+  Open Questions entry naming the document when the one-line summary
+  is too thin. Works even while neighbor bodies are absent.
+- Output markers, input keys, and fences unchanged — the G9 slice
+  and its literals are untouched. Length risk fails CLOSED (a
+  truncated reply loses `[[[DRAFT END]]]` → no draft written); watch
+  `Gen_summary`'s `draftChars`.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.5 in
+`flow/v1_0/` and `flow/core_v1_0/` (stamp only). The package re-cut
+is deliberately deferred to the v2.12 flow changes landing with this
+same branch — one re-cut carries both entries; until then the zips
+lag the folder definitions by the stamp.
+
+**Harness** — new `review/harness/check_draft_coverage.py`: offline
+lint of a downloaded draft against the v1.5 contract (section order,
+Trace on every case, CAUTION alert, no empty/dangling Covered by
+cells, sequential TC ids) + before/after counters; `--baseline`
+scores pre-v1.5 drafts. Registered in `review/harness/README.md`
+(standing suite 6).
+
+**Docs** — Setup §2 (six-section pane check incl. the Coverage Map,
+v1.5 stamps), §4 (review STARTS from the Coverage Map, plus a scan
+for statements the map missed); Smoke suite v1.3: rows 1 and 9 check
+the Coverage Map contract (row 9 pins the doc 1 trace matrix — 15
+requirements, the 9/15 baseline this guards); `prompts/README.md`
+row → v1.5 paste pending.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 4; a tenant still on the four-parameter
+contract does the runbook's step 3 first): paste v1.5 into
+`LRS Test Plan Generation` (replaces the pending v1.4 paste), set
+both `Config_gen.TestPlanGenPromptVersion` stamps to v1.5, run smoke
+rows 1, 9, 10 and record below. NEVER bump `Config.PromptVersion` —
+nothing here changes the sidecar format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.5** | `review/patches/TestPlanGen_Prompt_v1_5.md` → `prompts/TestPlanGen_Prompt.md` |
+| Flow definitions (stamp only) | v2.11 delta | `testplangen/flow/v1_0/definition.json`, `testplangen/flow/core_v1_0/definition.json` (packages re-cut with v2.12) |
+| Coverage runbook | new | `testplangen/Coverage_Runbook.md` |
+| Draft coverage lint | new | `review/harness/check_draft_coverage.py` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.3) |
+| Agent file set / schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 10) | TestPlanGenPromptVersion |
+|---|---|---|---|
+| — | — | — | v1.5 (paste pending) |
+
 # TestPlanGen v2.10 — rebuilt-list GUIDs + config-driven list bindings (flows v2.1 / lookup v1.1)
 
 The tenant's SharePoint lists were rebuilt, changing their GUIDs —

@@ -69,12 +69,14 @@
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
             "DocIndexList": "b98fb2a1-1c91-48f9-9b9b-323656557171",
             "DraftFolder": "/Shared Documents/Test Plan Drafts",
-            "StoryCap": 30000,
+            "StoryCap": 45000,
             "ExemplarCap": 20000,
             "ReferenceCap": 12000,
             "NeighborCap": 5,
             "DigestSummaryCap": 400,
-            "TestPlanGenPromptVersion": "v1.4"
+            "ExemplarSlots": 2,
+            "ReferenceSlots": 3,
+            "TestPlanGenPromptVersion": "v1.5"
           }
         },
         "Init_NeighborDigest": {
@@ -382,12 +384,12 @@
                             ]
                           },
                           "type": "If",
-                          "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))",
+                          "expression": "@and(or(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Design Spike')), not(empty(coalesce(body('Get_neighbor_row')?['TextFileUrl'], ''))))",
                           "actions": {
                             "If_exemplar_slot": {
                               "runAfter": {},
                               "type": "If",
-                              "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), 2))",
+                              "expression": "@and(equals(coalesce(body('Get_neighbor_row')?['DocKind']?['Value'], ''), 'Test Plan'), equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], '')), less(length(variables('ExemplarUrls')), int(outputs('Config_gen')?['ExemplarSlots'])))",
                               "actions": {
                                 "Collect_exemplar_url": {
                                   "runAfter": {},
@@ -403,7 +405,7 @@
                                   "If_reference_slot": {
                                     "runAfter": {},
                                     "type": "If",
-                                    "expression": "@and(not(equals(coalesce(body('Get_neighbor_row')?['Surface']?['Value'], ''), coalesce(body('Get_story_row')?['Surface']?['Value'], ''))), less(length(variables('ReferenceUrls')), 2))",
+                                    "expression": "@less(length(variables('ReferenceUrls')), int(outputs('Config_gen')?['ReferenceSlots']))",
                                     "actions": {
                                       "Collect_reference_url": {
                                         "runAfter": {},
@@ -496,7 +498,7 @@
                         ]
                       },
                       "type": "Compose",
-                      "inputs": "@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), 2), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), 2))"
+                      "inputs": "@if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), int(outputs('Config_gen')?['ExemplarSlots'])), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), int(outputs('Config_gen')?['ExemplarSlots'])))"
                     },
                     "For_each_exemplar_row": {
                       "foreach": "@outputs('Exemplar_rows')",
@@ -587,7 +589,7 @@
                                   "type": "AppendToStringVariable",
                                   "inputs": {
                                     "name": "ExemplarText",
-                                    "value": "--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), int(outputs('Config_gen')?['ExemplarCap']))}@{decodeUriComponent('%0A%0A')}"
+                                    "value": "--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText'))))}@{decodeUriComponent('%0A%0A')}"
                                   }
                                 },
                                 "Inc_exemplar": {
@@ -685,7 +687,7 @@
                                   "type": "AppendToStringVariable",
                                   "inputs": {
                                     "name": "ReferenceText",
-                                    "value": "--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), int(outputs('Config_gen')?['ReferenceCap']))}@{decodeUriComponent('%0A%0A')}"
+                                    "value": "--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText'))))}@{decodeUriComponent('%0A%0A')}"
                                   }
                                 },
                                 "Inc_reference": {
@@ -1020,7 +1022,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')))}"
+          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')), ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText')))}"
         },
         "Respond_ok": {
           "type": "Response",
