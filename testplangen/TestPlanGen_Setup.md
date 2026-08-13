@@ -1,6 +1,6 @@
 # Test Plan Generation Setup — build and deploy
 
-Current component version: **v2.12** (see `CHANGES.md`).
+Current component version: **v2.13** (see `CHANGES.md`).
 
 A new, separate, on-demand Power Automate flow, **TestPlanGen**: a PE
 selects an indexed **User Story** row in the Doc Index list and runs
@@ -360,13 +360,19 @@ neutralizer pattern as G5:
     `@startsWith(outputs('Ex_path'), '/')`), Yes branch:
     - **`Get_exemplar_md`** (Get file content using path, Infer
       Content Type **No**, File Path `@{outputs('Ex_path')}`)
+    - **`Ex_remaining`** (Compose, v2.3) — the remaining exemplar
+      budget. It MUST be a separate compose: a variable-update
+      action may not reference its own variable (flow save fails
+      with "Self reference is not supported"), so the append below
+      reads this output instead of `variables('ExemplarText')`:
+      `@sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText')))`
     - **`If_ex_budget`** (Condition:
       `@less(length(variables('ExemplarText')), int(outputs('Config_gen')?['ExemplarCap']))`),
       Yes branch — note the append takes the REMAINING budget
       (v2.2; taking the full cap per iteration let `ExemplarText`
       reach ~2× ExemplarCap):
       - **`Append_exemplar`** — Append to string `ExemplarText`:
-        `--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText'))))}@{decodeUriComponent('%0A%0A')}`
+        `--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), outputs('Ex_remaining'))}@{decodeUriComponent('%0A%0A')}`
       - **`Inc_exemplar`** — Increment variable `ExemplarCount` by 1.
 - **`Exemplar_done`** (Compose, inputs `ok`, run after `Try_exemplar`
   has **Succeeded, Failed, Skipped, Timed out**).
@@ -382,6 +388,9 @@ note the `items(...)?['url']` reads, since the array holds objects:
     `@startsWith(outputs('Ref_path'), '/')`), Yes branch:
     - **`Get_reference_md`** (Get file content using path, Infer
       Content Type **No**, File Path `@{outputs('Ref_path')}`)
+    - **`Ref_remaining`** (Compose, v2.3 — the G7 self-reference
+      rule, reference lane):
+      `@sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText')))`
     - **`If_ref_budget`** (Condition:
       `@less(length(variables('ReferenceText')), int(outputs('Config_gen')?['ReferenceCap']))`),
       Yes branch:
@@ -389,7 +398,7 @@ note the `items(...)?['url']` reads, since the array holds objects:
         the header carries title AND surface, which the prompt's
         surface-parity rule keys on; the take is the remaining
         budget (v2.2, same fix as G7):
-        `--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText'))))}@{decodeUriComponent('%0A%0A')}`
+        `--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), outputs('Ref_remaining'))}@{decodeUriComponent('%0A%0A')}`
       - **`Inc_reference`** — Increment variable `ReferenceCount` by 1.
 - **`Reference_done`** (Compose, inputs `ok`, run after
   `Try_reference` has **Succeeded, Failed, Skipped, Timed out**).

@@ -577,7 +577,7 @@
                             },
                             "If_ex_budget": {
                               "runAfter": {
-                                "Get_exemplar_md": [
+                                "Ex_remaining": [
                                   "Succeeded"
                                 ]
                               },
@@ -589,7 +589,7 @@
                                   "type": "AppendToStringVariable",
                                   "inputs": {
                                     "name": "ExemplarText",
-                                    "value": "--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText'))))}@{decodeUriComponent('%0A%0A')}"
+                                    "value": "--- EXEMPLAR: @{last(split(outputs('Ex_path'), '/'))} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_exemplar_md')?['$content']), outputs('Ex_remaining'))}@{decodeUriComponent('%0A%0A')}"
                                   }
                                 },
                                 "Inc_exemplar": {
@@ -605,6 +605,15 @@
                                   }
                                 }
                               }
+                            },
+                            "Ex_remaining": {
+                              "runAfter": {
+                                "Get_exemplar_md": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText')))"
                             }
                           }
                         }
@@ -675,7 +684,7 @@
                             },
                             "If_ref_budget": {
                               "runAfter": {
-                                "Get_reference_md": [
+                                "Ref_remaining": [
                                   "Succeeded"
                                 ]
                               },
@@ -687,7 +696,7 @@
                                   "type": "AppendToStringVariable",
                                   "inputs": {
                                     "name": "ReferenceText",
-                                    "value": "--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText'))))}@{decodeUriComponent('%0A%0A')}"
+                                    "value": "--- REFERENCE: @{coalesce(items('For_each_reference')?['title'], last(split(outputs('Ref_path'), '/')))} — surface @{coalesce(items('For_each_reference')?['surface'], '')} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_reference_md')?['$content']), outputs('Ref_remaining'))}@{decodeUriComponent('%0A%0A')}"
                                   }
                                 },
                                 "Inc_reference": {
@@ -703,6 +712,15 @@
                                   }
                                 }
                               }
+                            },
+                            "Ref_remaining": {
+                              "runAfter": {
+                                "Get_reference_md": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText')))"
                             }
                           }
                         }

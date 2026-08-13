@@ -980,9 +980,10 @@ v2.0 ReferenceText contract on the tenant
 paste window (`Coverage_Runbook.md` step 4) cheaply, or lands in its
 own window later — the v2.2 flows are safe under prompt v1.4 (extra
 references are just more of an existing lane) and prompt v1.5 is
-safe under the v2.0/v2.1 flows, so the two windows commute. All
-seven edits are expression-level: no new actions, no renames, no
-runAfter changes.
+safe under the v2.0/v2.1 flows, so the two windows commute. Six of
+the seven edits are expression-level (no new actions, no renames, no
+runAfter changes); U6 adds one Compose per lane — required by the
+platform's no-self-reference rule on variable updates (see U6).
 
 ## U1 — Config_gen: slot keys + StoryCap raise
 
@@ -1075,7 +1076,7 @@ now:
 @if(greater(length(body('Filter_release_match')), 0), take(body('Filter_release_match'), int(outputs('Config_gen')?['ExemplarSlots'])), take(coalesce(body('Get_exemplars_q')?['value'], json('[]')), int(outputs('Config_gen')?['ExemplarSlots'])))
 ```
 
-## U6 — Append_exemplar / Append_reference: take the REMAINING budget
+## U6 — Append_exemplar / Append_reference: take the REMAINING budget (via a Compose)
 
 Two edits, same shape. The `If_ex_budget` / `If_ref_budget` gate
 expressions are correct as-is (they gate on "remaining > 0") — the
@@ -1084,29 +1085,43 @@ every iteration: exemplar #1 can land 20,000 chars and exemplar #2
 another 20,000 (ExemplarText ≈ 2× ExemplarCap; references ≈ 2×
 ReferenceCap) — and with U4 admitting a third reference the
 overshoot would grow. Oversized context is itself a consolidation
-pressure on the model. In **Append_exemplar**, change the take's
-second argument:
+pressure on the model.
+
+> **Why a Compose (2026-08-13, found on live save):** a variable-
+> update action may not reference its own variable — putting
+> `length(variables('ExemplarText'))` inside `Append_exemplar`'s
+> value fails flow save with
+> `WorkflowRunActionInputsInvalidProperty: Self reference is not
+> supported when updating the value of variable 'ExemplarText'`.
+> The arithmetic therefore lives in a Compose BEFORE the gate (a
+> Compose may read any variable), and the append reads the Compose.
+
+Exemplar lane — inside the `If_ex_path_ok` Yes branch, add a
+Compose **`Ex_remaining`** between `Get_exemplar_md` and
+`If_ex_budget` (re-point `If_ex_budget`'s run-after to it; its gate
+expression is unchanged):
 
 ```
-int(outputs('Config_gen')?['ExemplarCap'])
+@sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText')))
 ```
 
-to:
+then in **Append_exemplar**, change the take's second argument:
 
 ```
-sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText')))
+int(outputs('Config_gen')?['ExemplarCap'])   →   outputs('Ex_remaining')
 ```
 
-In **Append_reference**, likewise:
+Reference lane — likewise a Compose **`Ref_remaining`** between
+`Get_reference_md` and `If_ref_budget`:
 
 ```
-int(outputs('Config_gen')?['ReferenceCap'])
+@sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText')))
 ```
 
-to:
+and in **Append_reference**:
 
 ```
-sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText')))
+int(outputs('Config_gen')?['ReferenceCap'])   →   outputs('Ref_remaining')
 ```
 
 (The gate guarantees the subtraction is positive. The `---
