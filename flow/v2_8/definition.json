@@ -66,6 +66,11 @@
               ]
             }
           },
+          "runtimeConfiguration": {
+            "concurrency": {
+              "runs": 1
+            }
+          },
           "type": "Recurrence"
         }
       },
@@ -75,7 +80,6 @@
           "type": "Compose",
           "inputs": {
             "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
-            "SourceSiteUrl": "https://esriis.sharepoint.com/sites/LocationReferencing",
             "TextsFolder": "/LRS Doc Index",
             "SmokeFile": "",
             "DefaultRepo": "ArcGISPro/ps-location-referencing",

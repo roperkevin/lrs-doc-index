@@ -1,5 +1,24 @@
 # Designer edits — exact patches (apply in this order)
 
+> **You probably don't need this document (2026-08-13).** Every edit
+> below is BAKED into the current authored definitions and their
+> import packages — deploying is imports and pastes, per
+> `testplangen/Coverage_Runbook.md`. This doc remains only for
+> patching a live flow IN PLACE (to keep its run history) instead of
+> re-importing, and as the per-edit rationale record. Where each
+> section is baked:
+>
+> | Section(s) | Baked into | Import package |
+> |---|---|---|
+> | F1–F12, r2-1, v2_6 V1–V10, v2_7 W1–W5 | superseded generations, folded into `flow/v2_8/definition.json` (authored from the post-v2.6/v2.7 live export) | `flow/DocIndexSweep_v2_8.zip` |
+> | r2-2 (option a), r2-3 | `flow/v2_8/definition.json` (2026-08-13: SourceSiteUrl deleted, trigger concurrency 1) | `flow/DocIndexSweep_v2_8.zip` |
+> | §v2_7-fixes FX-1..FX-6 | `flow/v2_7_fix/definition.json` AND `flow/v2_8/definition.json` | `DocIndexSweep_v2_7_fix.zip` / `DocIndexSweep_v2_8.zip` |
+> | v2_8 X1–X5 | `flow/v2_8/definition.json` | `flow/DocIndexSweep_v2_8.zip` |
+> | §testplangen-v2_8 T1–T2, §testplangen-v2_12 U1–U7 | `testplangen/flow/v1_0/definition.json` + `core_v1_0/definition.json` | `TestPlanGen_v1_0.zip` / `TestPlanGenCore_v1_0.zip` |
+>
+> Every listed package's payload is byte-identical to its folder
+> definition (verified 2026-08-13).
+
 All edits are made in the live flow in the designer; no re-import, no package re-cut.
 Every expression below is pure WFL (no statements). After each edit, run once in smoke
 mode (Config → SmokeFile) before moving to the next — one variable at a time.
@@ -272,6 +291,9 @@ deployment record per the round checklist.
 
 ## r2-2 — PV-3: the dead `Config.SourceSiteUrl` (pick ONE)
 
+> Baked 2026-08-13: option (a) taken in `flow/v2_8/definition.json`
+> (+ re-cut zip). Live-flow edit only needed if patching in place.
+
 `Config.SourceSiteUrl` is referenced by nothing; `Get_files` hardcodes
 the same URL (the connector's dataset field must be a literal picker
 value, so the key cannot actually be wired in). Either:
@@ -285,6 +307,10 @@ value, so the key cannot actually be wired in). Either:
 Test: save; the flow's next run behaves identically.
 
 ## r2-3 — DD-8 (optional): pin trigger concurrency
+
+> Baked 2026-08-13 into `flow/v2_8/definition.json` (+ re-cut zip):
+> Recurrence trigger `runtimeConfiguration.concurrency.runs: 1`.
+> Live-flow edit only needed if patching in place.
 
 `docs/SP_Adaptation_Notes.md` now documents that overlapping runs are
 fenced only by the daily cadence. To make the original claim true:

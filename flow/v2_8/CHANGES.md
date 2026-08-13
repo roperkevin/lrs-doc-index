@@ -133,10 +133,25 @@ NOTE: the backfill only runs once FX-5 clears SmokeFile.
 - **AI Builder prompt** — text unchanged; the v2.0 bump is
   format-only, no re-paste.
 
+## r2 hygiene addendum (2026-08-13)
+
+The two never-baked r2 designer edits are now folded into this
+definition (+ the zip re-cut, payload byte-identical): **r2-2
+option (a)** — the dead `Config.SourceSiteUrl` key deleted
+(referenced by nothing; the README documents the source site) — and
+**r2-3** — Recurrence trigger concurrency pinned to 1
+(`runtimeConfiguration.concurrency.runs`, the DD-8 hardening).
+Behavior-identical at one run/day; a designer-built flow applies
+them per `designer-edits.md` §r2.
+
 ## Deployment
 
 In order — see `review/patches/designer-edits.md` §v2_7-fixes (FX-1
-… FX-5) and §v2_8 (prereqs + X1–X5 + smoke). Gate:
+… FX-5) and §v2_8 (prereqs + X1–X5 + smoke) — or skip every
+designer edit by importing `flow/DocIndexSweep_v2_8.zip` (this
+definition IS the payload: fixes, X-round, r2 hygiene, current
+GUIDs; map connections at import, then turn the old flow OFF —
+import-first path: `testplangen/Coverage_Runbook.md` step 1). Gate:
 `check_batch_r6.py` PASSED 2026-08-13. Afterwards: paste
 `agent/QA_Agent_Instructions_v1_3.md`, re-run the agent smoke, and
 update STATUS.md.
