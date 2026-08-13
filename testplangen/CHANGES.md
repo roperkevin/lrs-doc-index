@@ -6,16 +6,19 @@ Second and third findings from the same live v2.3 deployment
 **F1 — the v2.4 anchored IsMatch also failed canvas validation**
 ("Expected operator"), while the file's simpler `IsMatch` conditions
 and the named-group `Match(...).num` extractions validated. A variant
-ladder was run on the live canvas; the winner — now the checked-in
-`refIsIssueUrl` condition — is the regex-free, function-style form:
+ladder was offered against the live canvas; the form adopted on the
+tenant — now the checked-in `refIsIssueUrl` condition (amended in
+place before the pending smoke, the supersede-before-paste
+precedent) — is the regex-free `in` substring form
+(case-insensitive):
 
-    =And(Not(IsBlank(Find("devtopia.esri.com/", Topic.RefLower))), Not(IsBlank(Find("/issues/", Topic.RefLower))))
+    =And("devtopia.esri.com/" in Topic.RefLower, "/issues/" in Topic.RefLower)
 
-The full ladder (operator style, simplified pattern, `in` operator)
-is recorded in Agent_Setup's schema-drift caution for the next
-tenant, along with the trap that mimics total failure: curly quotes
-from a clipboard hop fail EVERY variant with "Expected operator" —
-retype the quotes before concluding anything.
+The full ladder (Find function style, operator style, simplified
+IsMatch pattern) is recorded in Agent_Setup's schema-drift caution
+for the next tenant, along with the trap that mimics total failure:
+curly quotes from a clipboard hop fail EVERY variant with "Expected
+operator" — retype the quotes before concluding anything.
 
 **F2 — canonical flow-node binding keys confirmed.** The first
 tenant bind surfaced `InvalidBindingInvokeAction` from the topic
