@@ -38,10 +38,12 @@ keeps the old yaml-on-top layout).
 | flow/v2_5/definition.json | Flow definition (previous deployed baseline) | v2.5 |
 | flow/v2_6/definition.json | Flow definition (authored; window applied on tenant per the 2026-08-13 export) | v2.6 |
 | flow/v2_7/definition.json | Flow definition (authored; window applied on tenant per the 2026-08-13 export — with the mis-picks listed in designer-edits §v2_7-fixes) | v2.7 |
+| flow/v2_7_fix/definition.json | Repair-only flow definition (the 2026-08-13 live export + §v2_7-fixes, still PromptVersion v1.9 — deploy the fixes WITHOUT the v2.8 format change; superseded by v2.8, which contains the same fixes) | v2.7-fix |
 | flow/v2_8/definition.json | Flow definition (authored FROM the 2026-08-13 live export — real tenant bindings + §v2_7-fixes + hidden metadata comment frame, Product row/column, PromptVersion v2.0) | v2.8 |
 | flow/DocIndexSweep_v2_5.zip | Import package (v2.4 package skeleton + the v2.5 definition, real script bindings as of 2026-08-10; post-import verification still needed) | v2.5 |
 | flow/DocIndexSweep_v2_6.zip | Import package (v2.5 package skeleton + the v2.6 definition, payload byte-identical to the folder; post-import verification still needed — re-pick every Run-script action) | v2.6 |
 | flow/DocIndexSweep_v2_7.zip | Import package (v2.6 package skeleton + the v2.7 definition, payload byte-identical to the folder) | v2.7 |
+| flow/DocIndexSweep_v2_7_fix.zip | Repair import package (live-export skeleton, PV-1 scrubbed, + the v2.7-fix definition — payload byte-identical to the folder) | v2.7-fix |
 | flow/DocIndexSweep_v2_8.zip | Import package (the 2026-08-13 live export's OWN skeleton, PV-1 scrubbed, + the v2.8 definition — payload byte-identical to the folder) | v2.8 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing | v2.1 (paste pending — v2.8 window) |
