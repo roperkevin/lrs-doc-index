@@ -607,6 +607,11 @@
                                   "operationId": "RunScriptProd"
                                 },
                                 "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                "operationMetadataId": "e53796cd-aab8-4598-9e19-d85154a01263",
+                                "tableId": null
                               }
                             },
                             "Set_DocText_pptx": {
@@ -699,6 +704,11 @@
                                       "operationId": "RunScriptProd"
                                     },
                                     "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                    "operationMetadataId": "e1f7f1ac-b4c9-4a3e-af0f-c953ef064a72",
+                                    "tableId": null
                                   }
                                 },
                                 "For_each_img_pptx": {
@@ -778,7 +788,7 @@
                                 "parameters": {
                                   "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
                                   "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
-                                  "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
+                                  "file": "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL",
                                   "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZIEEGZVFDTYSRHIEYGHUY2ZADVP",
                                   "ScriptParameters/zipBase64": "@body('Get_content_docx')?['$content']",
                                   "ScriptParameters/mediaPrefix": "@{concat('../media/doc', items('For_each_file')?['ID'], '_')}"
@@ -789,6 +799,11 @@
                                   "operationId": "RunScriptProd"
                                 },
                                 "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                "operationMetadataId": "97a28c40-d000-40b0-9fbb-91d310fbec5e",
+                                "tableId": null
                               }
                             },
                             "Set_DocText_docx": {
@@ -881,6 +896,11 @@
                                       "operationId": "RunScriptProd"
                                     },
                                     "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                    "operationMetadataId": "f67e08b9-7250-4e40-965f-5ad72e846da6",
+                                    "tableId": null
                                   }
                                 },
                                 "For_each_img_docx": {
@@ -2103,6 +2123,11 @@
                                   "operationId": "RunScriptProd"
                                 },
                                 "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                "operationMetadataId": "20a42b5d-13d9-4942-adfd-f9d9dbc976b6",
+                                "tableId": null
                               }
                             },
                             "Append_related_flags": {
@@ -2178,6 +2203,11 @@
                                       "operationId": "RunScriptProd"
                                     },
                                     "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                    "operationMetadataId": "dfe434c7-b97a-4730-8254-eff47f2d71ef",
+                                    "tableId": null
                                   }
                                 },
                                 "Filter_final_docs": {
@@ -2339,8 +2369,8 @@
                                     "parameters": {
                                       "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
                                       "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
-                                      "file": "01UO6O4P7JEKITZ53S75C3RWTNMADCFE3S",
-                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZM5MIGLQGRYUFDIJ3YMRLUJJJPC",
+                                      "file": "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL",
+                                      "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2F01JWUXOZIGYJWFJ7JYBJH2ELLCZEJWJQSN",
                                       "ScriptParameters/filesJson": "@{string(outputs('Files_for_patch'))}",
                                       "ScriptParameters/selfId": "@{outputs('Doc_item_id')}",
                                       "ScriptParameters/rankedJson": "@string(coalesce(outputs('Run_related_rank')?['body/result/related'], json('[]')))",
@@ -2354,6 +2384,11 @@
                                       "operationId": "RunScriptProd"
                                     },
                                     "authentication": "@parameters('$authentication')"
+                                  },
+                                  "metadata": {
+                                    "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                    "operationMetadataId": "aac83282-aa2b-49cc-81e8-065976ea7f23",
+                                    "tableId": null
                                   }
                                 },
                                 "For_each_patched": {
