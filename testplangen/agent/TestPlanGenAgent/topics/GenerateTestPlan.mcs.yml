@@ -21,31 +21,29 @@
 # Agent_Setup.md's schema-drift caution records the finding.
 #
 # Adaptive-dialog YAML (the format behind "Open code editor" in the
-# topic canvas). This file ships WITHOUT active flow nodes: the parser
-# requires flowId to be a real GUID, which is environment-specific, so
-# a placeholder fails paste validation (GuidParseError). Because the
-# flow nodes are absent, the init* SetVariable nodes below declare
-# their output variables — without them the paste fails with
-# "unrecognized identifier" on every Topic.* reference (v1.2 fix). At
-# runtime the flow nodes' output bindings overwrite the empty strings.
-# After pasting, add TWO flow nodes in the CANVAS (Agent_Setup.md §3):
+# topic canvas). This file now ships WITH both flow nodes EMBEDDED,
+# bound to the live tenant's flow GUIDs (captured from the
+# canvas-generated skeleton, 2026-08-13):
 #
-#   1. StoryLookupFlow — in the needLookup branch, between the four
-#      initLookup* nodes and the checkLookup condition: + → Call an
-#      action → StoryLookupFlow; map inputs LookupKind =
-#      Topic.LookupKind, LookupQuery = Topic.LookupQuery, and save the
-#      outputs into the EXISTING variables Topic.LookupStatus /
-#      Topic.ResolvedId / Topic.ResolvedTitle / Topic.Candidates.
-#   2. TestPlanGenAgentFlow — in the confirmed-Yes branch, between the
-#      three initGen* nodes and the checkStatus condition: + → Call an
-#      action → TestPlanGenAgentFlow; map input StoryId = Topic.StoryId
-#      and save the outputs into the EXISTING variables Topic.Status /
-#      Topic.DraftUrl / Topic.GenSummary.
+#   StoryLookupFlow      a9e637bb-5197-f111-8075-6045bd0706c5
+#   TestPlanGenAgentFlow e31f2b0e-5397-f111-8075-6045bd0706c5
 #
-# In both cases pick the existing variables, don't create new ones —
-# the downstream nodes reference those names. The commented blocks
-# below show each node's intended shape for comparison with what the
-# canvas generates.
+# flowId is environment-specific — pasting this topic into ANY OTHER
+# environment requires swapping both GUIDs first (a placeholder fails
+# paste validation with GuidParseError; that constraint is why earlier
+# versions shipped the nodes commented out for canvas re-add,
+# Agent_Setup.md §3). Binding key names are fixed by the flows'
+# schemas, not chosen here: inputs use the trigger schema property
+# names (`text`/`text_1` = LookupKind/LookupQuery on the lookup flow;
+# `number` = StoryId on the generation flow), outputs use the
+# lowercased respond schema names. The init* SetVariable nodes below
+# still declare every flow-output variable before its node runs — they
+# keep the paste valid if a node is ever removed, and the node's
+# output binding overwrites the empty strings at runtime. NOTE: the
+# lookup node's storyid/storytitle outputs land in Topic.ResolvedId /
+# Topic.ResolvedTitle (strings, per the respond schema) — NOT
+# Topic.StoryId, which stays numeric and is set only via
+# Value(Topic.ResolvedId) in the lookupOne branch.
 #
 # v1.4: the topic accepts three reference forms and classifies them
 # with deterministic Power Fx (no generative parsing — orchestration
@@ -202,9 +200,9 @@ beginDialog:
                 Looking that up in the Doc Index
                 ({Topic.LookupKind}: {Topic.LookupQuery})…
 
-            # Declare the lookup flow-node output variables so the
-            # paste validates with the flow node absent (see file
-            # header).
+            # Declare the lookup flow-node output variables before the
+            # node runs (see file header); its output binding
+            # overwrites these at runtime.
             - kind: SetVariable
               id: initLookupStatus
               variable: Topic.LookupStatus
@@ -225,23 +223,20 @@ beginDialog:
               variable: Topic.Candidates
               value: =""
 
-            # Add the StoryLookupFlow node HERE via the canvas after
-            # pasting (see file header). Intended shape once added
-            # (binding key casing follows the flow's respond schema —
-            # lowercase keys are fine, only the Topic.* side matters):
-            #   - kind: InvokeFlowAction
-            #     id: runStoryLookup
-            #     flowId: <your environment's StoryLookupFlow guid>
-            #     input:
-            #       binding:
-            #         LookupKind: =Topic.LookupKind
-            #         LookupQuery: =Topic.LookupQuery
-            #     output:
-            #       binding:
-            #         LookupStatus: Topic.LookupStatus
-            #         StoryId: Topic.ResolvedId
-            #         StoryTitle: Topic.ResolvedTitle
-            #         Candidates: Topic.Candidates
+            - kind: InvokeFlowAction
+              id: invokeFlowAction_SZcLsX
+              input:
+                binding:
+                  text: =Topic.LookupKind
+                  text_1: =Topic.LookupQuery
+              output:
+                binding:
+                  candidates: Topic.Candidates
+                  lookupstatus: Topic.LookupStatus
+                  storyid: Topic.ResolvedId
+                  storytitle: Topic.ResolvedTitle
+
+              flowId: a9e637bb-5197-f111-8075-6045bd0706c5
 
             - kind: ConditionGroup
               id: checkLookup
@@ -362,8 +357,9 @@ beginDialog:
                         Starting generation for doc {Topic.StoryId} — this
                         usually takes a minute or two.
 
-                    # Declare the flow-node output variables so the paste
-                    # validates with the flow node absent (see file header).
+                    # Declare the flow-node output variables before the node
+                    # runs (see file header); its output binding overwrites
+                    # these at runtime.
                     - kind: SetVariable
                       id: initGenStatus
                       variable: Topic.Status
@@ -379,24 +375,18 @@ beginDialog:
                       variable: Topic.GenSummary
                       value: =""
 
-                    # Add the flow node HERE via the canvas after pasting —
-                    # Call an action → TestPlanGenAgentFlow (see file header).
-                    # Intended shape once added (binding key casing follows
-                    # whatever the canvas generates from the flow's respond
-                    # schema — lowercase status/drafturl/gensummary has been
-                    # observed live; the casing is fine, what matters is that
-                    # each output lands in the EXISTING Topic.* variable):
-                    #   - kind: InvokeFlowAction
-                    #     id: runTestPlanGen
-                    #     flowId: <your environment's TestPlanGenAgentFlow guid>
-                    #     input:
-                    #       binding:
-                    #         StoryId: =Topic.StoryId
-                    #     output:
-                    #       binding:
-                    #         Status: Topic.Status
-                    #         DraftUrl: Topic.DraftUrl
-                    #         GenSummary: Topic.GenSummary
+                    - kind: InvokeFlowAction
+                      id: invokeFlowAction_pSaLyd
+                      input:
+                        binding:
+                          number: =Topic.StoryId
+                      output:
+                        binding:
+                          drafturl: Topic.DraftUrl
+                          gensummary: Topic.GenSummary
+                          status: Topic.Status
+
+                      flowId: e31f2b0e-5397-f111-8075-6045bd0706c5
 
                     - kind: ConditionGroup
                       id: checkStatus
