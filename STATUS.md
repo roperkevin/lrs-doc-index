@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-12 (TestPlanGen v2.4 — two-argument IsMatch paste fix; v2.3 deploy in progress)**.
+Last updated: **2026-08-13 (TestPlanGen v2.5 — live-validated URL condition + binding keys; v2.3 deploy in progress)**.
 
 ## Core sweep
 
@@ -74,7 +74,7 @@ unchanged.
 |---|---|---|---|
 | Q&A agent | v1.1 (instructions) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
 | Keyword curation | v1.1 | v1.0 (`prompts/KeywordCuration_Prompt.md`) | **OPEN**: v1.1 live verification pending — `curation/CHANGES.md`. Definition authored (not exported): `curation/flow/v1_1/definition.json` |
-| TestPlanGen | v2.0 deployed — **v2.4 authored, deploy in progress** | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1 live (**v1.5 authored**). **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0. Then the v2.3/v2.4 delta: build `StoryLookupFlow` (`agent/Agent_Setup.md` §1d, or try `StoryLookupFlow_v1_0.zip` with the §1d import caveat), re-paste/push the v1.5 agent files (v1.5 = the two-argument IsMatch paste fix found mid-deploy), re-add BOTH canvas flow nodes (§3), run agent smoke rows 1–2c and 7 — `testplangen/CHANGES.md` v2.3/v2.4 |
+| TestPlanGen | v2.0 deployed — **v2.5 authored, deploy in progress** | v1.3 (`prompts/TestPlanGen_Prompt.md`) | agent file set v1.1 live (**v1.6 authored**; the v1.6 topic body + both flow nodes are pasted and checker-clean on the live tenant as of 2026-08-13 — test-pane/smoke verification is the open step). **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0. Then finish the v2.3–v2.5 delta: StoryLookupFlow is built and wired (`180ed782-9c96-f111-8075-6045bd0706c5`; generation agent flow `0e279e86-9096-f111-8075-6045bd0706c5`); run agent smoke rows 1–2c and 7 and record in `testplangen/CHANGES.md` v2.5 |
 
 ## Harness
 
