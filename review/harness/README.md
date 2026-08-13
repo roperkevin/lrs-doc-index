@@ -433,3 +433,54 @@ Sidecar_header: H1-first assertion, details wrapper, info table with
 the devtopia Issue row and its id-less branch, `issues:` yaml
 round-trip, empty-summary `> [!WARNING]` branch, post-patch
 head/frame preservation) all PASS against the promoted `scripts/`.
+
+## Batch gate — the r6 batch (`check_batch_r6.py`)
+
+The gate for the flow v2.8 format round (`../../flow/v2_8/CHANGES.md`):
+ZipTextExtract **v2.1** (CF-1 content-aware code fencing — Arcade/JS
+runs fenced, code-shaped bullets inline-coded, `\#` escapes reverted
+inside fences), RegexExtract **v1.4** (PD-1 product-line detection —
+`products`/`productCount` from RH/APR/UN acronyms, compound tokens
+UNAPR/ADMRH, full names; additive return fields), SidecarPatch
+**v1.6** (the fourth metadata frame: yaml hidden in `<!-- metadata`
+... `-->`). Three-patch batch; same lifecycle as r2–r5, with the r5
+genuinely-old-artifact convention on every equivalence leg
+(`ZipTextExtract_v2_0.ts`, `RegexExtract_v1_3.ts`,
+`SidecarPatch_v1_5.ts` are the old sides, so the legs survive
+promotion). ZTE equivalence spans EVERY pre-r6 fixture plus the new
+`prose_deck.pptx` (instruction-shaped prose — `;`-ended steps, a
+lowercase `return to ...` sentence — that must never fence), with
+throw-parity on the malformed archives; new fixtures `code_deck.pptx`
+(planted Arcade script with an internal blank line, a `# ...` comment
+line, code bullets, code-bearing table cells) discriminate v2.0
+vs v2.1, the comment-frame payload discriminates v1.5 vs v1.6, and
+the products field discriminates v1.3 vs v1.4. **Paste fencing**:
+SidecarPatch v1.6 pastes safely any time BEFORE the flow v2.8
+designer edits; ZipTextExtract v2.1 and RegexExtract v1.4 paste with
+the window (see `../patches/designer-edits.md` §v2_8).
+
+```
+python3 make_fixtures.py     # builds the r6 fixtures too
+python3 check_batch_r6.py    # any FAIL = do not paste
+```
+
+### Last run (2026-08-13, Node 22.22.2) — r6 gate + promotion + v2.8 format suites
+
+Gate run: **PASS** — `check_format.py` (incl. the new §11 code-fence
+contract) / `check_related.py` (incl. the 13 new v1.6 comment-frame
+cases) / `check_regex.py` (incl. the 9 product cases +
+productCount invariant) fully green over the staged batch; ZTE
+v2.0-vs-v2.1 IDENTICAL on all twelve prose fixtures with throw-parity
+on the three malformed archives; RegexExtract v1.3-vs-v1.4 IDENTICAL
+on ids/docRevision/idCount/slug across the case set; SidecarPatch
+v1.5-vs-v1.6 IDENTICAL on all seven pre-r6 payloads; all three
+discriminators fire; all three staged scripts type-check at ES2017.
+Promotion: v2.1/v1.4/v1.6 promoted to `scripts/`. Post-promotion,
+the standing suites and the reworked `render_sample.py` (now
+mirroring the v2.8 Sidecar_header: `<!-- metadata` comment frame
+with no `<details>` anywhere, Product info row + its empty branch,
+`products:` yaml round-trip, post-patch head/frame preservation) all
+PASS against the promoted `scripts/`; `check_batch_r5.py` now skips
+as superseded (the r6 promotion moved SidecarPatch past its
+generation), joining r2/r3 and `check_batch.py`; `check_batch_r4.py`
+still PASSES (RelatedRank untouched by r6).

@@ -699,3 +699,211 @@ Smoke: generate one draft; the banner renders as a WARNING alert in
 a GFM viewer, Overview opens with the StoryMeta table, steps are
 checkboxes, Negative Tests carries the CAUTION alert, Open Questions
 items are checkboxes.
+
+# v2_7-fixes round — live mis-picks found in the 2026-08-13 export
+
+The DocIndexSweep export of 2026-08-13 (the flow after the v2.6 and
+v2.7 windows were applied on the tenant) shows four designer
+mis-picks plus a stuck smoke knob. Apply these ON THE LIVE FLOW
+before (or with) the §v2_8 window — the authored
+`flow/v2_8/definition.json` already carries all five corrections, so
+a tenant that re-imports v2.8 instead gets them for free.
+
+## FX-1 — Extract_media_pptx: zipBase64 carries the prefix, not the file
+
+The action's ONLY script parameter, `zipBase64`, is bound to
+`concat('../media/doc', items('For_each_file')?['ID'], '_')` — the
+media-prefix expression. MediaExtract's signature is
+`main(workbook, zipBase64)`; fed a prefix string it throws (`EOCD
+not found`), so EVERY image-bearing pptx errors in Catch_index.
+Set:
+
+```
+ScriptParameters/zipBase64 = @{body('Get_content_pptx')?['$content']}
+```
+
+(There is no prefix parameter on MediaExtract — the prefix belongs
+to Zip_extract_pptx, where it is already correct.)
+
+## FX-2 — Zip_extract_docx: mediaPrefix binding missing
+
+The docx extract call has no `mediaPrefix` parameter bound, so docx
+sidecars silently lose their inline image links (and the media save
+never triggers — `media` comes back empty). Add:
+
+```
+ScriptParameters/mediaPrefix = @{concat('../media/doc', items('For_each_file')?['ID'], '_')}
+```
+
+## FX-3 — Run_related_rank: sharersJson mis-picked to Get_my_kws
+
+`sharersJson` is bound to `body('Get_my_kws')` — the doc's OWN
+junction rows — instead of `body('Get_kw_sharers')`. RelatedRank
+then never sees another doc sharing a keyword, so keyword-based
+related entries stop appearing for newly indexed docs (id-edge
+entries still work, which is why the damage is easy to miss). Set:
+
+```
+ScriptParameters/sharersJson = @string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))
+```
+
+(The `mode` parameter's trailing space — `"final "` — is harmless:
+anything other than `shortlist` reads as final mode. Fix it or not.)
+
+## FX-4 — Run_regex: content joins with a literal " \n "
+
+`content` is `@{variables('DocText')} \n @{variables('RelsText')}` —
+the `\n` is two literal characters, not a newline. Harmless to the
+id scan, but set it back to a real newline join (expression editor:
+DocText, Shift+Enter, RelsText) so boundary-sensitive scans (the
+v1.4 product acronyms are word-boundary matched) never see the two
+texts glued through ` \n `.
+
+## FX-5 — Config.SmokeFile is still set
+
+`Config → SmokeFile = "ExB - AutopopulateReferents.pptx"` pins every
+nightly run to that single file — **the PromptVersion v1.9 backfill
+has been stalled since the v2.7 window**, which is why the corpus
+still shows the pre-v2.7 layout (visible yaml on top). After the
+final smoke of whichever window you are in, set SmokeFile back to
+empty and let the nightly runs converge the corpus.
+
+# v2_8 round — hidden metadata + code fencing + product lines
+
+`flow/v2_8/definition.json` is the authoritative result (authored
+from the 2026-08-13 live export — real tenant bindings — plus the
+§v2_7-fixes and the edits below). Prereqs, in order:
+
+1. §v2_7-fixes applied (or accepted as part of this window).
+2. **Doc Index column**: create `Products` (single line of text,
+   internal name exactly `Products`) on the Doc Index list — see
+   `schemas/SPList_DocIndex.csv`. Column first, flow edits second.
+3. **Script pastes** (gate `check_batch_r6.py` PASSED 2026-08-13):
+   `scripts/SidecarPatch.ts` (v1.6) any time BEFORE this window;
+   `scripts/ZipTextExtract.ts` (v2.1) and `scripts/RegexExtract.ts`
+   (v1.4) with the window (same signatures — no re-pick needed, but
+   pasting them early changes sidecar bodies ahead of the
+   PromptVersion bump, so keep them in the window unless a day of
+   mixed bodies is acceptable).
+
+X1–X4 are one window (the template references the new actions); do
+them with the flow OFF or well clear of the 17:00 trigger, then
+smoke.
+
+## X1 — Select_product_yaml
+
+New **Select** action `Select_product_yaml` after `Issue_row`:
+
+- From: `@coalesce(outputs('Run_regex')?['body/result/products'], json('[]'))`
+- Map (text mode): `@concat('"', item(), '"')`
+
+## X2 — Product_row
+
+New **Compose** action `Product_row` after `Select_product_yaml`:
+
+```
+@if(empty(coalesce(outputs('Run_regex')?['body/result/products'], json('[]'))), '', concat('| **Product** | ', join(coalesce(outputs('Run_regex')?['body/result/products'], json('[]')), ' · '), ' |', decodeUriComponent('%0A')))
+```
+
+(Same shape as Issue_row: the non-empty branch ends with a newline
+so the row embeds flush; a product-less doc loses the row without a
+blank table line.)
+
+## X3 — Sidecar_header template
+
+**Sidecar_header** compose — set runAfter to `Product_row`, then
+apply exactly these three template edits (or paste the whole
+`Sidecar_header` inputs from `flow/v2_8/definition.json`):
+
+1. The metadata wrapper becomes an HTML comment. The v2.7 opener —
+   the `<details><summary>Metadata</summary>` line, a blank line,
+   then the ```` ```yaml ```` fence — collapses to two lines with NO
+   blank between:
+
+   ~~~~
+   <!-- metadata
+   ```yaml
+   ~~~~
+
+   and the v2.7 closer — the closing ```` ``` ```` fence, a blank
+   line, then `</details>` — collapses to:
+
+   ~~~~
+   ```
+   -->
+   ~~~~
+
+   The yaml lines themselves are unchanged except edit 3.
+
+2. The Source row line gains the product row, flush at line start:
+
+   ~~~~
+   @{outputs('Product_row')}@{outputs('Issue_row')}| **Source** | ...
+   ~~~~
+
+3. Between `tools:` and `issues:` insert:
+
+   ~~~~
+   products: [@{join(body('Select_product_yaml'), ', ')}]
+   ~~~~
+
+**Checklist — every item is load-bearing:**
+
+- [ ] `<!-- metadata` sits alone on its line, ```` ```yaml ```` on
+      the next — SidecarPatch v1.6 anchors its frame parse on the
+      exact `<!-- metadata\n```yaml\n` / `\n```\n-->\n` byte
+      sequences
+- [ ] NO blank line between `<!-- metadata` and the fence, none
+      between the closing fence and `-->` (unlike the v2.7 details
+      frame, which needed them)
+- [ ] blank line between the info table and `<!-- metadata`, and
+      between `-->` and `## Summary`
+- [ ] `@{outputs('Product_row')}` and `@{outputs('Issue_row')}`
+      both sit at the START of the Source template line
+
+## X4 — Create_doc / Update_doc: Products column
+
+Both row upserts gain:
+
+```
+Products = @{join(coalesce(outputs('Run_regex')?['body/result/products'], json('[]')), '; ')}
+```
+
+## X5 — Config.PromptVersion
+
+**Config** compose: `"PromptVersion": "v1.9"` → `"v2.0"`. This is
+the backfill trigger — every existing row reindexes into the new
+format at MaxDocsPerRun (150) per run.
+
+## Smoke (after X5, one pass)
+
+Config → SmokeFile on a doc known to carry an issue reference AND
+pasted code (an Arcade-bearing test plan is ideal, e.g. the
+expression-display SLD plan):
+
+1. Run succeeds; download the smoke sidecar.
+2. Byte-check the header: regenerate
+   `review/harness/sample_sidecar.md` (`python3 render_sample.py`)
+   and diff the two headers — H1 line, table rows (Product row when
+   products were detected), the exact `<!-- metadata` frame, seam.
+3. Eyeball in a GFM viewer: NO metadata visible at all (the yaml is
+   gone from the rendered page — that is the point of this round),
+   info table with Product/Issue rows, pasted code rendered as
+   fenced blocks, code-shaped bullets as inline code.
+4. Confirm the raw yaml still parses (open the file raw) and shows
+   `products: ["..."]`, `issues: ["..."]`, `related: []`.
+5. Check the Doc Index row: Products column filled.
+6. **Set SmokeFile back to EMPTY (FX-5)** — this is the step the
+   v2.7 window missed; the backfill cannot run while it is set.
+7. Next nightly run: reindex volume ≈ MaxDocsPerRun in Run_summary.
+
+Then update STATUS.md (flow row, PromptVersion row, script paste
+columns) and paste `agent/QA_Agent_Instructions_v1_3.md` per its own
+header.
+
+Rollback: revert X5 (PromptVersion → v1.9), then X4→X1 in reverse
+and the wrapper edit back to `<details>`. SidecarPatch v1.6 may stay
+pasted — byte-equivalent to v1.5 on every pre-v2.8 frame.
+ZipTextExtract v2.1 / RegexExtract v1.4 may also stay — their output
+changes only materialize in sidecar bodies, which the reverted
+PromptVersion re-converges.

@@ -97,6 +97,17 @@ CASES = [
     {'file': 'REV12.docx', 'title': '', 'content': ''},
     {'file': 'MyPlanv2.docx', 'title': '', 'content': ''},
     {'file': 'V4.docx', 'title': '', 'content': ''},
+    # -- 7 (v1.4, PD-1): product-line detection ---------------------------
+    {'file': 'RH_Roundabouts_TestPlan.pptx', 'title': '', 'content': ''},
+    {'file': 'Compound.pptx', 'title': '',
+     'content': 'Test with UNAPR, RH, ADMRH, and PoM data'},
+    {'file': 'FullNames.docx', 'title': '',
+     'content': 'ArcGIS Pipeline Referencing behavior on the Utility Network'},
+    {'file': 'AndName.docx', 'title': 'Roads and Highways editing', 'content': ''},
+    {'file': 'DateTrap.pptx', 'title': '', 'content': 'milestone due 12-APR-2026'},
+    {'file': 'AprToken.pptx', 'title': '', 'content': 'APR event layers only'},
+    {'file': 'CamelTrap.pptx', 'title': '', 'content': 'RHLabels and UNAPRx are words'},
+    {'file': 'LowerTrap.docx', 'title': '', 'content': 'un rh apr as lowercase prose'},
 ]
 
 json.dump(CASES, open('rex_cases.json', 'w', encoding='utf-8'))
@@ -157,6 +168,23 @@ for f, want in (('TestPlanV1.docx', 'V1'), ('Report_V4.pptx', 'V4'),
                 ('MyPlanv2.docx', ''), ('V4.docx', 'V4')):
     check(byfile[f]['docRevision'] == want,
           f"docRevision: {f} -> {want!r} (got {byfile[f]['docRevision']!r})")
+
+# -- 7: products (v1.4, PD-1) ---------------------------------------------
+RH, APR, UN = 'Roads & Highways', 'Pipeline Referencing', 'Utility Network'
+for f, want in (('RH_Roundabouts_TestPlan.pptx', [RH]),
+                ('Compound.pptx', [RH, APR, UN]),
+                ('FullNames.docx', [APR, UN]),
+                ('AndName.docx', [RH]),
+                ('DateTrap.pptx', []),
+                ('AprToken.pptx', [APR]),
+                ('CamelTrap.pptx', []),
+                ('LowerTrap.docx', []),
+                ('Plain.docx', [])):
+    check(byfile[f]['products'] == want,
+          f"products: {f} -> {want} (got {byfile[f]['products']})")
+for r in res:
+    check(r['productCount'] == len(r['products']),
+          f"productCount === products.length ({r['productCount']})")
 
 print()
 if failures:

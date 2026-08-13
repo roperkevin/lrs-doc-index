@@ -45,3 +45,6 @@ stage_r3/
 stage_r4/
 # r5 gate staging
 stage_r5/
+# r6 gate staging + generated cases
+stage_r6/
+rex_r6_cases.json

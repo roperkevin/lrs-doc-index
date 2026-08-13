@@ -7,17 +7,24 @@ and why, plus build mechanics.
 ## Current tenant GUIDs
 
 The **LRS Doc Index** library (with its `media` folder) holds the sidecars;
-the six lists resolve to these GUIDs (the flow references every list by GUID,
-except Issue Refs, whose feeder — flow #2 — is not yet built):
+the lists resolve to these GUIDs (the flow references every list by GUID,
+except Issue Refs, whose feeder — flow #2 — is not yet built).
+**Updated 2026-08-13 from the live DocIndexSweep export** — the lists
+were evidently re-created on the tenant at some point, so every GUID
+below differs from the pre-v2.6 records (the old values survive in git
+history; `flow/v2_8/definition.json` carries the current ones):
 
-| List | GUID |
+| List | GUID (live, 2026-08-13) |
 |---|---|
-| Doc Index | `245a4082-53c5-49f0-90e1-1abe62698c4a` |
-| Keywords | `e096ab26-27d2-4ef4-ae40-c24e35fa2fb7` |
-| Doc IDs | `87b75cd7-5e84-4a65-adb5-dcd0de08321d` |
-| Issue Refs | `c1f265b5-1fcf-4b28-b6e1-c14289b002cf` |
-| Doc Keywords | `68752782-6d2d-4c65-b4e8-361c0df706ec` |
-| Doc Links | `3c50c3fe-a4e8-4ae2-9668-43987c9bff60` |
+| Doc Index | `b98fb2a1-1c91-48f9-9b9b-323656557171` |
+| Keywords | `a7bd004b-84e0-408f-b32d-3f1d791e2af6` |
+| Doc IDs | `6263eeac-471a-489e-96c7-1448f45378d4` |
+| Issue Refs | not referenced by the flow — verify on the tenant before building flow #2 |
+| Doc Keywords | `4eabc799-c856-49ea-bf25-65942b363ec6` |
+| Doc Links | `c49367dc-c267-4f5b-8935-4fad47fb0d34` |
+
+(The source document library resolves as `c8784e70-c536-4064-91e9-14b8b6535a03`
+in `Get_files`.)
 
 ## What changed, and two changes that are upgrades
 
@@ -103,6 +110,24 @@ not a rewrite, with SidecarPatch v1.5 patching all three frames
 (details / fenced / legacy `---`) during the transition. The
 SharePoint-preview rationale above is thus historical context, not a
 live constraint.
+
+*Flow v2.8 addendum (2026-08-13):* the `<details>` collapse still
+*displayed* the metadata (a disclosure line in GFM viewers; raw yaml
+plus literal tags on renderers without `<details>` support), so v2.8
+(PromptVersion v2.0) hides the same fenced yaml block inside an HTML
+comment — `<!-- metadata` ... `-->` — the one wrapper no markdown
+surface renders, proven daily by the `<!-- related:begin -->`
+markers. Human-facing metadata stays in the info table (which gains
+a **Product** row: RegexExtract v1.4 detects Roads & Highways /
+Pipeline Referencing / Utility Network from filename/title/text
+acronyms, and the yaml gains the matching `products:` line plus a
+`Products` Doc Index column). Bodies become code-aware: ZipTextExtract
+v2.1 fences pasted scripts (```arcade / bare) and inline-codes
+code-shaped bullets. All yaml lines are otherwise byte-identical, so
+the same parser inventory survives unchanged, with SidecarPatch v1.6
+patching all FOUR frames during the transition. Known residual: a
+metadata value containing a literal `-->` would end the hidden
+region early — display-only, no parser impact.
 
 *Curation v1.0 addendum:* the Keywords list gains two flow-owned
 columns, `CurationStatus` (Choice: Proposed/Rejected) and

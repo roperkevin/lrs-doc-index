@@ -10,12 +10,16 @@ history / gate inputs — do not edit).
 | File | Status |
 |---|---|
 | designer-edits.md | Living log of manual flow-designer edits, newest section last |
-| RelatedRank_v2_1.ts | **r4 — gated + promoted; TENANT PASTE PENDING, fenced to the v2.6 flow window** (same signature as v2.0 — the window now pastes this; designer-edits §v2_6, r4 amendment) |
-| RelatedRank_v2_0.ts | **r3 — gated; superseded in-repo by v2_1 before its paste.** The v2.6 window pastes v2.1 instead (same signature). Frozen. |
-| RegexExtract_v1_3.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-1) |
-| SidecarPatch_v1_4.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-2/3) |
+| ZipTextExtract_v2_1.ts | **r6 — gated + promoted; TENANT PASTE PENDING, paste with the v2.8 flow window** (CF-1 code fencing — a sidecar-body format change the PromptVersion v2.0 backfill converges; designer-edits §v2_8) |
+| RegexExtract_v1_4.ts | **r6 — gated + promoted; TENANT PASTE PENDING** (PD-1 products — additive return fields, safe under any flow; the Products column/yaml only appear with the v2.8 window) |
+| SidecarPatch_v1_6.ts | **r6 — gated + promoted; TENANT PASTE PENDING — safe any time BEFORE the v2.8 window** (strict superset of v1.5; flow v2.8 against v1.5-or-older silently no-ops comment-frame sidecars) |
+| SidecarPatch_v1_5.ts | **r5 — gated + promoted 2026-08-13; superseded in-repo by v1_6 before its confirmed paste** (the v2.7 window's checklist called for it — paste v1.6 instead now). Also the r6 gate's old-side equivalence artifact. Frozen. |
+| RelatedRank_v2_1.ts | **r4 — gated + promoted; PASTED with the v2.6 window** (evidenced by the 2026-08-13 live export's v2.x parameter bindings) |
+| RelatedRank_v2_0.ts | **r3 — gated; superseded in-repo by v2_1 before its paste.** The v2.6 window pasted v2.1 instead (same signature). Frozen. |
+| RegexExtract_v1_3.ts | **r2 — gated + promoted; superseded in-repo by v1_4 before its paste** (SB-1 carried forward). Also the r6 gate's old-side artifact. Frozen. |
+| SidecarPatch_v1_4.ts | **r2 — gated + promoted; superseded in-repo by v1_5 then v1_6 before its paste** (SB-2/3 carried forward). Also the r5 gate's old-side artifact. Frozen. |
 | WorkbookDump_v1_2.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-4) |
-| ZipTextExtract_v2_0.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-5..8) |
+| ZipTextExtract_v2_0.ts | **r2 — gated + promoted; superseded in-repo by v2_1 before its paste** (SB-5..8 carried forward). Also the r6 gate's old-side artifact. Frozen. |
 | MediaExtract_v1_3.ts | **r2 — gated + promoted; TENANT PASTE PENDING** (SB-5/8) |
 | RelatedRank_v1_3.ts | **r2 — gated; superseded in-repo by v2_0 before its paste.** Still the artifact the r2 six-script paste uses for RelatedRank (same signature as the live v1.2, safe under the v2.5 flow; or skip it — output-identical to v1.2). Frozen. |
 | TestPlanGen_Prompt_v1_3.md | **Promoted to `prompts/TestPlanGen_Prompt.md`; TENANT PASTE PENDING — contract change** (reference-functionality input lane: fifth AI Builder input parameter `ReferenceText` + §3 flow additions — replaces the pending v1.2 paste; `testplangen/CHANGES.md` v2.0) |
