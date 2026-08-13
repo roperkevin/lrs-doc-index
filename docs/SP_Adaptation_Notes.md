@@ -26,6 +26,13 @@ history; `flow/v2_8/definition.json` carries the current ones):
 (The source document library resolves as `c8784e70-c536-4064-91e9-14b8b6535a03`
 in `Get_files`.)
 
+**Rebuild caution**: the flow's three "Send an HTTP request to
+SharePoint" creates (`Create_idrow` / `Create_link` / `Create_dockw`)
+embed their list GUID as a hand-typed literal inside the URI — a
+designer list re-pick updates GetItems' `table` parameter but never
+these. After ANY list re-creation, grep the definition for
+`lists(guid'` and update the literals (this bit as §v2_7-fixes FX-6).
+
 ## What changed, and two changes that are upgrades
 
 **1. Keyword edges are never stored — computed on read.**
