@@ -22,8 +22,9 @@ when a batch is promoted:
    `check_batch_r2.py` — r2 era, skips as superseded;
    `check_batch_r3.py` — r3 era, skips as superseded;
    `check_batch_r4.py` — r4 era, RelatedRank v2.1, re-verifies the
-   promotion) — the template any future script batch clones before
-   its patches may be pasted.
+   promotion; `check_batch_r5.py` — r5 era, SidecarPatch v1.5 /
+   the flow v2.7 details frame) — the template any future script
+   batch clones before its patches may be pasted.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for
@@ -110,18 +111,24 @@ asserts the v2.2 output contract instead of byte-equality:
   with `docProps/core.xml` stripped) degrades to empty strings
 
 `render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
-current metadata/header mirrored from the flow template (since v2.4:
-authorship lines `author:` / `last_edited_by:` / `last_edited:`, the header
-strip's "Last edited" segment, `../media/` image prefix, and
-kind-subfolder URLs) — and asserts the metadata block is the fenced
-` ```yaml ` frame (the PromptVersion v1.4 SharePoint-preview-safe form —
-`---` frontmatter renders in SharePoint's preview as one giant setext
-heading), its inner YAML parses with `yaml.safe_load` (including
-`related: []` and the authorship fields), the file has exactly one H1, the
-header/body seam is present, and the related-section marker pair is
-well-placed. It then runs the current SidecarPatch in set mode with three synthetic
+current metadata/header mirrored from the flow template (since v2.7 the
+GFM info-card layout: H1 first, key-value info table with the
+conditional devtopia Issue row, the fenced ` ```yaml ` block collapsed
+inside `<details><summary>Metadata</summary>`, the `issues:` yaml
+line; since v2.4: authorship lines `author:` / `last_edited_by:` /
+`last_edited:`, `../media/` image prefix, and kind-subfolder URLs) —
+and asserts the file opens with H1 + info table (never `---`
+frontmatter), exactly one details block wraps the yaml with the
+load-bearing blank lines, the Issue row links devtopia (and vanishes
+cleanly on an id-less doc), the inner YAML parses with
+`yaml.safe_load` (including `related: []`, `issues:` and the
+authorship fields), the empty-summary branch renders the
+`> [!WARNING]` alert, the file has exactly one H1, the header/body
+seam is present, and the related-section marker pair is well-placed.
+It then runs the current SidecarPatch in set mode with three synthetic
 entries and writes `sample_sidecar_related.md` — the eyeball artifact for a
 POPULATED related list — re-asserting the patched metadata still parses, the
+details frame and its H1 + info-table head survive byte-identically, the
 file still has one H1, and the patched file keeps its `folder`.
 
 ## Related-docs checks — current RelatedRank / SidecarPatch
@@ -154,10 +161,15 @@ file still has one H1, and the patched file keeps its `folder`.
   the cap; a pre-v2.3 sidecar without markers gains the section before the
   seam and the `related:` line after `tools:`; begin-without-end is a
   byte-identical no-op with a note; populated metadata still
-  `yaml.safe_load`s; both metadata frames parse — fenced ` ```yaml `
-  (v1.4) and legacy `---` frontmatter — and each file keeps the frame it
-  arrived in (set mode stays fenced, a legacy neighbor merge and the
-  pre-v2.3 fallback stay dashed); the `folder` property passes through
+  `yaml.safe_load`s; all THREE metadata frames parse — the v2.7
+  details frame (H1 + info table head, yaml inside
+  `<details><summary>Metadata</summary>`, v1.5), fenced ` ```yaml `
+  (v1.4) and legacy `---` frontmatter — and each file keeps the frame
+  it arrived in (a mixed-frame trio in one batch stays mixed; the
+  details head is byte-preserved; an unclosed `<details>`, an H1 with
+  no block, or a details opener after a section heading are
+  byte-identical no-ops; a body details decoy never outranks a
+  position-0 fence); the `folder` property passes through
   verbatim in set and merge modes, `""` when absent (v1.2)
 - both wrapped runners (`rr_cur.ts`, `scp_cur.ts`) type-check at ES2017,
   compiled separately (each Office Script is its own global scope)
@@ -380,3 +392,44 @@ ES2017. Post-promotion: `check_related.py`, `check_batch_r4.py`
 against the promoted `scripts/`; `check_batch_r3.py` now skips as
 superseded (the r4 promotion moved RelatedRank past its generation),
 joining `check_batch_r2.py` and `check_batch.py`.
+
+## Batch gate — the r5 batch (`check_batch_r5.py`)
+
+The gate for SidecarPatch v1.5, paired with the flow v2.7 /
+PromptVersion v1.9 GFM sidecar format (H1 + info table head, yaml
+block collapsed inside `<details><summary>Metadata</summary>`; see
+`../../flow/v2_7/CHANGES.md`). Single-patch batch; same lifecycle as
+the r2–r4 templates, with one improvement: the equivalence leg's old
+side is the genuinely-old `../patches/SidecarPatch_v1_4.ts` artifact
+(not `scripts/`), so the leg — and the discriminator — stay
+meaningful after promotion instead of degrading to a self-compare.
+v1.4 vs v1.5 must be IDENTICAL (content/changed/note per file) on
+every fenced/dashed payload: set, merge (both frames), empty set,
+marker-less legacy synthesis, malformed markers, not-frontmatter,
+BOM/CRLF, block-sequence `related:`, and a mixed batch with folders.
+The discriminator proves v1.4 no-ops (`not-frontmatter`,
+byte-identical) on a details-frame sidecar that v1.5 patches with
+the head byte-preserved. **Paste fencing is the REVERSE of r3/r4**:
+v1.5 is a strict superset of v1.4 and pastes safely any time BEFORE
+the flow v2.7 designer edits (`../patches/designer-edits.md` §v2_7);
+the hazard is the other order — flow v2.7 live against v1.4 silently
+no-ops every new-format sidecar.
+
+```
+python3 make_fixtures.py     # the standing suites need the fixtures
+python3 check_batch_r5.py    # any FAIL = do not paste
+```
+
+### Last run (2026-08-13, Node 22.22.2) — r5 gate + promotion + v2.7 format suites
+
+Gate run: **PASS** — `check_format.py` / `check_related.py` (incl.
+the 14 new v1.5 details-frame cases) / `check_regex.py` fully green
+over the staged batch; v1.4-vs-v1.5 IDENTICAL on all eleven
+equivalence payloads; the details-frame discriminator fires both
+ways; staged script type-checks at ES2017. Promotion: v1.5 promoted
+to `scripts/SidecarPatch.ts`. Post-promotion, the standing suites
+and the reworked `render_sample.py` (now mirroring the v2.7
+Sidecar_header: H1-first assertion, details wrapper, info table with
+the devtopia Issue row and its id-less branch, `issues:` yaml
+round-trip, empty-summary `> [!WARNING]` branch, post-patch
+head/frame preservation) all PASS against the promoted `scripts/`.

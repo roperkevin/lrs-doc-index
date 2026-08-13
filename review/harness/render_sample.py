@@ -1,17 +1,26 @@
 """Render a full sample sidecar — the eyeball artifact for the current format.
 
-Mirrors the flow's Sidecar_header template (flow/v2_5/definition.json)
+Mirrors the flow's Sidecar_header template (flow/v2_7/definition.json)
 in Python — same fields, same YAML escaping rules as the WDL
 expressions, including the v2.4 authorship lines (author /
-last_edited_by / last_edited), the subfolder-routed URLs, and the v2.5
-row-id `doc_id` — over the real_deck.pptx extraction (current ZipTextExtract), and writes
+last_edited_by / last_edited), the subfolder-routed URLs, the v2.5
+row-id `doc_id`, and the v2.7 GFM layout (H1 first, key-value info
+table with a conditional devtopia Issue row, the yaml block collapsed
+inside <details><summary>Metadata</summary>, `issues:` yaml line) —
+over the real_deck.pptx extraction (current ZipTextExtract), and writes
 sample_sidecar.md. Asserts:
 
-  - the metadata block is the fenced ```yaml frame (PromptVersion
-    v1.4) — NOT `---` frontmatter, which SharePoint's markdown
-    preview renders as a giant setext heading — and its inner YAML
-    parses with yaml.safe_load (title planted with '"' and ':' to
-    exercise the escaping); `related` reads as []
+  - the file opens with the H1 title, then the info table, then
+    exactly one <details><summary>Metadata</summary> block wrapping
+    the fenced ```yaml metadata — blank lines around the fence (GitHub
+    won't render the fence inside <details> without them) — and NOT
+    `---` frontmatter
+  - the info table carries the devtopia Issue row (built from the
+    Run_regex ids; omitted when there are none — both branches
+    asserted) and the Source link row
+  - the inner YAML parses with yaml.safe_load (title planted with '"'
+    and ':' to exercise the escaping); `related` reads as [];
+    `issues` round-trips as ["repo#n", ...]
   - exactly one H1 line in the whole file
   - exactly one <!-- related:begin -->/<!-- related:end --> marker
     pair, in order, between ## Related documents and the seam
@@ -20,8 +29,8 @@ sample_sidecar.md. Asserts:
 Then runs SidecarPatch (current scripts/ version) in set mode over the rendered sample with
 three synthetic ranked entries and writes sample_sidecar_related.md —
 the eyeball artifact for a POPULATED related list — re-asserting the
-metadata still parses (`related` = 3 entry dicts) and the file
-still has exactly one H1.
+metadata still parses (`related` = 3 entry dicts), the details frame
+and head survived, and the file still has exactly one H1.
 
 Prereqs: make_fixtures.py and check_format.py have run (zte_cur.ts).
 """
@@ -65,48 +74,70 @@ meta = {
     'last_edited': '2026-07-31T18:22:04Z',
     'extracted': '2026-08-10',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v1.8',
+    'prompt_version': 'v1.9',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
+    'ids': [{'repo': 'ArcGISPro/ps-location-referencing', 'number': 4855}],
     'summary': ('Explores how conflict prevention should acquire locks when routes '
                 'are created rather than edited, covering lock timing in Create, '
                 'Extend, Realign, and Reassign Route and the behavior when another '
                 'user already holds the lock.'),
 }
 
-# mirrors the header strip's Last edited segment (formatDateTime yyyy-MM-dd HH:mm)
+# mirrors the info table's Edited cell (formatDateTime yyyy-MM-dd HH:mm)
 last_edited_disp = meta['last_edited'][:10] + ' ' + meta['last_edited'][11:16]
 
-header = f"""```yaml
-title: {wdl_yaml_quote(meta['title'])}
-source_file: {wdl_yaml_quote(meta['source_file'])}
-source_url: "{meta['source_url']}"
-doc_id: {meta['doc_id']}
-doc_kind: "{meta['doc_kind']}"
-surface: "{meta['surface']}"
-doc_revision: "{meta['doc_revision']}"
-target_release: "{meta['target_release']}"
-pe: "{meta['pe']}"
-dev: "{meta['dev']}"
-author: "{meta['author'].replace('"', '')}"
-last_edited_by: "{meta['last_edited_by'].replace('"', '')}"
-last_edited: "{meta['last_edited']}"
-extracted: {meta['extracted']}
-extraction_lane: {meta['extraction_lane']}
-prompt_version: "{meta['prompt_version']}"
-keywords: [{', '.join(kw_quote(k) for k in meta['keywords'])}]
-tools: [{', '.join(kw_quote(t) for t in meta['tools'])}]
-related: []
-```
+DET_OPEN = '<details><summary>Metadata</summary>\n\n```yaml\n'
+DET_CLOSE = '\n```\n\n</details>\n'
 
-# {meta['title']}
 
-**{meta['doc_kind']}** · **Surface:** {meta['surface']} · **Extracted:** {meta['extracted']} · **Lane:** {meta['extraction_lane']} · **Last edited:** {last_edited_disp} by {meta['last_edited_by']}{'  '}
-[Source: {meta['source_file']}](<{meta['source_url']}>)
+def render_header(m):
+    """Python mirror of the v2.7 Sidecar_header WDL template."""
+    # mirrors Select_issue_links / Issue_row (row omitted when no ids)
+    issue_links = ' · '.join(
+        f"[{i['repo']}#{i['number']}](https://devtopia.esri.com/"
+        f"{i['repo']}/issues/{i['number']})" for i in m['ids'])
+    issue_row = f'| **Issue** | {issue_links} |\n' if m['ids'] else ''
+    # mirrors Select_issue_yaml
+    issues_yaml = ', '.join(f'"{i["repo"]}#{i["number"]}"' for i in m['ids'])
+    release_disp = m['target_release'].replace('|', '/') if m['target_release'] else '—'
+    edited_disp = last_edited_disp if m['last_edited'] else 'unknown'
+    editor_disp = m['last_edited_by'].replace('|', '/') if m['last_edited_by'] else 'unknown'
+    summary_disp = (m['summary'] or
+                    '> [!WARNING]\n> No AI summary was generated for this document.')
+    return f"""# {m['title']}
 
+|   |   |
+| --- | --- |
+| **Kind** | {m['doc_kind']} · {m['surface']} |
+| **Release** | {release_disp} |
+{issue_row}| **Source** | [{m['source_file']}](<{m['source_url']}>) |
+| **Edited** | {edited_disp} by {editor_disp} |
+| **Extracted** | {m['extracted']} · lane `{m['extraction_lane']}` |
+
+{DET_OPEN}title: {wdl_yaml_quote(m['title'])}
+source_file: {wdl_yaml_quote(m['source_file'])}
+source_url: "{m['source_url']}"
+doc_id: {m['doc_id']}
+doc_kind: "{m['doc_kind']}"
+surface: "{m['surface']}"
+doc_revision: "{m['doc_revision']}"
+target_release: "{m['target_release']}"
+pe: "{m['pe']}"
+dev: "{m['dev']}"
+author: "{m['author'].replace('"', '')}"
+last_edited_by: "{m['last_edited_by'].replace('"', '')}"
+last_edited: "{m['last_edited']}"
+extracted: {m['extracted']}
+extraction_lane: {m['extraction_lane']}
+prompt_version: "{m['prompt_version']}"
+keywords: [{', '.join(kw_quote(k) for k in m['keywords'])}]
+tools: [{', '.join(kw_quote(t) for t in m['tools'])}]
+issues: [{issues_yaml}]
+related: []{DET_CLOSE}
 ## Summary
 
-{meta['summary'] or '_No summary available._'}
+{summary_disp}
 
 ## Related documents
 
@@ -118,17 +149,55 @@ _None yet._
 
 """
 
+
+header = render_header(meta)
+
 sidecar = header + body
 open('sample_sidecar.md', 'w', encoding='utf-8').write(sidecar)
 
 ok = True
-if sidecar.startswith('```yaml\n') and not sidecar.startswith('---'):
-    print('ok   metadata block is the fenced frame (SharePoint-preview-safe)')
+h1_line = f"# {meta['title']}\n"
+if (sidecar.startswith(h1_line + '\n|   |   |\n| --- | --- |\n') and
+        not sidecar.startswith('---')):
+    print('ok   file opens with the H1 title, then the info table')
 else:
-    print('FAIL sidecar does not open with the ```yaml fence')
+    print('FAIL file does not open with H1 + info table')
     ok = False
 
-fm = sidecar[len('```yaml\n'):sidecar.index('\n```\n')]
+if (sidecar.count('<details>') == 1 and sidecar.count('</details>') == 1 and
+        DET_OPEN in sidecar and DET_CLOSE in sidecar):
+    print('ok   one <details>Metadata block wraps the fenced yaml '
+          '(blank lines around the fence)')
+else:
+    print('FAIL details wrapper missing, duplicated, or malformed')
+    ok = False
+
+issue_cell = ('| **Issue** | [ArcGISPro/ps-location-referencing#4855]'
+              '(https://devtopia.esri.com/ArcGISPro/ps-location-referencing/'
+              'issues/4855) |')
+if issue_cell in sidecar.split('<details>')[0]:
+    print('ok   info table links the devtopia issue')
+else:
+    print('FAIL devtopia issue row missing from the info table')
+    ok = False
+
+no_issue = render_header(dict(meta, ids=[]))
+if ('| **Issue**' not in no_issue and
+        '| **Release** | 3.8 |\n| **Source** |' in no_issue and
+        'issues: []' in no_issue):
+    print('ok   issue row vanishes cleanly when no ids (yaml issues: [])')
+else:
+    print('FAIL id-less header renders a broken table or issue row')
+    ok = False
+
+src_cell = f"| **Source** | [{meta['source_file']}](<{meta['source_url']}>) |"
+if src_cell in sidecar.split('<details>')[0]:
+    print('ok   info table carries the source link row')
+else:
+    print('FAIL source link row missing from the info table')
+    ok = False
+
+fm = sidecar[sidecar.index(DET_OPEN) + len(DET_OPEN):sidecar.index(DET_CLOSE)]
 parsed = yaml.safe_load(fm)
 if parsed['title'] != meta['title'] or parsed['keywords'] != meta['keywords']:
     print('FAIL metadata round-trip')
@@ -162,6 +231,20 @@ if parsed.get('related') == []:
     print('ok   related frontmatter field reads as an empty list')
 else:
     print(f"FAIL related field expected [], got {parsed.get('related')!r}")
+    ok = False
+
+if parsed.get('issues') == ['ArcGISPro/ps-location-referencing#4855']:
+    print('ok   issues frontmatter field round-trips as ["repo#n"]')
+else:
+    print(f"FAIL issues field wrong: {parsed.get('issues')!r}")
+    ok = False
+
+no_summary = render_header(dict(meta, summary=''))
+if ('> [!WARNING]\n> No AI summary was generated for this document.'
+        in no_summary):
+    print('ok   empty summary renders the WARNING alert branch')
+else:
+    print('FAIL empty-summary WARNING alert missing')
     ok = False
 
 BEGIN, END = '<!-- related:begin -->', '<!-- related:end -->'
@@ -220,14 +303,20 @@ patched = json.loads(out.stdout)['files'][0]
 open('sample_sidecar_related.md', 'w', encoding='utf-8').write(patched['content'])
 
 pc = patched['content']
-rel_fm = yaml.safe_load(pc[len('```yaml\n'):pc.index('\n```\n')])
-if (patched['changed'] and pc.startswith('```yaml\n') and
+rel_fm = yaml.safe_load(pc[pc.index(DET_OPEN) + len(DET_OPEN):pc.index(DET_CLOSE)])
+if (patched['changed'] and pc.startswith(h1_line) and
         isinstance(rel_fm.get('related'), list) and
         len(rel_fm['related']) == 3 and
         all(set(e) == {'doc', 'file', 's'} for e in rel_fm['related'])):
-    print('ok   patched metadata parses in the fenced frame; related = 3 entry dicts')
+    print('ok   patched metadata parses in the details frame; related = 3 entry dicts')
 else:
     print('FAIL patched related metadata wrong:', rel_fm.get('related'))
+    ok = False
+
+if pc[:pc.index('<details>')] == sidecar[:sidecar.index('<details>')]:
+    print('ok   patched file keeps the H1 + info table head byte-identical')
+else:
+    print('FAIL patching disturbed the head above <details>')
     ok = False
 
 if patched['folder'] == '/LRS Doc Index/User Stories':

@@ -3,10 +3,7 @@
  * markdown sidecars, batched over every file touched for one doc
  * ------------------------------------------------------------------
  * r5 batch (flow v2.7 GFM format) — gated by check_batch_r5.py.
- * Gate PASSED (check_batch_r5.py, 2026-08-13).
- * TENANT PASTE STILL PENDING — the live flow runs the previous
- * version until this file is pasted into the Automate workbook
- * (see STATUS.md).
+ * DO NOT PASTE until the gate is green.
  * v1.5: recognizes the third metadata frame introduced by flow v2.7 /
  * PromptVersion v1.9 — H1 title + info table ("head"), then the yaml
  * block wrapped in <details><summary>Metadata</summary>. The head is

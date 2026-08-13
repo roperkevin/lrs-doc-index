@@ -1,3 +1,52 @@
+# TestPlanGen v2.8 — GFM draft shape (prompt v1.4 + WARNING banner)
+
+Part of the repo-wide formatting upgrade to GitHub-style markdown
+viewers (flow v2.7 / PromptVersion v1.9 for the sidecars — see
+`flow/v2_7/CHANGES.md`; this entry is the TestPlanGen half and
+deploys independently). Drafts pick up GFM features:
+
+- **Prompt v1.4** (`prompts/TestPlanGen_Prompt.md`, artifact
+  `review/patches/TestPlanGen_Prompt_v1_4.md`, supersedes the
+  pending v1.3 paste — draft SHAPE only, no input/grounding/sentinel
+  changes): the Overview opens with a one-row
+  `| Surface | Target release | PE |` StoryMeta table; Setup /
+  Prerequisites items and per-case Steps are GFM task lists
+  (`- [ ] 1. ...`) so testers check work off in the rendered view;
+  Expected Result / Trace become standalone bold lines; Negative
+  Tests opens with a fixed `> [!CAUTION]` alert ("A pass below is
+  the described denial or error — never the edit succeeding.");
+  every Open Questions entry is a `- [ ] [VERIFY: ...]` checkbox.
+  Worked example rewritten to match.
+- **`Draft_banner` alert** (both flow definitions —
+  `flow/v1_0/definition.json` and `flow/core_v1_0/definition.json`
+  — and both live flows via designer edit): a `> [!WARNING]` line
+  inserted right after the HTML comment, so the existing two-line
+  banner renders as a GFM warning alert instead of a plain
+  blockquote. Version stamp `Config_gen.TestPlanGenPromptVersion`
+  → `v1.4`.
+
+No backfill: drafts are one-shot outputs, old drafts stay as
+authored. The draft slicing (`[[[DRAFT BEGIN]]]`/`[[[DRAFT END]]]`)
+and the sidecar `related: [` line-slice are untouched — the latter
+verified frame-independent against BOTH sidecar shapes in the v2.7
+transition window (position-independent `indexOf`; the new `issues: [`
+yaml line never matches `related: [`).
+
+Deploy delta (one small window, both live flows): paste prompt v1.4
+into the `LRS Test Plan Generation` AI Builder prompt (replaces the
+pending v1.3 paste; no parameter changes — if still pre-v1.3, do the
+v2.0 ReferenceText contract step first), apply
+`review/patches/designer-edits.md` §testplangen-v2_8 (T1 banner line,
+T2 version stamp) to both flows, smoke one draft and eyeball it in a
+GFM viewer. No schema changes.
+
+| Piece | Version | Where |
+|---|---|---|
+| Prompt | **v1.4** | `prompts/TestPlanGen_Prompt.md` |
+| Flow definitions (banner + stamp) | v2.8 delta | `testplangen/flow/v1_0/definition.json`, `testplangen/flow/core_v1_0/definition.json` |
+| Designer edits | §testplangen-v2_8 | `review/patches/designer-edits.md` |
+| Agent file set / schemas | unchanged | — |
+
 # TestPlanGen v2.7 — routed conversation starters + About topic (agent v1.8)
 
 Starters are REAL messages under classic orchestration: clicking one

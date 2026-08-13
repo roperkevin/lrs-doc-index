@@ -73,6 +73,14 @@ v2.3 contract:
        need BOTH titles present (selfMeta "title" + candidate Title),
        stay symmetric, and surface as an 'N title words:' why part;
        title.stop appends corpus stopwords from config
+   14. SidecarPatch v1.5 (flow v2.7 / PromptVersion v1.9): a THIRD
+       metadata frame — H1 title + info table head, then the fenced
+       yaml inside <details><summary>Metadata</summary> — patches in
+       set and merge modes with the head carried byte-for-byte;
+       mixed-frame batches keep each file's own frame; a details
+       opener after a section heading, an unclosed <details>, or an
+       H1 with no block at all are no-ops with original bytes; the
+       two legacy frames patch exactly as in v1.4 (r5 equivalence)
 
 Both wrapped runners must type-check at ES2017.
 
@@ -579,22 +587,20 @@ BEGIN = '<!-- related:begin -->'
 END = '<!-- related:end -->'
 
 
+DETAILS_OPEN = '<details><summary>Metadata</summary>\n\n```yaml\n'
+DETAILS_CLOSE = '\n```\n\n</details>\n'
+
+
 def sidecar(related_line='related: []', region='_None yet._', markers=True,
             frame='fence'):
     rel_section = (f'## Related documents\n\n{BEGIN}\n{region}\n{END}\n\n'
                    if markers else '')
-    fm_open, fm_close = ('```yaml', '```') if frame == 'fence' else ('---', '---')
-    return f'''{fm_open}
-title: "Conflict \\"Prevention\\": Acquire Locks for New Routes"
+    fm = f'''title: "Conflict \\"Prevention\\": Acquire Locks for New Routes"
 doc_id: 42
 keywords: ["locks", "routes"]
 tools: []
-{related_line}
-{fm_close}
-
-# Conflict "Prevention": Acquire Locks for New Routes
-
-## Summary
+{related_line}'''
+    tail = f'''## Summary
 
 Explores lock acquisition.
 
@@ -609,6 +615,27 @@ related: [decoy]
 ### Notes
 stray seams and related-lookalikes everywhere
 '''
+    if frame == 'details':
+        # the flow v2.7 / PromptVersion v1.9 shape: H1 + info table
+        # head, then the yaml block wrapped in <details>
+        return f'''# Conflict "Prevention": Acquire Locks for New Routes
+
+|   |   |
+| --- | --- |
+| **Kind** | User Story · Pro |
+| **Issue** | [ArcGISPro/x#101](https://devtopia.esri.com/ArcGISPro/x/issues/101) |
+| **Extracted** | 2026-08-13 · lane `xmlstrip` |
+
+{DETAILS_OPEN}{fm}{DETAILS_CLOSE}
+{tail}'''
+    fm_open, fm_close = ('```yaml', '```') if frame == 'fence' else ('---', '---')
+    return f'''{fm_open}
+{fm}
+{fm_close}
+
+# Conflict "Prevention": Acquire Locks for New Routes
+
+{tail}'''
 
 
 RANKED = [{'doc': 17, 's': 1003, 'why': 'shared issue a#1 · 3 shared keywords: locks, m, routes',
@@ -636,6 +663,9 @@ def patch(files, ranked=RANKED, meta=META, top=5):
 
 def fm_of(text):
     """Inner YAML of the metadata block, whichever frame the file carries."""
+    if text.startswith('# '):
+        start = text.index(DETAILS_OPEN) + len(DETAILS_OPEN)
+        return text[start:text.index(DETAILS_CLOSE, start)]
     if text.startswith('```yaml\n'):
         return text[len('```yaml\n'):text.index('\n```\n')]
     return text[4:text.index('\n---\n', 3)]
@@ -646,7 +676,10 @@ def strip_patchable(text):
     b, e = text.find(BEGIN), text.find(END)
     if b >= 0 and e > b:
         text = text[:b] + text[e + len(END):]
-    close = '\n```\n' if text.startswith('```yaml\n') else '\n---\n'
+    if text.startswith('```yaml\n') or text.startswith('# '):
+        close = '\n```\n'
+    else:
+        close = '\n---\n'
     fm_close = text.find(close, 3)
     head, tail = text[:fm_close], text[fm_close:]
     head = '\n'.join(ln for ln in head.split('\n') if not ln.startswith('related: ['))
@@ -878,6 +911,95 @@ dup_ranked = [{'doc': 17, 's': 900.0, 'why': 'w1'}, {'doc': 17, 's': 5.0, 'why':
 [out] = patch([{'doc': 42, 'name': 's.md', 'content': sidecar()}], ranked=dup_ranked)
 check(out['content'].count('rel:17') == 1 and '"s":900' in out['content'],
       f"v1.4: duplicate ranked doc renders once at its best score (x{out['content'].count('rel:17')})")
+
+# -- v1.5: details-frame sidecar (flow v2.7 / PromptVersion v1.9) ---------
+det = sidecar(frame='details')
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': det}])
+check(out['changed'] and out['note'] == 'set' and
+      out['content'].startswith('# Conflict "Prevention"'),
+      'v1.5: details frame patches in set mode; H1 stays at byte 0')
+check(out['content'].count('<details>') == 1 and
+      out['content'].count('</details>') == 1 and
+      DETAILS_OPEN in out['content'],
+      'v1.5: details frame preserved on rewrite (no conversion)')
+check(out['content'][:out['content'].index('<details>')] ==
+      det[:det.index('<details>')],
+      'v1.5: head (H1 + info table) is byte-identical after patching')
+det_fm = yaml.safe_load(fm_of(out['content']))
+check([e['doc'] for e in det_fm['related']] == [17, 23, 9],
+      'v1.5: details-frame related line yaml-parses to the ranked entries')
+check(out['content'].count('related: [decoy]') == 1 and
+      strip_patchable(out['content']) == strip_patchable(det),
+      'v1.5: details-frame body decoys byte-untouched (integrity)')
+[again] = patch([{'doc': 42, 'name': 'self.md', 'content': out['content']}])
+check(not again['changed'] and again['content'] == out['content'],
+      'v1.5: idempotent on the details frame')
+
+det_neighbor = sidecar(
+    frame='details',
+    related_line='related: [{"doc":99,"file":"other__doc99.md","s":1}]',
+    region='- [Other](<https://x/o.md>) — 1 shared keyword: locks <!-- rel:99 -->')
+[out] = patch([{'doc': 17, 'name': 'n.md', 'content': det_neighbor}])
+det_nfm = yaml.safe_load(fm_of(out['content']))
+check(out['changed'] and out['note'] == 'merged' and
+      [e['doc'] for e in det_nfm['related']] == [42, 99] and
+      out['content'].startswith('# Conflict "Prevention"'),
+      'v1.5: merge into a details-frame neighbor; frame + head preserved')
+
+# mixed-frame trio in one batch: each file keeps its own frame
+trio = patch([
+    {'doc': 42, 'name': 'self.md', 'content': sidecar(frame='details')},
+    {'doc': 17, 'name': 'a.md', 'content': sidecar(
+        related_line='related: []', frame='fence')},
+    {'doc': 23, 'name': 'b.md', 'content': sidecar(
+        related_line='related: []', frame='dash')},
+])
+check(trio[0]['content'].startswith('# ') and '<details>' in trio[0]['content'] and
+      trio[1]['content'].startswith('```yaml\n') and
+      '<details>' not in trio[1]['content'] and
+      trio[2]['content'].startswith('---\n') and
+      '```' not in trio[2]['content'],
+      'v1.5: mixed-frame batch — every file keeps the frame it arrived in')
+check(all(f['changed'] for f in trio) and trio[0]['note'] == 'set' and
+      trio[1]['note'] == 'merged' and trio[2]['note'] == 'merged',
+      'v1.5: mixed-frame batch patches all three files')
+
+# details frame that never closes -> no-op, original bytes
+det_broken = det.replace('</details>', '')
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': det_broken}])
+check(not out['changed'] and out['content'] == det_broken and
+      out['note'] == 'not-frontmatter',
+      'v1.5: details frame missing </details> -> byte-identical no-op')
+
+# H1-first file with no details block at all -> no-op
+plain_h1 = '# Just a title\n\nplain prose, no metadata block\n'
+[out] = patch([{'doc': 42, 'name': 'x.md', 'content': plain_h1}])
+check(not out['changed'] and out['content'] == plain_h1 and
+      out['note'] == 'not-frontmatter',
+      'v1.5: H1 + plain text (no details block) -> no-op')
+
+# H1-first file whose ONLY details opener sits in body text after a
+# section heading -> anchored out, no-op
+det_decoy = ('# Decoy Doc\n\n## Summary\n\nprose\n\n' +
+             DETAILS_OPEN + 'related: []' + DETAILS_CLOSE + '\nmore prose\n')
+[out] = patch([{'doc': 42, 'name': 'x.md', 'content': det_decoy}])
+check(not out['changed'] and out['content'] == det_decoy and
+      out['note'] == 'not-frontmatter',
+      'v1.5: details opener after a section heading is body text, not a frame')
+
+# fence-frame file with a details-opener decoy in the body stays fence-framed
+fence_decoy = sidecar() + '\n' + DETAILS_OPEN + 'decoy: yaml' + DETAILS_CLOSE
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': fence_decoy}])
+check(out['changed'] and out['content'].startswith('```yaml\n') and
+      (DETAILS_OPEN + 'decoy: yaml' + DETAILS_CLOSE) in out['content'],
+      'v1.5: fence frame wins at position 0; body details decoy untouched')
+
+# BOM/CRLF normalization applies to the details frame too
+det_crlf = '﻿' + sidecar(frame='details').replace('\n', '\r\n')
+[out] = patch([{'doc': 42, 'name': 's.md', 'content': det_crlf}])
+check(out['changed'] and '\r' not in out['content'] and
+      '<!-- rel:17 -->' in out['content'],
+      'v1.5: BOM+CRLF details-frame sidecar is normalized and patched')
 
 # ---- type-check both wrapped runners (separately — each Office Script
 # is its own global scope, so joint compilation would false-collide) ------

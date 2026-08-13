@@ -1,3 +1,36 @@
+# Agent v1.2 — describe the v2.7 GFM sidecar layout
+
+Instructions-only bump (`agent/QA_Agent_Instructions_v1_2.md`,
+supersedes v1.1), companion to the flow v2.7 / PromptVersion v1.9
+format upgrade (`flow/v2_7/CHANGES.md`): SIDECAR STRUCTURE now
+describes the new layout — sidecars open with the H1 title and an
+info table (Kind/Release/Issue/Source/Edited/Extracted), the yaml
+block sits collapsed inside `<details><summary>Metadata</summary>`
+(the agent is told to treat the details/summary tags and table pipes
+as formatting, not content), and the metadata gains an `issues` field
+(devtopia "repo#number" references, also linked in the info table's
+Issue row, now usable for "which document covers issue N" questions).
+A transition note keeps pre-backfill sidecars (yaml-first shape)
+readable until the v1.9 backfill converges; a future bump can drop it.
+
+Runbook per v1.0 conventions: re-paste the delimited block into the
+agent's Instructions field, record `AgentInstructionsVersion: v1.2`,
+re-run `agent/QA_Smoke_Questions.md`. No flow, script, schema, or
+prompt changes in THIS bump (the format change itself is the flow
+v2.7 window); no PromptVersion touch here; pasting early — before or
+during the backfill — is harmless since both shapes are described.
+
+| Piece | Version | Where |
+|---|---|---|
+| Agent instructions | **v1.2** | `agent/QA_Agent_Instructions_v1_2.md` |
+| Everything else | unchanged | — |
+
+Re-paste record (deploy with flow v2.7, step 6 of its window):
+
+| Date | Tenant | Pasted | Smoke re-run |
+|---|---|---|---|
+| — | — | pending — part of the v2.7 window | pending |
+
 # Agent v1.1 — doc_id described truthfully
 
 Instructions-only bump (`agent/QA_Agent_Instructions_v1_1.md`,

@@ -86,6 +86,24 @@ agent's instructions describe the metadata fields, so a sidecar format
 change now means the usual PromptVersion-bumped backfill *plus* a
 matching `QA_Agent_Instructions` bump; neither is an ad-hoc edit.
 
+*Flow v2.7 addendum (2026-08-13):* the reading surface changed — the
+team reads sidecars in GitHub-style GFM viewers (VS Code preview,
+GitHub), not SharePoint's markdown preview, so preview fidelity no
+longer constrains the format. v2.7 (PromptVersion v1.9) therefore
+opens each sidecar with its H1 title and a key-value info table
+(including a devtopia Issue link row built from the Run_regex ids)
+and collapses the yaml block inside
+`<details><summary>Metadata</summary>` — GFM renders it as a one-line
+disclosure. The FENCED ` ```yaml ` frame is deliberately retained
+(not reverted to `---` frontmatter): every downstream parser —
+SidecarPatch's frame logic, TestPlanGen's `related: [` line-slice,
+the Q&A agent's field reads, plain grep — keys on the yaml lines
+themselves, and keeping the fence makes the v1.9 backfill a wrap,
+not a rewrite, with SidecarPatch v1.5 patching all three frames
+(details / fenced / legacy `---`) during the transition. The
+SharePoint-preview rationale above is thus historical context, not a
+live constraint.
+
 *Curation v1.0 addendum:* the Keywords list gains two flow-owned
 columns, `CurationStatus` (Choice: Proposed/Rejected) and
 `ProposedCanonical` (single line) — see `schemas/SPList_Keywords.csv`.

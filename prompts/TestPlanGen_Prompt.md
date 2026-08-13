@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.3
+# Test Plan Generation Prompt — v1.4
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.3`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.4`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -11,6 +11,19 @@ FIVE item/requestv2 input keys, exact names: **StoryMeta**,
 **StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
 (the fifth added in v1.3 — the AI Builder prompt needs the parameter
 created, not just the text re-pasted).
+
+v1.4 (GFM draft shape — no input, grounding, or sentinel changes):
+drafts now target GitHub-style markdown viewers, matching the flow
+v2.7 sidecar upgrade. The Overview opens with a StoryMeta table;
+Setup / Prerequisites and per-case Steps render as GFM task lists
+(`- [ ] 1. ...`) so testers can check items off in the rendered view;
+Expected Result and Trace become standalone bold lines; Negative
+Tests opens with a fixed `> [!CAUTION]` alert; Open Questions items
+render as `- [ ] [VERIFY: ...]` checkboxes so resolution is
+trackable. Section names, order, the CONDITIONAL rules, all grounding
+rules, and the output sentinels are unchanged. No emojis. The paired
+flow edit (same window): Draft_banner gains a `> [!WARNING]` first
+line so the banner renders as a GFM alert.
 
 v1.3 (the reference-functionality input lane): `ReferenceText` carries
 test plans or design docs describing the expected behavior of this
@@ -104,36 +117,57 @@ every other section always appears:
 # Test Plan — <feature name from the story>
 
 ## Overview
-2–4 sentences: what feature is under test, which surface, what the
-story's core requirement is. State the target release and PE exactly
-as given in StoryMeta.
+Open with a one-row table copying Surface, target release, and PE
+exactly as given in StoryMeta:
+
+| Surface | Target release | PE |
+| --- | --- | --- |
+| <surface> | <target release> | <PE> |
+
+Then 2–4 sentences: what feature is under test, which surface, what
+the story's core requirement is.
 
 ## Setup / Prerequisites
-A numbered list of the data, configuration, and application state a
-tester needs before the first case: LRS network and route state,
-required tools or widgets, permissions/locks state, services. Derive
-from the story, exemplars, and reference functionality; where the
-sources are silent on a needed precondition, include the step with a
-[VERIFY: ...] note rather than inventing specifics.
+A numbered TASK LIST — `- [ ] 1. <step>` — of the data,
+configuration, and application state a tester needs before the first
+case: LRS network and route state, required tools or widgets,
+permissions/locks state, services. Derive from the story, exemplars,
+and reference functionality; where the sources are silent on a needed
+precondition, include the step with a [VERIFY: ...] note rather than
+inventing specifics.
 
 ## Positive Tests
 Cases proving the story's workflow behaves as specified. Each case:
 
 ### TC-P1 — <short case name>
-- **Steps:** numbered tester actions.
-- **Expected Result:** the observable outcome, specific enough to
-  judge pass/fail.
-- **Trace:** the story statement this case verifies, quoted or closely
-  paraphrased — or the exemplar pattern it applies (e.g. "exemplar
-  covers the multi-user variant of each edit"), or the reference-
-  functionality statement it grounds on, cited by document title.
+**Steps:**
+- [ ] 1. <tester action>
+- [ ] 2. <tester action>
 
-Number sequentially: TC-P1, TC-P2, ...
+**Expected Result:** the observable outcome, specific enough to
+judge pass/fail.
+
+**Trace:** the story statement this case verifies, quoted or closely
+paraphrased — or the exemplar pattern it applies (e.g. "exemplar
+covers the multi-user variant of each edit"), or the reference-
+functionality statement it grounds on, cited by document title.
+
+Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
+(one checkbox per numbered action); Expected Result and Trace are
+standalone bold-labeled lines, never checkboxes.
 
 ## Negative Tests
-Cases proving correct behavior on invalid input, conflicts, denied
-permissions, and boundary conditions. Same shape, numbered TC-N1,
-TC-N2, ... Every case carries the same mandatory **Trace:** line.
+Directly under the heading, before TC-N1, emit this fixed alert
+verbatim:
+
+> [!CAUTION]
+> A pass below is the described denial or error — never the edit
+> succeeding.
+
+Then cases proving correct behavior on invalid input, conflicts,
+denied permissions, and boundary conditions. Same shape, numbered
+TC-N1, TC-N2, ... Every case carries the same mandatory **Trace:**
+line.
 
 ## Automation Notes
 CONDITIONAL — include ONLY when the story contains automation plans
@@ -150,10 +184,12 @@ the same mandatory **Trace:** line. When the story says nothing about
 documentation, omit this section entirely (no empty heading).
 
 ## Open Questions
-Bullet list of every [VERIFY: ...] item plus anything the story leaves
-ambiguous that a PE must resolve before this plan is final. Empty is
-wrong — a draft with no open questions almost certainly invented
-answers instead of flagging them.
+A TASK LIST — `- [ ] [VERIFY: ...]` — of every [VERIFY: ...] item
+plus anything the story leaves ambiguous that a PE must resolve
+before this plan is final (one checkbox per item, so resolution is
+trackable in the rendered view). Empty is wrong — a draft with no
+open questions almost certainly invented answers instead of flagging
+them.
 
 GROUNDING RULES
 - Every test case MUST trace to an explicit statement in STORY TEXT /
@@ -222,38 +258,52 @@ no reference-grounded cases appear)
 # Test Plan — Conflict Prevention: Acquire Locks for New Routes
 
 ## Overview
+
+| Surface | Target release | PE |
+| --- | --- | --- |
+| Pro | 3.8 | Claire Wang |
+
 Verifies lock acquisition when new routes are created in ArcGIS Pro
 via Create Route, Extend Route, Realign Route, and Reassign Route.
-Target release 3.8. PE: Claire Wang.
 
 ## Setup / Prerequisites
-1. LRS network with conflict prevention enabled. [VERIFY: minimum
-   lock-root configuration]
-2. Two Pro sessions signed in as different users against the same
-   network.
+- [ ] 1. LRS network with conflict prevention enabled. [VERIFY:
+      minimum lock-root configuration]
+- [ ] 2. Two Pro sessions signed in as different users against the
+      same network.
 
 ## Positive Tests
 
 ### TC-P1 — Lock acquired on Create Route
-- **Steps:** 1. As user A, run Create Route on a new route name.
-  2. Inspect the lock table before saving edits.
-- **Expected Result:** A lock for the new route is held by user A at
-  creation time, not deferred to save.
-- **Trace:** "acquire locks when creating a new route" — story
-  workflow section.
+**Steps:**
+- [ ] 1. As user A, run Create Route on a new route name.
+- [ ] 2. Inspect the lock table before saving edits.
+
+**Expected Result:** A lock for the new route is held by user A at
+creation time, not deferred to save.
+
+**Trace:** "acquire locks when creating a new route" — story
+workflow section.
 
 ## Negative Tests
 
+> [!CAUTION]
+> A pass below is the described denial or error — never the edit
+> succeeding.
+
 ### TC-N1 — Second user blocked on locked new route
-- **Steps:** 1. As user A, create a route without saving. 2. As user
-  B, attempt Reassign Route onto the same route.
-- **Expected Result:** User B is denied with a lock conflict; no edit
-  is applied.
-- **Trace:** exemplar pattern — multi-user denial case for each
-  lock-acquiring edit.
+**Steps:**
+- [ ] 1. As user A, create a route without saving.
+- [ ] 2. As user B, attempt Reassign Route onto the same route.
+
+**Expected Result:** User B is denied with a lock conflict; no edit
+is applied.
+
+**Trace:** exemplar pattern — multi-user denial case for each
+lock-acquiring edit.
 
 ## Open Questions
-- [VERIFY: minimum lock-root configuration for setup]
+- [ ] [VERIFY: minimum lock-root configuration for setup]
 [[[DRAFT END]]]
 
 <<<STORY TEXT BEGIN>>>
