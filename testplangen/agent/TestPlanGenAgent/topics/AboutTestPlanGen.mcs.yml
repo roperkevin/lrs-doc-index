@@ -1,0 +1,62 @@
+# Topic: AboutTestPlanGen — static answers for the informational
+# conversation starters (and organic "how does this work" asks).
+# TestPlanGenAgentVersion: v1.8
+#
+# New in v1.8. This agent has no knowledge sources and classic
+# orchestration (settings.mcs.yml), so question-shaped starters need
+# a topic or they dead-end in the fallback redirect. This topic is
+# pre-authored text only — it generates nothing and answers no
+# document-content questions (those still redirect to the Q&A agent
+# via Fallback). Trigger phrases are question-shaped on purpose, so
+# they never steal "draft/generate/make a test plan..." utterances
+# from GenerateTestPlan.
+
+kind: AdaptiveDialog
+beginDialog:
+  kind: OnRecognizedIntent
+  id: about
+  intent:
+    displayName: About the test plan generator
+    triggerQueries:
+      - What can I give the test plan generator — a doc id, an issue number, or a title?
+      - what can I give you
+      - what inputs do you accept
+      - What do I need before generating a test plan draft?
+      - what do I need first
+      - Where do generated test plan drafts land, and what happens after?
+      - where do drafts land
+      - what happens after a draft
+      - how does this work
+      - help
+  actions:
+    - kind: SendActivity
+      id: sendAbout
+      activity: |-
+        I start test-plan drafts from indexed user stories in the
+        Doc Index catalog. Say "draft a test plan", then give me any
+        one of:
+
+        - the story's **Doc Index item id** (the number in the
+          list's ID column — for example 42, or "doc 42"),
+        - its **devtopia issue** (#4855, issue 4855, or the full
+          devtopia URL — a bare number is always read as a doc id),
+        - or **part of the story's title** (I'll look it up and
+          list candidates if several match).
+
+        Before generating: the story must already be swept into the
+        Doc Index with DocKind = User Story and IndexStatus =
+        Indexed. Issue lookup only works once the sweep has seen the
+        devtopia reference in the document.
+
+        The draft lands as a timestamped markdown file in
+        **Shared Documents/Test Plan Drafts**. It is
+        machine-generated and unreviewed: a PE verifies every test
+        case's Trace line, resolves every [VERIFY] item, transfers
+        the reviewed content into the team test-plan format, and
+        uploads it to the LocationReferencing Documents library —
+        the nightly sweep indexes it from there.
+
+        For questions about document content — what a story says,
+        which test plans cover a feature — use the LRS Doc Index
+        Q&A agent if your team has deployed it, or browse the Doc
+        Index list directly.
