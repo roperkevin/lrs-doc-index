@@ -771,6 +771,39 @@ still shows the pre-v2.7 layout (visible yaml on top). After the
 final smoke of whichever window you are in, set SmokeFile back to
 empty and let the nightly runs converge the corpus.
 
+## FX-6 — the three raw-REST creates still post to the OLD (pre-rebuild) lists
+
+Found 2026-08-13, after the §v2_8 round was cut (the FX-6 GUID swaps
+are now baked into `flow/v2_7_fix/definition.json` and
+`flow/v2_8/definition.json`; on the live flow they are three hand
+edits). When the tenant lists were re-created, every **GetItems**
+action was re-picked to the new list GUIDs — but the three **"Send
+an HTTP request to SharePoint"** creates carry their list GUID as a
+hand-typed literal inside the URI, which a re-pick never touches.
+They still post to the old lists, so the check/create pairs read one
+list and write another:
+
+| Action | URI has (OLD) | Must be (current) |
+|---|---|---|
+| `Create_idrow` | `87b75cd7-5e84-4a65-adb5-dcd0de08321d` | `6263eeac-471a-489e-96c7-1448f45378d4` (Doc IDs) |
+| `Create_link` | `3c50c3fe-a4e8-4ae2-9668-43987c9bff60` | `c49367dc-c267-4f5b-8935-4fad47fb0d34` (Doc Links) |
+| `Create_dockw` | `68752782-6d2d-4c65-b4e8-361c0df706ec` | `4eabc799-c856-49ea-bf25-65942b363ec6` (Doc Keywords) |
+
+Symptom: if the old lists are deleted, the create 404s ("List does
+not exist") inside Try_index → the doc lands as an Error row —
+`Create_dockw` fires for every keyworded doc and `Create_idrow` for
+every doc with an issue id, so this errors essentially every index
+attempt. If the old lists still exist, the failure is quieter and
+worse: rows land in orphaned lists, dedup never sees them, and
+Find_sharers / the keyword queries read empty.
+
+Edit each of the three actions and replace the GUID inside
+`_api/web/lists(guid'...')/items` with the current one from the
+table above (current GUIDs per `docs/SP_Adaptation_Notes.md`).
+**Rebuild rule for the future**: after ANY list re-creation, grep
+the flow definition for `lists(guid'` — raw HTTP actions never
+follow a re-pick.
+
 # v2_8 round — hidden metadata + code fencing + product lines
 
 `flow/v2_8/definition.json` is the authoritative result (authored

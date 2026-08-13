@@ -1483,7 +1483,7 @@
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                                       "parameters/method": "POST",
-                                      "parameters/uri": "_api/web/lists(guid'87b75cd7-5e84-4a65-adb5-dcd0de08321d')/items",
+                                      "parameters/uri": "_api/web/lists(guid'6263eeac-471a-489e-96c7-1448f45378d4')/items",
                                       "parameters/headers": {
                                         "Accept": "application/json;odata=nometadata",
                                         "Content-Type": "application/json;odata=nometadata"
@@ -1607,7 +1607,7 @@
                                         "parameters": {
                                           "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                                           "parameters/method": "POST",
-                                          "parameters/uri": "_api/web/lists(guid'3c50c3fe-a4e8-4ae2-9668-43987c9bff60')/items",
+                                          "parameters/uri": "_api/web/lists(guid'c49367dc-c267-4f5b-8935-4fad47fb0d34')/items",
                                           "parameters/headers": {
                                             "Accept": "application/json;odata=nometadata",
                                             "Content-Type": "application/json;odata=nometadata"
@@ -1826,7 +1826,7 @@
                                     "parameters": {
                                       "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
                                       "parameters/method": "POST",
-                                      "parameters/uri": "_api/web/lists(guid'68752782-6d2d-4c65-b4e8-361c0df706ec')/items",
+                                      "parameters/uri": "_api/web/lists(guid'4eabc799-c856-49ea-bf25-65942b363ec6')/items",
                                       "parameters/headers": {
                                         "Accept": "application/json;odata=nometadata",
                                         "Content-Type": "application/json;odata=nometadata"

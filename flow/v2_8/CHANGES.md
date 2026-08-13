@@ -38,6 +38,14 @@ definition and listed as `designer-edits.md` §v2_7-fixes:
   **the v1.9 backfill never ran**, which is why the corpus still
   showed the old yaml-on-top layout. The authored definition ships
   it empty.
+- **FX-6** (found after the first cut; both packages re-cut
+  2026-08-13) the three raw-REST creates — `Create_idrow`,
+  `Create_link`, `Create_dockw` — carried the PRE-REBUILD list GUIDs
+  as hand-typed URI literals (list re-picks never touch them), so
+  they read the new lists but wrote to the old ones. The authored
+  definitions now post to the current Doc IDs / Doc Links /
+  Doc Keywords GUIDs; on the live flow this is three hand edits
+  (designer-edits §v2_7-fixes FX-6).
 
 ## What changed and why
 

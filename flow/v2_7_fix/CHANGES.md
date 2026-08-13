@@ -1,8 +1,8 @@
 # Flow v2.7-fix — the §v2_7-fixes as an import package (no format change)
 
 This is the **repair-only** artifact: the 2026-08-13 live export with
-FX-1 … FX-5 applied and nothing else — the flow stays at v2.7 /
-PromptVersion **v1.9**. Import it (or apply the same five edits by
+FX-1 … FX-6 applied and nothing else — the flow stays at v2.7 /
+PromptVersion **v1.9**. Import it (or apply the same edits by
 hand — `review/patches/designer-edits.md` §v2_7-fixes; identical
 result) to fix the deployed flow WITHOUT taking the v2.8 format
 change:
@@ -18,6 +18,13 @@ change:
 - **FX-5** `Config.SmokeFile` shipped EMPTY — the stuck smoke knob
   that has kept the v1.9 backfill (and every full sweep) from
   running since the v2.7 window.
+- **FX-6** (added 2026-08-13, second cut) the three raw-REST creates
+  — `Create_idrow`, `Create_link`, `Create_dockw` — now post to the
+  CURRENT Doc IDs / Doc Links / Doc Keywords lists. Their URIs
+  carried the pre-rebuild list GUIDs as hand-typed literals that the
+  list re-pick never updated, so every doc with keywords or an issue
+  id errored (old lists deleted) or wrote into orphaned lists (old
+  lists lingering). GUID map in designer-edits §v2_7-fixes FX-6.
 
 Authoring: same pipeline as `flow/v2_8/definition.json` (live export,
 designer `metadata` blocks stripped, PV-1 connection-name scrub on the
