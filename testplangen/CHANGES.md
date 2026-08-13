@@ -1,3 +1,66 @@
+# TestPlanGen v2.13 — self-reference-safe budget take (flows v2.3)
+
+A live save of the v2.2 flow failed validation (2026-08-13, the
+first deploy attempt — the v2.4 IsMatch precedent: a platform rule
+the authored definition only meets on the tenant):
+
+> `WorkflowRunActionInputsInvalidProperty: The inputs of workflow
+> run action 'Append_exemplar' of type 'AppendToStringVariable' are
+> not valid. Self reference is not supported when updating the value
+> of variable 'ExemplarText'.`
+
+The finding: **a variable-update action may not reference the
+variable it updates** — the v2.12 budget fix put
+`length(variables('ExemplarText'))` inside `Append_exemplar`'s own
+value (and `ReferenceText` inside `Append_reference`'s). The
+CONDITIONS reading those variables are legal; only the appends are
+not. The v2.2 packages therefore cannot even be saved after the
+post-import re-picks.
+
+The fix, **flows v2.3** (both definitions, mirrored; re-verified
+action-identical outside the five known structural deltas): the
+remaining-budget arithmetic moves into one Compose per lane —
+**`Ex_remaining`** between `Get_exemplar_md` and `If_ex_budget`,
+**`Ref_remaining`** between `Get_reference_md` and `If_ref_budget`
+(a Compose may read any variable):
+
+```
+@sub(int(outputs('Config_gen')?['ExemplarCap']), length(variables('ExemplarText')))
+@sub(int(outputs('Config_gen')?['ReferenceCap']), length(variables('ReferenceText')))
+```
+
+The appends' `take()` second argument becomes
+`outputs('Ex_remaining')` / `outputs('Ref_remaining')`; the budget
+gates' expressions are unchanged (their run-afters re-point to the
+new composes). Semantics identical to the v2.12 intent — the caps
+are now actually enforced — and a full self-reference scan of every
+variable-update action in both definitions reports zero remaining.
+
+**Docs** — Setup §3 G7/G7b gain the two composes (with the
+self-reference rule stated as a designer caution);
+`designer-edits.md` §testplangen-v2_12 U6 rewritten around the
+composes (its intro now notes U6 adds one action per lane). Both
+packages re-cut byte-identical.
+
+Deploy delta, live tenant: re-import the re-cut
+`TestPlanGenCore_v1_0.zip` (and `TestPlanGen_v1_0.zip` where the
+list-menu front door is used) — anyone who imported the v2.2
+packages must re-import (the flow cannot be saved as imported) or
+add the two composes by hand per the amended U6. Everything else in
+the v2.12 deploy delta stands. NEVER bump `Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Standalone flow + package | **v2.3** | `testplangen/flow/v1_0/`, `TestPlanGen_v1_0.zip` |
+| Core child flow + package | **v2.3** | `testplangen/flow/core_v1_0/`, `TestPlanGenCore_v1_0.zip` |
+| Designer edits | §testplangen-v2_12 U6 amended | `review/patches/designer-edits.md` |
+| Setup doc | updated (G7/G7b) | `TestPlanGen_Setup.md` |
+| Prompt, smoke suite, agent file set, schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 11) | Flows |
+|---|---|---|---|
+| — | — | — | v2.3 (deploy pending) |
+
 # TestPlanGen v2.12 — design-doc references, slot config, budget fix (flows v2.2)
 
 The flow half of the coverage push (v2.11 is the prompt half; the
