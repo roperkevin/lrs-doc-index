@@ -1,5 +1,28 @@
 # Local sweep — release notes
 
+## v1.4.3 (2026-08-14)
+
+**SPO 401 resolved** — the v1.4.2 token matrix (run in-tenant) showed
+why every SharePoint write failed: the Azure CLI client's SharePoint
+grant carries only `scp=user_impersonation`, which SP REST rejects
+(401 invalid_request) even for a plain GET, and the v2 named scopes
+(`AllSites.Write`) are blocked outright for first-party clients
+(AADSTS65002 preauthorization). The **Graph CLI public client + v1
+resource form** was the sole winner: its token's scp carries real
+SharePoint permissions (Sites.ReadWrite.All / AllSites family) and
+both `GET /_api/web` and the `ValidateUpdateListItem` hyperlink write
+succeeded. `SpoClient` device mode now defaults to the Graph CLI
+client — and since that's the same client as the Graph sign-in, the
+SPO token is **seeded from `auth/graph.json`'s refresh token** (Entra
+refresh tokens are client-bound, not resource-bound): the third
+sign-in prompt is gone entirely. `DelegatedAuth` gains
+`seedCachePath` + a `client_id` cache marker (a cache written by a
+different client is never refreshed against, it's re-seeded instead —
+this self-heals the stale Azure CLI `spo.json` on the deployed
+machine). Gate: device leg now asserts exactly two prompts
+(graph+dataverse), SPO seeded via refresh grant, and the seeded token
+on the SPO write. **Gate PASSED 2026-08-14 (47/47).**
+
 ## v1.4.2 (2026-08-14)
 
 Diagnostic release for the live-walkthrough SPO 401: even a fresh v1

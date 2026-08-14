@@ -45,7 +45,7 @@ function resolveSecret(v, what) {
   throw new Error(`${what}: missing (set it in config, ideally as {"$env": "..."})`);
 }
 
-import { DelegatedAuth, GRAPH_PUBLIC_CLIENT, AZURE_CLI_PUBLIC_CLIENT } from "./auth.mjs";
+import { DelegatedAuth, GRAPH_PUBLIC_CLIENT } from "./auth.mjs";
 
 export class GraphClient {
   constructor(cfg) {
@@ -190,11 +190,18 @@ export class GraphClient {
  * ValidateUpdateListItem takes hyperlinks as "url, description".
  *
  * Config (config.spo):
- *   siteUrl     the real site URL (used for the token audience)
+ *   siteUrl     the real site URL (used as the v1 `resource`)
  *   baseUrl     REST base override for the harness mock
  *               (default: siteUrl)
- *   auth        "device" (default) | "app"; device uses the Azure CLI
- *               public client (pre-consented against SharePoint)
+ *   auth        "device" (default) | "app"; device uses the Graph CLI
+ *               public client — the probe matrix (2026-08-14) showed
+ *               its tokens carry real SharePoint permissions in scp
+ *               (Sites.ReadWrite.All/AllSites), which SP REST accepts,
+ *               while the Azure CLI client only gets user_impersonation
+ *               and is rejected with 401 invalid_request
+ *   seedCachePath  the Graph token cache — same client, so its
+ *               refresh token converts to an SPO token silently
+ *               (no third sign-in prompt)
  *   clientId/clientSecret/tenantId/tokenUrl/deviceUrl/tokenCache
  *               as in config.graph
  */
@@ -205,12 +212,13 @@ export class SpoClient {
     this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
     const origin = new URL(cfg.siteUrl).origin;
     if (this.mode === "device") {
-      // v1 resource form: SP REST requires the host-URL audience,
-      // which the v2 .default scope does not produce (see auth.mjs)
+      // v1 resource form: the v2 named scopes are blocked for these
+      // first-party clients (AADSTS65002 preauthorization)
       this.delegated = new DelegatedAuth({
-        clientId: cfg.clientId || AZURE_CLI_PUBLIC_CLIENT,
+        clientId: cfg.clientId || GRAPH_PUBLIC_CLIENT,
         resource: origin,
         cachePath: cfg.tokenCache,
+        seedCachePath: cfg.seedCachePath,
         tenantId: cfg.tenantId,
         deviceUrl: cfg.deviceUrl,
         tokenUrl: cfg.tokenUrl,

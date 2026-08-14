@@ -39,20 +39,29 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export class DelegatedAuth {
   /**
    * opts: clientId, cachePath, tenantId ("organizations" default),
-   *       deviceUrl/tokenUrl (mock overrides), and ONE of:
+   *       deviceUrl/tokenUrl (mock overrides), optional seedCachePath
+   *       (bootstrap: when this cache has no usable token, redeem the
+   *       refresh token from that sibling cache instead of prompting —
+   *       Entra refresh tokens are client-bound, not resource-bound,
+   *       so a SAME-CLIENT cache for another resource converts
+   *       silently; how SPO piggybacks on the Graph sign-in), and
+   *       ONE of:
    *   scopes   (array) — Entra v2 endpoint
    *   resource (string) — Entra v1 endpoint with a `resource` param.
-   *     Needed for SharePoint REST: v2 `.default` mints tokens with
-   *     the generic SPO app-GUID audience, which SP REST rejects
-   *     (401 invalid_request); the v1 resource form yields the
-   *     host-URL audience SP requires — the same thing the Azure
-   *     CLI does for `--resource https://tenant.sharepoint.com`.
+   *     Needed for SharePoint REST (probe matrix, 2026-08-14): the
+   *     v2 named-scope form is blocked for these first-party clients
+   *     (AADSTS65002 preauthorization), and tokens whose scp lacks
+   *     real SharePoint permissions get 401 invalid_request from SP
+   *     REST — the Azure CLI client only ever got user_impersonation.
+   *     The Graph CLI client + v1 resource form yields scp with
+   *     Sites.ReadWrite.All/AllSites, which SharePoint accepts.
    */
   constructor(opts) {
     this.clientId = opts.clientId;
     this.scopes = opts.scopes;
     this.resource = opts.resource;
     this.cachePath = opts.cachePath;
+    this.seedCachePath = opts.seedCachePath;
     const authority = `https://login.microsoftonline.com/${opts.tenantId || "organizations"}`;
     const v = this.resource ? "" : "v2.0/";
     this.deviceUrl = opts.deviceUrl || `${authority}/oauth2/${v}devicecode`;
@@ -88,6 +97,7 @@ export class DelegatedAuth {
       refresh_token: json.refresh_token,
       expires_at: Date.now() + Number(json.expires_in || 3600) * 1000,
       resource: this.resource ?? null,
+      client_id: this.clientId,
     };
     this._mem = tok;
     this._writeCache(tok);
@@ -150,16 +160,30 @@ export class DelegatedAuth {
 
   async token() {
     const cached = this._mem || this._readCache();
-    // a cached token minted for a different resource/endpoint form is
-    // stale even if unexpired (its refresh token still converts)
+    // a cached token minted for a different client or a different
+    // resource/endpoint form is stale even if unexpired (a same-client
+    // refresh token still converts; a foreign-client one cannot)
+    const sameClient = !cached?.client_id || cached.client_id === this.clientId;
     const sameAudience = (cached?.resource ?? null) === (this.resource ?? null);
-    if (cached?.access_token && sameAudience && Date.now() < cached.expires_at - 60000) {
+    if (cached?.access_token && sameClient && sameAudience && Date.now() < cached.expires_at - 60000) {
       this._mem = cached;
       return cached.access_token;
     }
-    if (cached?.refresh_token) {
+    if (sameClient && cached?.refresh_token) {
       const refreshed = await this._refresh(cached.refresh_token);
       if (refreshed) return refreshed;
+    }
+    if (this.seedCachePath) {
+      let seed = null;
+      try {
+        seed = JSON.parse(fs.readFileSync(this.seedCachePath, "utf8"));
+      } catch { /* no seed cache yet */ }
+      if (seed?.refresh_token && (!seed.client_id || seed.client_id === this.clientId)) {
+        const refreshed = await this._refresh(seed.refresh_token);
+        if (refreshed) return refreshed;
+      }
+    }
+    if (cached?.refresh_token) {
       process.stderr.write("auth: cached refresh token no longer valid — signing in again\n");
     }
     return this._deviceFlow();
