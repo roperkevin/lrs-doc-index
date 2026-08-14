@@ -1,108 +1,75 @@
-# Test Plan Generation Prompt — v1.6
+# TestPlanGen Prompt — v1.6 (case granularity — one behavior per case) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.6`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+Motivated by the standing granularity complaint (2026-08-14):
+generated test cases are too coarse. v1.5's requirement-driven
+counts stop requirements merging ACROSS cases (never two
+requirements in one case), but nothing stops several independently
+falsifiable outcomes bundling INSIDE one case: a single Expected
+Result asserting "the referent updates AND the others are preserved
+AND the change is logged", compound steps ("create a route and add
+an event"), and the parameterization escape hatch hiding variants
+with different outcomes behind one "repeat for ..." case. A bundled
+case cannot be half-checked-off in the rendered task list, a shared
+Expected Result makes a partial failure unreportable (which
+assertion failed?), and the Coverage Map loses precision when one
+TC id stands for three behaviors. Supersedes v1.5 IN-REPO (v1.5's
+requirement-driven coverage + Coverage Map, v1.4's GFM shape,
+v1.3's reference-functionality lane, v1.2's enumeration coverage +
+conditional sections, and v1.1's marker fix all carry forward
+unchanged — paste THIS version).
 
-FIVE item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
-(the fifth added in v1.3 — the AI Builder prompt needs the parameter
-created, not just the text re-pasted).
+Changes against v1.5 (grounding rules + case-shape prose — no
+input, shape-order, or sentinel changes):
 
-v1.6 (case granularity — no input, shape-order, or sentinel
-changes): one behavior per case. A new CASE GRANULARITY grounding
-rule makes each case's Expected Result a SINGLE observable outcome
-judged pass/fail as a whole — a case that would assert two
-independently falsifiable outcomes splits into one case per outcome,
-each with its own Trace; each Steps checkbox is one tester action
-(no "and"/"then" compounds, no verification folded into a step); and
-parameterization ("repeat for point and line events") is legal only
-when the steps AND the expected result are identical modulo the
-substituted term, with every covered variant named explicitly (never
-"etc." or "all types") — a variant that changes any step or the
-outcome becomes its own case. The case-shape prose and the CASE
-COUNT rule state the same where cases are written; length is still
-controlled by terse steps and parameterization, never by bundling
-assertions into one case.
+1. **New CASE GRANULARITY grounding rule** (one behavior per case):
+   every case verifies exactly ONE observable behavior — its
+   Expected Result is a single outcome judged pass/fail as a whole;
+   a case that would assert two independently falsifiable outcomes
+   splits into one case per outcome, each with its own Trace,
+   repeating shared steps as needed. Each Steps checkbox is ONE
+   tester action — never two actions joined by "and"/"then", never
+   a verification folded into a step (a step may navigate or
+   inspect; the judgment lives only in Expected Result).
+   Parameterization is legal ONLY when the steps AND the expected
+   result are identical modulo the substituted term, and the case
+   must name every variant it covers (never "etc." or "all
+   types") — a variant that changes any step or the outcome becomes
+   its own case. One TC id must never stand for several behaviors.
+2. **CASE COUNT closes the loophole**: length is controlled by
+   terse steps and parameterization, never by dropping or merging
+   requirements — and now explicitly never by bundling several
+   assertions into one case.
+3. **Case-shape prose tightened where cases are written**: the
+   Positive Tests intro states the one-behavior rule; the Expected
+   Result line definition becomes "the single observable outcome
+   this case verifies ... never two independent outcomes (split the
+   case instead)"; the numbering note says each checkbox is a
+   SINGLE tester action.
+4. Worked example preamble notes each case asserts a single outcome
+   (the example's cases were already atomic — no case changes).
 
-v1.5 (requirement-driven coverage — no input, shape-order, or
-sentinel changes): case count stops being a target and becomes an
-output of coverage — the fixed "4–10 positive / 3–8 negative, prefer
-fewer" range (the RC-3 consolidation bias,
-`review/REVIEW_TestPlanGen_doc1_coverage.md`) is replaced by
-one-case-per-requirement rules with a floor and no ceiling; a new
-always-on final section, `## Coverage Map`, renders the
-requirement→case trace table the reviewer previously built by hand
-(the converse of the Trace rule, and the prompt-side realization of
-the Setup guide's queued "coverage matrix" follow-on); ENUMERATION
-COVERAGE gains a cross-product clause (two enumeration axes = every
-pairing exercised or explicitly parameterized); RELATED DIGEST
-entries must each be evaluated for interaction cases instead of "may
-inspire". Length is controlled by terse steps and parameterization,
-never by dropping or merging requirements.
+Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`,
+lengths 17/15 — G9 arithmetic untouched). Input keys unchanged,
+FIVE, exact names: **StoryMeta**, **StoryText**, **RelatedDigest**,
+**ExemplarText**, **ReferenceText**.
 
-v1.4 (GFM draft shape — no input, grounding, or sentinel changes):
-drafts now target GitHub-style markdown viewers, matching the flow
-v2.7 sidecar upgrade. The Overview opens with a StoryMeta table;
-Setup / Prerequisites and per-case Steps render as GFM task lists
-(`- [ ] 1. ...`) so testers can check items off in the rendered view;
-Expected Result and Trace become standalone bold lines; Negative
-Tests opens with a fixed `> [!CAUTION]` alert; Open Questions items
-render as `- [ ] [VERIFY: ...]` checkboxes so resolution is
-trackable. Section names, order, the CONDITIONAL rules, all grounding
-rules, and the output sentinels are unchanged. No emojis. The paired
-flow edit (same window): Draft_banner gains a `> [!WARNING]` first
-line so the banner renders as a GFM alert.
+Length note: splitting bundled cases produces more, smaller cases
+and longer drafts — the same pressure v1.5 accepted. A reply
+truncated by the model's output limit loses `[[[DRAFT END]]]` and
+fails CLOSED (no draft, no bad artifact); terse steps and explicit
+parameterization remain the pressure valve, and `Gen_summary`'s
+`draftChars` is the gauge to watch.
 
-v1.3 (the reference-functionality input lane): `ReferenceText` carries
-test plans or design docs describing the expected behavior of this
-story's feature area, possibly on ANOTHER surface — the flow fills it
-with related Test Plans whose Surface differs from the story's (the
-same-surface ones remain style/coverage exemplars). Unlike exemplars,
-the model may ground expected functional behavior on these — input
-methods, field-population semantics, validations — within the story's
-scope, with three guards: every borrowed statement's Trace cites the
-reference document, a cross-surface reference forces a surface-parity
-[VERIFY] item, and the story wins every conflict. Reference docs
-supply behavior, never tool names.
-
-v1.2 (the doc 1 coverage-review fixes — see
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): an ENUMERATION COVERAGE
-grounding rule — every workflow, pathway, input method, or
-event/geometry type the story enumerates must be exercised by at least
-one case, and this wins over the preferred case-count range — plus two
-CONDITIONAL draft sections, `## Automation Notes` and
-`## Documentation Impacts`, emitted between Negative Tests and Open
-Questions only when the story carries such content.
-
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
-
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written (create the fifth parameter,
-ReferenceText, when upgrading from a pre-v1.3 paste), then wire per
-the build guide §2.
+Deploy (simple paste + one designer edit, both live flows): paste
+this text into the `LRS Test Plan Generation` AI Builder prompt
+(replaces the pending v1.5 paste — no parameter changes; a tenant
+still on the pre-v1.3 four-parameter contract does the v2.0
+ReferenceText window first, `Coverage_Runbook.md` step 2), set
+`Config_gen.TestPlanGenPromptVersion` to `v1.6`, then run smoke rows
+1 and 9 (`testplangen/TestPlanGen_Smoke.md` suite v1.5;
+`review/harness/check_draft_coverage.py` checks the structural half
+offline). NEVER bump `Config.PromptVersion` — nothing here changes
+the sidecar format or reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 
