@@ -133,6 +133,20 @@ NOTE: the backfill only runs once FX-5 clears SmokeFile.
 - **AI Builder prompt** — text unchanged; the v2.0 bump is
   format-only, no re-paste.
 
+## FX-7 addendum (2026-08-13, fourth)
+
+The errdrill capture's first live catch: the Error row named
+`If_has_text > For_each_kw > Check_dockw`, and the pairing audit
+found `Check_dockw` bound to the **Keywords** list while filtering
+on `KWKey` — a **Doc Keywords** column — so every keyworded doc
+400'd after its sidecar was written, junction rows were never
+created, and keyword-based `related:` edges starved (the FX-3
+symptom family, one loop further down). The one mis-paired binding
+in the flow (full table↔filter audit of every GetItems action:
+no others). Fixed in this definition and `flow/v2_7_fix/` (table →
+`4eabc799-…`), both zips re-cut; live one-dropdown edit in
+`designer-edits.md` §v2_7-fixes FX-7.
+
 ## Deep error capture addendum (2026-08-13, third)
 
 A live run errored with `If_has_text: ActionFailed — No dependent

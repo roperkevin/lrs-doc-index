@@ -12,7 +12,7 @@
 > |---|---|---|
 > | F1–F12, r2-1, v2_6 V1–V10, v2_7 W1–W5 | superseded generations, folded into `flow/v2_8/definition.json` (authored from the post-v2.6/v2.7 live export) | `flow/DocIndexSweep_v2_8.zip` |
 > | r2-2 (option a), r2-3 | `flow/v2_8/definition.json` (2026-08-13: SourceSiteUrl deleted, trigger concurrency 1) | `flow/DocIndexSweep_v2_8.zip` |
-> | §v2_7-fixes FX-1..FX-6 | `flow/v2_7_fix/definition.json` AND `flow/v2_8/definition.json` | `DocIndexSweep_v2_7_fix.zip` / `DocIndexSweep_v2_8.zip` |
+> | §v2_7-fixes FX-1..FX-7 | `flow/v2_7_fix/definition.json` AND `flow/v2_8/definition.json` | `DocIndexSweep_v2_7_fix.zip` / `DocIndexSweep_v2_8.zip` |
 > | v2_8 X1–X5 | `flow/v2_8/definition.json` | `flow/DocIndexSweep_v2_8.zip` |
 > | §testplangen-v2_8 T1–T2, §testplangen-v2_12 U1–U7 | `testplangen/flow/v1_0/definition.json` + `core_v1_0/definition.json` | `TestPlanGen_v1_0.zip` / `TestPlanGenCore_v1_0.zip` |
 >
@@ -730,12 +730,14 @@ items are checkboxes.
 
 The DocIndexSweep export of 2026-08-13 (the flow after the v2.6 and
 v2.7 windows were applied on the tenant) shows four designer
-mis-picks plus a stuck smoke knob. Apply these ON THE LIVE FLOW
-before (or with) the §v2_8 window — or import
+mis-picks plus a stuck smoke knob; FX-6 (list-rebuild GUID literals)
+and FX-7 (the Check_dockw mis-pick, surfaced later the same day by
+the errdrill capture) joined the round after the first cut. Apply
+these ON THE LIVE FLOW before (or with) the §v2_8 window — or import
 `flow/DocIndexSweep_v2_7_fix.zip`, the live export with exactly
-these five corrections applied and nothing else (still PromptVersion
+these corrections applied and nothing else (still PromptVersion
 v1.9; see `flow/v2_7_fix/CHANGES.md`). The authored
-`flow/v2_8/definition.json` also carries all five corrections, so a
+`flow/v2_8/definition.json` also carries every correction, so a
 tenant that re-imports v2.8 instead gets them for free.
 
 ## FX-1 — Extract_media_pptx: zipBase64 carries the prefix, not the file
@@ -829,6 +831,32 @@ table above (current GUIDs per `docs/SP_Adaptation_Notes.md`).
 **Rebuild rule for the future**: after ANY list re-creation, grep
 the flow definition for `lists(guid'` — raw HTTP actions never
 follow a re-pick.
+
+## FX-7 — Check_dockw queries the Keywords list instead of Doc Keywords
+
+Found 2026-08-13 via the errdrill capture (the Error row named
+`If_has_text > For_each_kw > Check_dockw`), after the earlier FX
+rounds were cut — a mis-pick in the live export that the audits
+missed because both GUIDs are valid current lists.
+
+`Check_dockw` (the doc↔keyword junction dedup query) has List Name
+bound to **Keywords** (`a7bd004b-…`) while its Filter Query is
+`KWKey eq '…'` — and `KWKey` exists only on **Doc Keywords**
+(`schemas/SPList_DocKeywords.csv`). The query 400s on every
+keyworded document AFTER the sidecar is written: the doc lands as
+an Error row, junction rows are never created, and keyword-based
+`related:` edges starve (the FX-3 symptom family, one loop further
+down). `Check_kw` directly above it is correct (Keywords by
+`Title`) — this is the one mis-paired binding in the flow; a full
+table↔filter pairing audit of every GetItems action confirms no
+others.
+
+Live edit (ONE dropdown): open **Check_dockw** → List Name →
+**Doc Keywords**. Site and Filter Query stay as they are.
+
+Test: run on a keyworded doc (SmokeFile) → the run succeeds, the
+Doc Keywords list gains `{docId}|{kwId}` rows, and the doc's Error
+row heals to Indexed.
 
 # v2_8 round — hidden metadata + code fencing + product lines
 
