@@ -78,7 +78,7 @@ parameters, exact names: **StoryMeta**, **StoryText**,
 new in v2.0 — an upgrade from a pre-v1.3 paste must CREATE the
 parameter, not just re-paste the text). Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.6` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.7` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -108,7 +108,9 @@ preserves measures" in one case is a fail: those are two cases),
 Open Questions is non-empty, and the reply
 ends with a `## Coverage Map` table (prompt v1.5) whose rows cover
 both story statements ("merge two routes", "preserve measures") with
-no empty Covered by cell.
+no empty Covered by cell. Both lanes are empty in this pane test, so
+NO `## Source Case Sweep` section appears (prompt v1.7 — it is
+emitted only when an exemplar or reference body is present).
 
 ## 3 — The flow: import the package, or build by hand
 
@@ -167,7 +169,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "DigestSummaryCap": 400,
   "ExemplarSlots": 2,
   "ReferenceSlots": 3,
-  "TestPlanGenPromptVersion": "v1.6"
+  "TestPlanGenPromptVersion": "v1.7"
 }
 ```
 
@@ -550,7 +552,15 @@ the Doc Index list (rename the flow's menu label to
   asserts exactly one outcome — split any the model bundled — and
   every parameterized case names the variants it claims to cover
   (a "repeat for ..." whose variants differ in steps or outcome is
-  hiding cases). When the story has
+  hiding cases). When the draft carries a `## Source Case Sweep`
+  (prompt v1.7 — an exemplar or reference body reached the model),
+  review it with the source plan open beside the draft: confirm no
+  source case is missing a row (the completeness the linter cannot
+  check), spot-check No rows' reasons against the source, confirm
+  Yes rows' tailored cases test THIS story's feature rather than
+  paraphrasing the source case, and resolve Verify rows' Open
+  Questions twins — a Verify row is the sweep telling you the
+  story may have a coverage gap the source plan saw. When the story has
   automation or documentation plans, the draft carries `Automation
   Notes` / `Documentation Impacts` sections — review their bullets'
   Trace lines the same way. Reference-grounded cases (prompt v1.3:

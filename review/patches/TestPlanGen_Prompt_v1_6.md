@@ -1,4 +1,4 @@
-# TestPlanGen Prompt — v1.6 (case granularity — one behavior per case) — CURRENT, awaiting tenant paste
+# TestPlanGen Prompt — v1.6 (case granularity — one behavior per case) — superseded in-repo by v1.7 before tenant paste
 
 Motivated by the standing granularity complaint (2026-08-14):
 generated test cases are too coarse. v1.5's requirement-driven

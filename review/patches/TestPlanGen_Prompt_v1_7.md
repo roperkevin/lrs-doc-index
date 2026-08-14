@@ -1,126 +1,88 @@
-# Test Plan Generation Prompt — v1.7
+# TestPlanGen Prompt — v1.7 (source case sweep) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.7`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+Motivated by the coverage-borrowing request (2026-08-14): make the
+generator go through each test case in each related test plan,
+decide whether it applies to the current user story, and when it
+does, create a case tailored to the story. The lanes already carry
+the material — same-surface plans as EXEMPLAR TEXT, cross-surface
+plans and design spikes as REFERENCE FUNCTIONALITY — but the rules
+around them are soft in exactly the pre-v1.5 way: exemplars say
+"mirror the kinds of cases they think to include" and references
+say you "MAY ground" on them, so a model can use two cases from a
+thirty-case plan and violate nothing. The fix is the mechanism that
+already works twice in this prompt (RELATED DIGEST v1.5, Coverage
+Map v1.5): make the per-item evaluation MANDATORY and make the
+model render the checklist so skips are visible. Corpus test plans
+are team-format sidecars (slide headings, bullets — not our TC
+template), so the sweep is defined over "every distinct test case
+or scenario, however the source formats it" — a judgment a model
+can make and a deterministic parser cannot, which is why this stays
+prompt-side and the ONE-AI-Builder-call design holds. Supersedes
+v1.6 IN-REPO (v1.6's case granularity, v1.5's requirement-driven
+coverage + Coverage Map, v1.4's GFM shape, v1.3's reference lane,
+v1.2's enumeration coverage + conditional sections, and v1.1's
+marker fix all carry forward unchanged — paste THIS version).
 
-FIVE item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
-(the fifth added in v1.3 — the AI Builder prompt needs the parameter
-created, not just the text re-pasted).
+Changes against v1.6 (one new grounding rule + one new CONDITIONAL
+section — no input or sentinel changes):
 
-v1.7 (source case sweep — no input or sentinel changes; one new
-CONDITIONAL section): every distinct test case or scenario described
-in EXEMPLAR TEXT and REFERENCE FUNCTIONALITY — however the source
-plan formats it — must receive an explicit applies / doesn't-apply
-judgment against this story (the CASE SWEEP rule, the per-case
-generalization of v1.5's RELATED DIGEST mandate). An applying case
-becomes a case tailored to THIS story's feature and surface, its
-Trace citing the source plan by title plus the story or reference
-statement it exercises; a case that plausibly applies but has no
-story/reference support becomes an Open Questions [VERIFY] naming
-the source case — never an invented requirement, never a silent
-skip. The judgments render as a new `## Source Case Sweep` table
-(one row per source case, verdict Yes / No / Verify) between Open
-Questions and the Coverage Map, emitted whenever either lane is
-non-empty — the same render-the-checklist enforcement the Coverage
-Map applies to requirements. Tools, surface, story-wins-conflicts,
-and granularity rules extend to swept cases unchanged.
+1. **New CASE SWEEP grounding rule** (one judgment per source
+   case): read EVERY distinct test case or scenario described in
+   EXEMPLAR TEXT and REFERENCE FUNCTIONALITY and judge whether the
+   behavior it verifies applies to this story. Applies → a case
+   tailored to THIS story's feature and surface (steps rewritten,
+   granularity in force), Trace citing the source plan by title AND
+   the story/reference statement the tailored case exercises —
+   never the source case's feature-specific content, tool names, or
+   data. Applies-but-unsupported → an Open Questions [VERIFY]
+   naming the source plan and case (a possible coverage gap in the
+   story, never an invented requirement). Doesn't apply → a stated
+   reason. A source case missing from the sweep table is a silent
+   skip — invalid output.
+2. **New `## Source Case Sweep` CONDITIONAL section** between Open
+   Questions and the Coverage Map, emitted whenever either lane is
+   non-empty (omitted only when both are "(none)"): a GFM table,
+   one row per source case —
+   `| Source plan | Source case | Applies? | Covered by / why not |`
+   — verdict exactly Yes / No / Verify; Yes rows cite the tailored
+   TC id(s), Verify rows cite the matching Open Questions entry, No
+   rows state why. Empty verdict or fourth cells are invalid. The
+   DRAFT SHAPE intro now counts three CONDITIONAL sections.
+3. **Lane descriptions note the sweep** (EXEMPLAR TEXT and
+   REFERENCE FUNCTIONALITY each gain "every case they describe is
+   swept case-by-case"); the exemplar-content, tools, surface, and
+   story-wins-conflicts guards extend to swept cases in full — the
+   sweep borrows COVERAGE IDEAS and (via the reference lane's
+   existing rules) behavior, never feature content.
+4. Worked example gains an abbreviated three-row Source Case Sweep
+   (one Yes → TC-N1, one Verify → Open Questions, one No with
+   reason) and a matching Open Questions [VERIFY]; preamble updated.
 
-v1.6 (case granularity — no input, shape-order, or sentinel
-changes): one behavior per case. A new CASE GRANULARITY grounding
-rule makes each case's Expected Result a SINGLE observable outcome
-judged pass/fail as a whole — a case that would assert two
-independently falsifiable outcomes splits into one case per outcome,
-each with its own Trace; each Steps checkbox is one tester action
-(no "and"/"then" compounds, no verification folded into a step); and
-parameterization ("repeat for point and line events") is legal only
-when the steps AND the expected result are identical modulo the
-substituted term, with every covered variant named explicitly (never
-"etc." or "all types") — a variant that changes any step or the
-outcome becomes its own case. The case-shape prose and the CASE
-COUNT rule state the same where cases are written; length is still
-controlled by terse steps and parameterization, never by bundling
-assertions into one case.
+Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`,
+lengths 17/15 — G9 arithmetic untouched). Input keys unchanged,
+FIVE, exact names: **StoryMeta**, **StoryText**, **RelatedDigest**,
+**ExemplarText**, **ReferenceText**.
 
-v1.5 (requirement-driven coverage — no input, shape-order, or
-sentinel changes): case count stops being a target and becomes an
-output of coverage — the fixed "4–10 positive / 3–8 negative, prefer
-fewer" range (the RC-3 consolidation bias,
-`review/REVIEW_TestPlanGen_doc1_coverage.md`) is replaced by
-one-case-per-requirement rules with a floor and no ceiling; a new
-always-on final section, `## Coverage Map`, renders the
-requirement→case trace table the reviewer previously built by hand
-(the converse of the Trace rule, and the prompt-side realization of
-the Setup guide's queued "coverage matrix" follow-on); ENUMERATION
-COVERAGE gains a cross-product clause (two enumeration axes = every
-pairing exercised or explicitly parameterized); RELATED DIGEST
-entries must each be evaluated for interaction cases instead of "may
-inspire". Length is controlled by terse steps and parameterization,
-never by dropping or merging requirements.
+Scope note: only plans whose BODIES reach the model are swept —
+the exemplar lane (`ExemplarSlots: 2`) and reference lane
+(`ReferenceSlots: 3`); digest-only neighbors have no cases to
+sweep, and the RELATED DIGEST rule still covers them at document
+granularity. Raising the slot counts in `Config_gen` widens the
+sweep; the caps bound the input. Length: the sweep table adds one
+line per source case within ExemplarCap 20000 / ReferenceCap 12000
+of source text; a truncated reply still fails CLOSED, and
+`Gen_summary`'s `draftChars` is the gauge to watch.
 
-v1.4 (GFM draft shape — no input, grounding, or sentinel changes):
-drafts now target GitHub-style markdown viewers, matching the flow
-v2.7 sidecar upgrade. The Overview opens with a StoryMeta table;
-Setup / Prerequisites and per-case Steps render as GFM task lists
-(`- [ ] 1. ...`) so testers can check items off in the rendered view;
-Expected Result and Trace become standalone bold lines; Negative
-Tests opens with a fixed `> [!CAUTION]` alert; Open Questions items
-render as `- [ ] [VERIFY: ...]` checkboxes so resolution is
-trackable. Section names, order, the CONDITIONAL rules, all grounding
-rules, and the output sentinels are unchanged. No emojis. The paired
-flow edit (same window): Draft_banner gains a `> [!WARNING]` first
-line so the banner renders as a GFM alert.
-
-v1.3 (the reference-functionality input lane): `ReferenceText` carries
-test plans or design docs describing the expected behavior of this
-story's feature area, possibly on ANOTHER surface — the flow fills it
-with related Test Plans whose Surface differs from the story's (the
-same-surface ones remain style/coverage exemplars). Unlike exemplars,
-the model may ground expected functional behavior on these — input
-methods, field-population semantics, validations — within the story's
-scope, with three guards: every borrowed statement's Trace cites the
-reference document, a cross-surface reference forces a surface-parity
-[VERIFY] item, and the story wins every conflict. Reference docs
-supply behavior, never tool names.
-
-v1.2 (the doc 1 coverage-review fixes — see
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): an ENUMERATION COVERAGE
-grounding rule — every workflow, pathway, input method, or
-event/geometry type the story enumerates must be exercised by at least
-one case, and this wins over the preferred case-count range — plus two
-CONDITIONAL draft sections, `## Automation Notes` and
-`## Documentation Impacts`, emitted between Negative Tests and Open
-Questions only when the story carries such content.
-
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
-
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written (create the fifth parameter,
-ReferenceText, when upgrading from a pre-v1.3 paste), then wire per
-the build guide §2.
+Deploy (simple paste + one designer edit, both live flows): paste
+this text into the `LRS Test Plan Generation` AI Builder prompt
+(replaces the pending v1.6 paste — no parameter changes; a tenant
+still on the pre-v1.3 four-parameter contract does the v2.0
+ReferenceText window first, `Coverage_Runbook.md` step 2), set
+`Config_gen.TestPlanGenPromptVersion` to `v1.7`, then run smoke rows
+1, 3, 9 and 10 (`testplangen/TestPlanGen_Smoke.md` suite v1.6;
+`review/harness/check_draft_coverage.py` checks the sweep-table
+structure offline). NEVER bump `Config.PromptVersion` — nothing here
+changes the sidecar format or reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 

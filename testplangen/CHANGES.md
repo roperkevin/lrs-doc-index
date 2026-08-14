@@ -1,3 +1,115 @@
+# TestPlanGen v2.15 — source case sweep (prompt v1.7)
+
+Motivated by the coverage-borrowing request (2026-08-14): go
+through each test case in each related test plan, decide whether it
+applies to the current user story, and when it does, create a case
+tailored to the story. The lanes already deliver the material —
+same-surface plans as EXEMPLAR TEXT, cross-surface plans and design
+spikes as REFERENCE FUNCTIONALITY — but the rules around them are
+soft in exactly the pre-v1.5 way: exemplars say "mirror the kinds
+of cases they think to include", references say the model "MAY
+ground" on them, so two cases used from a thirty-case plan violates
+nothing. The fix is the mechanism this prompt has already proven
+twice (RELATED DIGEST v1.5, Coverage Map v1.5): make the per-item
+evaluation MANDATORY and make the model render the checklist so
+skips are visible. Corpus plans are team-format sidecars (slide
+headings and bullets, not our TC template), so the sweep is defined
+over "every distinct test case or scenario, however the source
+formats it" — a judgment a model can make and a deterministic
+parser cannot, which is why this stays prompt-side and the
+ONE-AI-Builder-call design holds (a per-plan extraction pre-pass
+was considered and rejected: N+1 model calls for material the
+single call already holds within the caps).
+
+**Prompt v1.7** (authored as
+`review/patches/TestPlanGen_Prompt_v1_7.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.6 in-repo BEFORE
+its pending paste; v1.6's case granularity, v1.5's
+requirement-driven coverage + Coverage Map, v1.4's GFM shape,
+v1.3's reference lane, v1.2's enumeration coverage + conditional
+sections, and v1.1's marker fix all carry forward unchanged):
+
+- **New CASE SWEEP grounding rule** (one judgment per source case):
+  every distinct test case or scenario described in EXEMPLAR TEXT
+  and REFERENCE FUNCTIONALITY gets an explicit applies /
+  doesn't-apply judgment against this story. Applies → a case
+  tailored to THIS story's feature and surface (steps rewritten,
+  granularity rules in force), Trace citing the source plan by
+  title AND the story/reference statement the tailored case
+  exercises — never the source case's feature-specific content,
+  tool names, or data. Applies-but-unsupported → an Open Questions
+  [VERIFY] naming the source plan and case (a possible coverage gap
+  in the story, never an invented requirement). Doesn't apply → a
+  stated reason. A source case missing from the sweep is a silent
+  skip — invalid output.
+- **New `## Source Case Sweep` CONDITIONAL section** between Open
+  Questions and the Coverage Map, emitted whenever either lane is
+  non-empty (omitted only when both are "(none)"): one table row
+  per source case —
+  `| Source plan | Source case | Applies? | Covered by / why not |`
+  — verdict exactly Yes / No / Verify; Yes rows cite the tailored
+  TC id(s), Verify rows cite the matching Open Questions entry, No
+  rows state why. Empty cells are invalid; the DRAFT SHAPE intro
+  now counts three conditional sections.
+- Lane descriptions note the sweep; the exemplar-content, tools,
+  surface, and story-wins-conflicts guards extend to swept cases in
+  full. Worked example gains a three-row sweep (Yes / Verify / No)
+  and its matching Open Questions entry.
+- Output markers, input keys, and fences unchanged — the G9 slice
+  is untouched. Scope: only plans whose BODIES reach the model are
+  swept (`ExemplarSlots: 2` / `ReferenceSlots: 3` — the config
+  knobs widen it); digest-only neighbors stay covered at document
+  granularity by the RELATED DIGEST rule. Sweep-table length is one
+  line per source case within the lane caps; truncation still
+  fails CLOSED (`draftChars` is the gauge).
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.7 in
+`flow/v1_0/` and `flow/core_v1_0/` (stamp only); both generation
+packages re-cut with the stamped definitions (byte-identical to
+their folder definitions, the provenance convention).
+
+**Harness** — `review/harness/check_draft_coverage.py` extended to
+the v1.7 contract (assert 8): when `## Source Case Sweep` is
+present it must sit between Open Questions and the Coverage Map
+with ≥1 data row, every verdict exactly Yes/No/Verify, Yes rows
+citing a TC id that exists in the draft, Verify rows citing Open
+Questions, No rows carrying a reason; a `sweepRows=` counter
+prints. Sweep COMPLETENESS (no source case missing a row) needs
+the source plans, so it stays a smoke/§4 reading check — and the
+section's presence is lane-dependent, so absence alone never
+fails the lint.
+
+**Docs** — Setup §2 (stamp v1.7 + pane check notes the sweep is
+correctly ABSENT when both lanes are empty), §3 G0 stamp, §4 (the
+review pass gains the sweep step: completeness with the source
+plan open beside the draft, No-row spot-checks, tailoring check on
+Yes rows, Verify rows as possible story gaps); Smoke suite v1.6:
+rows 3 and 10 gain the sweep checks (completeness is theirs), row
+4 pins the both-lanes-empty absence; `Coverage_Runbook.md` step 2
+pastes v1.7; `prompts/README.md`, `STATUS.md`, and root `README.md`
+rows moved to v1.7 / v2.15.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 2; a tenant still on the pre-v1.3
+four-parameter contract creates `ReferenceText` first): paste v1.7
+into `LRS Test Plan Generation` (replaces the pending v1.6 paste),
+set both `Config_gen.TestPlanGenPromptVersion` stamps to v1.7 (or
+re-import the re-cut packages), run smoke rows 1, 3, 9, 10 and
+record below. NEVER bump `Config.PromptVersion` — nothing here
+changes the sidecar format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.7** | `review/patches/TestPlanGen_Prompt_v1_7.md` → `prompts/TestPlanGen_Prompt.md` |
+| Flow definitions (stamp only) + re-cut packages | v2.15 delta | `testplangen/flow/v1_0/definition.json`, `testplangen/flow/core_v1_0/definition.json`, both zips |
+| Draft coverage lint | updated (v1.7 contract) | `review/harness/check_draft_coverage.py` |
+| Setup + smoke + runbook docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.6), `Coverage_Runbook.md` |
+| Agent file set / schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 11) | TestPlanGenPromptVersion |
+|---|---|---|---|
+| — | — | — | v1.7 (paste pending) |
+
 # TestPlanGen v2.14 — granular test cases (prompt v1.6)
 
 Motivated by the standing granularity complaint (2026-08-14):

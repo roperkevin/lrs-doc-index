@@ -26,16 +26,20 @@ when a batch is promoted:
    the flow v2.7 details frame) — the template any future script
    batch clones before its patches may be pasted.
 6. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
-   downloaded TestPlanGen draft .md and asserts the prompt v1.6
+   downloaded TestPlanGen draft .md and asserts the prompt v1.7
    coverage contract (section order incl. `## Coverage Map`, Trace
    on every case, CAUTION alert, no empty/dangling Covered by cells,
-   sequential TC ids, and the v1.6 granularity structure — exactly
-   one Expected Result line and at least one Steps checkbox per
-   case) and prints positive/negative/[VERIFY]/map-row/steps-per-case
+   sequential TC ids, the v1.6 granularity structure — exactly one
+   Expected Result line and at least one Steps checkbox per case —
+   and the v1.7 `## Source Case Sweep` structure when present:
+   placement, Yes/No/Verify verdicts, Yes→TC citations,
+   Verify→Open Questions, No→reason) and prints
+   positive/negative/[VERIFY]/map-row/steps-per-case/sweep-row
    counters for before/after comparison on a prompt bump
    (`testplangen/Coverage_Runbook.md` step 5). `--baseline` scores a
-   pre-v1.5/pre-v1.6 draft (skips the Coverage Map and granularity
-   checks, keeps counters). Pure stdlib, no fixtures — CI-friendly.
+   pre-v1.5/v1.6/v1.7 draft (skips the Coverage Map, granularity
+   and sweep checks, keeps counters). Pure stdlib, no fixtures —
+   CI-friendly.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for
