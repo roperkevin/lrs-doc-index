@@ -153,6 +153,19 @@ failed-action name, so a never-executed scope is never evaluated.
 `designer-edits.md` §v2_8-errdrill. Zip re-cut, payload
 byte-identical.
 
+Flatten amendment (same day): the first cut nested the drill
+conditions inside each other, putting `Set_ErrLeaf_L4` at nesting
+level 9 — the import failed template validation (max 8; Catch_index
+already sits three levels deep). The drill levels now run as
+SIBLING conditions in one run-after chain, passing state through
+the `ErrLeaf` string (`startsWith` guards on the accumulated
+`path > name:` prefix — always evaluable, and each `result('X')`
+still only evaluates when the prior level proved X executed).
+Same diagnostic output; deepest new node sits at level 5. The
+pre-existing deepest actions (`Get_neighbor_md`, `Save_patched`)
+sit exactly AT the cap — future rounds must not add any container
+around the neighbor/patch loops.
+
 ## Scripts.xlsx rebind addendum (2026-08-13, second)
 
 The Scripts.xlsx workbook (and the SidecarPatch script) were
