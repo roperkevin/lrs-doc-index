@@ -38,23 +38,50 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
   Writes to the second folder are how sidecars reach SharePoint — give
   the sync client time after each run (it's fast; the run itself
   doesn't wait).
-- Environment variables (machine or user scope):
-  - `DOCINDEX_GRAPH_SECRET` — the Entra app client secret (§2). The
-    one credential: it authenticates both Graph and the AI Builder
-    call (§3). No LLM API key exists in this setup.
+- **No credentials to provision.** The default auth mode (§2) is a
+  sign-in as you — no Azure app registration, no client secret, no
+  API key, no environment variables.
 
-## 2. Entra app registration (Graph)
+## 2. Signing in — no Azure app registration
 
-1. Entra admin center → App registrations → New. Single tenant.
-2. API permissions → Microsoft Graph → **Application** permissions →
-   `Sites.Selected` (preferred; grant the app `write` on the
-   lrsworkspace site and `read` on LocationReferencing via the
-   [site permissions endpoint](https://learn.microsoft.com/en-us/graph/api/site-post-permissions)),
-   or `Sites.ReadWrite.All` if Sites.Selected is more ceremony than
-   your tenant wants. Admin consent required either way.
-3. Certificates & secrets → new client secret → store it as
-   `DOCINDEX_GRAPH_SECRET` on the machine (never in config.json).
-4. Put the tenant id + client id in `local/config.json` (§4).
+The default (`graph.auth: "device"`) authenticates **as you**, using
+Microsoft's own pre-registered public client applications — the same
+identities the Azure CLI and Microsoft Graph PowerShell sign in with,
+present in every tenant. Nothing to register, nothing to ask an
+admin for. All reads and writes run under your existing SharePoint
+and Dataverse permissions — the same identity model as the cloud
+flow's connections, which also ran as you (list rows will show your
+name as Created/Modified By, as they do today).
+
+How it works:
+
+1. **First run** (do it from a console): the sweep prints
+   `Open https://microsoft.com/devicelogin and enter the code XXXX`
+   — once for Graph, once for Dataverse. Sign in with your normal
+   account.
+2. The refresh tokens are cached under `paths.workDir\auth\`
+   (`graph.json`, `dataverse.json`, mode 0600). Every later run —
+   including scheduled ones — refreshes silently; nightly runs keep
+   the tokens alive indefinitely.
+3. If the machine sits idle long enough for a refresh token to
+   expire, the next run prints the sign-in prompt again — run the
+   sweep once from a console and you're back. (Failed scheduled runs
+   in between simply do nothing; no writes happen unauthenticated.)
+
+**If your tenant's consent policy balks** at the Graph scope on first
+sign-in ("Need admin approval"), point `graph.clientId` at a public
+client your tenant already allows — the Azure CLI's
+`04b07795-8ddb-461a-bbee-02f9e1bf7b46` is usually pre-consented
+everywhere. Same knob on `llm.dataverse.clientId`.
+
+**Alternative — app registration** (for a future service-account
+setup, if someone with Entra rights ever provisions one): set
+`"auth": "app"` with `tenantId`/`clientId` and a `clientSecret` as
+`{"$env": "DOCINDEX_GRAPH_SECRET"}`; application permission
+`Sites.Selected` (grant write on lrsworkspace, read on
+LocationReferencing) or `Sites.ReadWrite.All`, and add the app as a
+Power Platform application user for the AI Builder call (§3). The
+gate covers both modes.
 
 ## 3. The AI step — same model as the cloud flow
 
@@ -74,22 +101,21 @@ them), same AI Builder credit metering. **Zero behavior drift in the
 AI step** — prompt promotion remains the AI Builder paste + STATUS
 entry, exactly as today.
 
-Setup (one-time, reuses the §2 app registration):
+Setup (one-time):
 
 1. `llm.environmentUrl` — the environment's Dataverse URL (Power
-   Platform admin center → Environments → your environment →
-   Environment URL, e.g. `https://org1234.crm.dynamics.com`).
+   Platform → Settings/Environments, or the maker portal's session
+   details, e.g. `https://org1234.crm.dynamics.com`).
 2. `llm.modelId` — the AI Builder prompt's model GUID. It's the
    `recordId` bound in the flow's Run_prompt action
    (`ef04e39d-3775-4655-a8be-60192095c1d6` per the v2.8 definition);
    verify against your tenant if the prompt is ever re-created.
-3. Add the §2 app registration as an **application user** in that
-   environment (Power Platform admin center → Environments → …
-   → Settings → Users + permissions → Application users → New) and
-   give it a security role that can run AI Builder predictions
-   (Environment Maker plus the AI Builder roles works; tighten later
-   if desired). No new secret — the sweep authenticates with
-   `DOCINDEX_GRAPH_SECRET` against `{environmentUrl}/.default`.
+3. Auth: nothing — the §2 device sign-in covers Dataverse too (its
+   own prompt on first run, its own cached token). You built the
+   prompt and the flow ran it under your connection, so your user
+   already has every permission it needs. (App-mode alternative:
+   register the §2 app as a Power Platform **application user** with
+   an AI-Builder-capable role.)
 
 Licensing note: calling Dataverse/AI Builder through the Web API uses
 AI Builder credits exactly as the connector call did; no Power
@@ -116,9 +142,10 @@ node --experimental-strip-types local\sweep.mjs --config local\config.json
 
 `config.sample.json` ships with `sweep.dryRun: true` — the first run
 is automatically a **shadow run**: full enumeration and compute, zero
-writes, a plan file in `paths.workDir`. Flags: `--live` (perform
-writes), `--dry-run`, `--max N` (cap docs), `--only <filename>` (the
-SmokeFile equivalent — one doc).
+writes, a plan file in `paths.workDir`. It's also where the two §2
+device-code sign-ins happen, so run it from a console. Flags:
+`--live` (perform writes), `--dry-run`, `--max N` (cap docs),
+`--only <filename>` (the SmokeFile equivalent — one doc).
 
 **Schedule it** (replaces the Recurrence trigger; unlike attended PAD
 runs, Task Scheduler works with the machine locked):
@@ -199,10 +226,13 @@ Each is behavior-equivalent; all are exercised by the gate:
 
 ## 8. Security
 
-Same footprint as the PAD machine (`pad/PAD_Setup.md` §8) plus one
-credential: the Entra app client secret (scope Graph access with
-Sites.Selected; rotate on schedule; machine environment variable,
-never in the repo or config.json). With the default `aibuilder`
+Same footprint as the PAD machine (`pad/PAD_Setup.md` §8). In the
+default device-auth mode the machine holds no provisioned secret —
+just the cached refresh tokens under `paths.workDir\auth\` (0600;
+they act as your signed-in session, so keep the folder inside the
+machine's disk encryption and delete it when decommissioning; you
+can also revoke sessions from your Microsoft account's security
+page). With the default `aibuilder`
 provider there is **no new data egress**: document text goes to the
 same tenant AI Builder endpoint the cloud flow sends it to today.
 (Switching to the `anthropic` provider changes that — document text

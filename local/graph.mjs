@@ -4,17 +4,27 @@
  * through the OneDrive-synced library (plain file I/O), so Graph is
  * needed solely for the six SharePoint lists.
  *
- * Auth: Entra app registration, client-credentials grant
- * (application permission Sites.ReadWrite.All, or Sites.Selected
- * scoped to the lrsworkspace site — see Local_Setup.md §2).
+ * Auth — two modes (config.graph.auth, default "device"):
+ *   "device" — delegated sign-in as the user via the OAuth device
+ *     code flow (local/auth.mjs) using Microsoft's pre-registered
+ *     Graph public client. NO app registration needed; the user's
+ *     own SharePoint permissions apply (the cloud flow's connection
+ *     identity model). Scope: Sites.ReadWrite.All + offline_access.
+ *   "app" — Entra app registration, client-credentials grant
+ *     (application permission Sites.Selected/Sites.ReadWrite.All).
+ *     Selected automatically when clientSecret is configured.
  *
  * Config (config.graph):
- *   tenantId     Entra tenant GUID or domain
- *   clientId     app registration id
- *   clientSecret {"$env":"DOCINDEX_GRAPH_SECRET"} or literal
+ *   auth         "device" (default) | "app"
+ *   tenantId     Entra tenant GUID/domain (optional in device mode;
+ *                defaults to "organizations")
+ *   clientId     device: public client override (default: Graph CLI
+ *                app); app: the registration's client id
+ *   clientSecret app mode only; {"$env":"DOCINDEX_GRAPH_SECRET"}
+ *   tokenCache   device mode: refresh-token cache file path
  *   baseUrl      default "https://graph.microsoft.com/v1.0"
  *                (harness points this at a local mock)
- *   tokenUrl     default derived from tenantId (mock override)
+ *   tokenUrl/deviceUrl  default derived from tenantId (mock override)
  *   maxRetries   default 4 (429 honors Retry-After; 5xx/network backoff)
  *
  * Unlike the cloud flow — whose Create_idrow/Create_link/Create_dockw
@@ -35,19 +45,33 @@ function resolveSecret(v, what) {
   throw new Error(`${what}: missing (set it in config, ideally as {"$env": "..."})`);
 }
 
+import { DelegatedAuth, GRAPH_PUBLIC_CLIENT } from "./auth.mjs";
+
 export class GraphClient {
   constructor(cfg) {
     this.cfg = cfg;
     this.baseUrl = cfg.baseUrl || "https://graph.microsoft.com/v1.0";
     this.tokenUrl =
       cfg.tokenUrl ||
-      `https://login.microsoftonline.com/${cfg.tenantId}/oauth2/v2.0/token`;
+      `https://login.microsoftonline.com/${cfg.tenantId || "organizations"}/oauth2/v2.0/token`;
     this.maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
+    this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
+    if (this.mode === "device") {
+      this.delegated = new DelegatedAuth({
+        clientId: cfg.clientId || GRAPH_PUBLIC_CLIENT,
+        scopes: ["https://graph.microsoft.com/Sites.ReadWrite.All", "offline_access"],
+        cachePath: cfg.tokenCache,
+        tenantId: cfg.tenantId,
+        deviceUrl: cfg.deviceUrl,
+        tokenUrl: cfg.tokenUrl,
+      });
+    }
     this._token = null;
     this._tokenExpires = 0;
   }
 
   async token() {
+    if (this.mode === "device") return this.delegated.token();
     if (this._token && Date.now() < this._tokenExpires - 60000) return this._token;
     const body = new URLSearchParams({
       grant_type: "client_credentials",
@@ -99,8 +123,9 @@ export class GraphClient {
         continue;
       }
       if (res.status === 401) {
-        // token may have been revoked mid-run — refresh once and retry
+        // token may have expired mid-run — refresh and retry
         this._token = null;
+        if (this.delegated) this.delegated.invalidate();
         lastErr = new Error(`Graph ${method} ${url}: 401`);
         continue;
       }
