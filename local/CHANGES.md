@@ -1,5 +1,35 @@
 # Local sweep — release notes
 
+## v1.5 (2026-08-14)
+
+Unattended-operation hardening, the first post-handover batch:
+
+- **Self-updating runs** — `run_sweep.cmd` does `git pull --ff-only`
+  before each sweep (merged fixes deploy themselves; a conflicted
+  state can't wedge the machine, it just runs what's checked out).
+- **Missed-schedule catch-up** — new repo-tracked
+  `local/sweep_task.xml` (register with `schtasks /create /xml`):
+  StartWhenAvailable (machine off at 17:00 → run fires on wake
+  instead of skipping the night) + laptop battery settings, which
+  plain `schtasks /create` cannot express.
+- **Fail-fast on dead auth** — a non-interactive run that would need
+  a device-code sign-in now throws `AUTH EXPIRED` immediately (with
+  the exact recovery command) instead of waiting 15 minutes for a
+  prompt nobody will answer. `DOCINDEX_ALLOW_DEVICE_PROMPT=1`
+  overrides (harness; redirected consoles).
+- **Status page in SharePoint** — after every live run (and on fatal
+  aborts) the sweep writes `_Sweep Status.md` to the sidecar library
+  root: last run, result, prompt version, the Error-lane table with
+  per-doc LastError, and an "action needed" line. Pipeline health is
+  now visible where the team already reads the index.
+- **Log hygiene** — per-run `sweep-*.json` logs pruned to the newest
+  30; `sweep-task.log` rotates at ~5 MB (one previous generation).
+
+Gate: +8 checks — status page contents on the live leg, prune-to-30
+with fodder logs, and a dead-auth leg (fails fast, AUTH EXPIRED on
+stderr, no device prompt started, fatal surfaced on the status
+page). **Gate PASSED 2026-08-14 (55/55).**
+
 ## v1.4.3 (2026-08-14)
 
 **SPO 401 resolved** — the v1.4.2 token matrix (run in-tenant) showed

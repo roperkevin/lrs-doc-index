@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sweep.mjs v1.0 — the Doc Index sweep as a local Node orchestrator.
+ * sweep.mjs v1.5 — the Doc Index sweep as a local Node orchestrator.
  * Replaces the DocIndexSweep Power Automate cloud flow (v2.8): same
  * pipeline, same list writes, same sidecar bytes — no Power Automate,
  * no Run-script quota, no AI Builder.
@@ -370,6 +370,7 @@ _None yet._
 
 async function main() {
   const cfg = loadConfig(process.argv.slice(2));
+  _setStatusCfg(cfg);
   const sw = cfg.sweep;
   const sp = cfg.sharePoint;
   const dry = !!sw.dryRun;
@@ -397,7 +398,7 @@ async function main() {
   const docIndexRows = await fetch("docIndex", "docIndex", [
     "Title", "FileName", "DocKey", "IndexStatus", "SourceModified",
     "PromptVersion", "TextFileUrl", "DocKind", "Surface", "TargetRelease",
-    "PE", "Dev", "Summary",
+    "PE", "Dev", "Summary", "LastError",
   ]);
   const keywordRows = await fetch("keywords", "keywords", ["Title", "Kind", "CanonicalRefLookupId"]);
   const docIdRows = await fetch("docIds", "docIds", ["Title", "Repo", "IssueNumber", "Source", "IdKey", "DocumentLookupId"]);
@@ -405,6 +406,13 @@ async function main() {
   const docKwRows = await fetch("docKeywords", "docKeywords", ["Title", "KWKey", "DocumentLookupId", "KeywordLookupId"]);
 
   const byDocKey = new Map(docIndexRows.map((r) => [lower(r.DocKey), r]));
+  // error lane for the status page: seeded from the snapshot, docs
+  // are removed on a successful (re)index and re-added on failure
+  const errorLane = new Map(
+    docIndexRows
+      .filter((r) => r.IndexStatus === "Error")
+      .map((r) => [lower(r.DocKey), { name: r.FileName || r.Title || r.DocKey, err: String(r.LastError || "") }])
+  );
   const kwByTitle = new Map(keywordRows.map((r) => [lower(r.Title), r]));
   const idKeys = new Set(docIdRows.map((r) => r.IdKey));
   const linkKeys = new Set(docLinkRows.map((r) => r.LinkKey));
@@ -492,10 +500,12 @@ async function main() {
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
         setStep: (s) => (step = s),
       });
+      errorLane.delete(docKey);
     } catch (e) {
       // Catch_index: Error row, LastError "{step}: {detail}", continue.
       summary.errors++;
       const errDetail = cut(`${step}: ${e.message}`, 4000);
+      errorLane.set(docKey, { name, err: errDetail });
       process.stderr.write(`ERROR ${name}: ${errDetail}\n`);
       try {
         const fields = {
@@ -535,6 +545,8 @@ async function main() {
   const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
   const logFile = path.join(logDir, `sweep-${stamp}.json`);
   fs.writeFileSync(logFile, JSON.stringify({ summary, line, plan: dry ? writer.plan : undefined }, null, 1));
+  pruneRunLogs(logDir);
+  if (!dry) writeStatusPage(cfg, { summary, logFile, errorLane });
 
   process.stdout.write(JSON.stringify({ ...summary, logFile }) + "\n");
   process.stdout.write(line + "\n");
@@ -870,7 +882,78 @@ function folderToLocal(folder, sw, cfg) {
   return path.join(cfg.paths.sidecarLibrary, ...folder.slice(sw.textsFolder.length + 1).split("/"));
 }
 
+/** Keep the newest N per-run JSON logs; the stamp format sorts
+ *  lexically so a name sort is a time sort. Best-effort. */
+function pruneRunLogs(logDir, keep = 30) {
+  let names;
+  try {
+    names = fs.readdirSync(logDir).filter((f) => /^sweep-.*\.json$/.test(f)).sort();
+  } catch {
+    return;
+  }
+  for (const f of names.slice(0, Math.max(0, names.length - keep))) {
+    try { fs.unlinkSync(path.join(logDir, f)); } catch { /* best effort */ }
+  }
+}
+
+/**
+ * "_Sweep Status.md" in the sidecar library root: pipeline health
+ * where the team already looks, without touching the sweep machine.
+ * Live runs only (a dry run is a rehearsal); also written on a fatal
+ * abort so a dead scheduled run is visible in SharePoint.
+ */
+function writeStatusPage(cfg, { summary, logFile, errorLane, fatal }) {
+  const dir = cfg?.paths?.sidecarLibrary;
+  if (!dir) return;
+  const esc = (s) => String(s).replaceAll("|", "\\|").replaceAll("\n", " ").slice(0, 140);
+  const lane = [...(errorLane?.values() ?? [])];
+  const action = fatal
+    ? `**RUN FAILED — needs attention.** ${esc(fatal)}\n\n` +
+      "If the error above says AUTH EXPIRED, run the sweep once from a " +
+      "console on the sweep machine and complete the sign-in."
+    : lane.length
+      ? `${lane.length} document(s) are stuck in the Error lane (table below). ` +
+        "They retry automatically every run; a doc that stays here across " +
+        "several nights needs a look."
+      : "None — pipeline healthy.";
+  const md = [
+    "# Doc Index Sweep — status",
+    "",
+    "_Written automatically by the local sweep after every live run._",
+    "",
+    `- **Last run:** ${new Date().toISOString()}`,
+    `- **Result:** ${fatal ? "FAILED" : `${summary.processed} processed, ${summary.errors} errors, ${summary.library_items_seen} library items scanned`}`,
+    `- **Prompt version:** ${cfg.sweep?.promptVersion ?? ""}`,
+    `- **Run log:** \`${logFile || "(none — run aborted before logging)"}\` on the sweep machine`,
+    "",
+    "## Action needed",
+    "",
+    action,
+    "",
+    `## Error lane (${lane.length})`,
+    "",
+    ...(lane.length
+      ? ["| Document | Last error |", "|---|---|",
+         ...lane.map((d) => `| ${esc(d.name)} | ${esc(d.err)} |`)]
+      : ["(empty)"]),
+    "",
+  ].join("\n");
+  try {
+    fs.writeFileSync(path.join(dir, "_Sweep Status.md"), md);
+  } catch (e) {
+    process.stderr.write("status page write failed: " + e.message + "\n");
+  }
+}
+
+// fatal-path visibility: a scheduled run that dies (auth expiry,
+// network, config) still surfaces in SharePoint via the status page
+let gStatusCfg = null;
+const _setStatusCfg = (c) => (gStatusCfg = c);
+
 main().catch((e) => {
   process.stderr.write("sweep: " + (e.stack || e.message) + "\n");
+  if (gStatusCfg && !gStatusCfg.sweep?.dryRun) {
+    writeStatusPage(gStatusCfg, { summary: {}, errorLane: null, fatal: e.message });
+  }
   process.exit(1);
 });

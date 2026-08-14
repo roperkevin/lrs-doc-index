@@ -117,6 +117,18 @@ export class DelegatedAuth {
   }
 
   async _deviceFlow() {
+    // A scheduled (non-interactive) run must not sit waiting 15 min
+    // for a sign-in nobody will perform — fail loud and fast so the
+    // log and the status page say exactly what to do. The env knob
+    // exists for the harness and for consoles with redirected output.
+    if (!process.stderr.isTTY && process.env.DOCINDEX_ALLOW_DEVICE_PROMPT !== "1") {
+      throw new Error(
+        "AUTH EXPIRED — a device-code sign-in is required but this run is " +
+        "non-interactive (scheduled). Run once from a console and complete " +
+        "the sign-in: node --experimental-strip-types local/sweep.mjs " +
+        "--config local/config.json --live"
+      );
+    }
     const { ok, status, json } = await this._post(
       this.deviceUrl,
       this.resource

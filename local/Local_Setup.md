@@ -158,16 +158,28 @@ device-code sign-ins happen, so run it from a console. Flags:
 `--only <filename>` (the SmokeFile equivalent — one doc).
 
 **Schedule it** (replaces the Recurrence trigger; unlike attended PAD
-runs, Task Scheduler works with the machine locked). The action is
-`local\run_sweep.cmd` — a repo-tracked wrapper, so the task command
-is one unquoted path (schtasks mis-parses the escaping that a
-`"C:\Program Files\...\node.exe"` command line needs) and the
-sweep's console output appends to `work\sweep-task.log`:
+runs, Task Scheduler works with the machine locked). Register from
+the repo-tracked task definition — it carries settings a plain
+`schtasks /create` cannot express (catch-up runs when the machine
+was off/asleep at 17:00; don't-block-on-battery for laptops):
 
 ```
-schtasks /Create /TN "LRS Doc Index Sweep" /SC DAILY /ST 17:00 ^
-  /TR "C:\Repos\lrs-doc-index\local\run_sweep.cmd"
+schtasks /create /tn "LRS Doc Index Sweep" /xml C:\Repos\lrs-doc-index\local\sweep_task.xml /f
 ```
+
+The action is `local\run_sweep.cmd`, which self-updates (`git pull
+--ff-only` — merged fixes deploy on the next run; a non-fast-forward
+state just runs the checked-out version), rotates
+`work\sweep-task.log` at ~5 MB, and runs the live sweep. The sweep
+itself prunes per-run JSON logs to the newest 30 and refreshes the
+**status page** — `_Sweep Status.md` in the sidecar library root —
+after every live run (last run, result, error lane, action needed),
+so pipeline health is visible in SharePoint without touching this
+machine. A scheduled run whose sign-in has expired fails fast with
+`AUTH EXPIRED` in the log AND on the status page (it will not sit
+waiting for a device-code prompt; run once from a console to
+re-authenticate — set `DOCINDEX_ALLOW_DEVICE_PROMPT=1` to force the
+prompt in a redirected/non-console context).
 
 Run-summary JSON lands in `paths.workDir\sweep-<stamp>.json` (same
 fields as the flow's Run_summary compose, plus the plan when dry).

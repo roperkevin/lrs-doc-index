@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LRS Doc Index Sweep - Task Scheduler definition.
+     Register (replaces any existing task of the same name):
+       schtasks /create /tn "LRS Doc Index Sweep" /xml C:\Repos\lrs-doc-index\local\sweep_task.xml /f
+     Beyond what a plain schtasks /create can express:
+       - StartWhenAvailable: laptop off/asleep at 17:00 -> the run
+         fires as soon as the machine is back, instead of skipping
+         the night entirely
+       - battery settings: laptops are usually on battery; the
+         defaults would silently block every unplugged run
+     Edit the <Command> path if the repo lives somewhere other than
+     C:\Repos\lrs-doc-index. -->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Nightly LRS Doc Index sweep (local\run_sweep.cmd; log: work\sweep-task.log)</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-08-14T17:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByDay>
+        <DaysInterval>1</DaysInterval>
+      </ScheduleByDay>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <ExecutionTimeLimit>PT2H</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Repos\lrs-doc-index\local\run_sweep.cmd</Command>
+    </Exec>
+  </Actions>
+</Task>
