@@ -44,7 +44,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
-import { GraphClient } from "./graph.mjs";
+import { GraphClient, SpoClient } from "./graph.mjs";
 import { classifyDoc } from "./llm.mjs";
 
 // ---- flow v2.8 Config defaults (override via config.sweep) ----------
@@ -157,6 +157,15 @@ function loadConfig(argv) {
     tokenCache: path.join(authDir, "dataverse.json"),
     ...(cfg.llm.dataverse || {}),
   };
+  // SPO REST (hyperlink-column writes) inherits the same way; device
+  // mode defaults to the Azure CLI public client (SpoClient)
+  cfg.spo = {
+    ...inherit,
+    siteUrl: (cfg.sweep.siteUrl || FLOW_DEFAULTS.siteUrl),
+    baseUrl: cfg.sharePoint?.spoBaseUrl,
+    tokenCache: path.join(authDir, "spo.json"),
+    ...(cfg.spo || {}),
+  };
   cfg.sharePoint.sourceSitePath = cfg.sharePoint.sourceSitePath || "/sites/LocationReferencing";
   cfg.sharePoint.docKeyStrip = cfg.sharePoint.docKeyStrip || "/sites/LocationReferencing/";
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";
@@ -165,12 +174,26 @@ function loadConfig(argv) {
 
 // ---- write layer (real vs dry-run plan) -----------------------------
 
+// Graph cannot write hyperlink columns (400 invalidRequest in every
+// shape) — those two fields route through SPO ValidateUpdateListItem.
+const HYPERLINK_FIELDS = new Set(["SourceLink", "TextFileUrl"]);
+
+function splitHyperlinks(fields) {
+  const rest = {};
+  const links = {};
+  for (const [k, v] of Object.entries(fields)) {
+    (HYPERLINK_FIELDS.has(k) ? links : rest)[k] = v;
+  }
+  return { rest, links };
+}
+
 class Writer {
-  constructor(graph, siteId, lists, dryRun) {
+  constructor(graph, siteId, lists, dryRun, spo) {
     this.graph = graph;
     this.siteId = siteId;
     this.lists = lists;
     this.dryRun = dryRun;
+    this.spo = spo;
     this.plan = [];
     this._pseudoId = -1;
   }
@@ -180,13 +203,23 @@ class Writer {
   async createRow(listKey, fields) {
     this.log("createRow", listKey, fields);
     if (this.dryRun) return { id: this._pseudoId-- };
-    const res = await this.graph.createItem(this.siteId, this.lists[listKey], fields);
+    const { rest, links } = splitHyperlinks(fields);
+    const res = await this.graph.createItem(this.siteId, this.lists[listKey], rest);
+    if (Object.keys(links).length) {
+      await this.spo.validateUpdate(this.lists[listKey], Number(res.id), links);
+    }
     return { id: Number(res.id) };
   }
   async patchRow(listKey, id, fields) {
     this.log("patchRow", `${listKey}/${id}`, fields);
     if (this.dryRun) return;
-    await this.graph.updateItemFields(this.siteId, this.lists[listKey], id, fields);
+    const { rest, links } = splitHyperlinks(fields);
+    if (Object.keys(rest).length) {
+      await this.graph.updateItemFields(this.siteId, this.lists[listKey], id, rest);
+    }
+    if (Object.keys(links).length) {
+      await this.spo.validateUpdate(this.lists[listKey], id, links);
+    }
   }
   writeFile(absPath, data) {
     this.log("writeFile", absPath, { bytes: data.length });
@@ -348,9 +381,10 @@ async function main() {
   const op = (o) => runOp(mains, o);
 
   const graph = new GraphClient(cfg.graph);
+  const spo = new SpoClient(cfg.spo);
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
   const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
-  const writer = new Writer(graph, siteId, sp.lists, dry);
+  const writer = new Writer(graph, siteId, sp.lists, dry, spo);
 
   // ---- run-start snapshots (replaces per-doc Check_* queries) ----
   const fetch = async (listKey, kind, select) =>

@@ -1,5 +1,24 @@
 # Local sweep — release notes
 
+## v1.4 (2026-08-14)
+
+Live-run fix: **Graph cannot write hyperlink columns** — the probe
+(`local/probe.mjs`, added during the live walkthrough) showed every
+write shape for `SourceLink`/`TextFileUrl` rejected with 400
+invalidRequest while all other fields pass. New `SpoClient`
+(graph.mjs) routes exactly those two fields through SharePoint REST
+`ValidateUpdateListItem` (hyperlinks as "url, description"; per-field
+ErrorMessage checked — the endpoint 200s even on failure), which is
+the same API the cloud flow's connector uses. The write layer splits
+fields automatically; SPO auth follows the same device/app modes
+(device default: the Azure CLI public client, pre-consented against
+SharePoint — a third first-run sign-in, cached as `auth/spo.json`).
+Also v1.3.1 (Predict `source` telemetry — AI Builder rejects without
+it) folded in. Gate: the mock Graph now rejects hyperlink fields
+like the real service and the SPO endpoint is mocked, so the live
+leg proves the split path; device leg asserts all three resources
+sign in and refresh. **Gate PASSED 2026-08-14 (46/46).**
+
 ## v1.3 (2026-08-14)
 
 **No Azure app registration required.** New `local/auth.mjs`

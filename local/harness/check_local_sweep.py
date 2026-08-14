@@ -105,6 +105,7 @@ class MockState:
         self.device_grants = 0
         self.refresh_grants = 0
         self.graph_last_auth = None
+        self.spo_last_auth = None
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -192,11 +193,32 @@ def make_handler(state, lib_guid, src_files):
                 # exactly like the flow's Prompt_json_slice
                 text = "Sure! Here is the JSON:\n```json\n" + json.dumps(out) + "\n```"
                 return self._json({"responsev2": {"predictionOutput": {"text": text}}})
+            # SPO ValidateUpdateListItem — hyperlink-column writes
+            m = re.match(r"^/sites/lrsworkspace/_api/web/lists\(guid'([^']+)'\)/items\((-?\d+)\)/ValidateUpdateListItem$", p)
+            if m:
+                guid, iid = m.group(1), m.group(2)
+                state.spo_last_auth = self.headers.get("authorization")
+                body = json.loads(self._read())
+                row = state.lists.setdefault(guid, {}).setdefault(iid, {})
+                out = []
+                for fv in body.get("formValues", []):
+                    name, val = fv.get("FieldName"), str(fv.get("FieldValue", ""))
+                    if val.startswith("http"):
+                        url, _, desc = val.partition(", ")
+                        row[name] = {"Url": url, "Description": desc}
+                    else:
+                        row[name] = val
+                    out.append({"FieldName": name, "ErrorMessage": None})
+                return self._json({"value": out})
             m = re.match(r"^/v1\.0/sites/([^/]+)/lists/([^/]+)/items$", p)
             if m:
                 guid = m.group(2)
                 state.graph_last_auth = self.headers.get("authorization")
                 fields = json.loads(self._read()).get("fields", {})
+                if any(k in fields for k in ("SourceLink", "TextFileUrl")):
+                    # real Graph rejects hyperlink columns — keep the mock honest
+                    return self._json({"error": {"code": "invalidRequest",
+                                                 "message": "hyperlink column via Graph"}}, 400)
                 state.lists.setdefault(guid, {})
                 iid = str(state.next_id)
                 state.next_id += 1
@@ -338,6 +360,12 @@ def main():
         "llm": {
             "provider": "aibuilder", "environmentUrl": base,
             "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6", "maxRetries": 0,
+        },
+        "spo": {
+            "auth": "app", "tenantId": "mock", "clientId": "mock",
+            "clientSecret": "mock-secret", "tokenUrl": base + "/token",
+            "siteUrl": "https://mock.example/sites/lrsworkspace",
+            "baseUrl": base + "/sites/lrsworkspace",
         },
         "sweep": {
             "siteUrl": "https://mock.example/sites/lrsworkspace",
@@ -526,20 +554,28 @@ def main():
             "tokenCache": os.path.join(auth_dir, "dataverse.json"),
         },
     }
+    cfg["spo"] = {
+        "auth": "device", "tokenUrl": base + "/token",
+        "deviceUrl": base + "/devicecode",
+        "tokenCache": os.path.join(auth_dir, "spo.json"),
+        "siteUrl": "https://mock.example/sites/lrsworkspace",
+        "baseUrl": base + "/sites/lrsworkspace",
+    }
     cfg["sweep"]["promptVersion"] = "v2.0-device-leg"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
     check("device run exit 0", proc.returncode == 0, proc.stderr[-600:])
-    check("device flow ran for both resources",
-          state.devicecode_hits == 2 and state.device_grants == 2,
+    check("device flow ran for all three resources",
+          state.devicecode_hits == 3 and state.device_grants == 3,
           f"devicecode={state.devicecode_hits} grants={state.device_grants}")
     check("graph write used a delegated token",
           str(state.graph_last_auth) in ("Bearer device-token", "Bearer refreshed-token"),
           str(state.graph_last_auth))
-    check("refresh tokens cached for both resources",
+    check("refresh tokens cached for all resources",
           os.path.exists(os.path.join(auth_dir, "graph.json"))
-          and os.path.exists(os.path.join(auth_dir, "dataverse.json")))
+          and os.path.exists(os.path.join(auth_dir, "dataverse.json"))
+          and os.path.exists(os.path.join(auth_dir, "spo.json")))
     # second run: cached refresh token, silent refresh, no new sign-in
     cfg["sweep"]["promptVersion"] = "v2.0-device-leg-2"
     with open(cfg_path, "w") as f:
@@ -547,7 +583,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
     check("device rerun exit 0", proc.returncode == 0, proc.stderr[-600:])
     check("rerun refreshed silently (no new device prompt)",
-          state.devicecode_hits == 2 and state.refresh_grants >= 1,
+          state.devicecode_hits == 3 and state.refresh_grants >= 1,
           f"devicecode={state.devicecode_hits} refresh={state.refresh_grants}")
 
     server.shutdown()

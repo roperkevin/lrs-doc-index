@@ -31,6 +31,8 @@ import path from "node:path";
 
 export const GRAPH_PUBLIC_CLIENT = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
 export const DATAVERSE_PUBLIC_CLIENT = "51f81489-12ee-4a9e-aaae-a2591f45987d";
+// Azure CLI — broadly pre-consented against SharePoint Online itself
+export const AZURE_CLI_PUBLIC_CLIENT = "04b07795-8ddb-461a-bbee-02f9e1bf7b46";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

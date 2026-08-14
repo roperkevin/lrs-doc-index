@@ -57,10 +57,13 @@ How it works:
 
 1. **First run** (do it from a console): the sweep prints
    `Open https://microsoft.com/devicelogin and enter the code XXXX`
-   — once for Graph, once for Dataverse. Sign in with your normal
-   account.
+   — up to three times: Graph (list reads/writes), Dataverse (the AI
+   Builder call), and SharePoint itself (hyperlink-column writes —
+   Graph cannot set hyperlink fields, so `SourceLink`/`TextFileUrl`
+   go through SharePoint REST `ValidateUpdateListItem`). Sign in
+   with your normal account each time.
 2. The refresh tokens are cached under `paths.workDir\auth\`
-   (`graph.json`, `dataverse.json`, mode 0600). Every later run —
+   (`graph.json`, `dataverse.json`, `spo.json`, mode 0600). Every later run —
    including scheduled ones — refreshes silently; nightly runs keep
    the tokens alive indefinitely.
 3. If the machine sits idle long enough for a refresh token to
