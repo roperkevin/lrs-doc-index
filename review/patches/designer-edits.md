@@ -1149,3 +1149,71 @@ title. Rollback: revert U4→U2 (the conditions), then U1's new keys
 are inert and U5–U7 are behavior-identical at the default slot
 counts once U4 is reverted — or restore all seven from this section
 in reverse.
+
+# v2_8-errdrill round — the Catch names the LEAF failure, not the container
+
+Motivated by a live v2.8 run (2026-08-13): a doc errored with
+`If_has_text: {"code":"ActionFailed","message":"An action failed. No
+dependent actions succeeded."}` — useless, because
+`result('Try_index')` returns only FIRST-degree children, so any
+deep failure reports as its container; and the run-history UI would
+not load the (huge) nested run to find the leaf by hand. This round
+makes the Catch drill down: Error rows and `Run_summary` now carry a
+path like `If_has_text > For_each_kw > Check_kw: {…the real error…}`.
+Baked into `flow/v2_8/definition.json` + the re-cut
+`DocIndexSweep_v2_8.zip`; the nodes below are the patch-in-place
+route. Every `result()` call is guarded by a Condition keyed on the
+parent level's failed-action name, so a `result()` on a
+never-executed scope is never evaluated.
+
+## E1 — Init_ErrLeaf (top level)
+
+Initialize variable **`ErrLeaf`** (String, value `@{string('')}`),
+inserted after `Init_DocRowId` (re-point `Get_keywords`'s run-after
+to it).
+
+## E2 — the drill chain inside Catch_index
+
+After `Filter_failed`, insert (then re-point `Err_detail`):
+
+1. **`Set_ErrLeaf_L1`** (Set variable `ErrLeaf`):
+   `@{concat(coalesce(first(body('Filter_failed'))?['name'], 'unknown-action'), ': ', take(string(coalesce(first(body('Filter_failed'))?['error'], first(body('Filter_failed'))?['outputs'], '')), 3500))}`
+2. **`If_drill_has_text`** (Condition:
+   `@equals(coalesce(first(body('Filter_failed'))?['name'], ''), 'If_has_text')`),
+   Yes branch:
+   - **`Filter_failed_L2`** (Filter array): from
+     `@result('If_has_text')`, same Failed/TimedOut where-clause as
+     `Filter_failed`.
+   - **`If_L2_found`** (Condition:
+     `@greater(length(body('Filter_failed_L2')), 0)`), Yes branch:
+     - **`Set_ErrLeaf_L2`** — same concat shape over
+       `Filter_failed_L2`, prefixed `'If_has_text > '`.
+     - **`If_drill_signals`** (first L2 name == `If_related_signals`)
+       → `Filter_failed_L3` from `@result('If_related_signals')` →
+       `If_L3_found` → `Set_ErrLeaf_L3` (prefix
+       `'If_has_text > If_related_signals > '`) →
+       **`If_drill_hasrel`** (first L3 name == `If_has_related`) →
+       `Filter_failed_L4` from `@result('If_has_related')` →
+       `If_L4_found` → `Set_ErrLeaf_L4` (prefix
+       `'… > If_has_related > '`).
+     - **`If_drill_ids`** (first L2 name == `For_each_id`) →
+       `Filter_failed_ids` from `@result('For_each_id')` →
+       `If_ids_found` → `Set_ErrLeaf_ids` (prefix
+       `'If_has_text > For_each_id > '`).
+     - **`If_drill_kws`** (first L2 name == `For_each_kw`) →
+       `Filter_failed_kws` from `@result('For_each_kw')` →
+       `If_kws_found` → `Set_ErrLeaf_kws` (prefix
+       `'If_has_text > For_each_kw > '`).
+3. **`Err_detail`** — run-after re-pointed to `If_drill_has_text`
+   (Succeeded, Failed, Skipped, Timed out); expression becomes the
+   variable with the original first-degree fallback:
+   `@take(if(empty(variables('ErrLeaf')), concat(coalesce(first(body('Filter_failed'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed'))?['error'], first(body('Filter_failed'))?['outputs'], ''))), variables('ErrLeaf')), 4000)`
+
+`If_err_exists` / `Increment_ErrorCount` are untouched (they consume
+`Err_detail` as before). Depth note: a failure still deeper (e.g.
+inside `For_each_patched`) reports its container at the deepest
+drilled level — add another guarded level then, same pattern.
+
+Smoke: force one failure (e.g. temporarily break a list GUID in a
+`Check_*` action on a SmokeFile run), confirm the Error row carries
+the `A > B > leaf: {...}` path, revert.
