@@ -14,6 +14,7 @@
 > | r2-2 (option a), r2-3 | `flow/v2_8/definition.json` (2026-08-13: SourceSiteUrl deleted, trigger concurrency 1) | `flow/DocIndexSweep_v2_8.zip` |
 > | §v2_7-fixes FX-1..FX-7 | `flow/v2_7_fix/definition.json` AND `flow/v2_8/definition.json` | `DocIndexSweep_v2_7_fix.zip` / `DocIndexSweep_v2_8.zip` |
 > | v2_8 X1–X5 | `flow/v2_8/definition.json` | `flow/DocIndexSweep_v2_8.zip` |
+> | §v2_8-errdrill E1–E2, §v2_8-kwmeta K1–K5 | `flow/v2_8/definition.json` | `flow/DocIndexSweep_v2_8.zip` |
 > | §testplangen-v2_8 T1–T2, §testplangen-v2_12 U1–U7 | `testplangen/flow/v1_0/definition.json` + `core_v1_0/definition.json` | `TestPlanGen_v1_0.zip` / `TestPlanGenCore_v1_0.zip` |
 >
 > Every listed package's payload is byte-identical to its folder
@@ -1261,3 +1262,73 @@ drilled level — add another guarded level then, same pattern.
 Smoke: force one failure (e.g. temporarily break a list GUID in a
 `Check_*` action on a SmokeFile run), confirm the Error row carries
 the `A > B > leaf: {...}` path, revert.
+
+# v2_8-kwmeta round — keyword metadata filtered in memory (no more OR-chain query)
+
+Motivated by a live 400 (2026-08-14, surfaced by the errdrill:
+`If_has_text > If_related_signals > Get_kw_meta`): the keyword
+metadata GetItems built an OR chain mixing `ID eq N` and
+`CanonicalRefId eq N` clauses — SharePoint answered its generic
+"Cannot complete this action" (lookup-eq OR chains and chain length
+both trigger it; single-clause lookup filters like `Get_my_kws`'
+`DocumentId eq N` work fine). The rework stops querying SharePoint
+entirely: the run ALREADY holds the full Keywords vocabulary
+(`Get_keywords`, $top 5000, all columns — `Filter_canonical` reads
+`CanonicalRef` from it), so the metadata subset is filtered in
+memory. RelatedRank tolerates the one degradation this introduces
+(a keyword created mid-run lacks Kind/alias metadata until the next
+nightly: kind defaults to "topic", alias mapping to identity —
+`scripts/RelatedRank.ts` §0).
+
+Baked into `flow/v2_8/definition.json` + the re-cut zip; the nodes
+below are the patch-in-place route (inside `If_related_signals`):
+
+## K1 — Select_my_kw_ids (Select), after Select_kw_filter
+
+From: `@coalesce(body('Get_my_kws')?['value'], json('[]'))`
+Map (text mode): `@string(coalesce(item()?['Keyword']?['Id'], -1))`
+(the −1 sentinel means a null lookup can never match anything).
+
+## K2 — My_kw_idset (Compose), after K1
+
+```
+@{concat('|', join(body('Select_my_kw_ids'), '|'), '|')}
+```
+
+## K3 — Get_kw_meta becomes a Filter array (same name)
+
+Delete the `Get_kw_meta` GetItems action and create a **Filter
+array** action with the SAME NAME, run-after K2 (name references
+survive a delete+recreate in the designer):
+
+From: `@coalesce(body('Get_keywords')?['value'], json('[]'))`
+Where (advanced mode):
+
+```
+@or(contains(outputs('My_kw_idset'), concat('|', string(item()?['ID']), '|')), contains(outputs('My_kw_idset'), concat('|', string(coalesce(item()?['CanonicalRef']?['Id'], 0)), '|')))
+```
+
+Canonical rows for the doc's keyword ids plus alias rows pointing at
+them — the same set the old query returned, no round-trip.
+
+## K4 — delete the two clause-builder Selects
+
+`Select_kwmeta_canon` and `Select_kwmeta_alias` are no longer
+referenced — delete both.
+
+## K5 — three consumer edits (a Filter array's body IS the array)
+
+- `Select_kw_filter_meta` → From: `@coalesce(body('Get_kw_meta'), json('[]'))`
+- `Run_related_shortlist` → `ScriptParameters/kwMetaJson`:
+  `@string(coalesce(body('Get_kw_meta'), json('[]')))`
+- `Run_related_rank` → same edit to `kwMetaJson`.
+
+Watch-item (documented, not changed): `Get_kw_sharers` keeps its
+`KeywordId eq` OR chain — it queries the whole junction list and
+cannot be prefetched. If it ever 400s the same way, the cause is
+chain length; chunk it then.
+
+Smoke: SmokeFile on the doc that failed → the run passes
+`Get_kw_meta` (now instant, no HTTP), `Run_related_shortlist`
+receives a non-empty `kwMetaJson`, and the doc heals to Indexed.
+Blank SmokeFile after.
