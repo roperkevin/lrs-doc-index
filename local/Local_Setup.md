@@ -158,11 +158,15 @@ device-code sign-ins happen, so run it from a console. Flags:
 `--only <filename>` (the SmokeFile equivalent — one doc).
 
 **Schedule it** (replaces the Recurrence trigger; unlike attended PAD
-runs, Task Scheduler works with the machine locked):
+runs, Task Scheduler works with the machine locked). The action is
+`local\run_sweep.cmd` — a repo-tracked wrapper, so the task command
+is one unquoted path (schtasks mis-parses the escaping that a
+`"C:\Program Files\...\node.exe"` command line needs) and the
+sweep's console output appends to `work\sweep-task.log`:
 
 ```
-schtasks /Create /TN "DocIndexSweep" /SC DAILY /ST 17:00 ^
-  /TR "\"C:\Program Files\nodejs\node.exe\" --experimental-strip-types C:\DocIndex\lrs-doc-index\local\sweep.mjs --config C:\DocIndex\lrs-doc-index\local\config.json --live"
+schtasks /Create /TN "LRS Doc Index Sweep" /SC DAILY /ST 17:00 ^
+  /TR "C:\Repos\lrs-doc-index\local\run_sweep.cmd"
 ```
 
 Run-summary JSON lands in `paths.workDir\sweep-<stamp>.json` (same
