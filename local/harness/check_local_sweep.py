@@ -101,6 +101,10 @@ class MockState:
         self.llm_calls = 0
         self.llm_last_headers = {}
         self.llm_last_request = {}
+        self.devicecode_hits = 0
+        self.device_grants = 0
+        self.refresh_grants = 0
+        self.graph_last_auth = None
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -137,8 +141,26 @@ def make_handler(state, lib_guid, src_files):
 
         def do_POST(self):
             p = urlparse(self.path).path
-            if p == "/token":
+            if p == "/devicecode":
                 self._read()
+                state.devicecode_hits += 1
+                return self._json({
+                    "device_code": "mock-dc", "user_code": "MOCK-CODE",
+                    "verification_uri": "https://mock.example/devicelogin",
+                    "interval": 1, "expires_in": 60,
+                    "message": "mock sign-in",
+                })
+            if p == "/token":
+                body = self._read().decode()
+                if "device_code" in body:
+                    state.device_grants += 1
+                    # short-lived on purpose: forces the refresh path
+                    return self._json({"access_token": "device-token",
+                                       "refresh_token": "mock-rt", "expires_in": 30})
+                if "refresh_token" in body:
+                    state.refresh_grants += 1
+                    return self._json({"access_token": "refreshed-token",
+                                       "refresh_token": "mock-rt-2", "expires_in": 3600})
                 return self._json({"access_token": "mock", "expires_in": 3600})
             if p == "/v1/messages":
                 body = json.loads(self._read())
@@ -173,6 +195,7 @@ def make_handler(state, lib_guid, src_files):
             m = re.match(r"^/v1\.0/sites/([^/]+)/lists/([^/]+)/items$", p)
             if m:
                 guid = m.group(2)
+                state.graph_last_auth = self.headers.get("authorization")
                 fields = json.loads(self._read()).get("fields", {})
                 state.lists.setdefault(guid, {})
                 iid = str(state.next_id)
@@ -185,6 +208,7 @@ def make_handler(state, lib_guid, src_files):
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)/fields$", urlparse(self.path).path)
             if m:
                 guid, iid = m.group(1), m.group(2)
+                state.graph_last_auth = self.headers.get("authorization")
                 patch = json.loads(self._read())
                 state.lists.setdefault(guid, {}).setdefault(iid, {}).update(patch)
                 return self._json({"id": iid})
@@ -481,6 +505,47 @@ def main():
           and state.llm_last_headers.get("anthropic-beta") == "oauth-2025-04-20"
           and not state.llm_last_headers.get("x-api-key"),
           str(state.llm_last_headers))
+
+    # ---- leg 6: delegated device-code auth (no app registration) ----
+    print("== device auth leg")
+    auth_dir = os.path.join(tmp, "auth")
+    cfg["graph"] = {
+        "auth": "device", "baseUrl": base + "/v1.0",
+        "tokenUrl": base + "/token", "deviceUrl": base + "/devicecode",
+        "tokenCache": os.path.join(auth_dir, "graph.json"), "maxRetries": 0,
+    }
+    cfg["llm"] = {
+        "provider": "aibuilder", "environmentUrl": base,
+        "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6", "maxRetries": 0,
+        "dataverse": {
+            "auth": "device", "tokenUrl": base + "/token",
+            "deviceUrl": base + "/devicecode",
+            "tokenCache": os.path.join(auth_dir, "dataverse.json"),
+        },
+    }
+    cfg["sweep"]["promptVersion"] = "v2.0-device-leg"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
+    check("device run exit 0", proc.returncode == 0, proc.stderr[-600:])
+    check("device flow ran for both resources",
+          state.devicecode_hits == 2 and state.device_grants == 2,
+          f"devicecode={state.devicecode_hits} grants={state.device_grants}")
+    check("graph write used a delegated token",
+          str(state.graph_last_auth) in ("Bearer device-token", "Bearer refreshed-token"),
+          str(state.graph_last_auth))
+    check("refresh tokens cached for both resources",
+          os.path.exists(os.path.join(auth_dir, "graph.json"))
+          and os.path.exists(os.path.join(auth_dir, "dataverse.json")))
+    # second run: cached refresh token, silent refresh, no new sign-in
+    cfg["sweep"]["promptVersion"] = "v2.0-device-leg-2"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
+    check("device rerun exit 0", proc.returncode == 0, proc.stderr[-600:])
+    check("rerun refreshed silently (no new device prompt)",
+          state.devicecode_hits == 2 and state.refresh_grants >= 1,
+          f"devicecode={state.devicecode_hits} refresh={state.refresh_grants}")
 
     server.shutdown()
     report()

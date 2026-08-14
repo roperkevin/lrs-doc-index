@@ -1,5 +1,27 @@
 # Local sweep — release notes
 
+## v1.3 (2026-08-14)
+
+**No Azure app registration required.** New `local/auth.mjs`
+implements the OAuth device-code grant against Entra using
+Microsoft's own pre-registered public clients (the Graph CLI app for
+Graph, Microsoft's public Dataverse sample client for AI Builder) —
+`graph.auth: "device"` is now the default. First run prints two
+device-code sign-ins (Graph, Dataverse); refresh tokens are cached
+per resource under `paths.workDir/auth/` (0600) and later runs —
+scheduled ones included — refresh silently. Everything runs as the
+signed-in user with their existing SharePoint/Dataverse permissions,
+which is the cloud flow's own connection identity model (rows show
+your name as Created/Modified By, as today). Consent-restricted
+tenants can point `clientId` at any allowed public client (e.g. the
+Azure CLI). The client-credentials app-registration path from v1.0
+remains as `"auth": "app"` for a future service-account setup.
+
+Gate: new device-auth leg — mock devicecode/token endpoints, both
+resources sign in, writes carry the delegated token, refresh-token
+caches written, second run refreshes silently with no new prompt.
+**Gate PASSED 2026-08-14 (45/45).**
+
 ## v1.2 (2026-08-14)
 
 The AI step goes back to **the cloud flow's own model**: provider

@@ -25,13 +25,12 @@
   },
 
   "graph": {
-    "tenantId": "<entra-tenant-guid>",
-    "clientId": "<app-registration-client-id>",
-    "clientSecret": { "$env": "DOCINDEX_GRAPH_SECRET" }
+    "$comment": "auth 'device' (default): NO Azure app registration — the first run prints a device-code sign-in (you sign in as yourself; your existing SharePoint permissions apply) and caches refresh tokens under paths.workDir/auth/. If the tenant blocks the scope on first sign-in, set clientId to a pre-consented public client (Azure CLI: 04b07795-8ddb-461a-bbee-02f9e1bf7b46). App-registration alternative: {\"auth\": \"app\", \"tenantId\": \"...\", \"clientId\": \"...\", \"clientSecret\": {\"$env\": \"DOCINDEX_GRAPH_SECRET\"}} — Local_Setup.md §2.",
+    "auth": "device"
   },
 
   "llm": {
-    "$comment": "provider 'aibuilder' calls the SAME AI Builder custom prompt the cloud flow uses — same model, same tenant-hosted prompt text, same AI Builder credit metering — via the Dataverse Web API, authenticating with the graph app above (add it as an application user in the Power Platform environment; Local_Setup.md §3). environmentUrl = the environment's Dataverse URL (Power Platform admin center → Environments); modelId = the flow's Run_prompt recordId. Alternative: \"provider\": \"anthropic\" (Claude-account OAuth via `ant auth login`, or auth 'apiKey') executes prompts/DocIndex_Prompt.md instead — see local/CHANGES.md v1.1.",
+    "$comment": "provider 'aibuilder' calls the SAME AI Builder custom prompt the cloud flow uses — same model, same tenant-hosted prompt text, same AI Builder credit metering — via the Dataverse Web API. Auth follows the graph section above (default: device sign-in as you — you own the prompt, so no extra grant is needed; Local_Setup.md §3). environmentUrl = the environment's Dataverse URL; modelId = the flow's Run_prompt recordId. Alternative: \"provider\": \"anthropic\" (Claude-account OAuth via `ant auth login`, or auth 'apiKey') executes prompts/DocIndex_Prompt.md instead — see local/CHANGES.md v1.1.",
     "provider": "aibuilder",
     "environmentUrl": "https://<org>.crm.dynamics.com",
     "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6"

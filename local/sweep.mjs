@@ -141,8 +141,22 @@ function loadConfig(argv) {
   if (args.flags.max !== undefined) cfg.sweep.maxDocsPerRun = args.flags.max;
   if (args.flags.only !== undefined) cfg.sweep.smokeFile = args.flags.only;
   cfg.llm = cfg.llm || {};
-  // the aibuilder provider reuses the Graph app registration by default
-  cfg.llm.dataverse = cfg.llm.dataverse || cfg.graph;
+  cfg.graph = cfg.graph || {};
+  // device-mode refresh-token caches (one per resource) live in workDir
+  const authDir = path.join(cfg.paths.workDir || ".", "auth");
+  cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
+  // the aibuilder provider inherits the Graph auth settings by default
+  // (device mode: same tenant/sign-in, its own public client + cache;
+  // app mode: same registration/secret)
+  const inherit = { ...cfg.graph };
+  const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
+  if (inheritMode === "device") delete inherit.clientId; // Dataverse device mode has its own public client
+  delete inherit.baseUrl; // Graph-only
+  cfg.llm.dataverse = {
+    ...inherit,
+    tokenCache: path.join(authDir, "dataverse.json"),
+    ...(cfg.llm.dataverse || {}),
+  };
   cfg.sharePoint.sourceSitePath = cfg.sharePoint.sourceSitePath || "/sites/LocationReferencing";
   cfg.sharePoint.docKeyStrip = cfg.sharePoint.docKeyStrip || "/sites/LocationReferencing/";
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";

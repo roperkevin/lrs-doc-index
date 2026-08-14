@@ -215,12 +215,31 @@ async function requestJson(cfg, prompt) {
 
 // ---- provider: aibuilder (the cloud flow's model) -------------------
 
+import { DelegatedAuth, DATAVERSE_PUBLIC_CLIENT } from "./auth.mjs";
+
 let _dvToken = null;
 let _dvExpires = 0;
+let _dvDelegated = null;
 
 async function dataverseToken(cfg) {
-  if (_dvToken && Date.now() < _dvExpires - 60000) return _dvToken;
   const dv = cfg.dataverse || {};
+  const mode = dv.auth || (dv.clientSecret !== undefined ? "app" : "device");
+  if (mode === "device") {
+    // delegated sign-in as the user — no app registration; the user's
+    // own Dataverse/AI Builder permissions apply (they own the prompt)
+    if (!_dvDelegated) {
+      _dvDelegated = new DelegatedAuth({
+        clientId: dv.clientId || DATAVERSE_PUBLIC_CLIENT,
+        scopes: [`${cfg.environmentUrl}/user_impersonation`, "offline_access"],
+        cachePath: dv.tokenCache,
+        tenantId: dv.tenantId,
+        deviceUrl: dv.deviceUrl,
+        tokenUrl: dv.tokenUrl,
+      });
+    }
+    return _dvDelegated.token();
+  }
+  if (_dvToken && Date.now() < _dvExpires - 60000) return _dvToken;
   const tokenUrl =
     dv.tokenUrl || `https://login.microsoftonline.com/${dv.tenantId}/oauth2/v2.0/token`;
   const body = new URLSearchParams({
@@ -284,6 +303,7 @@ async function requestAiBuilder(cfg, inputs) {
     }
     if (res.status === 401) {
       _dvToken = null;
+      if (_dvDelegated) _dvDelegated.invalidate();
       lastErr = new Error(`AI Builder 401: ${(await res.text()).slice(0, 300)}`);
       continue;
     }

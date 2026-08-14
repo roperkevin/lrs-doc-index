@@ -97,9 +97,10 @@ keeps the old yaml-on-top layout).
 | pad/runner/ops.mjs | Shared script-loader/op-dispatch (used by the PAD runner and the local sweep) | v1.0 |
 | local/Local_Setup.md | Local sweep build + deploy guide — the whole sweep off Power Automate (SharePoint stays) | v1.0 |
 | local/sweep.mjs | Local sweep orchestrator — flow v2.8 reimplemented over Graph + direct LLM API + synced libraries | v1.0 |
-| local/graph.mjs | Microsoft Graph list client (Entra client-credentials; list GUIDs from config, no hand-typed URIs) | v1.0 |
-| local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API | v1.2 |
-| local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock Dataverse Predict + mock Anthropic; dry/live/idempotency/provider legs; CI) | v1.2 |
+| local/auth.mjs | Delegated device-code sign-in (Microsoft pre-registered public clients — no Azure app registration) | v1.0 |
+| local/graph.mjs | Microsoft Graph list client (device sign-in default, client-credentials optional; list GUIDs from config, no hand-typed URIs) | v1.1 |
+| local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API | v1.3 |
+| local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock Dataverse Predict + mock Anthropic + mock device-code auth; dry/live/idempotency/provider/auth legs; CI) | v1.3 |
 | local/config.sample.json | Machine config template (copy to git-ignored local/config.json) | — |
 | local/CHANGES.md | Local sweep release notes | v1.0 |
 
