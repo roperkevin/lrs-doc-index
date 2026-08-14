@@ -38,17 +38,25 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 export class DelegatedAuth {
   /**
-   * opts: clientId, scopes (array), cachePath,
-   *       tenantId ("organizations" default),
-   *       deviceUrl/tokenUrl (mock overrides)
+   * opts: clientId, cachePath, tenantId ("organizations" default),
+   *       deviceUrl/tokenUrl (mock overrides), and ONE of:
+   *   scopes   (array) — Entra v2 endpoint
+   *   resource (string) — Entra v1 endpoint with a `resource` param.
+   *     Needed for SharePoint REST: v2 `.default` mints tokens with
+   *     the generic SPO app-GUID audience, which SP REST rejects
+   *     (401 invalid_request); the v1 resource form yields the
+   *     host-URL audience SP requires — the same thing the Azure
+   *     CLI does for `--resource https://tenant.sharepoint.com`.
    */
   constructor(opts) {
     this.clientId = opts.clientId;
     this.scopes = opts.scopes;
+    this.resource = opts.resource;
     this.cachePath = opts.cachePath;
     const authority = `https://login.microsoftonline.com/${opts.tenantId || "organizations"}`;
-    this.deviceUrl = opts.deviceUrl || `${authority}/oauth2/v2.0/devicecode`;
-    this.tokenUrl = opts.tokenUrl || `${authority}/oauth2/v2.0/token`;
+    const v = this.resource ? "" : "v2.0/";
+    this.deviceUrl = opts.deviceUrl || `${authority}/oauth2/${v}devicecode`;
+    this.tokenUrl = opts.tokenUrl || `${authority}/oauth2/${v}token`;
     this._mem = null;
   }
 
@@ -79,6 +87,7 @@ export class DelegatedAuth {
       access_token: json.access_token,
       refresh_token: json.refresh_token,
       expires_at: Date.now() + Number(json.expires_in || 3600) * 1000,
+      resource: this.resource ?? null,
     };
     this._mem = tok;
     this._writeCache(tok);
@@ -86,20 +95,24 @@ export class DelegatedAuth {
   }
 
   async _refresh(refreshToken) {
-    const { ok, json } = await this._post(this.tokenUrl, {
+    const params = {
       grant_type: "refresh_token",
       client_id: this.clientId,
       refresh_token: refreshToken,
-      scope: this.scopes.join(" "),
-    });
+    };
+    if (this.resource) params.resource = this.resource;
+    else params.scope = this.scopes.join(" ");
+    const { ok, json } = await this._post(this.tokenUrl, params);
     return ok ? this._store(json) : null;
   }
 
   async _deviceFlow() {
-    const { ok, status, json } = await this._post(this.deviceUrl, {
-      client_id: this.clientId,
-      scope: this.scopes.join(" "),
-    });
+    const { ok, status, json } = await this._post(
+      this.deviceUrl,
+      this.resource
+        ? { client_id: this.clientId, resource: this.resource }
+        : { client_id: this.clientId, scope: this.scopes.join(" ") }
+    );
     if (!ok) {
       throw new Error(`device-code request failed (${status}): ${JSON.stringify(json).slice(0, 300)}`);
     }
@@ -113,10 +126,13 @@ export class DelegatedAuth {
     const deadline = Date.now() + Number(json.expires_in || 900) * 1000;
     while (Date.now() < deadline) {
       await sleep(interval * 1000);
+      // v1 takes the device code in `code`; v2 in `device_code`
       const poll = await this._post(this.tokenUrl, {
         grant_type: "urn:ietf:params:oauth:grant-type:device_code",
         client_id: this.clientId,
-        device_code: json.device_code,
+        ...(this.resource
+          ? { code: json.device_code }
+          : { device_code: json.device_code }),
       });
       if (poll.ok) return this._store(poll.json);
       const err = poll.json.error;
@@ -134,7 +150,10 @@ export class DelegatedAuth {
 
   async token() {
     const cached = this._mem || this._readCache();
-    if (cached?.access_token && Date.now() < cached.expires_at - 60000) {
+    // a cached token minted for a different resource/endpoint form is
+    // stale even if unexpired (its refresh token still converts)
+    const sameAudience = (cached?.resource ?? null) === (this.resource ?? null);
+    if (cached?.access_token && sameAudience && Date.now() < cached.expires_at - 60000) {
       this._mem = cached;
       return cached.access_token;
     }
