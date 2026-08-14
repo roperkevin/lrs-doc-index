@@ -1,5 +1,14 @@
 # PAD offload — release notes
 
+## v2.3 (2026-08-14)
+
+`runner/ops.mjs`: the script loading + op dispatch (SCRIPT_FILES,
+loadScripts, runOp, param plumbing) extracted from `run_job.mjs` into
+a shared module so the new local sweep (`local/sweep.mjs`) drives the
+unmodified `scripts/` through the same gated path. `run_job.mjs` now
+imports it; CLI behavior and result shapes are byte-identical. Gate
+re-PASSED 27/27.
+
 ## v1.0 (2026-08-14)
 
 New component: Power Automate Desktop compute offload for the Doc

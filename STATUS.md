@@ -13,6 +13,7 @@ Last updated: **2026-08-14 (TestPlanGen prompt v1.7 authored — per-case source
 | Config.PromptVersion | **v1.9** — but the v1.9 backfill has NOT run (SmokeFile stuck, FX-5); v2.0 authored, lands with the v2.8 window | live export / `flow/v2_8/definition.json` (authored) |
 | Config.SmokeFile | **"ExB - AutopopulateReferents.pptx" — MUST be cleared** (FX-5): pins every nightly run to one file | designer edit |
 | AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) | `prompts/DocIndex_Prompt.md` |
+| Local sweep (off-Power-Automate) | **NOT deployed** — v1.0 authored 2026-08-14 (gate 33/33); shadow checklist (`local/Local_Setup.md` §5) pending; cloud flow stays ON until the documented handover — never both live | `local/Local_Setup.md` / `local/CHANGES.md` |
 
 ## Office Scripts (pasted into the Automate-tab workbook)
 

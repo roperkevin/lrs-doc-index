@@ -9,3 +9,7 @@ __pycache__/
 *.pyc
 
 # harness-generated artifacts have their own review/harness/.gitignore
+
+# local sweep machine config (secrets referenced via env vars, but the
+# tenant/client ids and machine paths don't belong in the repo either)
+local/config.json

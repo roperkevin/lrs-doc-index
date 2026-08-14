@@ -1,0 +1,50 @@
+{
+  "$comment": "Local Doc Index sweep configuration. Copy to config.json next to sweep.mjs (git-ignored) and fill in. Secrets belong in environment variables via {\"$env\": \"NAME\"} — never commit them.",
+
+  "sharePoint": {
+    "hostname": "esriis.sharepoint.com",
+    "sitePath": "/sites/lrsworkspace",
+    "sourceSitePath": "/sites/LocationReferencing",
+    "docKeyStrip": "/sites/LocationReferencing/",
+    "libraryRootSegment": "Shared Documents",
+    "lists": {
+      "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
+      "keywords": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
+      "docIds": "6263eeac-471a-489e-96c7-1448f45378d4",
+      "docKeywords": "4eabc799-c856-49ea-bf25-65942b363ec6",
+      "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
+      "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
+    }
+  },
+
+  "paths": {
+    "$comment": "OneDrive-synced local roots. sourceLibrary = the LocationReferencing Documents library; sidecarLibrary = the LRS Doc Index library (sidecars + media/).",
+    "sourceLibrary": "C:\\Users\\me\\Esri\\LocationReferencing - Documents",
+    "sidecarLibrary": "C:\\Users\\me\\Esri\\lrsworkspace - LRS Doc Index",
+    "workDir": "C:\\DocIndex\\work"
+  },
+
+  "graph": {
+    "tenantId": "<entra-tenant-guid>",
+    "clientId": "<app-registration-client-id>",
+    "clientSecret": { "$env": "DOCINDEX_GRAPH_SECRET" }
+  },
+
+  "llm": {
+    "$comment": "provider 'aibuilder' calls the SAME AI Builder custom prompt the cloud flow uses — same model, same tenant-hosted prompt text, same AI Builder credit metering — via the Dataverse Web API, authenticating with the graph app above (add it as an application user in the Power Platform environment; Local_Setup.md §3). environmentUrl = the environment's Dataverse URL (Power Platform admin center → Environments); modelId = the flow's Run_prompt recordId. Alternative: \"provider\": \"anthropic\" (Claude-account OAuth via `ant auth login`, or auth 'apiKey') executes prompts/DocIndex_Prompt.md instead — see local/CHANGES.md v1.1.",
+    "provider": "aibuilder",
+    "environmentUrl": "https://<org>.crm.dynamics.com",
+    "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6"
+  },
+
+  "sweep": {
+    "$comment": "Mirrors flow v2.8 Config. Values below are the v2.8 defaults; keep them in sync with STATUS when the flow config changes.",
+    "maxDocsPerRun": 150,
+    "promptVersion": "v2.0",
+    "defaultRepo": "A/b",
+    "relatedTopN": 5,
+    "relatedShortlist": 12,
+    "maxCellsWorkbookDump": 60000,
+    "dryRun": true
+  }
+}
