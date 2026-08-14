@@ -1,4 +1,4 @@
-# PAD offload — build + deploy guide (component v1.0)
+# PAD offload — build + deploy guide (component v2.0)
 
 Moves the Doc Index script compute off the Excel Online (Business)
 connector's **Run script** action and onto a Power Automate Desktop
@@ -60,6 +60,21 @@ the result file holds one entry per op, each wrapped as
 reference and job format: header comment of `pad/runner/run_job.mjs`.
 The nine flow v2.8 Run-script actions map 1:1 onto the six ops.
 
+Since v2.0 the runner also has a **single-op mode** — run one script
+with no job JSON at all:
+
+```
+node --experimental-strip-types pad\runner\run_job.mjs --op workbookdump "file=C:\Docs\Book.xlsx"
+node --experimental-strip-types pad\runner\run_job.mjs --op ziptext "file=C:\Docs\Deck.pptx" mediaPrefix=../media/doc42_
+```
+
+`--op` takes an op or script name (case-insensitive), params are
+plain `key=value` arguments (`file=` is the op's source-file param;
+`key@=<path>` reads a value from a file; `--argsfile` takes a file of
+such lines; `--out` sets the result path). The result envelope is
+identical to a one-op batch job's — the gate proves it. Full
+reference: the runner's header comment.
+
 ## 3. Create the desktop flow
 
 PAD flows are not imported as packages — they are pasted as Robin
@@ -72,10 +87,13 @@ text.
 
    | Direction | Name | Notes |
    |---|---|---|
-   | Input | `JobText` | job JSON by value; leave empty when using `JobFilePath` |
-   | Input | `JobFilePath` | local path of a job .json; empty when using `JobText` |
-   | Input | `RepoRoot` | e.g. `C:\DocIndex\lrs-doc-index` |
-   | Input | `LocalWorkDir` | e.g. `C:\DocIndex\work` (required with `JobText`) |
+   | Input | `ScriptName` | op/script name (e.g. `workbookdump`) → quick-run mode; empty → batch mode |
+   | Input | `SourceFile` | local path of the op's source file (quick-run; ziptext/media/workbookdump) |
+   | Input | `ScriptArgs` | extra params, `key=value` lines, one per line (quick-run) |
+   | Input | `JobText` | job JSON by value (batch); leave empty when using `JobFilePath` |
+   | Input | `JobFilePath` | local path of a job .json (batch); empty when using `JobText` |
+   | Input | `RepoRoot` | e.g. `C:\DocIndex\lrs-doc-index` — **give it that as its default value** |
+   | Input | `LocalWorkDir` | e.g. `C:\DocIndex\work` — default it too (required in quick-run mode and with `JobText`) |
    | Input | `NodeExePath` | optional `node.exe` override; empty = PATH |
    | Output | `ExitCode` | 0 = job ran (per-op errors live in the result) |
    | Output | `ResultText` | the result JSON, by value |
@@ -83,26 +101,58 @@ text.
    | Output | `RunnerStdout` | one-line runner summary |
    | Output | `RunnerStderr` | diagnostics when `ExitCode` ≠ 0 |
 
+   Defaulting `RepoRoot` and `LocalWorkDir` in the Variables pane is
+   what makes quick runs one-field affairs — every console run then
+   needs only `ScriptName` (+ `SourceFile`).
+
 3. Select the Main canvas and paste the whole contents of
    `pad/flow/DocIndexCompute.robin.txt` (Ctrl+V pastes Robin text as
    actions). Save.
 4. If your PAD version rejects the paste (action serialization
-   drifts between releases), rebuild the 9 actions by hand:
+   drifts between releases), rebuild the actions by hand — one
+   IF/ELSE picks the mode, everything else is shared:
 
    | # | Action | Parameters |
    |---|---|---|
    | 1 | Set variable | `NodeCmd` = `node` |
    | 2 | If `%NodeExePath% <> ''` | then Set variable `NodeCmd` = `%NodeExePath%`; End |
    | 3 | Set variable | `RunJobPath` = `%RepoRoot%\pad\runner\run_job.mjs` |
-   | 4 | If `%JobText% <> ''` | then Set variable `JobFilePath` = `%LocalWorkDir%\job.json`; **Write text to file**: file `%JobFilePath%`, text `%JobText%`, overwrite, UTF-8, no appended newline; End |
-   | 5 | Set variable | `ResultFilePath` = `%JobFilePath%.result.json` |
-   | 6 | Set variable | `ResultText` = empty text |
-   | 7 | Run DOS command | `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"`, working dir `%RepoRoot%`, timeout 1800 s, outputs → `RunnerStdout` / `RunnerStderr` / `ExitCode` |
-   | 8 | If `%ExitCode% = 0` | then **Read text from file**: `%ResultFilePath%`, UTF-8 → `ResultText`; End |
+   | 4 | Set variable | `ResultText` = empty text |
+   | 5 | If `%ScriptName% <> ''` | **quick-run branch** — actions 6–10 go inside the If |
+   | 6 | Set variable | `ArgsText` = `%ScriptArgs%` |
+   | 7 | If `%SourceFile% <> ''` | then Set variable `ArgsText` = two lines in the value editor: `file=%SourceFile%` then `%ScriptArgs%`; End |
+   | 8 | Set variable + Write text to file | `ArgsFilePath` = `%LocalWorkDir%\op.args`; **Write text to file**: file `%ArgsFilePath%`, text `%ArgsText%`, overwrite, UTF-8, no appended newline |
+   | 9 | Set variable | `ResultFilePath` = `%LocalWorkDir%\op.result.json` |
+   | 10 | Run DOS command | `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" --op %ScriptName% --argsfile "%ArgsFilePath%" --out "%ResultFilePath%"`, working dir `%RepoRoot%`, timeout 1800 s, outputs → `RunnerStdout` / `RunnerStderr` / `ExitCode` |
+   | 11 | Else | **batch branch** — actions 12–14 go inside the Else |
+   | 12 | If `%JobText% <> ''` | then Set variable `JobFilePath` = `%LocalWorkDir%\job.json`; **Write text to file**: file `%JobFilePath%`, text `%JobText%`, overwrite, UTF-8, no appended newline; End |
+   | 13 | Set variable | `ResultFilePath` = `%JobFilePath%.result.json` |
+   | 14 | Run DOS command | `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"`, same settings as action 10; then End (closing the Else) |
+   | 15 | If `%ExitCode% = 0` | then **Read text from file**: `%ResultFilePath%`, UTF-8 → `ResultText`; End |
 
 5. Run it once from the PAD console with
    `JobFilePath = <RepoRoot>\pad\samples\job.sample.json` and check
    `ResultText`.
+
+### Quick-run recipes (running one script from the console)
+
+Set `ScriptName` (+ fields below), hit Run, read `ResultText` — the
+op's output is at `results[0].result`. No job JSON, no escaping:
+`ScriptArgs` values are raw text to end of line, so Windows paths and
+spaces need no quoting.
+
+| To run | `ScriptName` | `SourceFile` | `ScriptArgs` |
+|---|---|---|---|
+| WorkbookDump on an xlsx | `workbookdump` | `C:\Docs\Book.xlsx` | — (optional `maxCells=60000`) |
+| ZipTextExtract on a pptx/docx | `ziptext` | `C:\Docs\Deck.pptx` | `mediaPrefix=../media/doc42_` |
+| MediaExtract | `media` | `C:\Docs\Deck.pptx` | — |
+| RegexExtract | `regex` | — | `fileName=ExB - Doc V3.pptx`, `defaultRepo=A/b`, `content@=C:\DocIndex\work\content.txt` (one per line) |
+
+Script file names work too (`ScriptName = WorkbookDump`), and
+`key@=<path>` reads any param's value from a file — the way to feed
+`regex` multi-line content or `related`/`sidecarpatch` JSON blobs.
+Batch mode is unchanged: leave `ScriptName` empty and pass
+`JobText`/`JobFilePath` as before.
 
 ## 4. Batch shape — pick before wiring the cloud side
 

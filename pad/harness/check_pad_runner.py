@@ -9,7 +9,11 @@ Proves the runner drives the UNMODIFIED scripts/ versions correctly:
      ids + slug, WorkbookDump GFM (shared string, number, date
      serial rendered), shortlist/final ranking, sidecar patch
      rewrites the related region and passes folder through
-  3. parity leg: the runner's ziptext output is JSON-identical to a
+  3. single-op mode (--op key=value / --argsfile — what the flow's
+     quick-run mode invokes): script-name aliasing, @= indirection,
+     file= alias, args-file parsing, and results JSON-identical to
+     the same ops run through a batch job
+  4. parity leg: the runner's ziptext output is JSON-identical to a
      direct review/harness/wrap.py run of scripts/ZipTextExtract.ts
      on the same fixture — the runner adds no behavior of its own
 
@@ -254,6 +258,50 @@ def main():
           and f0["content"] != SIDECAR, f0["content"][:200])
     check("patch keeps body byte-stable", "Body text stays put." in f0["content"])
     check("patch passes folder through", f0["folder"] == "User Stories")
+
+    print("== single-op mode (--op, no job JSON)")
+    # regex through bare key=value args, with @= file indirection for
+    # the content param and a script-file-name alias for the op
+    content_path = os.path.join(tmp, "content.txt")
+    with open(content_path, "w", encoding="utf-8") as f:
+        f.write("#456 and https://devtopia.esri.com/A/b/issues/26161")
+    cli_regex_out = os.path.join(tmp, "cli_regex.result.json")
+    proc = subprocess.run(
+        ["node", "--experimental-strip-types", RUNNER,
+         "--op", "RegexExtract", "--out", cli_regex_out,
+         "fileName=ExB - Fixture Doc V3.pptx", "content@=" + content_path,
+         "defaultRepo=A/b", "title=Fixture Doc"],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    check("single-op regex exit 0", proc.returncode == 0, proc.stderr[-400:])
+    with open(cli_regex_out, encoding="utf-8") as f:
+        cli_regex = json.load(f)
+    check("single-op regex zero failures", cli_regex["failures"] == 0,
+          json.dumps(cli_regex["results"])[:400])
+    check("single-op regex == batch regex",
+          json.dumps(cli_regex["results"][0]["result"], sort_keys=True)
+          == json.dumps(rx, sort_keys=True))
+
+    # ziptext through an args file (what the flow's quick-run mode
+    # writes): comment + blank lines skipped, file= alias mapped
+    args_path = os.path.join(tmp, "op.args")
+    with open(args_path, "w", encoding="utf-8") as f:
+        f.write("# quick-run fixture\r\nfile=" + pptx +
+                "\r\n\r\nmediaPrefix=../media/doc42_\r\n")
+    cli_zt_out = os.path.join(tmp, "cli_zt.result.json")
+    proc = subprocess.run(
+        ["node", "--experimental-strip-types", RUNNER,
+         "--op", "ziptext", "--argsfile", args_path, "--out", cli_zt_out],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    check("single-op argsfile exit 0", proc.returncode == 0, proc.stderr[-400:])
+    with open(cli_zt_out, encoding="utf-8") as f:
+        cli_zt = json.load(f)
+    check("single-op argsfile zero failures", cli_zt["failures"] == 0,
+          json.dumps(cli_zt["results"])[:400])
+    check("single-op ziptext == batch ziptext",
+          json.dumps(cli_zt["results"][0]["result"], sort_keys=True)
+          == json.dumps(zt, sort_keys=True))
 
     print("== parity leg (runner vs review/harness wrap.py, ZipTextExtract)")
     wrap_out = os.path.join(tmp, "zt_wrap.ts")
