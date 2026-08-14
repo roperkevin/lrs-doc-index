@@ -1835,7 +1835,7 @@
                               "inputs": {
                                 "parameters": {
                                   "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
+                                  "table": "4eabc799-c856-49ea-bf25-65942b363ec6",
                                   "$filter": "KWKey eq '@{outputs('KW_key')}'",
                                   "$top": 1
                                 },

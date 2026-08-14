@@ -44,4 +44,11 @@ v1.9 backfill (~150 docs/run reindexing into the v2.7 details-frame
 layout, until the v2.8 window moves the target again).
 
 Skip this package entirely if you deploy the v2.8 window right away —
-`flow/v2_8/definition.json` already contains all five fixes.
+`flow/v2_8/definition.json` already contains every fix.
+
+FX-7 amendment (2026-08-13): the errdrill capture on a live v2.8 run
+surfaced one more inherited mis-pick — `Check_dockw` bound to the
+Keywords list while filtering on `KWKey` (a Doc Keywords column),
+erroring every keyworded doc after its sidecar is written. Fixed in
+this definition (table → `4eabc799-…`) and the zip re-cut; see
+`designer-edits.md` §v2_7-fixes FX-7 for the one-dropdown live edit.
