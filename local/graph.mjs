@@ -205,9 +205,11 @@ export class SpoClient {
     this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
     const origin = new URL(cfg.siteUrl).origin;
     if (this.mode === "device") {
+      // v1 resource form: SP REST requires the host-URL audience,
+      // which the v2 .default scope does not produce (see auth.mjs)
       this.delegated = new DelegatedAuth({
         clientId: cfg.clientId || AZURE_CLI_PUBLIC_CLIENT,
-        scopes: [`${origin}/.default`, "offline_access"],
+        resource: origin,
         cachePath: cfg.tokenCache,
         tenantId: cfg.tenantId,
         deviceUrl: cfg.deviceUrl,
