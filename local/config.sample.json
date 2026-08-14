@@ -31,10 +31,10 @@
   },
 
   "llm": {
-    "$comment": "auth 'oauth' (default): no API key — run `ant auth login` once on the machine and keep ANTHROPIC_API_KEY unset; tokens are minted per run via `ant auth print-credentials`. To use a metered key instead: \"auth\": \"apiKey\", \"apiKey\": {\"$env\": \"ANTHROPIC_API_KEY\"}.",
-    "auth": "oauth",
-    "model": "claude-opus-5",
-    "maxTokens": 4096
+    "$comment": "provider 'aibuilder' calls the SAME AI Builder custom prompt the cloud flow uses — same model, same tenant-hosted prompt text, same AI Builder credit metering — via the Dataverse Web API, authenticating with the graph app above (add it as an application user in the Power Platform environment; Local_Setup.md §3). environmentUrl = the environment's Dataverse URL (Power Platform admin center → Environments); modelId = the flow's Run_prompt recordId. Alternative: \"provider\": \"anthropic\" (Claude-account OAuth via `ant auth login`, or auth 'apiKey') executes prompts/DocIndex_Prompt.md instead — see local/CHANGES.md v1.1.",
+    "provider": "aibuilder",
+    "environmentUrl": "https://<org>.crm.dynamics.com",
+    "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6"
   },
 
   "sweep": {

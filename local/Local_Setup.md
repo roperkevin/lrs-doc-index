@@ -16,7 +16,7 @@ What replaces what:
 |---|---|
 | Recurrence trigger (daily 17:00 MST) | Windows Task Scheduler (§4) — runs headless, machine can stay locked |
 | Nine Run-script actions | `scripts/*.ts` in-process via `pad/runner/ops.mjs` (the gated PAD loader) |
-| AI Builder prompt | Direct LLM API call (`local/llm.mjs`), same `prompts/DocIndex_Prompt.md` text verbatim |
+| AI Builder prompt | The **same AI Builder prompt**, invoked directly via the Dataverse Web API (`local/llm.mjs`) — same model, same tenant prompt text, same credits |
 | SharePoint file reads/writes (docs, sidecars, media) | OneDrive-synced library folders, plain file I/O |
 | SharePoint list actions (six lists) | Microsoft Graph (`local/graph.mjs`), Entra app registration |
 | Catch_index / LastError / retry-next-run | Same semantics, reimplemented (Error rows retrigger via Needs_index) |
@@ -39,9 +39,9 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
   the sync client time after each run (it's fast; the run itself
   doesn't wait).
 - Environment variables (machine or user scope):
-  - `DOCINDEX_GRAPH_SECRET` — the Entra app client secret (§2)
-  - **No LLM key** — the LLM step signs in with your Claude account
-    (§3). Keep `ANTHROPIC_API_KEY` UNSET on this machine.
+  - `DOCINDEX_GRAPH_SECRET` — the Entra app client secret (§2). The
+    one credential: it authenticates both Graph and the AI Builder
+    call (§3). No LLM API key exists in this setup.
 
 ## 2. Entra app registration (Graph)
 
@@ -56,41 +56,53 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
    `DOCINDEX_GRAPH_SECRET` on the machine (never in config.json).
 4. Put the tenant id + client id in `local/config.json` (§4).
 
-## 3. LLM auth — no API key
+## 3. The AI step — same model as the cloud flow
 
-The classify/keyword step calls the Anthropic Messages API directly
-(raw HTTPS, no npm dependencies — the repo stays `git pull`-deployable)
-with the deployed prompt read from `prompts/DocIndex_Prompt.md`
-between its BEGIN/END markers. Prompt promotion is now *just the
-repo file*: edit, bump `sweep.promptVersion` in config, `git pull`
-on the machine — no tenant paste. Model defaults to `claude-opus-5`
-(`llm.model` to override); the request pins the nine-field output
-contract with a JSON schema, so the flow's brace-slice fallback
-parsing is no longer needed. Refusal/truncation surface as Error rows.
+`llm.provider: "aibuilder"` (the default) calls the **same AI Builder
+custom prompt the cloud flow calls today** — the flow's `Run_prompt`
+action is just the Dataverse connector wrapping the Web API `Predict`
+action, and the sweep invokes that action directly:
 
-**Auth is your Claude account, not a key** (`llm.auth: "oauth"`, the
-default):
+```
+POST {environmentUrl}/api/data/v9.2/msdyn_aimodels({modelId})/Microsoft.Dynamics.CRM.Predict
+```
 
-1. Install the [Anthropic CLI](https://platform.claude.com/docs/en/api/sdks/cli)
-   (`ant`) on the machine.
-2. `ant auth login` — one-time browser sign-in; a profile with a
-   refresh token lands under your user config dir.
-3. Done. Each sweep mints short-lived bearer tokens via
-   `ant auth print-credentials --access-token` (auto-refreshing; the
-   sweep re-mints every 5 minutes and on any 401).
+Same model, same tenant-hosted prompt text, same nine-field output,
+same lax response parsing (coalesce → brace-slice → parse, so fences
+and prose around the JSON are tolerated exactly as the flow tolerates
+them), same AI Builder credit metering. **Zero behavior drift in the
+AI step** — prompt promotion remains the AI Builder paste + STATUS
+entry, exactly as today.
 
-Two traps, both documented CLI behavior:
-- **An exported `ANTHROPIC_API_KEY` silently outranks the profile** —
-  keep it unset on this machine.
-- **Refresh tokens eventually hard-expire** (they don't slide with
-  use). When a long-working setup starts failing auth, re-run
-  `ant auth login` before debugging anything else. Error rows with
-  `llm: ...` LastError retry automatically next run once you have.
+Setup (one-time, reuses the §2 app registration):
 
-Fallback for a metered key (e.g. a service account for unattended
-governance): `"llm": {"auth": "apiKey", "apiKey": {"$env": "..."}}`.
-Another provider (e.g. Azure) means reimplementing `requestJson()` in
-`local/llm.mjs` — `classifyDoc()`'s contract is provider-agnostic.
+1. `llm.environmentUrl` — the environment's Dataverse URL (Power
+   Platform admin center → Environments → your environment →
+   Environment URL, e.g. `https://org1234.crm.dynamics.com`).
+2. `llm.modelId` — the AI Builder prompt's model GUID. It's the
+   `recordId` bound in the flow's Run_prompt action
+   (`ef04e39d-3775-4655-a8be-60192095c1d6` per the v2.8 definition);
+   verify against your tenant if the prompt is ever re-created.
+3. Add the §2 app registration as an **application user** in that
+   environment (Power Platform admin center → Environments → …
+   → Settings → Users + permissions → Application users → New) and
+   give it a security role that can run AI Builder predictions
+   (Environment Maker plus the AI Builder roles works; tighten later
+   if desired). No new secret — the sweep authenticates with
+   `DOCINDEX_GRAPH_SECRET` against `{environmentUrl}/.default`.
+
+Licensing note: calling Dataverse/AI Builder through the Web API uses
+AI Builder credits exactly as the connector call did; no Power
+Automate license is involved.
+
+**Alternative — `"provider": "anthropic"`** (kept for a future move
+off Power Platform entirely): a direct Anthropic Messages API call
+that executes `prompts/DocIndex_Prompt.md` verbatim with schema-
+pinned output, authenticating with your Claude account via
+`ant auth login` (or `auth: "apiKey"`). Details: `local/CHANGES.md`
+v1.1. Switching providers is a config edit, but it changes the model
+that classifies the corpus — treat it as a PromptVersion-bumped
+backfill event, not a tweak.
 
 ## 4. Configure + first run
 
@@ -155,8 +167,11 @@ Each is behavior-equivalent; all are exercised by the gate:
   treats any non-`shortlist` mode as final).
 - **Recycle_old_sidecar → local delete** (OneDrive syncs the delete;
   the file still lands in the site recycle bin).
-- **Schema-guaranteed LLM JSON** replaces brace-slice parsing;
-  malformed output still lands in the Error lane.
+- With the default `aibuilder` provider the AI step is NOT a
+  deviation at all — same model, same prompt, same brace-slice
+  parsing. (The `anthropic` alternative replaces brace-slice with
+  schema-guaranteed JSON; malformed output lands in the Error lane
+  either way.)
 - **No XmlBuf** (vestigial in the flow).
 - **List GUIDs live in config**, not hand-typed URIs — the FX-6
   failure class is gone; a list re-creation is a config edit.
@@ -177,19 +192,19 @@ Each is behavior-equivalent; all are exercised by the gate:
 - **Rollback**: re-enable the cloud flow in the portal; both read the
   same PromptVersion stamps, so the handover back is seamless. Keep
   the flow import packages (`flow/*.zip`) as the durable fallback.
-- **Quota math**: zero Excel Online Run-script calls, zero AI Builder
-  credits, zero Power Platform requests. The LLM spend is per-doc
-  (one call each) and only for docs that need indexing.
+- **Quota math**: zero Excel Online Run-script calls, zero Power
+  Platform/Power Automate requests. AI Builder credits are consumed
+  exactly as the cloud flow consumed them (same prompt, per-doc, only
+  for docs that need indexing).
 
 ## 8. Security
 
-Same footprint as the PAD machine (`pad/PAD_Setup.md` §8) plus two
-credentials: the Graph client secret (scope it with Sites.Selected;
-rotate on schedule; machine environment variable, never in the repo
-or config.json) and the Claude account OAuth profile (short-lived
-access tokens; the refresh token sits in your user config dir under
-the machine's disk encryption — sign out with `ant auth logout` when
-decommissioning). Document text is sent to the LLM API for
-classification — the same class of egress the AI Builder call made,
-now governed by the LLM provider's data terms instead of the Power
-Platform's; clear it with whoever owns that decision before --live.
+Same footprint as the PAD machine (`pad/PAD_Setup.md` §8) plus one
+credential: the Entra app client secret (scope Graph access with
+Sites.Selected; rotate on schedule; machine environment variable,
+never in the repo or config.json). With the default `aibuilder`
+provider there is **no new data egress**: document text goes to the
+same tenant AI Builder endpoint the cloud flow sends it to today.
+(Switching to the `anthropic` provider changes that — document text
+would flow to the Anthropic API under its data terms; clear that with
+whoever owns the decision before flipping the config.)

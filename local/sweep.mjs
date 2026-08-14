@@ -140,6 +140,9 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.sweep.dryRun = true;
   if (args.flags.max !== undefined) cfg.sweep.maxDocsPerRun = args.flags.max;
   if (args.flags.only !== undefined) cfg.sweep.smokeFile = args.flags.only;
+  cfg.llm = cfg.llm || {};
+  // the aibuilder provider reuses the Graph app registration by default
+  cfg.llm.dataverse = cfg.llm.dataverse || cfg.graph;
   cfg.sharePoint.sourceSitePath = cfg.sharePoint.sourceSitePath || "/sites/LocationReferencing";
   cfg.sharePoint.docKeyStrip = cfg.sharePoint.docKeyStrip || "/sites/LocationReferencing/";
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";

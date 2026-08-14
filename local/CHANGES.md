@@ -1,5 +1,34 @@
 # Local sweep — release notes
 
+## v1.2 (2026-08-14)
+
+The AI step goes back to **the cloud flow's own model**: provider
+`aibuilder` (now the default) invokes the same AI Builder custom
+prompt the flow's Run_prompt action calls — directly via the
+Dataverse Web API Predict action
+(`msdyn_aimodels({modelId})/Microsoft.Dynamics.CRM.Predict`), with
+the flow's three `requestv2` inputs, its response read
+(`responsev2.predictionOutput.text`), and its lax parsing
+(coalesce → brace-slice → parse). Same model, same tenant-hosted
+prompt text, same AI Builder credit metering — zero behavior drift
+in the AI step, and prompt promotion stays the AI Builder paste.
+Auth reuses the Graph Entra app (client credentials against
+`{environmentUrl}/.default`; register it as an application user in
+the Power Platform environment — guide §3). No Power Automate
+license involved.
+
+The v1.1 `anthropic` provider (Claude-account OAuth / apiKey,
+executing `prompts/DocIndex_Prompt.md` with schema-pinned output)
+remains as an explicit opt-in for a future move off Power Platform;
+switching providers changes the classifying model — treat it as a
+PromptVersion-bumped backfill event.
+
+Gate: main legs run against a mock Dataverse Predict endpoint whose
+output is wrapped in prose + code fences (proving the brace-slice),
+with wire-shape assertions (bearer token, `version: "2.0"`,
+`requestv2` keys); the anthropic apiKey/oauth legs stay as targeted
+single-doc runs. **Gate PASSED 2026-08-14 (39/39).**
+
 ## v1.1 (2026-08-14)
 
 LLM auth without an API key. `llm.mjs` gains `llm.auth: "oauth"`

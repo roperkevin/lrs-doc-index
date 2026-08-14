@@ -1,24 +1,38 @@
 /**
- * llm.mjs v1.0 — direct LLM API client for the Doc Index classify/
- * keyword step (replaces the AI Builder "Create text with GPT" action
- * in the local sweep).
+ * llm.mjs v1.2 — LLM client for the Doc Index classify/keyword step.
  *
- * The prompt is NOT duplicated here: the deployed prompt text is read
- * verbatim from prompts/DocIndex_Prompt.md (between the PROMPT TEXT
- * BEGINS/ENDS markers) and the three inputs are substituted exactly as
- * AI Builder does ({FileName}, {ExistingKeywords}, {DocText}). One
- * prompt file, two consumers — a prompt paste on the tenant and a git
- * pull locally stay in lockstep.
+ * Provider "aibuilder" (default) — the SAME model the cloud flow
+ * uses: the AI Builder custom prompt (recordId in config.llm.modelId)
+ * invoked through the Dataverse Web API Predict action —
+ *   POST {environmentUrl}/api/data/v9.2/msdyn_aimodels({id})
+ *        /Microsoft.Dynamics.CRM.Predict
+ * with the flow's three requestv2 inputs (FileName, DocText,
+ * ExistingKeywords) and the flow's response read
+ * (responsev2.predictionOutput.text) and lax parsing (coalesce '{}',
+ * brace-slice, JSON.parse — flow §4.3(a) steps 3–5). Prompt text
+ * stays in AI Builder on the tenant, exactly as today; prompt
+ * promotion remains the AI Builder paste + STATUS entry. Auth is the
+ * same Entra app used for Graph (client credentials against
+ * {environmentUrl}/.default; the app must be added as an application
+ * user in the Power Platform environment — Local_Setup.md §3).
  *
- * Provider: Anthropic Messages API over raw HTTP (Node 22 global
- * fetch; the repo is deliberately dependency-free). The request uses
- * output_config.format with a JSON schema, so the reply is guaranteed
- * valid JSON in the shape the flow expects — no fence-stripping or
- * retry-on-parse. Swapping providers means reimplementing requestJson()
- * below against the other API; classifyDoc()'s contract is provider-
- * agnostic.
+ * Provider "anthropic" (alternative) — a direct Anthropic Messages
+ * API call executing prompts/DocIndex_Prompt.md verbatim between its
+ * BEGIN/END markers, with the nine-field output pinned by a JSON
+ * schema. Kept for a future move off Power Platform entirely.
  *
- * Auth (config.llm.auth):
+ * Provider selection: config.llm.provider, defaulting to "aibuilder"
+ * when config.llm.environmentUrl is set and "anthropic" otherwise.
+ *
+ * aibuilder config (config.llm):
+ *   environmentUrl  e.g. "https://org1234.crm.dynamics.com" (no slash)
+ *   modelId         the AI Builder prompt's model GUID (the flow's
+ *                   Run_prompt recordId)
+ *   dataverse       {tenantId, clientId, clientSecret, tokenUrl?} —
+ *                   sweep.mjs defaults this to config.graph, so the
+ *                   one Entra app serves both
+ *
+ * anthropic auth (config.llm.auth):
  *   "oauth" (default) — no API key anywhere. A one-time
  *     `ant auth login` on the machine stores an OAuth profile; this
  *     client mints short-lived bearer tokens from it by shelling out
@@ -199,12 +213,114 @@ async function requestJson(cfg, prompt) {
   throw lastErr;
 }
 
+// ---- provider: aibuilder (the cloud flow's model) -------------------
+
+let _dvToken = null;
+let _dvExpires = 0;
+
+async function dataverseToken(cfg) {
+  if (_dvToken && Date.now() < _dvExpires - 60000) return _dvToken;
+  const dv = cfg.dataverse || {};
+  const tokenUrl =
+    dv.tokenUrl || `https://login.microsoftonline.com/${dv.tenantId}/oauth2/v2.0/token`;
+  const body = new URLSearchParams({
+    grant_type: "client_credentials",
+    client_id: dv.clientId,
+    client_secret: resolveSecret(dv.clientSecret, "llm.dataverse.clientSecret"),
+    scope: `${cfg.environmentUrl}/.default`,
+  });
+  const res = await fetch(tokenUrl, { method: "POST", body });
+  if (!res.ok) {
+    throw new Error(`Dataverse token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+  }
+  const json = await res.json();
+  _dvToken = json.access_token;
+  _dvExpires = Date.now() + Number(json.expires_in || 3600) * 1000;
+  return _dvToken;
+}
+
+// Flow §4.3(a) steps 3–5: coalesce '{}', slice first '{' .. last '}',
+// json(). Tolerates code fences and prose around the JSON.
+function braceSlice(text) {
+  const raw = text ?? "{}";
+  const a = raw.indexOf("{");
+  const b = raw.lastIndexOf("}");
+  return a > -1 && b > a ? raw.slice(a, b + 1) : "{}";
+}
+
+async function requestAiBuilder(cfg, inputs) {
+  const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
+  const url =
+    `${cfg.environmentUrl}/api/data/v9.2/msdyn_aimodels(${cfg.modelId})` +
+    `/Microsoft.Dynamics.CRM.Predict`;
+  const body = JSON.stringify({
+    version: "2.0",
+    requestv2: {
+      "@odata.type": "#Microsoft.Dynamics.CRM.expando",
+      FileName: inputs.fileName,
+      DocText: inputs.docText,
+      ExistingKeywords: inputs.existingKeywords,
+    },
+  });
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) await sleep(Math.min(2000 * 2 ** (attempt - 1), 30000));
+    let res;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          "OData-MaxVersion": "4.0",
+          "OData-Version": "4.0",
+          authorization: "Bearer " + (await dataverseToken(cfg)),
+        },
+        body,
+      });
+    } catch (e) {
+      lastErr = new Error(`AI Builder request failed: ${e.message}`);
+      continue;
+    }
+    if (res.status === 401) {
+      _dvToken = null;
+      lastErr = new Error(`AI Builder 401: ${(await res.text()).slice(0, 300)}`);
+      continue;
+    }
+    if (res.status === 429 || res.status >= 500) {
+      lastErr = new Error(`AI Builder ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      continue;
+    }
+    if (!res.ok) {
+      throw new Error(`AI Builder ${res.status}: ${(await res.text()).slice(0, 500)}`);
+    }
+    return res.json();
+  }
+  throw lastErr;
+}
+
 /**
  * Run the Doc Index prompt for one document.
- * Returns the parsed nine-field object. Throws on refusal, truncation,
- * transport failure, or (defensively) unparseable output.
+ * Returns the parsed nine-field object. Throws on transport failure,
+ * refusal/truncation (anthropic), or unparseable output — all of
+ * which land the doc in the Error lane, as in the flow.
  */
 export async function classifyDoc(cfg, { fileName, docText, existingKeywords }) {
+  const provider = cfg.provider || (cfg.environmentUrl ? "aibuilder" : "anthropic");
+
+  if (provider === "aibuilder") {
+    const response = await requestAiBuilder(cfg, { fileName, docText, existingKeywords });
+    const text = response?.responsev2?.predictionOutput?.text ?? "{}";
+    try {
+      return JSON.parse(braceSlice(text));
+    } catch {
+      throw new Error("AI Builder returned unparseable output: " + String(text).slice(0, 300));
+    }
+  }
+
+  if (provider !== "anthropic") {
+    throw new Error(`unknown llm.provider "${provider}" (aibuilder | anthropic)`);
+  }
   const template = loadPromptTemplate(cfg.promptFile);
   const prompt = buildPrompt(template, { fileName, docText, existingKeywords });
   const response = await requestJson(cfg, prompt);
