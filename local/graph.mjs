@@ -45,7 +45,7 @@ function resolveSecret(v, what) {
   throw new Error(`${what}: missing (set it in config, ideally as {"$env": "..."})`);
 }
 
-import { DelegatedAuth, GRAPH_PUBLIC_CLIENT } from "./auth.mjs";
+import { DelegatedAuth, GRAPH_PUBLIC_CLIENT, AZURE_CLI_PUBLIC_CLIENT } from "./auth.mjs";
 
 export class GraphClient {
   constructor(cfg) {
@@ -178,5 +178,111 @@ export class GraphClient {
 
   async deleteItem(siteId, listId, itemId) {
     return this.request("DELETE", `/sites/${siteId}/lists/${listId}/items/${itemId}`);
+  }
+}
+
+/**
+ * SpoClient — SharePoint REST, used ONLY for what Graph cannot do:
+ * writing hyperlink columns (SourceLink, TextFileUrl). Graph rejects
+ * every write shape for hyperlink fields with 400 invalidRequest (a
+ * long-standing platform limitation; the cloud flow never hit it
+ * because the SharePoint connector talks to this same REST API).
+ * ValidateUpdateListItem takes hyperlinks as "url, description".
+ *
+ * Config (config.spo):
+ *   siteUrl     the real site URL (used for the token audience)
+ *   baseUrl     REST base override for the harness mock
+ *               (default: siteUrl)
+ *   auth        "device" (default) | "app"; device uses the Azure CLI
+ *               public client (pre-consented against SharePoint)
+ *   clientId/clientSecret/tenantId/tokenUrl/deviceUrl/tokenCache
+ *               as in config.graph
+ */
+export class SpoClient {
+  constructor(cfg) {
+    this.cfg = cfg;
+    this.baseUrl = cfg.baseUrl || cfg.siteUrl;
+    this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
+    const origin = new URL(cfg.siteUrl).origin;
+    if (this.mode === "device") {
+      this.delegated = new DelegatedAuth({
+        clientId: cfg.clientId || AZURE_CLI_PUBLIC_CLIENT,
+        scopes: [`${origin}/.default`, "offline_access"],
+        cachePath: cfg.tokenCache,
+        tenantId: cfg.tenantId,
+        deviceUrl: cfg.deviceUrl,
+        tokenUrl: cfg.tokenUrl,
+      });
+    } else {
+      this.origin = origin;
+      this.tokenUrl =
+        cfg.tokenUrl ||
+        `https://login.microsoftonline.com/${cfg.tenantId}/oauth2/v2.0/token`;
+      this._token = null;
+      this._tokenExpires = 0;
+    }
+  }
+
+  async token() {
+    if (this.mode === "device") return this.delegated.token();
+    if (this._token && Date.now() < this._tokenExpires - 60000) return this._token;
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: this.cfg.clientId,
+      client_secret: resolveSecret(this.cfg.clientSecret, "spo.clientSecret"),
+      scope: `${this.origin}/.default`,
+    });
+    const res = await fetch(this.tokenUrl, { method: "POST", body });
+    if (!res.ok) {
+      throw new Error(`SPO token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+    }
+    const json = await res.json();
+    this._token = json.access_token;
+    this._tokenExpires = Date.now() + Number(json.expires_in || 3600) * 1000;
+    return this._token;
+  }
+
+  /** Set fields via ValidateUpdateListItem. Hyperlink values may be
+   *  {Url, Description} objects or strings. Throws on per-field
+   *  errors (the endpoint returns 200 even when a field fails). */
+  async validateUpdate(listGuid, itemId, fields) {
+    const formValues = Object.entries(fields).map(([FieldName, v]) => ({
+      FieldName,
+      FieldValue:
+        v && typeof v === "object"
+          ? v.Description
+            ? `${v.Url}, ${v.Description}`
+            : String(v.Url)
+          : String(v ?? ""),
+    }));
+    const url =
+      `${this.baseUrl}/_api/web/lists(guid'${listGuid}')/items(${itemId})` +
+      `/ValidateUpdateListItem`;
+    let res;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          accept: "application/json;odata=nometadata",
+          "content-type": "application/json;odata=nometadata",
+          authorization: "Bearer " + (await this.token()),
+        },
+        body: JSON.stringify({ formValues, bNewDocumentUpdate: false }),
+      });
+      if (res.status !== 401) break;
+      if (this.delegated) this.delegated.invalidate();
+      this._token = null;
+    }
+    if (!res.ok) {
+      throw new Error(`SPO ValidateUpdateListItem ${res.status}: ${(await res.text()).slice(0, 400)}`);
+    }
+    const json = await res.json();
+    const failed = (json.value || []).filter((f) => f.ErrorMessage);
+    if (failed.length) {
+      throw new Error(
+        "SPO field write failed: " +
+        failed.map((f) => `${f.FieldName}: ${f.ErrorMessage}`).join("; ").slice(0, 400)
+      );
+    }
   }
 }
