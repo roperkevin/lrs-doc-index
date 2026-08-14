@@ -45,12 +45,15 @@ keeps the old yaml-on-top layout).
 | flow/DocIndexSweep_v2_7.zip | Import package (v2.6 package skeleton + the v2.7 definition, payload byte-identical to the folder) | v2.7 |
 | flow/DocIndexSweep_v2_7_fix.zip | Repair import package (live-export skeleton, PV-1 scrubbed, + the v2.7-fix definition — payload byte-identical to the folder) | v2.7-fix |
 | flow/DocIndexSweep_v2_8.zip | Import package (the 2026-08-13 live export's OWN skeleton, PV-1 scrubbed, + the v2.8 definition — payload byte-identical to the folder) | v2.8 |
+| flow/v2_9/definition.json | Flow definition (authored — online-doc matching + sidecar surfacing: `online_docs:` yaml + `## Online references` from the Online Docs list; PromptVersion v2.1) | v2.9 |
+| flow/DocIndexSweep_v2_9.zip | Import package (v2.8 package skeleton + the v2.9 definition — payload byte-identical to the folder) | v2.9 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing | v2.1 (paste pending — v2.8 window) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
 | scripts/SidecarPatch.ts | Surgical related-section patching (four metadata frames) | v1.6 (paste pending — safe any time before the v2.8 window) |
+| scripts/HtmlToText.ts | HTML → cacheable text for fetched Esri help pages (chrome strip, structure kept as markdown, entity decode, cap, thin-extract tripwire) | v1.0 (paste pending — standalone-safe, consumed only by OnlineDocFetch) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
 | review/patches/ZipTextExtract_v1_9.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.9 |
@@ -62,10 +65,12 @@ keeps the old yaml-on-top layout).
 | review/patches/ZipTextExtract_v2_1.ts | r6 patch (gated + promoted 2026-08-13; paste with the v2.8 window) | v2.1 |
 | review/patches/RegexExtract_v1_4.ts | r6 patch (gated + promoted 2026-08-13; paste with the v2.8 window) | v1.4 |
 | review/patches/SidecarPatch_v1_6.ts | r6 patch (gated + promoted 2026-08-13; safe to paste any time before the v2.8 window) | v1.6 |
+| review/patches/HtmlToText_v1_0.ts | r7 patch (gated + promoted 2026-08-14; NEW script — paste with the Online Docs component) | v1.0 |
+| review/patches/TestPlanGen_Prompt_v1_6.md | Test-plan prompt patch (promoted; paste with the TestPlanGen v2.14 window — SIXTH input parameter `OnlineDocText`) | v1.6 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
-| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.3 adds a fifth input parameter) | v1.3 |
-| schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
+| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (authoritative copy; tenant paste pending — the v1.6 paste brings BOTH new input parameters, `ReferenceText` + `OnlineDocText`) | v1.6 |
+| schemas/SPList_*.csv | The seven list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio; deployed) | v1.1 |
 | agent/QA_Agent_Instructions_v1_3.md | Q&A agent instructions (authored — describes the v2.8 layout + products; supersedes the unpasted v1.2; paste with the v2.8 window) | v1.3 |
@@ -74,19 +79,23 @@ keeps the old yaml-on-top layout).
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
 | curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
+| onlinedocs/OnlineDocs_Setup.md | Online-docs build + deploy guide (list, cache folder, HtmlToText paste, OnlineDocFetch flow, smoke suite) | current (component v1.0) |
+| onlinedocs/OnlineDocs_Seed.csv | Seed catalog for the Online Docs list (format examples — browser-verify URLs before seeding) | v1.0 |
+| onlinedocs/flow/v1_0/definition.json | OnlineDocFetch flow definition (authored from the guide, not a tenant export; HtmlToText script binding + list GUID are placeholders — re-pick/paste on import) | v1.0 |
+| onlinedocs/CHANGES.md | Online-docs release notes | v1.0 |
 | testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.7) |
 | testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.2 |
-| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v2.0 (filename frozen at v1_0) |
-| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
-| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v2.0 (filename frozen at v1_0) |
-| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
+| testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v2.4 (filename frozen at v1_0) |
+| testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v2.4 (dirname frozen at v1_0) |
+| testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v2.4 (filename frozen at v1_0) |
+| testplangen/flow/core_v1_0/definition.json | Child-flow definition (package payload) | v2.4 (dirname frozen at v1_0) |
 | testplangen/TestPlanGenAgentFlow_v1_0.zip | Agent-flow package — shape reference only; superseded, build in Copilot Studio per Agent_Setup §1c | v1.0 |
 | testplangen/flow/agent_v1_0/definition.json | Agent-flow definition (contract reference) | v1.0 |
 | testplangen/flow/lookup_v1_0/definition.json | StoryLookupFlow definition (issue-#/title → doc id; contract reference, build in Copilot Studio per Agent_Setup §1d) | v1.0 |
 | testplangen/StoryLookupFlow_v1_0.zip | StoryLookupFlow import package (authored re-cut; agent-flow import caveat, Agent_Setup §1d) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v2.7 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.14 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,
@@ -249,6 +258,43 @@ location; it has no knowledge sources and never drafts content
 itself — corpus questions stay with LRS Doc Index Q&A (optional and
 independent: nothing in test-plan generation requires the Q&A agent
 to be deployed).
+
+## Online doc references (v1.0)
+
+Stories now link to the official Esri documentation for their
+feature area, and the test-plan drafts ground on it. Three moving
+parts, all curated-deterministic (no web search anywhere — both
+agents keep it disabled): the **Online Docs** SharePoint list maps
+'; '-joined lowercase keywords (canonical PLUS aliases — folding is
+a curation convention) to public help-topic URLs on an allowlisted
+host set (pro / enterprise / developers / doc.arcgis.com), each row
+carrying a curator Summary and an optional Surface scope. A weekly
+flow, **OnlineDocFetch** (build per `onlinedocs/OnlineDocs_Setup.md`
+— DLP-check the premium HTTP action first), fetches each mapped page,
+converts it with the `HtmlToText` Office Script (chrome stripped,
+structure kept, JS-rendered shells routed to `FetchStatus = Error`
+by the thin-extract tripwire instead of caching menu soup), and
+caches the text as `{title-slug}__od{ID}.md` under
+`/LRS Doc Index/Online Docs` — never swept (the sweep walks the
+source library), Q&A-visible by deliberate choice. The sweep (v2.9)
+matches each document's prompt keywords/tools + regex-detected
+product lines against `MatchKeywords`, ranks by match count, caps at
+`Config.OnlineDocsTop` 5, and surfaces the winners in the sidecar:
+a machine-readable `online_docs: [{od,u,t}]` yaml line plus a
+visible `## Online references` section with the curator summaries.
+TestPlanGen (v2.14) takes the first `OnlineDocSlots` 2 entries,
+resolves each row's `CachedTextUrl` live (cache links are never
+stored in sidecars, so they cannot go stale), and feeds the text to
+prompt v1.6 as a SIXTH input — ESRI DOCUMENTATION, a fenced
+untrusted-data block like the other four — where it may ground
+expected behavior and official terminology: doc-grounded test cases
+cite `Esri doc: <title>` in their Trace, the story wins every
+conflict (→ `[VERIFY]`), tool names never leak in from docs, and
+cited docs are listed in a conditional `## References` section of
+the draft. Every lane degrades to `(none)` when its data is missing,
+so the deploy windows commute; `check_batch_r7.py` gates the format
+(SidecarPatch v1.6 unchanged, byte-preserving the new region) and
+`check_htmltotext.py` pins the conversion contract.
 
 ## Fresh-tenant install order
 

@@ -81,6 +81,13 @@ v2.3 contract:
        opener after a section heading, an unclosed <details>, or an
        H1 with no block at all are no-ops with original bytes; the
        two legacy frames patch exactly as in v1.4 (r5 equivalence)
+   15. flow v2.9 / PromptVersion v2.1 sidecar contract: every built
+       sidecar carries an `online_docs:` yaml line after `related:`
+       and an `## Online references` section (the
+       <!-- onlinedocs:begin/end --> markers) between the Related
+       documents region and the seam — both sit OUTSIDE
+       SidecarPatch's two patch zones, so set and merge modes must
+       byte-preserve them and idempotence must still hold
 
 Both wrapped runners must type-check at ES2017.
 
@@ -592,6 +599,19 @@ DETAILS_CLOSE = '\n```\n\n</details>\n'
 COMMENT_OPEN = '<!-- metadata\n```yaml\n'
 COMMENT_CLOSE = '\n```\n-->\n'
 
+# flow v2.9 / PromptVersion v2.1: the online-docs line sits AFTER
+# related:, and the Online references region sits between the Related
+# documents region and the seam. Both are OUTSIDE SidecarPatch's two
+# patch zones and must come through byte-identical.
+OD_BEGIN = '<!-- onlinedocs:begin -->'
+OD_END = '<!-- onlinedocs:end -->'
+OD_LINE = ('online_docs: [{"od":1,"u":"https://pro.arcgis.com/lrs/routes.htm",'
+           '"t":"Some Topic"}]')
+OD_SECTION = (f'## Online references\n\n{OD_BEGIN}\n'
+              '- [Some Topic](<https://pro.arcgis.com/lrs/routes.htm>) — '
+              'One-line summary. <!-- od:1 -->\n'
+              f'{OD_END}\n\n')
+
 
 def sidecar(related_line='related: []', region='_None yet._', markers=True,
             frame='fence'):
@@ -601,12 +621,13 @@ def sidecar(related_line='related: []', region='_None yet._', markers=True,
 doc_id: 42
 keywords: ["locks", "routes"]
 tools: []
-{related_line}'''
+{related_line}
+{OD_LINE}'''
     tail = f'''## Summary
 
 Explores lock acquisition.
 
-{rel_section}---
+{rel_section}{OD_SECTION}---
 
 ## Slide 3 — Locking new routes
 - decoy body text below must never change
@@ -716,6 +737,11 @@ check('[Lock Acquisition Test Plan](<https://x/sites/s/Document Index Texts/'
 check(content.count('related: [decoy]') == 1 and
       strip_patchable(content) == strip_patchable(original),
       'body decoy line and stray seams byte-untouched (integrity outside patch zones)')
+check(content.count(OD_LINE) == 1 and content.count(OD_SECTION) == 1,
+      'v2.9: set mode byte-preserves the online_docs line and Online references region')
+check(content.find(END) < content.find(OD_BEGIN) < content.find(OD_END) <
+      content.find('\n---\n', content.find('## Summary')),
+      'v2.9: Online references region stays between related:end and the seam')
 
 # -- idempotence -----------------------------------------------------------
 [again] = patch([{'doc': 42, 'name': 'self.md', 'content': content}])
@@ -741,6 +767,8 @@ check('<!-- rel:42 -->' in out['content'] and '<!-- rel:99 -->' in out['content'
 nregion = out['content'][out['content'].find(BEGIN):out['content'].find(END)]
 check(nregion.find('rel:42') < nregion.find('rel:99'),
       'merged bullets re-ordered by score')
+check(out['content'].count(OD_LINE) == 1 and out['content'].count(OD_SECTION) == 1,
+      'v2.9: merge byte-preserves the online_docs line and Online references region')
 
 # -- merge: update existing entry -----------------------------------------
 stale = out['content'].replace('"s":1003', '"s":7')
@@ -1027,6 +1055,9 @@ check([e['doc'] for e in com_fm['related']] == [17, 23, 9],
 check(out['content'].count('related: [decoy]') == 1 and
       strip_patchable(out['content']) == strip_patchable(com),
       'v1.6: comment-frame body decoys byte-untouched (integrity)')
+check(out['content'].count(OD_LINE) == 1 and out['content'].count(OD_SECTION) == 1,
+      'v2.9: comment-frame (the v2.9 shape) set mode byte-preserves the '
+      'online_docs line and Online references region')
 [again] = patch([{'doc': 42, 'name': 'self.md', 'content': out['content']}])
 check(not again['changed'] and again['content'] == out['content'],
       'v1.6: idempotent on the comment frame')

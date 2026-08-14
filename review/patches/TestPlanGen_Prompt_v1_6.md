@@ -1,110 +1,81 @@
-# Test Plan Generation Prompt — v1.6
+# TestPlanGen Prompt — v1.6 (Esri-documentation grounding lane) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.6`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+The prompt half of the v2.14 Online Docs feature: a curated
+SharePoint list (**Online Docs**) maps keywords to Esri public
+documentation URLs, a weekly flow caches each page's text as a
+markdown file (the list row's `CachedTextUrl` column), and the
+nightly sweep (v2.9 of the sweep change set) writes each story's
+picks into the sidecar as an `online_docs:` line directly under
+`related: []`. Until now the pipeline had no sanctioned way to put
+official product documentation in front of the generation model —
+expected behavior could only be grounded on the story itself, on
+exemplar patterns, or on the v1.3 reference-functionality lane
+(internal test plans / design docs). This version adds the official
+public docs as a sixth input lane with the same cite-or-don't-use
+discipline; supersedes v1.5 IN-REPO (v1.5's requirement-driven
+coverage + Coverage Map, v1.4's GFM shape, v1.3's reference lane,
+v1.2's enumeration coverage + conditional sections, and v1.1's
+marker fix all carry forward unchanged — paste THIS version).
 
-SIX item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**,
-**OnlineDocText** (the sixth added in v1.6 — the AI Builder prompt
-needs the parameter created, not just the text re-pasted).
+Changes against v1.5:
 
-v1.6 (the Esri-documentation grounding lane): `OnlineDocText` carries
-excerpts of official Esri public documentation for this story's
-feature area, cached from the curated Online Docs list (the sweep
-writes each story's `online_docs:` picks into the sidecar; the v2.4
-flows fetch the cached page text). The model MAY ground expected
-behavior and official terminology on these excerpts; every
-doc-grounded case's Trace cites the excerpt as `Esri doc: <title>`,
-and a new CONDITIONAL `## References` section — between Open
-Questions and Coverage Map; Coverage Map stays the always-final
-section — lists each cited doc as `- [<title>](<url>)`, title and URL
-verbatim from the excerpt headers. The story wins every conflict with
-the docs (conflicts become [VERIFY] items, never a silent preference
-— a story may deliberately change documented behavior), and the docs
-never supply tool names (the tools rule applies in full). A fifth
-input fence, `<<<ESRI DOCUMENTATION BEGIN/END>>>`, closes the prompt;
-an empty lane (`(none)`) drafts exactly as v1.5 did.
+1. **Sixth input key: `OnlineDocText`** — ESRI DOCUMENTATION:
+   excerpts from official Esri public documentation for this story's
+   feature area, each excerpt headed by a line of the form
+   `--- ESRI DOC: <title> — <url> ---` (the v2.4 flows build the
+   headers from the sidecar's `online_docs:` entries and the cached
+   page text). New fifth input fence,
+   `<<<ESRI DOCUMENTATION BEGIN/END>>>`, after the reference fence;
+   the untrusted-data paragraph now covers five text blocks.
+2. **New grounding rule for the lane** (the v1.3 shape): the model
+   MAY ground expected behavior and official terminology on the
+   excerpts, applied within THIS story's scope and surface; every
+   doc-grounded case's Trace cites the excerpt as
+   `Esri doc: <title>`; where the documentation conflicts with the
+   story, the STORY wins and the conflict becomes a [VERIFY] item —
+   never a silent preference for the docs (a story may deliberately
+   change documented behavior); the docs supply BEHAVIOR AND
+   TERMINOLOGY, never tool or widget names — the existing tools rule
+   applies in full. When the block is "(none)", the lane is absent
+   and drafting is exactly as v1.5.
+3. **New CONDITIONAL section `## References`**, between
+   `## Open Questions` and `## Coverage Map` (Coverage Map's
+   "ALWAYS the final section" rule is untouched — References slots
+   in before it, never after): emitted ONLY when at least one
+   **Trace:** line cites an Esri doc; one bullet
+   `- [<title>](<url>)` per distinct cited doc, title and URL copied
+   VERBATIM from the excerpt headers; never an empty References
+   section, never a bullet no Trace cites. The DRAFT SHAPE preamble
+   now counts three CONDITIONAL sections.
+4. Trace-line description and the first grounding rule gain the
+   documentation excerpt as a fourth legitimate trace target; the
+   tools rule adds "or a documentation excerpt" to its
+   never-carry-over list.
+5. Worked example preamble notes the absent Esri-documentation lane
+   (no skeleton change — the example story cites no docs, so no
+   References section appears, which is itself the rule
+   demonstrated).
 
-v1.5 (requirement-driven coverage — no input, shape-order, or
-sentinel changes): case count stops being a target and becomes an
-output of coverage — the fixed "4–10 positive / 3–8 negative, prefer
-fewer" range (the RC-3 consolidation bias,
-`review/REVIEW_TestPlanGen_doc1_coverage.md`) is replaced by
-one-case-per-requirement rules with a floor and no ceiling; a new
-always-on final section, `## Coverage Map`, renders the
-requirement→case trace table the reviewer previously built by hand
-(the converse of the Trace rule, and the prompt-side realization of
-the Setup guide's queued "coverage matrix" follow-on); ENUMERATION
-COVERAGE gains a cross-product clause (two enumeration axes = every
-pairing exercised or explicitly parameterized); RELATED DIGEST
-entries must each be evaluated for interaction cases instead of "may
-inspire". Length is controlled by terse steps and parameterization,
-never by dropping or merging requirements.
+Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`,
+lengths 17/15 — G9 arithmetic untouched). Input keys are now SIX,
+exact names: **StoryMeta**, **StoryText**, **RelatedDigest**,
+**ExemplarText**, **ReferenceText**, **OnlineDocText**.
 
-v1.4 (GFM draft shape — no input, grounding, or sentinel changes):
-drafts now target GitHub-style markdown viewers, matching the flow
-v2.7 sidecar upgrade. The Overview opens with a StoryMeta table;
-Setup / Prerequisites and per-case Steps render as GFM task lists
-(`- [ ] 1. ...`) so testers can check items off in the rendered view;
-Expected Result and Trace become standalone bold lines; Negative
-Tests opens with a fixed `> [!CAUTION]` alert; Open Questions items
-render as `- [ ] [VERIFY: ...]` checkboxes so resolution is
-trackable. Section names, order, the CONDITIONAL rules, all grounding
-rules, and the output sentinels are unchanged. No emojis. The paired
-flow edit (same window): Draft_banner gains a `> [!WARNING]` first
-line so the banner renders as a GFM alert.
-
-v1.3 (the reference-functionality input lane): `ReferenceText` carries
-test plans or design docs describing the expected behavior of this
-story's feature area, possibly on ANOTHER surface — the flow fills it
-with related Test Plans whose Surface differs from the story's (the
-same-surface ones remain style/coverage exemplars). Unlike exemplars,
-the model may ground expected functional behavior on these — input
-methods, field-population semantics, validations — within the story's
-scope, with three guards: every borrowed statement's Trace cites the
-reference document, a cross-surface reference forces a surface-parity
-[VERIFY] item, and the story wins every conflict. Reference docs
-supply behavior, never tool names.
-
-v1.2 (the doc 1 coverage-review fixes — see
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): an ENUMERATION COVERAGE
-grounding rule — every workflow, pathway, input method, or
-event/geometry type the story enumerates must be exercised by at least
-one case, and this wins over the preferred case-count range — plus two
-CONDITIONAL draft sections, `## Automation Notes` and
-`## Documentation Impacts`, emitted between Negative Tests and Open
-Questions only when the story carries such content.
-
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
-
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written (create the sixth parameter,
-OnlineDocText, when upgrading from a pre-v1.6 paste — and the fifth,
-ReferenceText, when coming from pre-v1.3), then wire per the build
-guide §2.
+Deploy (this is a CONTRACT change, not just a paste — component
+v2.14): add the sixth input parameter **OnlineDocText** to the
+`LRS Test Plan Generation` AI Builder prompt, paste this text
+(replaces the pending v1.5 paste), set
+`Config_gen.TestPlanGenPromptVersion` to `v1.6`, apply the flows
+v2.4 additions in BOTH live flows (or re-import the re-cut
+packages): the `OnlineDocCap`/`OnlineDocSlots`/`OnlineDocsList`
+config keys, two new variables, the `OD_*` sidecar slice, the
+`For_each_od` fetch loop, the sixth prompt-call binding, and the
+`Gen_summary` `onlineDocs=`/`odChars=` fields —
+`review/patches/designer-edits.md` §testplangen-v2_14 Z1–Z8. Then
+run smoke rows 1, 9 and 12 (`testplangen/TestPlanGen_Smoke.md`).
+NEVER bump `Config.PromptVersion` — nothing here changes the
+sidecar format or reindexes the corpus (the `online_docs:` sidecar
+line itself belongs to the sweep's change set, not this one).
 
 ---------------- PROMPT TEXT BEGINS ----------------
 

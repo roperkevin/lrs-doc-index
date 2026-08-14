@@ -1,16 +1,19 @@
 """Render a full sample sidecar — the eyeball artifact for the current format.
 
-Mirrors the flow's Sidecar_header template (flow/v2_8/definition.json)
+Mirrors the flow's Sidecar_header template (flow/v2_9/definition.json)
 in Python — same fields, same YAML escaping rules as the WDL
 expressions, including the v2.4 authorship lines (author /
 last_edited_by / last_edited), the subfolder-routed URLs, the v2.5
 row-id `doc_id`, the v2.7 GFM info-card layout (H1 first, key-value
 info table with a conditional devtopia Issue row, `issues:` yaml
-line) and the v2.8 upgrades (the yaml block HIDDEN inside an
+line), the v2.8 upgrades (the yaml block HIDDEN inside an
 `<!-- metadata` ... `-->` HTML comment so no renderer displays it; a
 conditional Product info row + `products:` yaml line from RegexExtract
-v1.4) — over the real_deck.pptx extraction (current ZipTextExtract),
-and writes sample_sidecar.md. Asserts:
+v1.4) and the v2.9 online doc references (an `online_docs:` yaml line
+after `related:`; a `## Online references` section with
+`<!-- onlinedocs:begin/end -->` markers between the Related documents
+region and the seam) — over the real_deck.pptx extraction (current
+ZipTextExtract), and writes sample_sidecar.md. Asserts:
 
   - the file opens with the H1 title, then the info table, then
     exactly one `<!-- metadata` comment block wrapping the fenced
@@ -22,17 +25,23 @@ and writes sample_sidecar.md. Asserts:
   - the inner YAML parses with yaml.safe_load (title planted with '"'
     and ':' to exercise the escaping); `related` reads as [];
     `issues` round-trips as ["repo#n", ...]; `products` round-trips
-    as canonical product names
+    as canonical product names; `online_docs` round-trips as
+    {od,u,t} entry dicts (and as [] with the section showing
+    _None matched._ when nothing matched)
   - exactly one H1 line in the whole file
   - exactly one <!-- related:begin -->/<!-- related:end --> marker
     pair, in order, between ## Related documents and the seam
+  - exactly one <!-- onlinedocs:begin -->/<!-- onlinedocs:end -->
+    marker pair, in order, between <!-- related:end --> and the seam
   - the '---' header/body seam is present
 
 Then runs SidecarPatch (current scripts/ version) in set mode over the rendered sample with
 three synthetic ranked entries and writes sample_sidecar_related.md —
 the eyeball artifact for a POPULATED related list — re-asserting the
 metadata still parses (`related` = 3 entry dicts), the comment frame
-and head survived, and the file still has exactly one H1.
+and head survived, the file still has exactly one H1, and the
+online_docs line + Online references region came through
+byte-preserved (they sit outside SidecarPatch's two patch zones).
 
 Prereqs: make_fixtures.py and check_format.py have run (zte_cur.ts).
 """
@@ -76,11 +85,22 @@ meta = {
     'last_edited': '2026-07-31T18:22:04Z',
     'extracted': '2026-08-10',
     'extraction_lane': 'xmlstrip',
-    'prompt_version': 'v2.0',
+    'prompt_version': 'v2.1',
     'keywords': ['conflict prevention', 'locks', 'routes', 'route editing'],
     'tools': [],
     'products': ['Roads & Highways', 'Pipeline Referencing'],
     'ids': [{'repo': 'ArcGISPro/ps-location-referencing', 'number': 4855}],
+    # mirrors OD_top (flow v2.9): matched Online Docs rows, best first
+    'online_docs': [
+        {'od': 3,
+         'u': 'https://pro.arcgis.com/en/pro-app/latest/help/production/roads-highways/create-lrs-routes.htm',
+         't': 'Create LRS routes',
+         'sum': 'How to create routes in an LRS network in ArcGIS Pro.'},
+        {'od': 8,
+         'u': 'https://pro.arcgis.com/en/pro-app/latest/help/production/roads-highways/conflict-prevention.htm',
+         't': 'Conflict prevention and locks',
+         'sum': 'How locks are acquired and released during LRS editing.'},
+    ],
     'summary': ('Explores how conflict prevention should acquire locks when routes '
                 'are created rather than edited, covering lock timing in Create, '
                 'Extend, Realign, and Reassign Route and the behavior when another '
@@ -95,7 +115,7 @@ COM_CLOSE = '\n```\n-->\n'
 
 
 def render_header(m):
-    """Python mirror of the v2.8 Sidecar_header WDL template."""
+    """Python mirror of the v2.9 Sidecar_header WDL template."""
     # mirrors Select_issue_links / Issue_row (row omitted when no ids)
     issue_links = ' · '.join(
         f"[{i['repo']}#{i['number']}](https://devtopia.esri.com/"
@@ -107,6 +127,12 @@ def render_header(m):
     products_yaml = ', '.join(f'"{p}"' for p in m['products'])
     # mirrors Select_issue_yaml
     issues_yaml = ', '.join(f'"{i["repo"]}#{i["number"]}"' for i in m['ids'])
+    # mirrors Select_od_yaml / Select_od_bullets / OD_section (flow v2.9)
+    od_yaml = ', '.join('{"od":%d,"u":"%s","t":"%s"}' % (e['od'], e['u'], e['t'])
+                        for e in m['online_docs'])
+    od_inner = ('\n'.join(f"- [{e['t']}](<{e['u']}>) — {e['sum']} "
+                          f"<!-- od:{e['od']} -->" for e in m['online_docs'])
+                if m['online_docs'] else '_None matched._')
     release_disp = m['target_release'].replace('|', '/') if m['target_release'] else '—'
     edited_disp = last_edited_disp if m['last_edited'] else 'unknown'
     editor_disp = m['last_edited_by'].replace('|', '/') if m['last_edited_by'] else 'unknown'
@@ -142,7 +168,8 @@ keywords: [{', '.join(kw_quote(k) for k in m['keywords'])}]
 tools: [{', '.join(kw_quote(t) for t in m['tools'])}]
 products: [{products_yaml}]
 issues: [{issues_yaml}]
-related: []{COM_CLOSE}
+related: []
+online_docs: [{od_yaml}]{COM_CLOSE}
 ## Summary
 
 {summary_disp}
@@ -152,6 +179,12 @@ related: []{COM_CLOSE}
 <!-- related:begin -->
 _None yet._
 <!-- related:end -->
+
+## Online references
+
+<!-- onlinedocs:begin -->
+{od_inner}
+<!-- onlinedocs:end -->
 
 ---
 
@@ -269,6 +302,29 @@ else:
     print(f"FAIL products field wrong: {parsed.get('products')!r}")
     ok = False
 
+if parsed.get('online_docs') == [{'od': e['od'], 'u': e['u'], 't': e['t']}
+                                 for e in meta['online_docs']]:
+    print('ok   online_docs frontmatter field round-trips as {od,u,t} entries')
+else:
+    print(f"FAIL online_docs field wrong: {parsed.get('online_docs')!r}")
+    ok = False
+
+od_lines = [ln for ln in fm.split('\n') if ln.startswith('online_docs: [')]
+rel_at = fm.split('\n').index('related: []')
+if len(od_lines) == 1 and fm.split('\n')[rel_at + 1] == od_lines[0]:
+    print('ok   online_docs yaml line sits immediately after related:')
+else:
+    print('FAIL online_docs yaml line missing or misplaced')
+    ok = False
+
+no_od = render_header(dict(meta, online_docs=[]))
+if ('online_docs: []' in no_od and '_None matched._' in no_od and
+        '<!-- od:' not in no_od):
+    print('ok   no matches renders online_docs: [] and _None matched._')
+else:
+    print('FAIL match-less header renders a broken online-docs branch')
+    ok = False
+
 no_summary = render_header(dict(meta, summary=''))
 if ('> [!WARNING]\n> No AI summary was generated for this document.'
         in no_summary):
@@ -285,6 +341,17 @@ if (sidecar.count(BEGIN) == 1 and sidecar.count(END) == 1 and
     print('ok   one begin/end marker pair, in order, before the seam')
 else:
     print('FAIL related markers missing, duplicated, or misplaced')
+    ok = False
+
+OD_BEGIN, OD_END = '<!-- onlinedocs:begin -->', '<!-- onlinedocs:end -->'
+od_head_idx = sidecar.index('## Online references')
+if (sidecar.count(OD_BEGIN) == 1 and sidecar.count(OD_END) == 1 and
+        sidecar.index(END) < od_head_idx < sidecar.index(OD_BEGIN) <
+        sidecar.index(OD_END) < seam_idx):
+    print('ok   one onlinedocs marker pair, in order, between related:end '
+          'and the seam')
+else:
+    print('FAIL onlinedocs markers missing, duplicated, or misplaced')
     ok = False
 
 # ---- populate via SidecarPatch (set mode, synthetic entries) -------
@@ -361,6 +428,16 @@ if len(h1s) == 1 and patched['content'].count('<!-- rel:') == 3:
 else:
     print(f"FAIL patched sample: {len(h1s)} H1s, "
           f"{patched['content'].count('<!-- rel:')} bullets")
+    ok = False
+
+od_line = f'online_docs: [{", ".join(json.dumps({"od": e["od"], "u": e["u"], "t": e["t"]}, separators=(",", ":")) for e in meta["online_docs"])}]'
+od_region = sidecar[sidecar.index('## Online references'):
+                    sidecar.index(OD_END) + len(OD_END)]
+if pc.count(od_line) == 1 and pc.count(od_region) == 1:
+    print('ok   patching byte-preserves the online_docs line and the '
+          'Online references region (outside both patch zones)')
+else:
+    print('FAIL patching disturbed the online_docs line or region')
     ok = False
 
 print()

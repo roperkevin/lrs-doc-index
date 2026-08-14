@@ -1,3 +1,107 @@
+# TestPlanGen v2.14 — Esri online-doc grounding lane (prompt v1.6 + flows v2.4)
+
+The generation half of the Online Docs feature: a curated SharePoint
+list (**Online Docs**) maps keywords to Esri public documentation
+URLs, a weekly flow caches each page's text as a markdown file (the
+row's `CachedTextUrl` hyperlink — empty until fetched), and the
+nightly sweep (v2.9 of the sweep change set) writes each story's
+picks into the sidecar as an `online_docs:` line directly under
+`related: []` (entries `{"od": <item id>, "u": "<url>", "t":
+"<title>"}`). Until now official product documentation had no
+sanctioned path into a draft — expected behavior could only ground
+on the story, exemplar patterns, or the v1.3 reference lane
+(internal docs). This adds the public docs as a sixth, cited,
+guarded input lane.
+
+**Prompt → v1.6** (`review/patches/TestPlanGen_Prompt_v1_6.md`,
+promoted to `prompts/TestPlanGen_Prompt.md`):
+
+- **Sixth input key `OnlineDocText`** — ESRI DOCUMENTATION excerpts,
+  each headed `--- ESRI DOC: <title> — <url> ---`; new fifth input
+  fence `<<<ESRI DOCUMENTATION BEGIN/END>>>`; the untrusted-data
+  paragraph now covers five text blocks.
+- **New grounding rule** (the v1.3 shape): the model MAY ground
+  expected behavior and official terminology on the excerpts; every
+  doc-grounded Trace cites `Esri doc: <title>`; the STORY wins every
+  conflict with the docs (conflict → [VERIFY], never a silent
+  preference); the docs supply behavior and terminology, never tool
+  names (the tools rule applies in full); an empty lane (`(none)`)
+  drafts exactly as v1.5.
+- **New CONDITIONAL `## References` section** between Open Questions
+  and Coverage Map (Coverage Map stays the always-final section):
+  emitted only when at least one Trace cites an Esri doc; one bullet
+  `- [<title>](<url>)` per distinct cited doc, title/URL verbatim
+  from the excerpt headers; never empty, never uncited.
+- Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`,
+  17/15 — G9 arithmetic untouched).
+
+**Both flows → v2.4** (`flow/v1_0/definition.json`,
+`flow/core_v1_0/definition.json` — mirrored; the new lane copies the
+v2.0 reference lane action-for-action, including the v2.3
+self-reference-safe budget Compose):
+
+- **`Config_gen`**: new `OnlineDocCap: 10000`, `OnlineDocSlots: 2`,
+  `OnlineDocsList` (the Online Docs list GUID — placeholder in the
+  authored definitions, replace on the tenant like the I1 prompt
+  re-pick); `TestPlanGenPromptVersion` → `v1.6`.
+- Two new variables `OnlineDocText` / `OnlineDocCount`, chained
+  after `Init_ReferenceCount`.
+- **`OD_start/OD_tail/OD_line/OD_json_safe/OD_entries`** — the G4
+  `Rel_*` slice over the sidecar's `online_docs:` line (label 13
+  chars; a pre-v2.9 sidecar without the line degrades to `[]`, so
+  the lane goes `(none)` and drafts are byte-identical to v1.5
+  behavior — the deploy windows commute).
+- **`For_each_od`** (after `For_each_reference`; `Story_meta`
+  re-pointed after it) — per entry: `Get_od_row` fetches the Online
+  Docs row for the FRESH `CachedTextUrl` (deliberately not stored in
+  the sidecar; the weekly cache flow may move or refresh the file),
+  `Od_path` strips SiteUrl, `If_od_path_ok` skips unfetched caches,
+  `Get_od_md` + `Od_remaining` + `If_od_budget` + `Append_od` build
+  the `--- ESRI DOC: <title> — <url> ---`-headed excerpt within
+  OnlineDocCap, `Inc_od` counts; Try scope + `Od_done` neutralizer
+  so a broken slot degrades silently.
+- **`Run_testplangen_prompt`** gains the sixth binding with the
+  standard `(none)` substitution; **`Gen_summary`** appends
+  ` onlineDocs=` / ` odChars=` (post-check: `odChars ≤
+  OnlineDocCap`).
+
+**Harness** — `review/harness/check_draft_coverage.py` upgraded to
+the v1.6 contract, presence-conditionally (pre-v1.6 drafts pass
+unchanged): optional `## References` allowed only between Open
+Questions and Coverage Map; an `Esri doc:` Trace citation requires
+the section; every bullet must be `- [<title>](<http(s) url>)`;
+every distinct cited title must have a bullet; new `esriDocs=`
+counter.
+
+**Docs** — Setup §2 (six parameters), §3 G0/G0b/G4b/G7c/G8/G13;
+Smoke suite v1.5: new row 12 (online-doc lane end-to-end);
+designer edits §testplangen-v2_14 (Z1–Z8).
+
+Deploy delta, live tenant (order matters only at the edges — the
+windows commute with v1.5/v2.3): create the Online Docs list + weekly
+cache flow and let the sweep v2.9 backfill run if not already live;
+add the sixth AI Builder parameter **OnlineDocText** and paste v1.6
+(Z8); apply Z1–Z7 in BOTH live flows — or re-import the re-cut
+packages — replacing the `OnlineDocsList` placeholder with the real
+list GUID; run smoke rows 1, 9, 12 and record below. NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus (the `online_docs:` sidecar line belongs to the
+sweep's change set).
+
+| Piece | Version | Where |
+|---|---|---|
+| Prompt | **v1.6** | `prompts/TestPlanGen_Prompt.md`, patch `review/patches/TestPlanGen_Prompt_v1_6.md` |
+| Standalone flow + package | **v2.4** | `testplangen/flow/v1_0/` (package re-cut pending) |
+| Core child flow + package | **v2.4** | `testplangen/flow/core_v1_0/` (package re-cut pending) |
+| Designer edits | §testplangen-v2_14 (Z1–Z8) | `review/patches/designer-edits.md` |
+| Setup + smoke docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.5, 12 rows) |
+| Coverage harness | updated | `review/harness/check_draft_coverage.py` |
+| Agent file set, schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 12) | Flows |
+|---|---|---|---|
+| — | — | — | v2.4 (deploy pending) |
+
 # TestPlanGen v2.13 — self-reference-safe budget take (flows v2.3)
 
 A live save of the v2.2 flow failed validation (2026-08-13, the

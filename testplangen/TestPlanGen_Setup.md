@@ -72,13 +72,14 @@ Check: `/Shared Documents/Test Plan Drafts` exists and is empty.
 
 ## 2 — The AI Builder prompt
 
-Create a custom prompt named `LRS Test Plan Generation`. FIVE input
+Create a custom prompt named `LRS Test Plan Generation`. SIX input
 parameters, exact names: **StoryMeta**, **StoryText**,
-**RelatedDigest**, **ExemplarText**, **ReferenceText** (the fifth is
-new in v2.0 — an upgrade from a pre-v1.3 paste must CREATE the
-parameter, not just re-paste the text). Paste the delimited block from
+**RelatedDigest**, **ExemplarText**, **ReferenceText**,
+**OnlineDocText** (the sixth is new in v2.14, the fifth in v2.0 — an
+upgrade from an older paste must CREATE the missing parameters, not
+just re-paste the text). Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.5` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.6` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -97,8 +98,8 @@ closed. Angle-bracket fences remain fine on the INPUT side.
 Check: test in the AI Builder pane with a three-line StoryMeta
 (`title: Smoke Story`, `surface: Pro`, `target_release: 3.8`), a
 two-sentence StoryText ("As an editor, I need to merge two routes.
-The merge must preserve measures."), empty RelatedDigest, ExemplarText
-and ReferenceText → the reply is wrapped in the two markers, contains the
+The merge must preserve measures."), empty RelatedDigest, ExemplarText,
+ReferenceText and OnlineDocText → the reply is wrapped in the two markers, contains the
 six core draft sections (the smoke story has no automation or
 documentation plans, so the two conditional sections — Automation
 Notes, Documentation Impacts — are correctly absent), every test case
@@ -164,26 +165,37 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "DigestSummaryCap": 400,
   "ExemplarSlots": 2,
   "ReferenceSlots": 3,
-  "TestPlanGenPromptVersion": "v1.5"
+  "OnlineDocCap": 10000,
+  "OnlineDocSlots": 2,
+  "OnlineDocsList": "REPLACE-WITH-ONLINEDOCS-LIST-GUID",
+  "TestPlanGenPromptVersion": "v1.6"
 }
 ```
+
+`OnlineDocsList` (v2.4) is the **Online Docs** list GUID — the
+authored definitions carry a placeholder; replace it with your
+tenant's GUID the same way the trigger carries the Doc Index GUID.
 
 The caps are the token-budget knobs (Known limits below). Trim
 priority when a generation feels starved: the story always wins, then
 the first exemplar, then the digest, then the second exemplar.
-`ExemplarSlots` / `ReferenceSlots` (v2.2) bound how many document
-BODIES each lane fetches — the caps still bound total characters, so
-raising a slot count widens variety, not the budget; StoryCap is
-45000 (v2.2, was 30000) because a truncated story tail loses
-acceptance criteria — i.e. silently loses cases.
+`ExemplarSlots` / `ReferenceSlots` (v2.2) and `OnlineDocSlots`
+(v2.4) bound how many document BODIES each lane fetches — the caps
+still bound total characters, so raising a slot count widens
+variety, not the budget; StoryCap is 45000 (v2.2, was 30000) because
+a truncated story tail loses acceptance criteria — i.e. silently
+loses cases. OnlineDocCap 10000 keeps the worst-case prompt context
+bounded (~45k + 20k + 12k + 10k + digest ≈ 90k chars ≈ ~22k tokens,
+still comfortably in the model window).
 
-**G0b — Initialize variables** (seven, top level — variables cannot
+**G0b — Initialize variables** (nine, top level — variables cannot
 initialize inside a scope): `NeighborDigest` (String, value
 `@{string('')}` — the empty-value designer-trap guard), `ExemplarText`
 (String, same), `ExemplarUrls` (Array, value `@{json('[]')}`),
 `ExemplarCount` (Integer, 0), `ReferenceText` (String, `@{string('')}`),
 `ReferenceUrls` (Array, `@{json('[]')}`), `ReferenceCount`
-(Integer, 0).
+(Integer, 0), `OnlineDocText` (String, `@{string('')}` — v2.4),
+`OnlineDocCount` (Integer, 0 — v2.4).
 
 **G0c — `Try_gen`** (Scope) containing G1–G11:
 
@@ -244,6 +256,28 @@ every sidecar):
 Entries arrive score-ordered (RelatedRank sorts before rendering), so
 "first Test Plan in the loop" below means "highest-scored related
 Test Plan".
+
+**G4b — online-docs parse** (v2.4; the G4 chain over the sweep's
+`online_docs:` line, which sits directly under `related: []` —
+entries are `{"od": <Online Docs item id>, "u": "<public url>",
+"t": "<title>"}`). The label `online_docs: ` is 13 characters, so
+the tail slice starts on the `[` exactly as `Rel_tail`'s +9 does; a
+pre-v2.9 sidecar without the line degrades to `[]` — empty loop,
+`(none)` at the prompt call, drafts exactly as before this lane
+existed:
+- **`OD_start`** (Compose):
+  `@indexOf(outputs('Story_md'), 'online_docs: [')`
+- **`OD_tail`** (Compose):
+  `@if(greater(outputs('OD_start'), -1), substring(outputs('Story_md'), add(outputs('OD_start'), 13)), '[]')`
+- **`OD_line`** (Compose):
+  `@if(greater(indexOf(outputs('OD_tail'), decodeUriComponent('%0A')), -1), substring(outputs('OD_tail'), 0, indexOf(outputs('OD_tail'), decodeUriComponent('%0A'))), outputs('OD_tail'))`
+- **`OD_json_safe`** (Compose):
+  `@if(and(startsWith(trim(outputs('OD_line')), '['), endsWith(trim(outputs('OD_line')), ']')), trim(outputs('OD_line')), '[]')`
+- **`OD_entries`** (Compose):
+  `@take(json(outputs('OD_json_safe')), int(outputs('Config_gen')?['OnlineDocSlots']))`
+
+(`For_each_rel` runs after `OD_entries` — the OD slice sits between
+the two parse chains and the loops.)
 
 **G5 — `For_each_rel`** (Apply to each over `@outputs('Rel_entries')`,
 concurrency 1). Each iteration is a Try scope plus a neutralizer so
@@ -403,6 +437,48 @@ note the `items(...)?['url']` reads, since the array holds objects:
 - **`Reference_done`** (Compose, inputs `ok`, run after
   `Try_reference` has **Succeeded, Failed, Skipped, Timed out**).
 
+**G7c — `For_each_od`** (v2.4; Apply to each over
+`@outputs('OD_entries')`, concurrency 1, run after
+`For_each_reference`), the G7b pattern over the online-doc entries.
+The row is fetched for the FRESH `CachedTextUrl` — deliberately not
+stored in the sidecar, since the weekly cache flow may move or
+refresh the file between sweeps:
+- **`Try_od`** (Scope):
+  - **`Get_od_row`** (Get item): site `Config_gen.SiteUrl`, list
+    `@{outputs('Config_gen')?['OnlineDocsList']}` (the Online Docs
+    list — replace the config placeholder first), Id
+    `@items('For_each_od')?['od']`.
+  - **`Od_path`** (Compose) — strip SiteUrl the way `Story_path`
+    does:
+    `@{replace(coalesce(body('Get_od_row')?['CachedTextUrl'], ''), outputs('Config_gen')?['SiteUrl'], '')}`
+  - **`If_od_path_ok`** (Condition:
+    `@startsWith(outputs('Od_path'), '/')`) — an empty
+    `CachedTextUrl` (page not yet fetched by the weekly flow) skips
+    the slot cleanly. Yes branch:
+    - **`Get_od_md`** (Get file content using path, Infer Content
+      Type **No**, File Path `@{outputs('Od_path')}`)
+    - **`Od_remaining`** (Compose — the G7 self-reference rule,
+      online-doc lane):
+      `@sub(int(outputs('Config_gen')?['OnlineDocCap']), length(variables('OnlineDocText')))`
+    - **`If_od_budget`** (Condition:
+      `@less(length(variables('OnlineDocText')), int(outputs('Config_gen')?['OnlineDocCap']))`),
+      Yes branch:
+      - **`Append_od`** — Append to string `OnlineDocText` — the
+        header is the prompt's `--- ESRI DOC: <title> — <url> ---`
+        contract, which the draft's References section copies
+        verbatim; the take is the remaining budget:
+        `--- ESRI DOC: @{items('For_each_od')?['t']} — @{items('For_each_od')?['u']} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_od_md')?['$content']), outputs('Od_remaining'))}@{decodeUriComponent('%0A%0A')}`
+      - **`Inc_od`** — Increment variable `OnlineDocCount` by 1.
+- **`Od_done`** (Compose, inputs `ok`, run after `Try_od` has
+  **Succeeded, Failed, Skipped, Timed out**).
+
+The online-doc lane, like the reference lane, has NO fallback query:
+excerpts come only from the sidecar's `online_docs:` picks (the
+sweep's keyword match against the curated Online Docs list). A story
+without the line, or whose picks have no cached text yet, generates
+with `OnlineDocText` empty (`Gen_summary` shows `onlineDocs=0`),
+exactly as every story did before v2.4.
+
 **G8 — the prompt call** (the sweep's `Run_prompt` shape):
 - **`Story_meta`** (Compose) — flow-composed from row fields, the
   semi-trusted lane (quotes stripped where a value lands mid-line):
@@ -427,9 +503,13 @@ note the `items(...)?['url']` reads, since the array holds objects:
   `StoryText` = `@{outputs('Story_text_capped')}`,
   `RelatedDigest` = `@{if(empty(variables('NeighborDigest')), '(none)', variables('NeighborDigest'))}`,
   `ExemplarText` = `@{if(empty(variables('ExemplarText')), '(none)', variables('ExemplarText'))}`,
-  `ReferenceText` = `@{if(empty(variables('ReferenceText')), '(none)', variables('ReferenceText'))}`.
-  One call per run. Note `Story_meta` now runs after `For_each_reference`
-  (was `For_each_exemplar` pre-v2.0).
+  `ReferenceText` = `@{if(empty(variables('ReferenceText')), '(none)', variables('ReferenceText'))}`,
+  `OnlineDocText` = `@{if(empty(variables('OnlineDocText')), '(none)', variables('OnlineDocText'))}`
+  (the sixth binding, v2.4 — create the parameter in §2 first or the
+  designer won't show the field).
+  One call per run. Note `Story_meta` now runs after `For_each_od`
+  (v2.4; was `For_each_reference` from v2.0, `For_each_exemplar`
+  before that).
 
 **G9 — marker slice** (the F3 pattern with draft sentinels; the BEGIN
 marker `[[[DRAFT BEGIN]]]` is 17 characters):
@@ -488,7 +568,7 @@ out** — the curation Catch verbatim, names swapped):
 the F11 pattern):
 
 ```
-@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')), ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText')))}
+@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')), ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText')), ' onlineDocs=', variables('OnlineDocCount'), ' odChars=', length(variables('OnlineDocText')))}
 ```
 
 `exemplars=0` on a story that should have peers = check §3-G6's
@@ -499,12 +579,15 @@ same-surface plan beyond the exemplar slots, and no Design Spike
 `draftChars` near zero never happens (G9 fails closed first);
 `exChars`/`refChars` (v2.2) must sit at or under ExemplarCap /
 ReferenceCap — over the cap means the G7/G7b remaining-budget take
-regressed to the full-cap form.
+regressed to the full-cap form; `onlineDocs=0` (v2.4) is normal on a
+pre-v2.9 sidecar (no `online_docs:` line) or when the weekly cache
+flow hasn't fetched the picked pages yet; `odChars` must sit at or
+under OnlineDocCap — same regression check as the other lanes.
 
-**Cost**: 1 trigger + ~28 fixed actions + ~3 per related neighbor +
-~5 per exemplar + ~5 per reference + ONE AI Builder call ≈ **35–65
-actions + one AI call, per invocation, on demand** — noise next to
-the sweep's ~2,500/day.
+**Cost**: 1 trigger + ~33 fixed actions + ~3 per related neighbor +
+~5 per exemplar + ~5 per reference + ~5 per online doc + ONE AI
+Builder call ≈ **40–75 actions + one AI call, per invocation, on
+demand** — noise next to the sweep's ~2,500/day.
 
 **Concurrency with the sweep**: this flow writes nothing the sweep
 (or anything else) reads — it is read-only over Doc Index and the

@@ -493,3 +493,53 @@ PASS against the promoted `scripts/`; `check_batch_r5.py` now skips
 as superseded (the r6 promotion moved SidecarPatch past its
 generation), joining r2/r3 and `check_batch.py`; `check_batch_r4.py`
 still PASSES (RelatedRank untouched by r6).
+
+## Batch gate — the r7 batch (`check_batch_r7.py`)
+
+The gate for the online-doc round (`../../onlinedocs/CHANGES.md`,
+`../../flow/v2_9/CHANGES.md`, `../../testplangen/CHANGES.md` v2.14):
+HtmlToText **v1.0** (NEW script — HTML → cacheable text for the
+OnlineDocFetch flow: chrome strip, structure-preserving conversion,
+entity decode, maxChars cap, `thin-extract`/`empty-input` notes).
+An unusual batch shape: one script ADDED, none changed — so there is
+no old-vs-new script equivalence; the equivalence seat is the format
+side instead: **SidecarPatch v1.6, unchanged, must byte-preserve the
+v2.9 sidecar additions** (the `online_docs:` yaml line and the
+`<!-- onlinedocs:begin/end -->` region live outside both of its patch
+zones — flow v2.9 recomputes them at `Sidecar_header` compose time).
+The gate re-runs all four standing suites over the staged batch
+(`check_htmltotext.py` joins the standing set this round), asserts
+the promotion identity (patch byte-identical to `scripts/`), proves
+the pass-through + idempotence directly on a full v2.9-format
+sidecar, and type-checks at ES2017. **Paste fencing**: none needed —
+HtmlToText is standalone-safe any time (no flow consumer until
+OnlineDocFetch is built); the v2.9 and testplangen-v2_14 windows
+sequence independently (empty-lane degrades make them commute).
+
+```
+python3 make_fixtures.py     # standing prereq
+python3 check_batch_r7.py    # any FAIL = do not paste
+```
+
+### Last run (2026-08-14, Node 22.22.2) — r7 gate + promotion + v2.9 format suites
+
+Gate run: **PASS** — `check_htmltotext.py` (44 checks: chrome strip,
+structure, title fallback, entities incl. the pinned single-pass
+re-decode limit, cap, notes, plain-text passthrough) /
+`check_format.py` / `check_related.py` (incl. the 4 new v2.9
+byte-preservation cases across set/merge/comment-frame) /
+`check_regex.py` fully green over the staged batch; promotion
+identity holds; SidecarPatch v1.6 passes the `online_docs:` line and
+the Online references region through byte-identically with
+idempotence on the v2.9 format; the staged script type-checks at
+ES2017. Post-promotion, `render_sample.py` (now mirroring the v2.9
+Sidecar_header: `online_docs` yaml round-trip as `{od,u,t}` dicts,
+line placement after `related:`, empty branch `online_docs: []` +
+`_None matched._`, marker-pair ordering, post-patch preservation)
+PASSES; `check_batch_r6.py` still PASSES (its three scripts untouched
+by r7); `check_draft_coverage.py` gains the presence-conditional
+prompt v1.6 rules (optional `## References` between Open Questions
+and Coverage Map, `Esri doc:` Trace ⇒ References with matching
+bullets, `esriDocs=` counter) — verified PASS on a v1.5-style and a
+v1.6-style sample draft and FAIL (exactly one assertion) on a
+cited-doc-missing negative.

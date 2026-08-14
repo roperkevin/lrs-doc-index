@@ -49,3 +49,6 @@ stage_r5/
 # r6 gate staging + generated cases
 stage_r6/
 rex_r6_cases.json
+# r7 gate staging + generated runner
+stage_r7/
+scp_r7.ts

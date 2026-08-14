@@ -1,4 +1,4 @@
-# TestPlanGen Smoke Suite — v1.4
+# TestPlanGen Smoke Suite — v1.5
 
 The verification suite for the test-plan-generation flow. Run every
 row after initial setup and after every prompt bump; record the run in
@@ -13,11 +13,14 @@ prompt v1.2) is pinned to doc 1 and exercises the enumeration-coverage
 rule and the two conditional sections; row 10 (added with v2.0)
 exercises the reference-functionality lane; row 11 (added with the
 v2.2 flows) exercises the widened reference routing — Design Spike
-bodies and same-surface exemplar overflow. From prompt v1.5, rows 1
+bodies and same-surface exemplar overflow; row 12 (added with the
+v2.4 flows / prompt v1.6) exercises the Esri online-doc grounding
+lane and the References section. From prompt v1.5, rows 1
 and 9 also check the requirement-driven coverage contract: the draft
 ends with a `## Coverage Map` table and no row of it has an empty
 Covered by cell (`review/harness/check_draft_coverage.py` runs these
-checks offline on a downloaded draft).
+checks offline on a downloaded draft, plus the v1.6 References rules
+where the draft cites Esri docs).
 
 | # | Action | Expected | Check |
 |---|---|---|---|
@@ -32,12 +35,13 @@ checks offline on a downloaded draft).
 | 9 | Run on doc 1 ("Auto-Populate Referents for Event Edits", User Story, Experience Builder — a story that enumerates six edit pathways, point and line events, and carries Automation and Documentation slides) | Enumeration coverage + conditional sections | Every enumerated pathway has a case: an attribute-table edit case distinct from the dynamic-segmentation one; edit cases cover point AND line events (own cases or explicitly parameterized — v1.5's cross-product clause: every pathway×event-type pairing exercised or parameterized); routeID-only change covered or flagged in Open Questions. `Automation Notes` and `Documentation Impacts` sections present, every bullet with a **Trace:** line. v1.5: the Coverage Map carries one row per requirement of the doc 1 trace matrix (15 in `review/REVIEW_TestPlanGen_doc1_coverage.md` — the 9/15-covered baseline this row guards against regressing to), each row citing cases or an Open Questions entry. The pre-v1.2 failure mode this guards against is `review/REVIEW_TestPlanGen_doc1_coverage.md` CG-1..4 |
 | 10 | Run on a *pick: User Story whose sidecar `related:` list contains a CROSS-surface Test Plan* (doc 1 qualifies once the three Pro Add-Event offset plans — devtopia 3906/3910/3911 — are swept and linked) | Reference-functionality lane | `Gen_summary` shows `references≥1` and the run history's `Append_reference` header carries the reference's title and surface. In the draft: at least one case's **Trace:** cites the reference document by title; Open Questions carries a surface-parity `[VERIFY]` for the borrowed behaviors; NO tool name from the reference document appears in the draft (tool names must come from StoryMeta/StoryText only); the reference's feature-specific content appears ONLY in reference-cited cases, never uncited |
 | 11 | Run on a *pick: User Story whose sidecar `related:` list carries a Design Spike, or 3+ SAME-surface Test Plans* (v2.2 flows) | Widened reference routing | `Gen_summary` shows `references≥1` with `exChars ≤ ExemplarCap` and `refChars ≤ ReferenceCap` (the budget fix); the run history's `Append_reference` header carries the spike's title (or the overflowed same-surface plan's — the highest-scored plans still hold the exemplar slots); a spike never appears in an `Append_exemplar` header; in the draft, reference-grounded Traces cite the design doc / overflow plan by title, and a SAME-surface reference forces NO surface-parity `[VERIFY]` (the parity guard keys on the reference block's own surface header) |
+| 12 | Run on a *pick: User Story whose sidecar carries an `online_docs:` line with at least one entry whose Online Docs row has a cached page (`CachedTextUrl` non-empty)* (v2.4 flows + prompt v1.6) | Esri online-doc grounding lane | `Gen_summary` shows `onlineDocs≥1` with `odChars ≤ OnlineDocCap`; the run history's `Append_od` header carries the entry's title and public URL (`--- ESRI DOC: <title> — <url> ---`); in the draft: at least one **Trace:** cites `Esri doc: <title>`; a `## References` section sits between Open Questions and Coverage Map (Coverage Map still final) with one `- [<title>](<url>)` bullet per cited doc, title/URL verbatim from the excerpt headers, and the links resolve; NO tool name appears that the story doesn't name (docs supply behavior and terminology, never tools); where the doc and the story disagree, the draft carries a `[VERIFY]` item instead of silently preferring the doc. Then re-run on a pre-v2.9 story (no `online_docs:` line): `onlineDocs=0`, no References section, draft otherwise normal — `check_draft_coverage.py` passes both (its v1.6 rules are presence-conditional) |
 
 Failure triage, in order: (a) wrong row selected or story not yet
 swept — the guard message says which condition failed to meet;
 (b) prompt binding or input-key drift — designer-verify `Run_testplangen_prompt`
 against §2 of the setup guide (keys: StoryMeta, StoryText,
-RelatedDigest, ExemplarText); (c) marker failures on well-formed
+RelatedDigest, ExemplarText, ReferenceText, OnlineDocText); (c) marker failures on well-formed
 stories — re-paste the prompt from the current `TestPlanGen_Prompt`
 artifact, then treat repeats as a `TestPlanGenPromptVersion` bump;
 (d) empty related context on a story that should have neighbors —

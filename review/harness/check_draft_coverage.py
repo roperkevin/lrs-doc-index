@@ -1,4 +1,4 @@
-"""Offline coverage lint for a TestPlanGen draft (prompt v1.5 contract).
+"""Offline coverage lint for a TestPlanGen draft (prompt v1.6 contract).
 
 Runs over a downloaded draft .md (from Shared Documents/Test Plan
 Drafts/) — no tenant access, no fixtures. Complements smoke rows 1
@@ -7,13 +7,16 @@ the draft honors the coverage contract, and prints the counters used
 for before/after comparison when a prompt bump lands
 (`testplangen/Coverage_Runbook.md` step 5).
 
-Asserts (v1.5 contract):
+Asserts (v1.6 contract — the v1.6 rules are presence-conditional, so
+pre-v1.6 drafts pass unchanged):
 
   1. the six core sections present, in order: Overview,
      Setup / Prerequisites, Positive Tests, Negative Tests,
      Open Questions, Coverage Map (conditionals — Automation Notes,
      Documentation Impacts — allowed between Negative Tests and
-     Open Questions, never empty if present)
+     Open Questions, never empty if present; References — v1.6 —
+     allowed between Open Questions and Coverage Map only, so
+     Coverage Map stays the final section)
   2. every `### TC-*` case carries a `**Trace:**` line
   3. Negative Tests opens with the fixed `> [!CAUTION]` alert
   4. Open Questions has at least one `- [ ]` item
@@ -21,10 +24,16 @@ Asserts (v1.5 contract):
      empty Covered by cell; every TC id a cell cites exists in the
      draft; every TC id in the draft appears in some cell
   6. TC numbering sequential per lane (TC-P1..Pn, TC-N1..Nn)
+  7. Esri-doc citations (v1.6): any `**Trace:**` line citing
+     `Esri doc: <title>` requires a `## References` section; every
+     References bullet is `- [<title>](<http(s) url>)`; every
+     distinct cited title has a matching bullet; References, when
+     present, is non-empty
 
-Prints (never gates): TC-P / TC-N / [VERIFY] / Coverage Map row
-counts, and a WARN when the draft sits under the prompt's floor
-(4 positive / 3 negative — almost certainly under-covered).
+Prints (never gates): TC-P / TC-N / [VERIFY] / Coverage Map row /
+References bullet counts, and a WARN when the draft sits under the
+prompt's floor (4 positive / 3 negative — almost certainly
+under-covered).
 
 `--baseline` scores a pre-v1.5 draft for the before side of a
 comparison: sections 1's Coverage Map requirement and check 5 are
@@ -75,6 +84,16 @@ def main():
             body = re.split(r'\n## ', text.split(cond_h, 1)[1], 1)[0]
             check(bool(re.search(r'^\s*[-*] ', body, re.M)),
                   f'conditional section non-empty: {cond_h}')
+    # References (v1.6, presence-conditional) sits between Open
+    # Questions and Coverage Map — Coverage Map stays final
+    if '## References' in text:
+        p_ref = text.find('## References')
+        p_oq = text.find('## Open Questions')
+        p_cm = text.find('## Coverage Map')
+        check(p_oq >= 0 and p_ref > p_oq,
+              'References sits after Open Questions')
+        check(p_cm >= 0 and p_ref < p_cm,
+              'References sits before Coverage Map (Coverage Map final)')
 
     # 2 — every case has a Trace line
     cases = re.findall(r'^### (TC-[PN]\d+)[^\n]*\n(.*?)(?=^###? |\Z)',
@@ -121,6 +140,31 @@ def main():
         for cid in sorted(draft_ids - cited_ids):
             check(False, f'{cid} appears in no Coverage Map row')
 
+    # 7 — Esri-doc citations vs References (v1.6, presence-conditional)
+    ref_bullets = []
+    if '## References' in text:
+        ref = re.split(r'\n## ', text.split('## References', 1)[1], 1)[0]
+        ref_bullets = [l.strip() for l in ref.splitlines()
+                       if l.strip().startswith('- ')]
+        check(len(ref_bullets) >= 1, 'References is non-empty')
+    ref_titles = set()
+    for i, b in enumerate(ref_bullets, 1):
+        m = re.fullmatch(r'- \[([^\]]+)\]\((https?://\S+)\)', b)
+        check(bool(m), f'References bullet {i} is - [<title>](<url>): {b}')
+        if m:
+            ref_titles.add(m.group(1))
+    cited = set()
+    for line in text.splitlines():
+        if '**Trace:**' in line and 'Esri doc:' in line:
+            cited.add(line.split('Esri doc:', 1)[1].strip()
+                      .rstrip('.,;"\''))
+    if cited:
+        check('## References' in text,
+              'Esri doc cited in a Trace: References section present')
+    for c in sorted(cited):
+        check(any(c == t or c.startswith(t) for t in ref_titles),
+              f'cited Esri doc has a References bullet: {c}')
+
     # 6 — sequential numbering per lane
     for lane in 'PN':
         nums = [int(n) for n in re.findall(rf'^### TC-{lane}(\d+)', text,
@@ -133,7 +177,8 @@ def main():
     n_neg = len(re.findall(r'^### TC-N\d+', text, re.M))
     n_verify = len(re.findall(r'\[VERIFY[:\]]', text))
     print(f'COUNTS: positive={n_pos} negative={n_neg} verify={n_verify} '
-          f'mapRows={len(map_rows)} chars={len(text)}')
+          f'mapRows={len(map_rows)} esriDocs={len(ref_bullets)} '
+          f'chars={len(text)}')
     if n_pos < 4 or n_neg < 3:
         print('WARN: under the prompt floor (4 positive / 3 negative) — '
               'almost certainly under-covered')

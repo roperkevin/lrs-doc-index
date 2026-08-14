@@ -1332,3 +1332,436 @@ Smoke: SmokeFile on the doc that failed → the run passes
 `Get_kw_meta` (now instant, no HTTP), `Run_related_shortlist`
 receives a non-empty `kwMetaJson`, and the doc heals to Indexed.
 Blank SmokeFile after.
+
+
+# v2_9 round — online doc references (curated Esri help links)
+
+`flow/v2_9/definition.json` is the authoritative result (the v2.8
+definition plus the edits below). Prereqs, in order:
+
+1. §v2_8 (and its addenda) fully applied.
+2. **Online Docs list**: create the curated list on the lrsworkspace
+   site from `schemas/SPList_OnlineDocs.csv` (internal names first;
+   `MatchKeywords` is '; '-joined lowercase keyword titles incl.
+   aliases; build + curation rules in
+   `onlinedocs/OnlineDocs_Setup.md` §1). List first, flow edits
+   second — Y2 runs on EVERY sweep, so a missing list fails the
+   whole run before any document is touched. Note the list GUID.
+3. No script pastes — SidecarPatch v1.6 and the extractors are
+   untouched by this round.
+
+Y1–Y6 are one window (the template references the new actions, and
+the new fetch fails until Y1 carries the real GUID); do them with
+the flow OFF or well clear of the 17:00 trigger, then smoke. Y7 can
+ride the same window.
+
+## Y1 — Config: OnlineDocsList + OnlineDocsTop + PromptVersion
+
+**Config** compose — add two keys after `LinksTop` and bump one:
+
+```
+"OnlineDocsList": "<the Online Docs list GUID from prereq 2>",
+"OnlineDocsTop": 5,
+```
+
+and `"PromptVersion": "v2.0"` → `"v2.1"`. The PromptVersion bump is
+the backfill trigger — every existing row reindexes into the new
+format at MaxDocsPerRun (150) per run. The DocIndex AI prompt itself
+is UNCHANGED — v2.1 is format-only, no re-paste. (In
+`flow/v2_9/definition.json` the GUID ships as the placeholder
+`REPLACE-WITH-ONLINEDOCS-LIST-GUID`; the live edit uses the real one.)
+
+Check after this step: nothing runs differently yet — the new keys
+are read only by Y2/Y4; the PromptVersion bump only marks rows stale,
+which is the point.
+
+## Y2 — Get_onlinedocs + Select_od_rows (top-level fetch)
+
+New **Get items** action `Get_onlinedocs` after `Existing_keywords`
+(same pattern as `Get_keywords`; re-point `Get_files`'s runAfter to
+`Select_od_rows` when Y2 is done):
+
+- Site Address: `https://esriis.sharepoint.com/sites/lrsworkspace`
+- List Name: the raw `table` field takes the expression
+  `@outputs('Config')?['OnlineDocsList']` (peek code / raw input —
+  the dropdown would hard-bind the GUID; Config stays the single
+  authority)
+- Top Count: `500`
+
+New **Select** action `Select_od_rows` after `Get_onlinedocs`:
+
+- From: `@body('Get_onlinedocs')?['value']`
+- Map (key/value mode, six keys):
+  - `od` → `@item()?['ID']`
+  - `u` → `@{coalesce(item()?['Url']?['Url'], '')}`
+  - `t` → `@{replace(replace(string(coalesce(item()?['Title'], '')), '\', ''), '"', '')}`
+  - `sum` → `@{replace(replace(replace(replace(string(coalesce(item()?['Summary'], '')), '"', ''), '|', '/'), decodeUriComponent('%0D'), ' '), decodeUriComponent('%0A'), ' ')}`
+  - `scope` → `@{coalesce(item()?['SurfaceScope']?['Value'], 'Any')}`
+  - `kws` → `@{toLower(coalesce(item()?['MatchKeywords'], ''))}`
+
+(`t` uses the `Select_kw_yaml` sanitization — backslashes and double
+quotes stripped, so the value can sit inside the yaml JSON entry
+verbatim; `sum` is additionally pipe- and newline-cleaned so the
+bullet renders on one line. Every field coalesces, so a half-filled
+curation row degrades instead of failing the run.)
+
+Then re-point **Get_files** → runAfter → `Select_od_rows`.
+
+Check after this step: run once (SmokeFile set) — the run succeeds
+and `Get_onlinedocs` returns the list rows (raw outputs). An empty
+list is fine: everything downstream renders the empty branches.
+
+## Y3 — Doc_match_terms + Filter_od (per-doc match)
+
+New **Compose** action `Doc_match_terms` inside `If_has_text`, after
+`Product_row`:
+
+```
+@union(json(toLower(string(coalesce(outputs('Parse_prompt_output')?['keywords'], json('[]'))))), json(toLower(string(coalesce(outputs('Parse_prompt_output')?['tools'], json('[]'))))), json(toLower(string(coalesce(outputs('Run_regex')?['body/result/products'], json('[]'))))))
+```
+
+(One lowercased term array from the doc's AI keywords + tools +
+products. WDL has no per-element map, so the lowercasing rides a
+serialize-lower-reparse round trip per array — JSON escape sequences
+are case-safe under toLower, and each array is coalesce-guarded like
+every other prompt-output consumer.)
+
+New **Filter array** action `Filter_od` after `Doc_match_terms`:
+
+- From: `@body('Select_od_rows')`
+- Condition (advanced/expression mode):
+
+```
+@and(greater(length(intersection(split(item()?['kws'], '; '), outputs('Doc_match_terms'))), 0), or(equals(item()?['scope'], 'Any'), equals(item()?['scope'], outputs('Surface_safe'))))
+```
+
+(A row survives when its '; '-split MatchKeywords intersect the term
+set AND its scope is `Any` or equals the doc's `Surface_safe` — the
+same safe-surface value the info table renders.)
+
+## Y4 — OD_scored + OD_top (rank and cap)
+
+New **Select** action `OD_scored` after `Filter_od`:
+
+- From: `@body('Filter_od')`
+- Map (key/value mode, five keys):
+  - `od` → `@item()?['od']`
+  - `u` → `@{item()?['u']}`
+  - `t` → `@{item()?['t']}`
+  - `sum` → `@{item()?['sum']}`
+  - `n` → `@length(intersection(split(item()?['kws'], '; '), outputs('Doc_match_terms')))`
+
+(The intersection expression repeats Y3's — WDL has no let-binding.)
+
+New **Compose** action `OD_top` after `OD_scored`:
+
+```
+@take(reverse(sort(body('OD_scored'), 'n')), int(outputs('Config')?['OnlineDocsTop']))
+```
+
+(Most shared keywords first, capped at OnlineDocsTop = 5.)
+
+## Y5 — Select_od_yaml + Select_od_bullets + OD_section (render)
+
+New **Select** action `Select_od_yaml` after `OD_top`:
+
+- From: `@outputs('OD_top')`
+- Map (switch to text mode — the single-value map): `@concat('{"od":', item()?['od'], ',"u":"', item()?['u'], '","t":"', item()?['t'], '"}')`
+
+New **Select** action `Select_od_bullets` after `Select_od_yaml`:
+
+- From: `@outputs('OD_top')`
+- Map (text mode): `@concat('- [', item()?['t'], '](<', item()?['u'], '>) — ', item()?['sum'], ' <!-- od:', item()?['od'], ' -->')`
+
+New **Compose** action `OD_section` after `Select_od_bullets` —
+paste into the expression-free text view, not per-line:
+
+~~~~
+## Online references
+
+<!-- onlinedocs:begin -->
+@{if(empty(outputs('OD_top')), '_None matched._', join(body('Select_od_bullets'), decodeUriComponent('%0A')))}
+<!-- onlinedocs:end -->
+~~~~
+
+(The `## Related documents` framing exactly: header, blank line,
+begin marker, content — `_None matched._` when nothing matched — end
+marker. No trailing blank line; the template supplies the seam
+spacing in Y6.)
+
+## Y6 — Sidecar_header template
+
+**Sidecar_header** compose — set runAfter to `OD_section`, then
+apply exactly these two template edits (or paste the whole
+`Sidecar_header` inputs from `flow/v2_9/definition.json`):
+
+1. Immediately after the `related: []` yaml line insert:
+
+   ~~~~
+   online_docs: [@{join(body('Select_od_yaml'), ', ')}]
+   ~~~~
+
+2. Between the Related documents region and the `---` seam — the
+   v2.8 tail
+
+   ~~~~
+   <!-- related:end -->
+
+   ---
+   ~~~~
+
+   becomes
+
+   ~~~~
+   <!-- related:end -->
+
+   @{outputs('OD_section')}
+
+   ---
+   ~~~~
+
+**Checklist — every item is load-bearing:**
+
+- [ ] `online_docs: [...]` sits BETWEEN `related: []` and the
+      closing ```` ``` ```` fence — after it, SidecarPatch v1.6 finds
+      `related:` unmoved and treats `online_docs:` as opaque yaml it
+      must byte-preserve (asserted by `check_related.py`)
+- [ ] blank line between `<!-- related:end -->` and
+      `@{outputs('OD_section')}`, and between it and `---` — the
+      section separates from its neighbors exactly like Related does
+- [ ] `@{outputs('OD_section')}` sits alone on its template line
+- [ ] the template still ends with the `---` seam line, a blank
+      line, and a final trailing newline
+
+## Y7 — Run_summary: onlineDocsRows tripwire
+
+**Run_summary** compose — in the `concat(...)`, immediately before
+`' related_flags=', variables('RelatedFlags')`, insert:
+
+```
+' onlineDocsRows=', length(body('Select_od_rows')),
+```
+
+(Per-run vocabulary size, not a per-doc match count — the summary
+reads only run-level lengths and the two counter variables, and the
+per-doc evidence lives in each sidecar. `onlineDocsRows=0` is the
+tripwire for an empty or mis-pointed Online Docs list.)
+
+## Smoke (after Y7, one pass)
+
+Seed the Online Docs list with at least one row whose MatchKeywords
+overlap a known doc's keywords (SurfaceScope `Any` to start), then
+Config → SmokeFile on that doc:
+
+1. Run succeeds; download the smoke sidecar.
+2. Byte-check the header shape: regenerate
+   `review/harness/sample_sidecar.md` (`python3 render_sample.py`)
+   and diff the two headers — the yaml now ends
+   `related: []` / `online_docs: [...]`, and the body carries
+   `## Online references` with the `<!-- onlinedocs:begin/end -->`
+   markers between the Related documents region and the seam.
+3. Eyeball in a GFM viewer: the Online references bullets render as
+   `[title](url) — summary` links; still NO metadata visible.
+4. Confirm the raw yaml parses and `online_docs:` round-trips as
+   `[{"od":N,"u":"...","t":"..."}]` entries (or `[]` — then check
+   the section shows `_None matched._`).
+5. Run_summary shows `onlineDocsRows=N` (N = Online Docs list size,
+   nonzero) alongside the existing fields.
+6. Set SmokeFile back to EMPTY — the backfill cannot run while it
+   is set (the FX-5 lesson).
+7. Next nightly run: reindex volume ≈ MaxDocsPerRun in Run_summary
+   (the v2.1 backfill working through the corpus).
+
+Then update STATUS.md (flow row, PromptVersion row, Online Docs list
+row).
+
+Rollback: revert Y7→Y2 in reverse and the two Y6 template edits
+(runAfter back to `Product_row`), and set `Config.PromptVersion`
+back to `v2.0` — the backfill re-converges the corpus to the v2.8
+shape. The Online Docs list may stay; nothing else reads it.
+SidecarPatch v1.6 needs no attention in either direction — it treats
+the new line and section as opaque bytes.
+
+# testplangen-v2_14 round — Esri online-doc grounding lane (both live TestPlanGen flows)
+
+Paired with the TestPlanGen prompt v1.6 paste
+(`review/patches/TestPlanGen_Prompt_v1_6.md`) and
+`testplangen/CHANGES.md` v2.14; apply to BOTH live generation flows
+(standalone TestPlanGen + the agent core TestPlanGenCore — their
+retrieval logic is identical). Requires the Online Docs list and its
+weekly cache flow on the tenant, and the sweep v2.9 `online_docs:`
+sidecar line (a sidecar without the line yields an empty lane and a
+draft byte-identical to v1.5 behavior, so the windows commute: the
+v2.4 flows are safe under prompt v1.5 — the sixth binding just goes
+unread — and prompt v1.6 is safe under the v2.3 flows, where the
+lane arrives as `(none)`). Z1–Z7 are JSON-backed (the v2.4
+definitions carry them); Z8 is tenant-only. The new lane mirrors the
+v2.0 reference lane action-for-action — same Try scope + neutralizer,
+same path guard, same v2.3 self-reference-safe budget Compose.
+
+## Z1 — Config_gen: online-doc keys + version stamp
+
+**Config_gen** compose — add three keys (after `ReferenceSlots`) and
+bump the stamp:
+
+```
+"OnlineDocCap": 10000,
+"OnlineDocSlots": 2,
+"OnlineDocsList": "REPLACE-WITH-ONLINEDOCS-LIST-GUID",
+```
+
+and `"TestPlanGenPromptVersion": "v1.5"` → `"v1.6"`.
+
+`OnlineDocsList` holds the **Online Docs** list GUID the same way
+`DocIndexList` holds the Doc Index GUID — on the tenant, replace the
+placeholder with the real GUID (list settings URL, or pick the list
+in any SP action and copy the id). OnlineDocCap 10000 keeps the
+worst-case prompt context bounded (~45k + 20k + 12k + 10k + digest ≈
+90k chars ≈ ~22k tokens, still comfortable); OnlineDocSlots 2 bounds
+fetches — the sweep's `online_docs:` line may carry more entries,
+the flow takes the first two.
+
+## Z2 — two new variables
+
+Two Initialize variable actions at top level (variables cannot
+initialize inside a scope), chained after `Init_ReferenceCount`, with
+`Try_gen` re-pointed to run after the last:
+
+- **`Init_OnlineDocText`** — `OnlineDocText`, String, value
+  `@{string('')}` (the empty-value designer-trap guard, as the
+  others).
+- **`Init_OnlineDocCount`** — `OnlineDocCount`, Integer, 0.
+
+Chain: `Init_ReferenceCount` → `Init_OnlineDocText` →
+`Init_OnlineDocCount` → `Try_gen`.
+
+## Z3 — OD_* slice: the online_docs line out of the sidecar
+
+Five Composes mirroring the G4 `Rel_*` chain, inserted between
+`Rel_entries` and `For_each_rel` (re-point `For_each_rel` to run
+after `OD_entries`). The label `online_docs: ` is 13 characters, so
+the tail slice starts on the `[` exactly as `Rel_tail`'s +9 does for
+`related: `; a pre-v2.9 sidecar with no `online_docs:` line degrades
+to `[]` — empty loop, empty lane, `(none)` at the prompt call,
+drafts byte-identical to v1.5 behavior (verified: the same
+missing-line degrade the Rel_* chain has).
+
+- **`OD_start`** (Compose):
+  `@indexOf(outputs('Story_md'), 'online_docs: [')`
+- **`OD_tail`** (Compose):
+  `@if(greater(outputs('OD_start'), -1), substring(outputs('Story_md'), add(outputs('OD_start'), 13)), '[]')`
+- **`OD_line`** (Compose):
+  `@if(greater(indexOf(outputs('OD_tail'), decodeUriComponent('%0A')), -1), substring(outputs('OD_tail'), 0, indexOf(outputs('OD_tail'), decodeUriComponent('%0A'))), outputs('OD_tail'))`
+- **`OD_json_safe`** (Compose):
+  `@if(and(startsWith(trim(outputs('OD_line')), '['), endsWith(trim(outputs('OD_line')), ']')), trim(outputs('OD_line')), '[]')`
+- **`OD_entries`** (Compose):
+  `@take(json(outputs('OD_json_safe')), int(outputs('Config_gen')?['OnlineDocSlots']))`
+
+Entries are objects `{"od": <Online Docs item id>, "u": "<public
+url>", "t": "<title>"}` — the sweep writes them; `u`/`t` feed the
+excerpt header below, `od` fetches the row for the FRESH
+`CachedTextUrl` (deliberately not stored in the sidecar — the weekly
+cache flow may move or refresh the file between sweeps).
+
+## Z4 — For_each_od: fetch the cached page text
+
+**`For_each_od`** (Apply to each over `@outputs('OD_entries')`,
+concurrency 1, run after `For_each_reference` [Succeeded]) — the G7b
+pattern verbatim: per-item Try scope + neutralizer, so one broken
+row or missing cache file degrades that slot silently instead of
+failing the run:
+
+- **`Try_od`** (Scope):
+  - **`Get_od_row`** (Get item): site `Config_gen.SiteUrl`, list
+    `@{outputs('Config_gen')?['OnlineDocsList']}`, Id
+    `@items('For_each_od')?['od']`.
+  - **`Od_path`** (Compose) — strip SiteUrl the way
+    `Story_path`/`Ref_path` do:
+    `@{replace(coalesce(body('Get_od_row')?['CachedTextUrl'], ''), outputs('Config_gen')?['SiteUrl'], '')}`
+  - **`If_od_path_ok`** (Condition:
+    `@startsWith(outputs('Od_path'), '/')`) — an empty
+    `CachedTextUrl` (page not yet fetched by the weekly flow) fails
+    the test and skips the slot cleanly. Yes branch:
+    - **`Get_od_md`** (Get file content using path, Infer Content
+      Type **No**, File Path `@outputs('Od_path')`).
+    - **`Od_remaining`** (Compose — the v2.3 self-reference rule: the
+      append below may not read its own variable, so the arithmetic
+      lives here):
+      `@sub(int(outputs('Config_gen')?['OnlineDocCap']), length(variables('OnlineDocText')))`
+    - **`If_od_budget`** (Condition:
+      `@less(length(variables('OnlineDocText')), int(outputs('Config_gen')?['OnlineDocCap']))`),
+      Yes branch:
+      - **`Append_od`** — Append to string variable `OnlineDocText`
+        (the header is the prompt's `--- ESRI DOC: <title> — <url>
+        ---` contract; title and URL come from the sidecar entry,
+        which the References section copies verbatim):
+        `--- ESRI DOC: @{items('For_each_od')?['t']} — @{items('For_each_od')?['u']} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_od_md')?['$content']), outputs('Od_remaining'))}@{decodeUriComponent('%0A%0A')}`
+      - **`Inc_od`** — Increment variable `OnlineDocCount` by 1.
+- **`Od_done`** (Compose, inputs `ok`) — configure run after:
+  `Try_od` has **Succeeded, Failed, Skipped, Timed out** (the
+  neutralizer).
+
+## Z5 — Run_testplangen_prompt: sixth binding
+
+**`Run_testplangen_prompt`** — add the sixth input, the same
+`(none)` substitution as the other optional lanes:
+
+```
+OnlineDocText = @{if(empty(variables('OnlineDocText')), '(none)', variables('OnlineDocText'))}
+```
+
+(Requires Z8 first on the tenant — the parameter must exist on the
+AI Builder prompt before the designer will show the field.)
+
+## Z6 — chain repair
+
+Three run-after re-points, everything else untouched:
+
+- `For_each_rel`: runs after **`OD_entries`** (was `Rel_entries` —
+  the OD slice now sits between them; pure Composes, no cost).
+- `For_each_od`: runs after **`For_each_reference`** [Succeeded].
+- `Story_meta`: runs after **`For_each_od`** [Succeeded] (was
+  `For_each_reference`).
+
+## Z7 — Gen_summary: online-doc telemetry
+
+Append two fields to the concat, after `refChars`:
+
+```
+, ' onlineDocs=', variables('OnlineDocCount'), ' odChars=', length(variables('OnlineDocText'))
+```
+
+`onlineDocs=0` is normal on a pre-v2.9 sidecar or when no cache has
+been fetched yet; `odChars ≤ OnlineDocCap` is the budget post-check
+(over the cap means the `Od_remaining` take regressed to the
+full-cap form).
+
+## Z8 — tenant-only: the sixth AI Builder parameter + prompt paste
+
+On the `LRS Test Plan Generation` AI Builder prompt: CREATE the
+sixth input parameter **OnlineDocText** (exact name — the v1.3
+ReferenceText precedent: the parameter must be created, not just the
+text re-pasted), paste the v1.6 text from
+`prompts/TestPlanGen_Prompt.md` (replaces the pending v1.5 paste),
+save. Then Z5's field can be bound in both flows. NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus.
+
+## Smoke (after Z8, one pass)
+
+Run on a story whose sidecar carries an `online_docs:` line with at
+least one cached entry (`testplangen/TestPlanGen_Smoke.md` row 12):
+`Gen_summary` shows `onlineDocs≥1` with `odChars ≤ OnlineDocCap`;
+the run history's `Append_od` header carries the entry's title and
+public URL; in the draft, at least one **Trace:** cites
+`Esri doc: <title>`, a `## References` section sits between Open
+Questions and Coverage Map with one `- [<title>](<url>)` bullet per
+cited doc (links resolve), Coverage Map is still the final section,
+and NO tool name appears that the story doesn't name. Then run on a
+pre-v2.9 story (no `online_docs:` line): `onlineDocs=0`, no
+References section, draft otherwise normal
+(`review/harness/check_draft_coverage.py` passes both — its v1.6
+rules are presence-conditional). Rollback: revert Z5 (unbind the
+field), then Z1–Z4/Z6–Z7 are inert (the lane computes but is never
+read) — or restore all from this section in reverse; the Z8 paste
+rolls back to v1.5 independently.

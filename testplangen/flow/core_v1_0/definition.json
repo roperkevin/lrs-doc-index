@@ -76,7 +76,10 @@
             "DigestSummaryCap": 400,
             "ExemplarSlots": 2,
             "ReferenceSlots": 3,
-            "TestPlanGenPromptVersion": "v1.5"
+            "OnlineDocCap": 10000,
+            "OnlineDocSlots": 2,
+            "OnlineDocsList": "REPLACE-WITH-ONLINEDOCS-LIST-GUID",
+            "TestPlanGenPromptVersion": "v1.6"
           }
         },
         "Init_NeighborDigest": {
@@ -198,9 +201,43 @@
             ]
           }
         },
-        "Try_gen": {
+        "Init_OnlineDocText": {
           "runAfter": {
             "Init_ReferenceCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "OnlineDocText",
+                "type": "string",
+                "value": "@{string('')}"
+              }
+            ]
+          }
+        },
+        "Init_OnlineDocCount": {
+          "runAfter": {
+            "Init_OnlineDocText": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "OnlineDocCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Try_gen": {
+          "runAfter": {
+            "Init_OnlineDocCount": [
               "Succeeded"
             ]
           },
@@ -321,10 +358,55 @@
                   "type": "Compose",
                   "inputs": "@take(json(outputs('Rel_json_safe')), int(outputs('Config_gen')?['NeighborCap']))"
                 },
+                "OD_start": {
+                  "runAfter": {
+                    "Rel_entries": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@indexOf(outputs('Story_md'), 'online_docs: [')"
+                },
+                "OD_tail": {
+                  "runAfter": {
+                    "OD_start": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(greater(outputs('OD_start'), -1), substring(outputs('Story_md'), add(outputs('OD_start'), 13)), '[]')"
+                },
+                "OD_line": {
+                  "runAfter": {
+                    "OD_tail": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(greater(indexOf(outputs('OD_tail'), decodeUriComponent('%0A')), -1), substring(outputs('OD_tail'), 0, indexOf(outputs('OD_tail'), decodeUriComponent('%0A'))), outputs('OD_tail'))"
+                },
+                "OD_json_safe": {
+                  "runAfter": {
+                    "OD_line": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@if(and(startsWith(trim(outputs('OD_line')), '['), endsWith(trim(outputs('OD_line')), ']')), trim(outputs('OD_line')), '[]')"
+                },
+                "OD_entries": {
+                  "runAfter": {
+                    "OD_json_safe": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Compose",
+                  "inputs": "@take(json(outputs('OD_json_safe')), int(outputs('Config_gen')?['OnlineDocSlots']))"
+                },
                 "For_each_rel": {
                   "foreach": "@outputs('Rel_entries')",
                   "runAfter": {
-                    "Rel_entries": [
+                    "OD_entries": [
                       "Succeeded"
                     ]
                   },
@@ -740,9 +822,137 @@
                     }
                   }
                 },
-                "Story_meta": {
+                "For_each_od": {
+                  "foreach": "@outputs('OD_entries')",
                   "runAfter": {
                     "For_each_reference": [
+                      "Succeeded"
+                    ]
+                  },
+                  "type": "Foreach",
+                  "runtimeConfiguration": {
+                    "concurrency": {
+                      "repetitions": 1
+                    }
+                  },
+                  "actions": {
+                    "Try_od": {
+                      "runAfter": {},
+                      "type": "Scope",
+                      "actions": {
+                        "Get_od_row": {
+                          "runAfter": {},
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
+                              "table": "@{outputs('Config_gen')?['OnlineDocsList']}",
+                              "id": "@items('For_each_od')?['od']"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "GetItem"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Od_path": {
+                          "runAfter": {
+                            "Get_od_row": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@{replace(coalesce(body('Get_od_row')?['CachedTextUrl'], ''), outputs('Config_gen')?['SiteUrl'], '')}"
+                        },
+                        "If_od_path_ok": {
+                          "runAfter": {
+                            "Od_path": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@startsWith(outputs('Od_path'), '/')",
+                          "actions": {
+                            "Get_od_md": {
+                              "runAfter": {},
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "dataset": "@{outputs('Config_gen')?['SiteUrl']}",
+                                  "path": "@outputs('Od_path')",
+                                  "inferContentType": false
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                  "connectionName": "shared_sharepointonline",
+                                  "operationId": "GetFileContentByPath"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              }
+                            },
+                            "If_od_budget": {
+                              "runAfter": {
+                                "Od_remaining": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@less(length(variables('OnlineDocText')), int(outputs('Config_gen')?['OnlineDocCap']))",
+                              "actions": {
+                                "Append_od": {
+                                  "runAfter": {},
+                                  "type": "AppendToStringVariable",
+                                  "inputs": {
+                                    "name": "OnlineDocText",
+                                    "value": "--- ESRI DOC: @{items('For_each_od')?['t']} — @{items('For_each_od')?['u']} ---@{decodeUriComponent('%0A')}@{take(base64ToString(body('Get_od_md')?['$content']), outputs('Od_remaining'))}@{decodeUriComponent('%0A%0A')}"
+                                  }
+                                },
+                                "Inc_od": {
+                                  "runAfter": {
+                                    "Append_od": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "IncrementVariable",
+                                  "inputs": {
+                                    "name": "OnlineDocCount",
+                                    "value": 1
+                                  }
+                                }
+                              }
+                            },
+                            "Od_remaining": {
+                              "runAfter": {
+                                "Get_od_md": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@sub(int(outputs('Config_gen')?['OnlineDocCap']), length(variables('OnlineDocText')))"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "Od_done": {
+                      "runAfter": {
+                        "Try_od": [
+                          "Succeeded",
+                          "Failed",
+                          "Skipped",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "Compose",
+                      "inputs": "ok"
+                    }
+                  }
+                },
+                "Story_meta": {
+                  "runAfter": {
+                    "For_each_od": [
                       "Succeeded"
                     ]
                   },
@@ -783,6 +993,7 @@
                       "item/requestv2/RelatedDigest": "@{if(empty(variables('NeighborDigest')), '(none)', variables('NeighborDigest'))}",
                       "item/requestv2/ExemplarText": "@{if(empty(variables('ExemplarText')), '(none)', variables('ExemplarText'))}",
                       "item/requestv2/ReferenceText": "@{if(empty(variables('ReferenceText')), '(none)', variables('ReferenceText'))}",
+                      "item/requestv2/OnlineDocText": "@{if(empty(variables('OnlineDocText')), '(none)', variables('OnlineDocText'))}",
                       "item/source": {
                         "consumptionSource": "PowerAutomate",
                         "partnerSource": "AIBuilder",
@@ -1040,7 +1251,7 @@
             ]
           },
           "type": "Compose",
-          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')), ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText')))}"
+          "inputs": "@{concat('neighbors=', length(outputs('Rel_entries')), ' exemplars=', variables('ExemplarCount'), ' references=', variables('ReferenceCount'), ' digestChars=', length(variables('NeighborDigest')), ' storyChars=', length(outputs('Story_text_capped')), ' draftChars=', length(outputs('Draft_body')), ' exChars=', length(variables('ExemplarText')), ' refChars=', length(variables('ReferenceText')), ' onlineDocs=', variables('OnlineDocCount'), ' odChars=', length(variables('OnlineDocText')))}"
         },
         "Respond_ok": {
           "type": "Response",
