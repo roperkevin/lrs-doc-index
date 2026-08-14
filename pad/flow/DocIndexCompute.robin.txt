@@ -1,7 +1,11 @@
-# DocIndexCompute v1.0 — Doc Index compute offload (Robin, paste into
+# DocIndexCompute v1.1 — Doc Index compute offload (Robin, paste into
 # the PAD designer's Main canvas; see pad/PAD_Setup.md §3, including
 # the input/output variables to create FIRST and the manual-rebuild
 # table if your PAD version rejects this paste).
+# v1.1: re-serialized in the dialect of a live PAD export — variable
+# references in parameters/conditions are bare names, and quotes
+# inside $''' ''' literals are escaped \" — the two forms v1.0 got
+# wrong.
 #
 # Runs a batch job of Doc Index script operations through Node using
 # the repo's scripts/ files verbatim (pad/runner/run_job.mjs). Zero
@@ -17,17 +21,17 @@
 # Outputs: ExitCode, ResultText, ResultFilePath, RunnerStdout,
 #          RunnerStderr
 SET NodeCmd TO $'''node'''
-IF %NodeExePath% <> $'''''' THEN
-    SET NodeCmd TO %NodeExePath%
+IF NodeExePath <> $'''''' THEN
+    SET NodeCmd TO NodeExePath
 END
 SET RunJobPath TO $'''%RepoRoot%\pad\runner\run_job.mjs'''
-IF %JobText% <> $'''''' THEN
+IF JobText <> $'''''' THEN
     SET JobFilePath TO $'''%LocalWorkDir%\job.json'''
-    File.WriteText File: %JobFilePath% TextToWrite: %JobText% AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+    File.WriteText File: JobFilePath TextToWrite: JobText AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
 END
 SET ResultFilePath TO $'''%JobFilePath%.result.json'''
 SET ResultText TO $''''''
-System.RunDOSCommand DOSCommandOrApplication: $'''"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"''' WorkingDirectory: $'''%RepoRoot%''' StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
-IF %ExitCode% = 0 THEN
-    File.ReadTextFromFile.ReadText File: %ResultFilePath% Encoding: File.TextFileEncoding.UTF8 Content=> ResultText
+System.RunDOSCommand DOSCommandOrApplication: $'''\"%NodeCmd%\" --experimental-strip-types \"%RunJobPath%\" \"%JobFilePath%\"''' WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+IF ExitCode = 0 THEN
+    File.ReadTextFromFile.ReadText File: ResultFilePath Encoding: File.TextFileEncoding.UTF8 Content=> ResultText
 END
