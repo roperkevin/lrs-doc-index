@@ -1,0 +1,45 @@
+{
+  "$comment": "Local Doc Index sweep configuration. Copy to config.json next to sweep.mjs (git-ignored) and fill in. Secrets belong in environment variables via {\"$env\": \"NAME\"} — never commit them.",
+
+  "sharePoint": {
+    "hostname": "esriis.sharepoint.com",
+    "sitePath": "/sites/lrsworkspace",
+    "lists": {
+      "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
+      "keywords": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
+      "docIds": "6263eeac-471a-489e-96c7-1448f45378d4",
+      "docKeywords": "4eabc799-c856-49ea-bf25-65942b363ec6",
+      "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34"
+    }
+  },
+
+  "paths": {
+    "$comment": "OneDrive-synced local roots. sourceLibrary = the LocationReferencing Documents library; sidecarLibrary = the LRS Doc Index library (sidecars + media/).",
+    "sourceLibrary": "C:\\Users\\me\\Esri\\LocationReferencing - Documents",
+    "sidecarLibrary": "C:\\Users\\me\\Esri\\lrsworkspace - LRS Doc Index",
+    "workDir": "C:\\DocIndex\\work"
+  },
+
+  "graph": {
+    "tenantId": "<entra-tenant-guid>",
+    "clientId": "<app-registration-client-id>",
+    "clientSecret": { "$env": "DOCINDEX_GRAPH_SECRET" }
+  },
+
+  "llm": {
+    "apiKey": { "$env": "ANTHROPIC_API_KEY" },
+    "model": "claude-opus-5",
+    "maxTokens": 4096
+  },
+
+  "sweep": {
+    "$comment": "Mirrors flow v2.8 Config. Values below are the v2.8 defaults; keep them in sync with STATUS when the flow config changes.",
+    "maxDocsPerRun": 150,
+    "promptVersion": "v2.0",
+    "defaultRepo": "A/b",
+    "relatedTopN": 5,
+    "relatedShortlist": 12,
+    "maxCellsWorkbookDump": 60000,
+    "dryRun": true
+  }
+}
