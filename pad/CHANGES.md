@@ -44,6 +44,17 @@ Deployment state: **authored, nothing on tenant**. The offload is
 opt-in per wiring (§5 of the guide); the Automate-tab workbook path
 keeps working unchanged.
 
+## v2.2 (2026-08-14)
+
+Second live-paste fix for `flow/DocIndexCompute.robin.txt`: the v2.1
+paste failed with "Module 'System' or action 'RunDOSCommand' wasn't
+found" — the action moved modules between PAD releases. The flow now
+addresses it as `Scripting.RunDOSCommand.RunDOSCommand` (the module
+current PAD builds file it under); `System.RunDOSCommand` is the
+legacy selector, noted in the flow header for old builds. Same
+parameters, behavior unchanged; §3 troubleshooting records the
+error string for the next drift.
+
 ## v2.1 (2026-08-14)
 
 Paste fix for `flow/DocIndexCompute.robin.txt`: the two v2.0 Run DOS
