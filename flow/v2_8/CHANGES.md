@@ -133,6 +133,26 @@ NOTE: the backfill only runs once FX-5 clears SmokeFile.
 - **AI Builder prompt** — text unchanged; the v2.0 bump is
   format-only, no re-paste.
 
+## Deep error capture addendum (2026-08-13, third)
+
+A live run errored with `If_has_text: ActionFailed — No dependent
+actions succeeded` while sidecars were being written: the Catch's
+`result('Try_index')` sees only first-degree children, so deep
+failures report as their container — and the run-history UI would
+not load the nested run to find the leaf by hand. The Catch now
+drills down through condition-guarded `result()` calls (new
+top-level `ErrLeaf` variable; `Set_ErrLeaf_L1` → `If_drill_has_text`
+→ L2/L3/L4 filters over `result('If_has_text')` /
+`'If_related_signals'` / `'If_has_related'` plus `For_each_id` /
+`For_each_kw`), so Error rows and `Run_summary` carry a path like
+`If_has_text > For_each_kw > Check_kw: {…real error…}`. Each
+`result()` sits behind a condition keyed on the parent level's
+failed-action name, so a never-executed scope is never evaluated.
+`Err_detail` keeps its name and consumers; its expression reads
+`ErrLeaf` with the original first-degree fallback. Designer route:
+`designer-edits.md` §v2_8-errdrill. Zip re-cut, payload
+byte-identical.
+
 ## Scripts.xlsx rebind addendum (2026-08-13, second)
 
 The Scripts.xlsx workbook (and the SidecarPatch script) were

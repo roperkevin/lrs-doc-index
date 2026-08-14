@@ -103,6 +103,16 @@ nights, doc 42's and doc 1's sidecars carry a non-empty
 `related: [...]` whose `why` prose mentions shared keywords, not
 only issue-id links.
 
+Triage when a doc errors: read the error from the Doc Index list
+(filter `IndexStatus = Error`) rather than the run page — big sweep
+runs often will not expand in the run-history UI. Since the errdrill
+build, the row's error names the failing leaf as a path
+(`If_has_text > For_each_kw > Check_kw: {...}`). To reproduce one
+doc in a run small enough for the UI: set `Config.SmokeFile` to that
+doc's exact filename, run manually, read the run, then **set
+SmokeFile back to ""** (a set SmokeFile pins every nightly run —
+the FX-5 stall).
+
 ## 2 — TestPlanGen: one click, one paste, one import
 
 1. **Click**: in the `LRS Test Plan Generation` AI Builder prompt,
