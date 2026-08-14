@@ -4,12 +4,16 @@
   "sharePoint": {
     "hostname": "esriis.sharepoint.com",
     "sitePath": "/sites/lrsworkspace",
+    "sourceSitePath": "/sites/LocationReferencing",
+    "docKeyStrip": "/sites/LocationReferencing/",
+    "libraryRootSegment": "Shared Documents",
     "lists": {
       "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
       "keywords": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
       "docIds": "6263eeac-471a-489e-96c7-1448f45378d4",
       "docKeywords": "4eabc799-c856-49ea-bf25-65942b363ec6",
-      "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34"
+      "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
+      "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
     }
   },
 

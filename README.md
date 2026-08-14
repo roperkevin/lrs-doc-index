@@ -93,7 +93,15 @@ keeps the old yaml-on-top layout).
 | pad/runner/xlsx_grid.mjs | xlsx → text grids for WorkbookDump's workbook mock | v1.0 |
 | pad/harness/check_pad_runner.py | PAD runner gate (generated fixtures + wrap.py parity leg + single-op leg; CI) | v1.1 |
 | pad/samples/job.sample.json | Fixture-free smoke job | — |
-| pad/CHANGES.md | PAD offload release notes | v2.0 |
+| pad/CHANGES.md | PAD offload release notes | v2.2 |
+| pad/runner/ops.mjs | Shared script-loader/op-dispatch (used by the PAD runner and the local sweep) | v1.0 |
+| local/Local_Setup.md | Local sweep build + deploy guide — the whole sweep off Power Automate (SharePoint stays) | v1.0 |
+| local/sweep.mjs | Local sweep orchestrator — flow v2.8 reimplemented over Graph + direct LLM API + synced libraries | v1.0 |
+| local/graph.mjs | Microsoft Graph list client (Entra client-credentials; list GUIDs from config, no hand-typed URIs) | v1.0 |
+| local/llm.mjs | Direct LLM API client — executes prompts/DocIndex_Prompt.md verbatim, schema-pinned output | v1.0 |
+| local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock LLM, dry/live/idempotency legs; CI) | v1.0 |
+| local/config.sample.json | Machine config template (copy to git-ignored local/config.json) | — |
+| local/CHANGES.md | Local sweep release notes | v1.0 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,
