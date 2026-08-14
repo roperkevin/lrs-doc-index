@@ -28,7 +28,8 @@ The compound, in causal order:
    in step 2.
 3. **The live prompt predates every coverage rule** — enumeration
    coverage (v1.2), reference grounding (v1.3), requirement-driven
-   case counts + the Coverage Map (v1.5) are all paste-pending.
+   case counts + the Coverage Map (v1.5), and granular one-behavior
+   cases (v1.6) are all paste-pending.
    Fixed by one paste in step 2.
 
 ## Which flows this touches
@@ -119,12 +120,12 @@ the FX-5 stall).
    add the fifth input parameter — exact name **`ReferenceText`**
    (skip if step 0 counted five).
 2. **Paste**: the delimited block from
-   `prompts/TestPlanGen_Prompt.md` (v1.5) into the same prompt —
+   `prompts/TestPlanGen_Prompt.md` (v1.6) into the same prompt —
    replaces every pending paste before it.
 3. **Import**: `testplangen/TestPlanGenCore_v1_0.zip` (Import
    package (Legacy)) — the payload carries the complete current
    core: reference lane (v2.0), GFM banner (v2.8), current list
-   bindings (v2.10), v1.5 stamp (v2.11), and the v2.2 coverage
+   bindings (v2.10), the v1.6 stamp (v2.14), and the v2.2 coverage
    routing — design-doc references, same-surface overflow, slot
    config, budget fix (v2.12). Post-import clicks (each is a picker,
    not an expression):

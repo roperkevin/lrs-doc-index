@@ -1,3 +1,100 @@
+# TestPlanGen v2.14 — granular test cases (prompt v1.6)
+
+Motivated by the standing granularity complaint (2026-08-14):
+generated test cases are too coarse. v1.5's requirement-driven
+coverage stops requirements merging ACROSS cases, but nothing stops
+several independently falsifiable outcomes bundling INSIDE one case
+— one Expected Result asserting "the referent updates AND the others
+are preserved AND the change is logged", compound steps ("create a
+route and add an event"), and the parameterization escape hatch
+hiding variants with different outcomes behind one "repeat for ..."
+case. A bundled case cannot be half-checked-off in the rendered task
+list, a shared Expected Result makes a partial failure unreportable
+(which assertion failed?), and the Coverage Map loses precision when
+one TC id stands for three behaviors — the doc 1 review's CG-6 (the
+Split case never asserting the outer referents unchanged) is exactly
+the assertion a bundled case swallows.
+
+**Prompt v1.6** (authored as
+`review/patches/TestPlanGen_Prompt_v1_6.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.5 in-repo BEFORE its
+pending paste; v1.5's requirement-driven coverage + Coverage Map,
+v1.4's GFM shape, v1.3's reference lane, v1.2's enumeration
+coverage + conditional sections, and v1.1's marker fix all carry
+forward unchanged):
+
+- **New CASE GRANULARITY grounding rule** (one behavior per case):
+  every case verifies exactly ONE observable behavior — its Expected
+  Result is a single outcome judged pass/fail as a whole; a case
+  that would assert two independently falsifiable outcomes splits
+  into one case per outcome, each with its own Trace, repeating
+  shared steps as needed. Each Steps checkbox is ONE tester action
+  (never two joined by "and"/"then"; never a verification folded
+  into a step — the judgment lives only in Expected Result).
+  Parameterization is legal ONLY when the steps AND the expected
+  result are identical modulo the substituted term, and the case
+  must name every variant it covers (never "etc." / "all types") —
+  a variant that changes any step or the outcome becomes its own
+  case. One TC id must never stand for several behaviors.
+- **CASE COUNT closes the loophole**: length is controlled by terse
+  steps and parameterization, never by dropping or merging
+  requirements — and now explicitly never by bundling several
+  assertions into one case.
+- **Case-shape prose tightened where cases are written**: the
+  Positive Tests intro states the one-behavior rule, the Expected
+  Result definition becomes "the single observable outcome this case
+  verifies ... never two independent outcomes (split the case
+  instead)", and the numbering note pins each checkbox to a SINGLE
+  tester action. Worked example preamble notes the rule (its cases
+  were already atomic).
+- Output markers, input keys, and fences unchanged — the G9 slice
+  and its literals are untouched. Split cases mean longer drafts;
+  truncation still fails CLOSED (a lost `[[[DRAFT END]]]` writes
+  nothing), and `Gen_summary`'s `draftChars` remains the gauge.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.6 in
+`flow/v1_0/` and `flow/core_v1_0/` (stamp only); both generation
+packages re-cut with the stamped definitions (byte-identical to
+their folder definitions, the provenance convention).
+
+**Harness** — `review/harness/check_draft_coverage.py` extended to
+the v1.6 contract: every TC case must carry exactly one
+`**Expected Result:**` line and at least one Steps checkbox (the
+structural half of granularity — skipped under `--baseline`); a new
+`stepsPerCase=` counter prints for before/after comparison. The
+semantic half (single outcome per Expected Result, one action per
+step, variant-explicit parameterization) is a smoke/§4 reading
+check.
+
+**Docs** — Setup §2 (stamp v1.6 + pane check gains the
+single-outcome assertion), §3 G0 config stamp, §4 (the review pass
+gains the split check and the parameterization-variant check);
+Smoke suite v1.5: rows 1 and 9 amended (row 9 pins the CG-6-shaped
+bundle: new-referent population and outer-referent preservation are
+SEPARATE cases); `Coverage_Runbook.md` step 2 pastes v1.6;
+`prompts/README.md` and `STATUS.md` rows moved to v1.6.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 2; a tenant still on the pre-v1.3
+four-parameter contract creates `ReferenceText` first): paste v1.6
+into `LRS Test Plan Generation` (replaces the pending v1.5 paste),
+set both `Config_gen.TestPlanGenPromptVersion` stamps to v1.6 (or
+re-import the re-cut packages), run smoke rows 1 and 9 and record
+below. NEVER bump `Config.PromptVersion` — nothing here changes the
+sidecar format or reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.6** | `review/patches/TestPlanGen_Prompt_v1_6.md` → `prompts/TestPlanGen_Prompt.md` |
+| Flow definitions (stamp only) + re-cut packages | v2.14 delta | `testplangen/flow/v1_0/definition.json`, `testplangen/flow/core_v1_0/definition.json`, both zips |
+| Draft coverage lint | updated (v1.6 contract) | `review/harness/check_draft_coverage.py` |
+| Setup + smoke + runbook docs | updated | `TestPlanGen_Setup.md`, `TestPlanGen_Smoke.md` (suite v1.5), `Coverage_Runbook.md` |
+| Agent file set / schemas | unchanged | — |
+
+| Date | Tenant | Rows passed (of 11) | TestPlanGenPromptVersion |
+|---|---|---|---|
+| — | — | — | v1.6 (paste pending) |
+
 # TestPlanGen v2.13 — self-reference-safe budget take (flows v2.3)
 
 A live save of the v2.2 flow failed validation (2026-08-13, the

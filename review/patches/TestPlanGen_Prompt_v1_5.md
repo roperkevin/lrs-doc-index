@@ -1,4 +1,4 @@
-# TestPlanGen Prompt — v1.5 (requirement-driven coverage + Coverage Map) — CURRENT, awaiting tenant paste
+# TestPlanGen Prompt — v1.5 (requirement-driven coverage + Coverage Map) — superseded in-repo by v1.6 before tenant paste
 
 Motivated by the standing coverage complaint (2026-08-13): live
 drafts generate too few cases and visibly under-use supporting

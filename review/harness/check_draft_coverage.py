@@ -1,4 +1,4 @@
-"""Offline coverage lint for a TestPlanGen draft (prompt v1.5 contract).
+"""Offline coverage lint for a TestPlanGen draft (prompt v1.6 contract).
 
 Runs over a downloaded draft .md (from Shared Documents/Test Plan
 Drafts/) — no tenant access, no fixtures. Complements smoke rows 1
@@ -7,7 +7,7 @@ the draft honors the coverage contract, and prints the counters used
 for before/after comparison when a prompt bump lands
 (`testplangen/Coverage_Runbook.md` step 5).
 
-Asserts (v1.5 contract):
+Asserts (v1.6 contract):
 
   1. the six core sections present, in order: Overview,
      Setup / Prerequisites, Positive Tests, Negative Tests,
@@ -21,14 +21,20 @@ Asserts (v1.5 contract):
      empty Covered by cell; every TC id a cell cites exists in the
      draft; every TC id in the draft appears in some cell
   6. TC numbering sequential per lane (TC-P1..Pn, TC-N1..Nn)
+  7. granularity, the structural half (v1.6): every TC case has
+     exactly ONE `**Expected Result:**` line and at least one
+     `- [ ]` Steps checkbox (the semantic half — a single outcome
+     per Expected Result, one action per step — stays a human
+     smoke/review check)
 
-Prints (never gates): TC-P / TC-N / [VERIFY] / Coverage Map row
-counts, and a WARN when the draft sits under the prompt's floor
-(4 positive / 3 negative — almost certainly under-covered).
+Prints (never gates): TC-P / TC-N / [VERIFY] / Coverage Map row /
+steps-per-case counts, and a WARN when the draft sits under the
+prompt's floor (4 positive / 3 negative — almost certainly
+under-covered).
 
-`--baseline` scores a pre-v1.5 draft for the before side of a
-comparison: sections 1's Coverage Map requirement and check 5 are
-skipped, counters still print.
+`--baseline` scores a pre-v1.5/pre-v1.6 draft for the before side
+of a comparison: section 1's Coverage Map requirement and checks 5
+and 7 are skipped, counters still print.
 
 Usage: python3 check_draft_coverage.py <draft.md> [--baseline]
 Exit code: non-zero on any failed assertion.
@@ -76,12 +82,19 @@ def main():
             check(bool(re.search(r'^\s*[-*] ', body, re.M)),
                   f'conditional section non-empty: {cond_h}')
 
-    # 2 — every case has a Trace line
+    # 2 — every case has a Trace line; 7 — granularity (structural)
     cases = re.findall(r'^### (TC-[PN]\d+)[^\n]*\n(.*?)(?=^###? |\Z)',
                        text, re.M | re.S)
     check(len(cases) > 0, 'at least one TC case found')
+    n_steps = 0
     for cid, body in cases:
         check('**Trace:**' in body, f'{cid} carries a **Trace:** line')
+        n_steps += len(re.findall(r'^\s*- \[[ x]\]', body, re.M))
+        if not baseline:
+            check(body.count('**Expected Result:**') == 1,
+                  f'{cid} has exactly one **Expected Result:** line')
+            check(bool(re.search(r'^\s*- \[[ x]\]', body, re.M)),
+                  f'{cid} has at least one Steps checkbox')
 
     # 3 — CAUTION alert heads Negative Tests
     neg = text.split('## Negative Tests', 1)
@@ -132,8 +145,10 @@ def main():
     n_pos = len(re.findall(r'^### TC-P\d+', text, re.M))
     n_neg = len(re.findall(r'^### TC-N\d+', text, re.M))
     n_verify = len(re.findall(r'\[VERIFY[:\]]', text))
+    steps_per_case = n_steps / len(cases) if cases else 0.0
     print(f'COUNTS: positive={n_pos} negative={n_neg} verify={n_verify} '
-          f'mapRows={len(map_rows)} chars={len(text)}')
+          f'mapRows={len(map_rows)} stepsPerCase={steps_per_case:.1f} '
+          f'chars={len(text)}')
     if n_pos < 4 or n_neg < 3:
         print('WARN: under the prompt floor (4 positive / 3 negative) — '
               'almost certainly under-covered')

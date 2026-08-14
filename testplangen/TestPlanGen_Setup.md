@@ -78,7 +78,7 @@ parameters, exact names: **StoryMeta**, **StoryText**,
 new in v2.0 — an upgrade from a pre-v1.3 paste must CREATE the
 parameter, not just re-paste the text). Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.5` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.6` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -102,7 +102,10 @@ and ReferenceText → the reply is wrapped in the two markers, contains the
 six core draft sections (the smoke story has no automation or
 documentation plans, so the two conditional sections — Automation
 Notes, Documentation Impacts — are correctly absent), every test case
-carries a **Trace:** line, Open Questions is non-empty, and the reply
+carries a **Trace:** line and exactly one **Expected Result:** line
+asserting a single outcome (prompt v1.6 — "merges the routes AND
+preserves measures" in one case is a fail: those are two cases),
+Open Questions is non-empty, and the reply
 ends with a `## Coverage Map` table (prompt v1.5) whose rows cover
 both story statements ("merge two routes", "preserve measures") with
 no empty Covered by cell.
@@ -164,7 +167,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "DigestSummaryCap": 400,
   "ExemplarSlots": 2,
   "ReferenceSlots": 3,
-  "TestPlanGenPromptVersion": "v1.5"
+  "TestPlanGenPromptVersion": "v1.6"
 }
 ```
 
@@ -542,7 +545,12 @@ the Doc Index list (rename the flow's menu label to
   story enumerates has at least one case —
   the doc 1 review (`review/REVIEW_TestPlanGen_doc1_coverage.md`)
   shows how grouped pathways ("Dynamic Segmentation & Attribute
-  Table") silently collapse without this check. When the story has
+  Table") silently collapse without this check. Check case
+  granularity (the prompt v1.6 rule): every case's Expected Result
+  asserts exactly one outcome — split any the model bundled — and
+  every parameterized case names the variants it claims to cover
+  (a "repeat for ..." whose variants differ in steps or outcome is
+  hiding cases). When the story has
   automation or documentation plans, the draft carries `Automation
   Notes` / `Documentation Impacts` sections — review their bullets'
   Trace lines the same way. Reference-grounded cases (prompt v1.3:
