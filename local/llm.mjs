@@ -18,17 +18,33 @@
  * below against the other API; classifyDoc()'s contract is provider-
  * agnostic.
  *
- * Config (config.llm):
- *   apiKey     {"$env":"ANTHROPIC_API_KEY"} or literal (not recommended)
+ * Auth (config.llm.auth):
+ *   "oauth" (default) — no API key anywhere. A one-time
+ *     `ant auth login` on the machine stores an OAuth profile; this
+ *     client mints short-lived bearer tokens from it by shelling out
+ *     to `ant auth print-credentials --access-token` (which
+ *     auto-refreshes), and sends them as `Authorization: Bearer`
+ *     plus the required `anthropic-beta: oauth-2025-04-20` header.
+ *     `ANTHROPIC_AUTH_TOKEN`, when set, short-circuits the CLI.
+ *     NOTE: an exported ANTHROPIC_API_KEY silently outranks the
+ *     profile for the `ant` CLI itself — keep it unset on the
+ *     machine (Local_Setup.md §3).
+ *   "apiKey" — classic metered key; set config.llm.apiKey
+ *     (ideally {"$env":"..."}). Also selected implicitly when
+ *     apiKey is configured.
+ *
+ * Other config (config.llm):
  *   model      default "claude-opus-5"
  *   maxTokens  default 4096
  *   baseUrl    default "https://api.anthropic.com" (harness points this
  *              at a local mock)
  *   maxRetries default 4 (429/5xx/network, exponential backoff)
+ *   antCommand default "ant" (override for a nonstandard install path)
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -87,9 +103,56 @@ function resolveSecret(v, what) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ---- auth -----------------------------------------------------------
+
+let _oauthToken = null;
+let _oauthFetched = 0;
+
+function oauthToken(cfg, force) {
+  // Tokens are short-lived; print-credentials refreshes as needed, so
+  // re-mint every 5 minutes (or immediately after a 401).
+  if (!force && _oauthToken && Date.now() - _oauthFetched < 5 * 60 * 1000) {
+    return _oauthToken;
+  }
+  if (process.env.ANTHROPIC_AUTH_TOKEN) {
+    _oauthToken = process.env.ANTHROPIC_AUTH_TOKEN;
+    _oauthFetched = Date.now();
+    return _oauthToken;
+  }
+  const cmd = cfg.antCommand || "ant";
+  // shell:true so Windows resolves ant.cmd/ant.exe from PATH
+  const res = spawnSync(`${cmd} auth print-credentials --access-token`, {
+    shell: true,
+    encoding: "utf8",
+    timeout: 60000,
+  });
+  const token = (res.stdout || "").trim();
+  if (res.status !== 0 || token === "") {
+    throw new Error(
+      "llm auth: could not mint an OAuth token via `" + cmd +
+      " auth print-credentials --access-token` — run `ant auth login` on this " +
+      "machine (and keep ANTHROPIC_API_KEY unset), or configure llm.apiKey. " +
+      (res.stderr || "").slice(0, 300)
+    );
+  }
+  _oauthToken = token;
+  _oauthFetched = Date.now();
+  return token;
+}
+
+function authHeaders(cfg, forceRefresh) {
+  const useApiKey = cfg.auth === "apiKey" || (cfg.auth === undefined && cfg.apiKey !== undefined);
+  if (useApiKey) {
+    return { "x-api-key": resolveSecret(cfg.apiKey, "llm.apiKey") };
+  }
+  return {
+    authorization: "Bearer " + oauthToken(cfg, forceRefresh),
+    "anthropic-beta": "oauth-2025-04-20",
+  };
+}
+
 async function requestJson(cfg, prompt) {
   const baseUrl = cfg.baseUrl || "https://api.anthropic.com";
-  const apiKey = resolveSecret(cfg.apiKey, "llm.apiKey");
   const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
   const body = JSON.stringify({
     model: cfg.model || "claude-opus-5",
@@ -99,6 +162,7 @@ async function requestJson(cfg, prompt) {
   });
 
   let lastErr;
+  let refresh = false;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) await sleep(Math.min(2000 * 2 ** (attempt - 1), 30000));
     let res;
@@ -107,13 +171,20 @@ async function requestJson(cfg, prompt) {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
+          ...authHeaders(cfg, refresh),
         },
         body,
       });
     } catch (e) {
       lastErr = new Error(`LLM request failed: ${e.message}`);
+      continue;
+    }
+    refresh = false;
+    if (res.status === 401) {
+      // expired bearer token — mint a fresh one and retry
+      lastErr = new Error(`LLM API 401: ${(await res.text()).slice(0, 300)}`);
+      refresh = true;
       continue;
     }
     if (res.status === 429 || res.status >= 500) {

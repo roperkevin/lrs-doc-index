@@ -98,8 +98,8 @@ keeps the old yaml-on-top layout).
 | local/Local_Setup.md | Local sweep build + deploy guide — the whole sweep off Power Automate (SharePoint stays) | v1.0 |
 | local/sweep.mjs | Local sweep orchestrator — flow v2.8 reimplemented over Graph + direct LLM API + synced libraries | v1.0 |
 | local/graph.mjs | Microsoft Graph list client (Entra client-credentials; list GUIDs from config, no hand-typed URIs) | v1.0 |
-| local/llm.mjs | Direct LLM API client — executes prompts/DocIndex_Prompt.md verbatim, schema-pinned output | v1.0 |
-| local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock LLM, dry/live/idempotency legs; CI) | v1.0 |
+| local/llm.mjs | Direct LLM API client — executes prompts/DocIndex_Prompt.md verbatim, schema-pinned output; Claude-account OAuth by default (no API key) | v1.1 |
+| local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock LLM, dry/live/idempotency/oauth legs; CI) | v1.1 |
 | local/config.sample.json | Machine config template (copy to git-ignored local/config.json) | — |
 | local/CHANGES.md | Local sweep release notes | v1.0 |
 

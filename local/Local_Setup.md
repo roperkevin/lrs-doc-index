@@ -40,7 +40,8 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
   doesn't wait).
 - Environment variables (machine or user scope):
   - `DOCINDEX_GRAPH_SECRET` — the Entra app client secret (§2)
-  - `ANTHROPIC_API_KEY` — the LLM API key (§3)
+  - **No LLM key** — the LLM step signs in with your Claude account
+    (§3). Keep `ANTHROPIC_API_KEY` UNSET on this machine.
 
 ## 2. Entra app registration (Graph)
 
@@ -55,18 +56,39 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
    `DOCINDEX_GRAPH_SECRET` on the machine (never in config.json).
 4. Put the tenant id + client id in `local/config.json` (§4).
 
-## 3. LLM API
+## 3. LLM auth — no API key
 
 The classify/keyword step calls the Anthropic Messages API directly
 (raw HTTPS, no npm dependencies — the repo stays `git pull`-deployable)
 with the deployed prompt read from `prompts/DocIndex_Prompt.md`
 between its BEGIN/END markers. Prompt promotion is now *just the
-repo file*: edit, bump `Config → PromptVersion` in config, `git pull`
+repo file*: edit, bump `sweep.promptVersion` in config, `git pull`
 on the machine — no tenant paste. Model defaults to `claude-opus-5`
 (`llm.model` to override); the request pins the nine-field output
 contract with a JSON schema, so the flow's brace-slice fallback
 parsing is no longer needed. Refusal/truncation surface as Error rows.
 
+**Auth is your Claude account, not a key** (`llm.auth: "oauth"`, the
+default):
+
+1. Install the [Anthropic CLI](https://platform.claude.com/docs/en/api/sdks/cli)
+   (`ant`) on the machine.
+2. `ant auth login` — one-time browser sign-in; a profile with a
+   refresh token lands under your user config dir.
+3. Done. Each sweep mints short-lived bearer tokens via
+   `ant auth print-credentials --access-token` (auto-refreshing; the
+   sweep re-mints every 5 minutes and on any 401).
+
+Two traps, both documented CLI behavior:
+- **An exported `ANTHROPIC_API_KEY` silently outranks the profile** —
+  keep it unset on this machine.
+- **Refresh tokens eventually hard-expire** (they don't slide with
+  use). When a long-working setup starts failing auth, re-run
+  `ant auth login` before debugging anything else. Error rows with
+  `llm: ...` LastError retry automatically next run once you have.
+
+Fallback for a metered key (e.g. a service account for unattended
+governance): `"llm": {"auth": "apiKey", "apiKey": {"$env": "..."}}`.
 Another provider (e.g. Azure) means reimplementing `requestJson()` in
 `local/llm.mjs` — `classifyDoc()`'s contract is provider-agnostic.
 
@@ -163,9 +185,11 @@ Each is behavior-equivalent; all are exercised by the gate:
 
 Same footprint as the PAD machine (`pad/PAD_Setup.md` §8) plus two
 credentials: the Graph client secret (scope it with Sites.Selected;
-rotate on schedule) and the LLM API key (metered; per-provider spend
-caps recommended). Both live in machine environment variables, never
-in the repo or config.json. Document text is sent to the LLM API for
+rotate on schedule; machine environment variable, never in the repo
+or config.json) and the Claude account OAuth profile (short-lived
+access tokens; the refresh token sits in your user config dir under
+the machine's disk encryption — sign out with `ant auth logout` when
+decommissioning). Document text is sent to the LLM API for
 classification — the same class of egress the AI Builder call made,
 now governed by the LLM provider's data terms instead of the Power
 Platform's; clear it with whoever owns that decision before --live.

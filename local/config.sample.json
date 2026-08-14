@@ -31,7 +31,8 @@
   },
 
   "llm": {
-    "apiKey": { "$env": "ANTHROPIC_API_KEY" },
+    "$comment": "auth 'oauth' (default): no API key — run `ant auth login` once on the machine and keep ANTHROPIC_API_KEY unset; tokens are minted per run via `ant auth print-credentials`. To use a metered key instead: \"auth\": \"apiKey\", \"apiKey\": {\"$env\": \"ANTHROPIC_API_KEY\"}.",
+    "auth": "oauth",
     "model": "claude-opus-5",
     "maxTokens": 4096
   },

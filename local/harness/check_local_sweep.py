@@ -99,6 +99,7 @@ class MockState:
         self.lists = {}
         self.llm_by_file = {}
         self.llm_calls = 0
+        self.llm_last_headers = {}
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -133,6 +134,11 @@ def make_handler(state, lib_guid, src_files):
             if p == "/v1/messages":
                 body = json.loads(self._read())
                 state.llm_calls += 1
+                state.llm_last_headers = {
+                    "authorization": self.headers.get("authorization"),
+                    "x-api-key": self.headers.get("x-api-key"),
+                    "anthropic-beta": self.headers.get("anthropic-beta"),
+                }
                 prompt = body["messages"][0]["content"]
                 out = None
                 for fname, resp in state.llm_by_file.items():
@@ -402,6 +408,37 @@ def main():
     check("second run reprocesses only the Error doc", out.get("processed") == 1, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
+    check("apiKey auth used x-api-key header",
+          state.llm_last_headers.get("x-api-key") == "mock-key"
+          and not state.llm_last_headers.get("authorization"),
+          str(state.llm_last_headers))
+
+    # ---- leg 4: OAuth auth (no API key; stub `ant` mints the token) --
+    print("== oauth leg")
+    bin_dir = os.path.join(tmp, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    stub = os.path.join(bin_dir, "ant")
+    with open(stub, "w") as f:
+        f.write("#!/bin/sh\necho stub-oauth-token\n")
+    os.chmod(stub, 0o755)
+    cfg["llm"] = {"auth": "oauth", "baseUrl": base, "maxRetries": 0}
+    # bump PromptVersion so one doc reindexes and exercises an LLM call
+    cfg["sweep"]["promptVersion"] = "v2.0-oauth-leg"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ.get("PATH", ""))
+    env.pop("ANTHROPIC_AUTH_TOKEN", None)
+    proc = subprocess.run(
+        ["node", "--experimental-strip-types", SWEEP, "--config", cfg_path,
+         "--live", "--only", "notes.txt"],
+        capture_output=True, text=True, cwd=REPO, env=env,
+    )
+    check("oauth run exit 0", proc.returncode == 0, proc.stderr[-600:])
+    check("oauth bearer + beta header sent",
+          state.llm_last_headers.get("authorization") == "Bearer stub-oauth-token"
+          and state.llm_last_headers.get("anthropic-beta") == "oauth-2025-04-20"
+          and not state.llm_last_headers.get("x-api-key"),
+          str(state.llm_last_headers))
 
     server.shutdown()
     report()

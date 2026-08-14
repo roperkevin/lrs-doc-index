@@ -1,5 +1,21 @@
 # Local sweep — release notes
 
+## v1.1 (2026-08-14)
+
+LLM auth without an API key. `llm.mjs` gains `llm.auth: "oauth"`
+(now the default): a one-time `ant auth login` on the machine stores
+a Claude-account OAuth profile, and the sweep mints short-lived
+bearer tokens via `ant auth print-credentials --access-token`
+(re-minted every 5 minutes and on 401), sent as
+`Authorization: Bearer` + the required `anthropic-beta:
+oauth-2025-04-20` header. `ANTHROPIC_AUTH_TOKEN` short-circuits the
+CLI when set; `"auth": "apiKey"` (or a configured `apiKey`) keeps
+the metered-key path as an explicit opt-in. Guide §3 documents the
+two CLI traps (an exported ANTHROPIC_API_KEY silently outranks the
+profile; refresh tokens hard-expire — re-login). Gate: new
+apiKey-header assertion + an OAuth leg with a stub `ant` proving the
+bearer/beta headers on the wire. **Gate PASSED 2026-08-14 (36/36).**
+
 ## v1.0 (2026-08-14)
 
 New component: the Doc Index sweep as a **local Node orchestrator** —
