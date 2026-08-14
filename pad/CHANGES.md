@@ -44,6 +44,28 @@ Deployment state: **authored, nothing on tenant**. The offload is
 opt-in per wiring (§5 of the guide); the Automate-tab workbook path
 keeps working unchanged.
 
+## v2.1 (2026-08-14)
+
+Paste fix for `flow/DocIndexCompute.robin.txt`: the two v2.0 Run DOS
+command actions were rejected by a live PAD paste — the only lines
+carrying `\"` escape sequences and a `Timeout` parameter. v2.1
+removes both failure surfaces instead of guessing at their dialect:
+
+- each branch now builds the full command line in a plain SET
+  (double quotes raw inside the `$''' '''` literal, where they are
+  inert — SET actions paste clean);
+- the Run DOS command action deduplicates to a single post-IF/ELSE
+  action holding only bare variable references
+  (`DOSCommandOrApplication: CommandLine`, `WorkingDirectory:
+  RepoRoot`) with default advanced settings — no timeout parameter;
+  use the cloud-side desktop-flow action timeout instead (§6).
+
+Behavior is unchanged; the manual-rebuild table is updated to match
+(command built in SETs, one Run DOS command), and §3 gains a
+dialect-capture procedure: build the offending action by hand,
+Ctrl+C it into Notepad to read your PAD version's exact
+serialization, and fix the .robin.txt to match.
+
 ## v2.0 (2026-08-14)
 
 Full rebuild of the desktop flow around ease of running scripts —

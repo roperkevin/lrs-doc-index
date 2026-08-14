@@ -123,12 +123,28 @@ text.
    | 7 | If `%SourceFile% <> ''` | then Set variable `ArgsText` = two lines in the value editor: `file=%SourceFile%` then `%ScriptArgs%`; End |
    | 8 | Set variable + Write text to file | `ArgsFilePath` = `%LocalWorkDir%\op.args`; **Write text to file**: file `%ArgsFilePath%`, text `%ArgsText%`, overwrite, UTF-8, no appended newline |
    | 9 | Set variable | `ResultFilePath` = `%LocalWorkDir%\op.result.json` |
-   | 10 | Run DOS command | `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" --op %ScriptName% --argsfile "%ArgsFilePath%" --out "%ResultFilePath%"`, working dir `%RepoRoot%`, timeout 1800 s, outputs → `RunnerStdout` / `RunnerStderr` / `ExitCode` |
+   | 10 | Set variable | `CommandLine` = `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" --op %ScriptName% --argsfile "%ArgsFilePath%" --out "%ResultFilePath%"` |
    | 11 | Else | **batch branch** — actions 12–14 go inside the Else |
    | 12 | If `%JobText% <> ''` | then Set variable `JobFilePath` = `%LocalWorkDir%\job.json`; **Write text to file**: file `%JobFilePath%`, text `%JobText%`, overwrite, UTF-8, no appended newline; End |
    | 13 | Set variable | `ResultFilePath` = `%JobFilePath%.result.json` |
-   | 14 | Run DOS command | `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"`, same settings as action 10; then End (closing the Else) |
-   | 15 | If `%ExitCode% = 0` | then **Read text from file**: `%ResultFilePath%`, UTF-8 → `ResultText`; End |
+   | 14 | Set variable | `CommandLine` = `"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"`; then End (closing the Else) |
+   | 15 | Run DOS command | command/application `%CommandLine%`, working dir `%RepoRoot%`, everything else at defaults, outputs → `RunnerStdout` / `RunnerStderr` / `ExitCode` |
+   | 16 | If `%ExitCode% = 0` | then **Read text from file**: `%ResultFilePath%`, UTF-8 → `ResultText`; End |
+
+   (Since v2.1 the flow sets no timeout on the Run DOS command
+   action — rely on the cloud-side desktop-flow action timeout, §6.)
+
+### If a line still refuses to paste
+
+Robin serialization drifts between PAD releases, and the reject is
+all-or-nothing per paste. To pin down your machine's dialect: add
+the offending action by hand once (the §3 table), select it on the
+canvas, Ctrl+C, and paste into Notepad — that is your PAD version's
+exact serialization of that action. Diff it against the same line in
+`pad/flow/DocIndexCompute.robin.txt`, fix the file to match, and
+commit the corrected serialization so the next machine pastes clean.
+Pasting the flow in pieces also works: everything except the
+offending line, then that action by hand.
 
 5. Run it once from the PAD console with
    `JobFilePath = <RepoRoot>\pad\samples\job.sample.json` and check
