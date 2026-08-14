@@ -57,11 +57,13 @@ How it works:
 
 1. **First run** (do it from a console): the sweep prints
    `Open https://microsoft.com/devicelogin and enter the code XXXX`
-   — up to three times: Graph (list reads/writes), Dataverse (the AI
-   Builder call), and SharePoint itself (hyperlink-column writes —
-   Graph cannot set hyperlink fields, so `SourceLink`/`TextFileUrl`
-   go through SharePoint REST `ValidateUpdateListItem`). Sign in
-   with your normal account each time.
+   — twice: Graph (list reads/writes) and Dataverse (the AI Builder
+   call). Sign in with your normal account each time. The third
+   token — SharePoint REST, for the hyperlink-column writes Graph
+   cannot do (`SourceLink`/`TextFileUrl` go through
+   `ValidateUpdateListItem`) — is minted **silently** from the Graph
+   sign-in: it uses the same public client, so its refresh token
+   converts to a SharePoint-audience token with no extra prompt.
 2. The refresh tokens are cached under `paths.workDir\auth\`
    (`graph.json`, `dataverse.json`, `spo.json`, mode 0600). Every later run —
    including scheduled ones — refreshes silently; nightly runs keep
@@ -75,7 +77,12 @@ How it works:
 sign-in ("Need admin approval"), point `graph.clientId` at a public
 client your tenant already allows — the Azure CLI's
 `04b07795-8ddb-461a-bbee-02f9e1bf7b46` is usually pre-consented
-everywhere. Same knob on `llm.dataverse.clientId`.
+everywhere. Same knob on `llm.dataverse.clientId`. Note the SPO token
+(`spo.clientId`) is the one place the Azure CLI client does NOT work:
+its SharePoint grant carries only `user_impersonation`, which SP REST
+rejects with 401 — the Graph CLI client is the one whose tokens carry
+real SharePoint permissions (probe matrix, 2026-08-14; rerun
+`probe.mjs --spo` to re-measure in a different tenant).
 
 **Alternative — app registration** (for a future service-account
 setup, if someone with Entra rights ever provisions one): set

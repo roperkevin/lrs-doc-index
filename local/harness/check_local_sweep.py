@@ -566,12 +566,18 @@ def main():
         json.dump(cfg, f)
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
     check("device run exit 0", proc.returncode == 0, proc.stderr[-600:])
-    check("device flow ran for all three resources",
-          state.devicecode_hits == 3 and state.device_grants == 3,
-          f"devicecode={state.devicecode_hits} grants={state.device_grants}")
+    # graph + dataverse each prompt once; SPO must NOT prompt — same
+    # client as Graph, so it seeds from graph.json via a refresh grant
+    check("device flow ran for graph+dataverse only (SPO seeded, no 3rd prompt)",
+          state.devicecode_hits == 2 and state.device_grants == 2
+          and state.refresh_grants >= 1,
+          f"devicecode={state.devicecode_hits} grants={state.device_grants} refresh={state.refresh_grants}")
     check("graph write used a delegated token",
           str(state.graph_last_auth) in ("Bearer device-token", "Bearer refreshed-token"),
           str(state.graph_last_auth))
+    check("spo write used a seeded (refreshed) token",
+          str(state.spo_last_auth) == "Bearer refreshed-token",
+          str(state.spo_last_auth))
     check("refresh tokens cached for all resources",
           os.path.exists(os.path.join(auth_dir, "graph.json"))
           and os.path.exists(os.path.join(auth_dir, "dataverse.json"))
@@ -583,7 +589,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
     check("device rerun exit 0", proc.returncode == 0, proc.stderr[-600:])
     check("rerun refreshed silently (no new device prompt)",
-          state.devicecode_hits == 3 and state.refresh_grants >= 1,
+          state.devicecode_hits == 2 and state.refresh_grants >= 2,
           f"devicecode={state.devicecode_hits} refresh={state.refresh_grants}")
 
     server.shutdown()

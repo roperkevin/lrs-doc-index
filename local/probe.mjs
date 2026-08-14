@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * probe.mjs v1.2 — write probes for the Doc Index list.
+ * probe.mjs v1.3 — write probes for the Doc Index list.
  *
  * Default: Graph field probe — creates a junk row ("probe-delete-me"),
  * patches each sweep-written field individually, prints ok/FAIL per
@@ -40,6 +40,7 @@ cfg.spo = {
   tenantId: cfg.graph.tenantId,
   siteUrl: "https://esriis.sharepoint.com/sites/lrsworkspace",
   tokenCache: path.join(authDir, "spo.json"),
+  seedCachePath: cfg.graph.tokenCache,
   ...(cfg.spo || {}),
 };
 
@@ -92,16 +93,18 @@ const listId = sp.lists.docIndex;
 
 if (spoMode) {
   const origin = new URL(cfg.spo.siteUrl).origin;
-  console.log("probe v1.2 --spo token matrix");
+  console.log("probe v1.3 --spo token matrix");
   console.log("     site:", cfg.spo.siteUrl);
   console.log("     tenant:", cfg.spo.tenantId || "organizations");
 
-  // make sure a refresh token exists for the Azure CLI client — a
-  // device sign-in happens only when the cache is empty or dead
+  // make sure a refresh token exists (SpoClient defaults: Graph CLI
+  // client, seeded from the Graph cache — a device sign-in happens
+  // only when both caches are empty or dead)
   const spoAuth = new DelegatedAuth({
-    clientId: cfg.spo.clientId || AZURE_CLI_PUBLIC_CLIENT,
+    clientId: cfg.spo.clientId || GRAPH_PUBLIC_CLIENT,
     resource: origin,
     cachePath: cfg.spo.tokenCache,
+    seedCachePath: cfg.spo.seedCachePath,
     tenantId: cfg.spo.tenantId,
   });
   await spoAuth.token();
@@ -111,18 +114,20 @@ if (spoMode) {
     graphCache = JSON.parse(fs.readFileSync(cfg.graph.tokenCache, "utf8"));
   } catch { /* no graph cache yet */ }
 
-  const azcli = cfg.spo.clientId || AZURE_CLI_PUBLIC_CLIENT;
-  const strategies = [
-    { label: "azcli    v1 resource=" + origin, clientId: azcli, rt: spoCache.refresh_token, resource: origin },
-    { label: "azcli    v1 resource=" + origin + "/", clientId: azcli, rt: spoCache.refresh_token, resource: origin + "/" },
-    { label: "azcli    v2 scope=AllSites.Write", clientId: azcli, rt: spoCache.refresh_token, scopes: [`${origin}/AllSites.Write`, "offline_access"] },
-    { label: "azcli    v2 scope=AllSites.FullControl", clientId: azcli, rt: spoCache.refresh_token, scopes: [`${origin}/AllSites.FullControl`, "offline_access"] },
-    { label: "azcli    v2 scope=.default", clientId: azcli, rt: spoCache.refresh_token, scopes: [`${origin}/.default`, "offline_access"] },
-  ];
-  if (graphCache?.refresh_token) {
+  const shortClient = (id) =>
+    id === GRAPH_PUBLIC_CLIENT ? "graphcli" : id === AZURE_CLI_PUBLIC_CLIENT ? "azcli" : String(id).slice(0, 8);
+  const strategies = [];
+  for (const [name, cache, fallbackClient] of [
+    ["spo.json", spoCache, cfg.spo.clientId || GRAPH_PUBLIC_CLIENT],
+    ["graph.json", graphCache, cfg.graph.clientId || GRAPH_PUBLIC_CLIENT],
+  ]) {
+    if (!cache?.refresh_token) continue;
+    const clientId = cache.client_id || fallbackClient;
+    const tag = `${name} (${shortClient(clientId)})`;
     strategies.push(
-      { label: "graphcli v1 resource=" + origin, clientId: GRAPH_PUBLIC_CLIENT, rt: graphCache.refresh_token, resource: origin },
-      { label: "graphcli v2 scope=AllSites.Write", clientId: GRAPH_PUBLIC_CLIENT, rt: graphCache.refresh_token, scopes: [`${origin}/AllSites.Write`, "offline_access"] },
+      { label: `${tag} v1 resource=${origin}`, clientId, rt: cache.refresh_token, resource: origin },
+      { label: `${tag} v2 scope=AllSites.Write`, clientId, rt: cache.refresh_token, scopes: [`${origin}/AllSites.Write`, "offline_access"] },
+      { label: `${tag} v2 scope=.default`, clientId, rt: cache.refresh_token, scopes: [`${origin}/.default`, "offline_access"] },
     );
   }
 

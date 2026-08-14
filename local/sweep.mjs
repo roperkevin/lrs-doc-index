@@ -158,12 +158,14 @@ function loadConfig(argv) {
     ...(cfg.llm.dataverse || {}),
   };
   // SPO REST (hyperlink-column writes) inherits the same way; device
-  // mode defaults to the Azure CLI public client (SpoClient)
+  // mode uses the Graph CLI public client and seeds its first token
+  // from the Graph sign-in's cache — no extra prompt (SpoClient)
   cfg.spo = {
     ...inherit,
     siteUrl: (cfg.sweep.siteUrl || FLOW_DEFAULTS.siteUrl),
     baseUrl: cfg.sharePoint?.spoBaseUrl,
     tokenCache: path.join(authDir, "spo.json"),
+    seedCachePath: cfg.graph.tokenCache,
     ...(cfg.spo || {}),
   };
   cfg.sharePoint.sourceSitePath = cfg.sharePoint.sourceSitePath || "/sites/LocationReferencing";
