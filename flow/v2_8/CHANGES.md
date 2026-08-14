@@ -133,6 +133,26 @@ NOTE: the backfill only runs once FX-5 clears SmokeFile.
 - **AI Builder prompt** — text unchanged; the v2.0 bump is
   format-only, no re-paste.
 
+## kwmeta addendum (2026-08-14, fifth)
+
+Second errdrill catch: `If_has_text > If_related_signals >
+Get_kw_meta` 400'd with SharePoint's generic "Cannot complete this
+action" — the keyword-metadata GetItems built an OR chain mixing
+`ID eq N` and `CanonicalRefId eq N` clauses (lookup-eq OR chains /
+chain length both trigger that 400; the CanonicalRef column itself
+is present and correct on the tenant). Rework (§v2_8-kwmeta K1–K5):
+the run already fetches the full Keywords vocabulary at start
+(`Get_keywords`, $top 5000), so `Get_kw_meta` is now a Filter array
+over that snapshot (id-set membership via a `|`-delimited string; a
+−1 sentinel for null lookups), the two clause-builder Selects are
+gone, and the three consumers read the filter body directly.
+Accepted degradation: a keyword created mid-run lacks Kind/alias
+metadata until the next nightly (RelatedRank defaults kind→topic,
+alias→identity). Watch-item: `Get_kw_sharers` keeps its
+`KeywordId eq` chain (whole-junction query, can't prefetch) — if it
+ever 400s the same way, the cause is chain length; chunk it then.
+Zip re-cut, payload byte-identical.
+
 ## FX-7 addendum (2026-08-13, fourth)
 
 The errdrill capture's first live catch: the Error row named

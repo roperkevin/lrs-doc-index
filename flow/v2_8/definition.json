@@ -2013,7 +2013,7 @@
                                 "select": "@concat('KeywordId eq ', coalesce(item()?['Keyword']?['Id'], 0))"
                               }
                             },
-                            "Select_kwmeta_canon": {
+                            "Select_my_kw_ids": {
                               "runAfter": {
                                 "Select_kw_filter": [
                                   "Succeeded"
@@ -2022,41 +2022,28 @@
                               "type": "Select",
                               "inputs": {
                                 "from": "@coalesce(body('Get_my_kws')?['value'], json('[]'))",
-                                "select": "@concat('ID eq ', coalesce(item()?['Keyword']?['Id'], 0))"
+                                "select": "@string(coalesce(item()?['Keyword']?['Id'], -1))"
                               }
                             },
-                            "Select_kwmeta_alias": {
+                            "My_kw_idset": {
                               "runAfter": {
-                                "Select_kwmeta_canon": [
+                                "Select_my_kw_ids": [
                                   "Succeeded"
                                 ]
                               },
-                              "type": "Select",
-                              "inputs": {
-                                "from": "@coalesce(body('Get_my_kws')?['value'], json('[]'))",
-                                "select": "@concat('CanonicalRefId eq ', coalesce(item()?['Keyword']?['Id'], 0))"
-                              }
+                              "type": "Compose",
+                              "inputs": "@{concat('|', join(body('Select_my_kw_ids'), '|'), '|')}"
                             },
                             "Get_kw_meta": {
                               "runAfter": {
-                                "Select_kwmeta_alias": [
+                                "My_kw_idset": [
                                   "Succeeded"
                                 ]
                               },
-                              "type": "OpenApiConnection",
+                              "type": "Query",
                               "inputs": {
-                                "parameters": {
-                                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
-                                  "table": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
-                                  "$filter": "@{if(empty(body('Select_kwmeta_canon')), 'ID eq 0', join(union(body('Select_kwmeta_canon'), body('Select_kwmeta_alias')), ' or '))}",
-                                  "$top": 200
-                                },
-                                "host": {
-                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
-                                  "connectionName": "shared_sharepointonline",
-                                  "operationId": "GetItems"
-                                },
-                                "authentication": "@parameters('$authentication')"
+                                "from": "@coalesce(body('Get_keywords')?['value'], json('[]'))",
+                                "where": "@or(contains(outputs('My_kw_idset'), concat('|', string(item()?['ID']), '|')), contains(outputs('My_kw_idset'), concat('|', string(coalesce(item()?['CanonicalRef']?['Id'], 0)), '|')))"
                               }
                             },
                             "Select_kw_filter_meta": {
@@ -2067,7 +2054,7 @@
                               },
                               "type": "Select",
                               "inputs": {
-                                "from": "@coalesce(body('Get_kw_meta')?['value'], json('[]'))",
+                                "from": "@coalesce(body('Get_kw_meta'), json('[]'))",
                                 "select": "@concat('KeywordId eq ', coalesce(item()?['ID'], 0))"
                               }
                             },
@@ -2128,7 +2115,7 @@
                                   "ScriptParameters/myKwsJson": "@string(coalesce(body('Get_my_kws')?['value'], json('[]')))",
                                   "ScriptParameters/sharersJson": "@string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))",
                                   "ScriptParameters/linksJson": "@string(coalesce(body('Get_id_links')?['value'], json('[]')))",
-                                  "ScriptParameters/kwMetaJson": "@string(coalesce(body('Get_kw_meta')?['value'], json('[]')))",
+                                  "ScriptParameters/kwMetaJson": "@string(coalesce(body('Get_kw_meta'), json('[]')))",
                                   "ScriptParameters/candsMetaJson": "[]",
                                   "ScriptParameters/selfMetaJson": "@string(outputs('Self_rank_meta'))",
                                   "ScriptParameters/configJson": "@outputs('Config')?['RelatedWeights']",
@@ -2208,7 +2195,7 @@
                                       "ScriptParameters/myKwsJson": "@string(coalesce(body('Get_my_kws')?['value'], json('[]')))",
                                       "ScriptParameters/sharersJson": "@string(coalesce(body('Get_kw_sharers')?['value'], json('[]')))",
                                       "ScriptParameters/linksJson": "@string(coalesce(body('Get_id_links')?['value'], json('[]')))",
-                                      "ScriptParameters/kwMetaJson": "@string(coalesce(body('Get_kw_meta')?['value'], json('[]')))",
+                                      "ScriptParameters/kwMetaJson": "@string(coalesce(body('Get_kw_meta'), json('[]')))",
                                       "ScriptParameters/candsMetaJson": "@string(coalesce(body('Get_cand_docs')?['value'], json('[]')))",
                                       "ScriptParameters/selfMetaJson": "@string(outputs('Self_rank_meta'))",
                                       "ScriptParameters/configJson": "@outputs('Config')?['RelatedWeights']",
