@@ -1,13 +1,17 @@
-# DocIndexCompute v2.0 — Doc Index compute offload (Robin, paste into
+# DocIndexCompute v2.1 — Doc Index compute offload (Robin, paste into
 # the PAD designer's Main canvas; see pad/PAD_Setup.md §3, including
 # the input/output variables to create FIRST and the manual-rebuild
-# table if your PAD version rejects this paste). Serialized in the
-# live-export dialect established in v1.1 (bare variable names in
-# parameters/conditions, \" escapes inside $''' ''' literals).
+# table if your PAD version rejects this paste).
+# v2.1: the two Run DOS command actions were the paste-rejection
+# hotspot — the only lines carrying \" escape sequences and a
+# Timeout parameter. Both are gone: the command line is now built in
+# a plain SET (quotes raw inside the $''' ''' literal, where they
+# are inert), and the Run DOS command action itself is reduced to
+# bare variable references with default advanced settings.
 #
-# v2.0 rebuild: two modes, picked by whether ScriptName is set.
+# Two modes, picked by whether ScriptName is set.
 #
-# QUICK-RUN mode (new) — run one script with no job JSON:
+# QUICK-RUN mode — run one script with no job JSON:
 #   set ScriptName (op or script name, e.g. workbookdump) and
 #   SourceFile (for ziptext/media/workbookdump) and/or ScriptArgs
 #   (key=value lines, one per line, raw — no quoting/escaping).
@@ -46,15 +50,16 @@ IF ScriptName <> $'''''' THEN
     SET ArgsFilePath TO $'''%LocalWorkDir%\op.args'''
     File.WriteText File: ArgsFilePath TextToWrite: ArgsText AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
     SET ResultFilePath TO $'''%LocalWorkDir%\op.result.json'''
-    System.RunDOSCommand DOSCommandOrApplication: $'''\"%NodeCmd%\" --experimental-strip-types \"%RunJobPath%\" --op %ScriptName% --argsfile \"%ArgsFilePath%\" --out \"%ResultFilePath%\"''' WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+    SET CommandLine TO $'''"%NodeCmd%" --experimental-strip-types "%RunJobPath%" --op %ScriptName% --argsfile "%ArgsFilePath%" --out "%ResultFilePath%"'''
 ELSE
     IF JobText <> $'''''' THEN
         SET JobFilePath TO $'''%LocalWorkDir%\job.json'''
         File.WriteText File: JobFilePath TextToWrite: JobText AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
     END
     SET ResultFilePath TO $'''%JobFilePath%.result.json'''
-    System.RunDOSCommand DOSCommandOrApplication: $'''\"%NodeCmd%\" --experimental-strip-types \"%RunJobPath%\" \"%JobFilePath%\"''' WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+    SET CommandLine TO $'''"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"'''
 END
+System.RunDOSCommand DOSCommandOrApplication: CommandLine WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode
 IF ExitCode = 0 THEN
     File.ReadTextFromFile.ReadText File: ResultFilePath Encoding: File.TextFileEncoding.UTF8 Content=> ResultText
 END
