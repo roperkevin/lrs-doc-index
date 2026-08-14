@@ -146,6 +146,12 @@ commit the corrected serialization so the next machine pastes clean.
 Pasting the flow in pieces also works: everything except the
 offending line, then that action by hand.
 
+Known drift, already handled: "Module 'System' or action
+'RunDOSCommand' wasn't found" means the legacy
+`System.RunDOSCommand` selector — current PAD files the action under
+`Scripting.RunDOSCommand.RunDOSCommand`, which is what the flow uses
+since v2.2 (swap back to `System.RunDOSCommand` on old builds).
+
 5. Run it once from the PAD console with
    `JobFilePath = <RepoRoot>\pad\samples\job.sample.json` and check
    `ResultText`.

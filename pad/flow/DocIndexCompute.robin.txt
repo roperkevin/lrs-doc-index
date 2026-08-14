@@ -1,7 +1,12 @@
-# DocIndexCompute v2.1 — Doc Index compute offload (Robin, paste into
+# DocIndexCompute v2.2 — Doc Index compute offload (Robin, paste into
 # the PAD designer's Main canvas; see pad/PAD_Setup.md §3, including
 # the input/output variables to create FIRST and the manual-rebuild
 # table if your PAD version rejects this paste).
+# v2.2: the Run DOS command action is addressed as
+# Scripting.RunDOSCommand.RunDOSCommand — the module current PAD
+# builds file it under ("Module 'System' or action 'RunDOSCommand'
+# wasn't found" on a live paste; System.RunDOSCommand is the legacy
+# selector, swap it back on old PAD builds if needed).
 # v2.1: the two Run DOS command actions were the paste-rejection
 # hotspot — the only lines carrying \" escape sequences and a
 # Timeout parameter. Both are gone: the command line is now built in
@@ -59,7 +64,7 @@ ELSE
     SET ResultFilePath TO $'''%JobFilePath%.result.json'''
     SET CommandLine TO $'''"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"'''
 END
-System.RunDOSCommand DOSCommandOrApplication: CommandLine WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode
+Scripting.RunDOSCommand.RunDOSCommand DOSCommandOrApplication: CommandLine WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode
 IF ExitCode = 0 THEN
     File.ReadTextFromFile.ReadText File: ResultFilePath Encoding: File.TextFileEncoding.UTF8 Content=> ResultText
 END
