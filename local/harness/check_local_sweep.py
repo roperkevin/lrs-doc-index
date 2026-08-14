@@ -299,14 +299,14 @@ def main():
     with open(os.path.join(src_dir, "corrupt.pptx"), "wb") as f:
         f.write(b"this is not a zip archive")
 
-    def src_item(iid, name, modified):
+    def src_item(iid, name, modified, seg="Shared Documents"):
         return {
             "id": str(iid),
             "webUrl": f"https://mock.example/src/{name}",
             "lastModifiedDateTime": modified,
             "fields": {
                 "FileLeafRef": name,
-                "FileRef": f"/sites/LocationReferencing/Shared Documents/{name}",
+                "FileRef": f"/sites/LocationReferencing/{seg}/{name}",
                 "Modified": modified,
                 "FSObjType": "0",
             },
@@ -314,12 +314,17 @@ def main():
 
     # Beta newer than Alpha -> Beta indexes first; Alpha then finds the
     # sharer, mints the edge, and reciprocally patches Beta's sidecar.
+    # outside.docx lives outside the synced root segment (out-of-scope
+    # lane: stamped Skip); missing.txt is in scope but absent on disk
+    # (sync lag: a retryable Error).
     src_files = [
         src_item(11, "Beta Story.pptx", "2026-08-13T10:00:00Z"),
         src_item(10, "Alpha Plan.pptx", "2026-08-12T10:00:00Z"),
         src_item(12, "notes.txt", "2026-08-11T10:00:00Z"),
         src_item(13, "spec.pdf", "2026-08-10T10:00:00Z"),
         src_item(14, "corrupt.pptx", "2026-08-09T10:00:00Z"),
+        src_item(15, "outside.docx", "2026-08-08T10:00:00Z", seg="Elsewhere"),
+        src_item(16, "missing.txt", "2026-08-07T10:00:00Z"),
     ]
 
     state = MockState()
@@ -385,7 +390,7 @@ def main():
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
-    check("dry run processed 5", out.get("processed") == 5, str(out))
+    check("dry run processed 7", out.get("processed") == 7, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run wrote no sidecars",
           not any(f.endswith(".md") for _, _, fs_ in os.walk(sidecar_dir) for f in fs_))
@@ -400,14 +405,26 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 5", out.get("processed") == 5, str(out))
-    check("live errors 1 (corrupt.pptx)", out.get("errors") == 1, str(out))
+    check("live processed 7", out.get("processed") == 7, str(out))
+    check("live errors 2 (corrupt.pptx, missing.txt)", out.get("errors") == 2, str(out))
+    check("live counted 1 out-of-scope doc", out.get("out_of_scope") == 1, str(out))
 
     rows = state.lists[LISTS["docIndex"]]
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 5 docs", len(by_name) == 5, str(sorted(by_name)))
+    check("doc index rows for all 7 docs", len(by_name) == 7, str(sorted(by_name)))
+
+    _, outside = by_name.get("outside.docx", (None, {}))
+    check("out-of-scope doc -> stamped Skip",
+          outside.get("IndexStatus") == "Skipped"
+          and outside.get("PromptVersion") == "v2.0"
+          and "out of sync scope" in str(outside.get("LastError", "")), str(outside)[:250])
+
+    _, missing = by_name.get("missing.txt", (None, {}))
+    check("in-scope missing file -> retryable Error",
+          missing.get("IndexStatus") == "Error"
+          and "not found locally" in str(missing.get("LastError", "")), str(missing)[:250])
 
     _, alpha = by_name.get("Alpha Plan.pptx", (None, {}))
     check("alpha indexed", alpha.get("IndexStatus") == "Indexed", str(alpha)[:200])
@@ -439,10 +456,12 @@ def main():
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "5 processed, 1 errors" in status and "corrupt.pptx" in status,
+          "7 processed, 2 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
+    check("status page reports out-of-scope docs",
+          "Out of sync scope:** 1" in status, status[:400])
     alpha_sc = next((p for n, p in md_files.items() if "alpha" in n), None)
     beta_sc = next((p for n, p in md_files.items() if "beta" in n), None)
     check("alpha sidecar in kind folder", alpha_sc is not None and os.sep + "Test Plans" + os.sep in alpha_sc,
@@ -509,7 +528,8 @@ def main():
             f.write("{}")
     proc = run_sweep(cfg_path, ["--live"])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("second run reprocesses only the Error doc", out.get("processed") == 1, str(out))
+    check("second run reprocesses only the two Error docs (not the stamped out-of-scope Skip)",
+          out.get("processed") == 2 and out.get("out_of_scope") == 0, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
     run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]

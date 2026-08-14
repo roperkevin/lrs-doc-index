@@ -1,5 +1,31 @@
 # Local sweep — release notes
 
+## v1.6 (2026-08-14)
+
+**Out-of-scope lane** (improvement plan #7, the cheap floor). The
+dry-run calibration showed ~102 tenant rows whose source files sit
+outside the synced `libraryRootSegment`; when the v2.0 backfill
+reached them they would each have become a *nightly* Error-lane
+churn ("source file not found locally"). Now:
+
+- A doc **structurally outside** the synced root gets a single
+  STAMPED `Skipped` row (`LastError: "out of sync scope: ..."`), so
+  it never rechurns; it re-enters `Needs_index` when modified or on
+  a promptVersion bump after the sync scope grows. New
+  `out_of_scope` summary counter + status-page callout with the
+  remedy.
+- A doc **in scope but missing on disk** stays a retryable Error,
+  reworded to say what it almost always is (OneDrive sync lag) —
+  clears itself when the file lands.
+
+The full fix (actually indexing those docs) is syncing more of the
+source library — a machine/disk decision, not a code change; the
+lane makes the gap visible and quantified instead of noisy. Gate:
+two new fixtures (`outside.docx` structurally out of scope,
+`missing.txt` in scope but absent) + lane assertions on the live,
+idempotency (the stamped Skip is NOT reprocessed) and status-page
+checks. **Gate PASSED 2026-08-14 (59/59).**
+
 ## v1.5 (2026-08-14)
 
 Unattended-operation hardening, the first post-handover batch:

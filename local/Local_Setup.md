@@ -231,6 +231,14 @@ Each is behavior-equivalent; all are exercised by the gate:
 - WorkbookDump reads the xlsx via `pad/runner/xlsx_grid.mjs` — the
   same content-equivalence caveat as the PAD offload
   (`pad/PAD_Setup.md` §7).
+- **Out-of-scope lane** (a real deviation — the flow could reach any
+  file over the connector; local reads need the OneDrive sync): a doc
+  outside `sharePoint.libraryRootSegment` gets a STAMPED `Skipped`
+  row with `LastError` `"out of sync scope: ..."` — once, not a
+  nightly Error. The status page counts them. To index those docs,
+  widen the OneDrive sync and touch them (or bump promptVersion). A
+  doc IN scope whose file is missing on disk is treated as OneDrive
+  sync lag: a retryable Error that clears itself when the file lands.
 
 ## 7. Operations
 
