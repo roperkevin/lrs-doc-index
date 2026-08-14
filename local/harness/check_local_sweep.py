@@ -268,10 +268,14 @@ LISTS = {
 }
 
 
-def run_sweep(cfg_path, extra):
+def run_sweep(cfg_path, extra, env=None):
+    # captured output means no TTY: allow the mock device prompt except
+    # where a leg deliberately tests the non-interactive fail-fast
+    e = dict(env if env is not None else os.environ)
+    e.setdefault("DOCINDEX_ALLOW_DEVICE_PROMPT", "1")
     return subprocess.run(
         ["node", "--experimental-strip-types", SWEEP, "--config", cfg_path] + extra,
-        capture_output=True, text=True, cwd=REPO,
+        capture_output=True, text=True, cwd=REPO, env=e,
     )
 
 
@@ -427,8 +431,18 @@ def main():
 
     # sidecars on disk
     md_files = {f: os.path.join(r, f)
-                for r, _, fs_ in os.walk(sidecar_dir) for f in fs_ if f.endswith(".md")}
+                for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
+                if f.endswith(".md") and not f.startswith("_Sweep")}
     check("three sidecars written", len(md_files) == 3, str(sorted(md_files)))
+
+    # status page (live runs only, sidecar-library root)
+    status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
+    status = open(status_path).read() if os.path.exists(status_path) else ""
+    check("status page written on live run",
+          "5 processed, 1 errors" in status and "corrupt.pptx" in status,
+          status[:300])
+    check("status page names the error lane",
+          "ziptext-pptx:" in status, status[:300])
     alpha_sc = next((p for n, p in md_files.items() if "alpha" in n), None)
     beta_sc = next((p for n, p in md_files.items() if "beta" in n), None)
     check("alpha sidecar in kind folder", alpha_sc is not None and os.sep + "Test Plans" + os.sep in alpha_sc,
@@ -490,11 +504,20 @@ def main():
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")
     llm_before = state.llm_calls
+    for i in range(40):  # prune fodder: names sort older than real stamps
+        with open(os.path.join(work_dir, f"sweep-0000-{i:03d}.json"), "w") as f:
+            f.write("{}")
     proc = run_sweep(cfg_path, ["--live"])
     out = json.loads(proc.stdout.splitlines()[0])
     check("second run reprocesses only the Error doc", out.get("processed") == 1, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
+    run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]
+    check("run logs pruned to 30", len(run_logs) == 30, str(len(run_logs)))
+    check("pruning kept the newest logs",
+          os.path.basename(out["logFile"]) in run_logs
+          and sum(1 for f in run_logs if f.startswith("sweep-0000-")) < 40,
+          str(sorted(run_logs)[:5]))
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
@@ -591,6 +614,25 @@ def main():
     check("rerun refreshed silently (no new device prompt)",
           state.devicecode_hits == 2 and state.refresh_grants >= 2,
           f"devicecode={state.devicecode_hits} refresh={state.refresh_grants}")
+
+    # ---- leg 7: dead auth in a scheduled (non-interactive) run ----
+    # caches gone + no TTY + prompt not allowed: fail fast and loud
+    # instead of waiting 15 min for a sign-in nobody will do, and the
+    # fatal path must still surface on the SharePoint status page
+    print("== auth fail-fast leg")
+    shutil.rmtree(auth_dir)
+    hits_before = state.devicecode_hits
+    proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"],
+                     env=dict(os.environ, DOCINDEX_ALLOW_DEVICE_PROMPT="0"))
+    check("dead-auth scheduled run fails fast", proc.returncode != 0)
+    check("dead-auth run says AUTH EXPIRED", "AUTH EXPIRED" in proc.stderr,
+          proc.stderr[-400:])
+    check("no device prompt was started", state.devicecode_hits == hits_before,
+          f"devicecode={state.devicecode_hits} vs {hits_before}")
+    status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
+    status = open(status_path).read() if os.path.exists(status_path) else ""
+    check("fatal run surfaced on the status page",
+          "RUN FAILED" in status and "AUTH EXPIRED" in status, status[:300])
 
     server.shutdown()
     report()
