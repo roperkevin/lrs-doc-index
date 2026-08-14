@@ -1,5 +1,23 @@
 # Local sweep — release notes
 
+## v1.4.2 (2026-08-14)
+
+Diagnostic release for the live-walkthrough SPO 401: even a fresh v1
+`resource=` device grant comes back with the generic SPO app-GUID
+audience and only `user_impersonation` in `scp`, and SharePoint still
+rejects it. `probe.mjs --spo` is now a **token matrix**: it redeems
+the already-cached refresh tokens (Entra refresh tokens are
+client-bound, not resource-bound — zero new sign-in prompts) for
+every candidate token shape (v1 resource with/without trailing slash,
+v2 named scopes `AllSites.Write` / `AllSites.FullControl` /
+`.default`, Azure CLI and Graph CLI public clients) and for each one
+prints the decoded claims, a plain `GET /_api/web` check (separates
+"token rejected" from "this endpoint rejected"), and the hyperlink
+write — including the `WWW-Authenticate` header on 401, where
+SharePoint states the actual reason. Ends with a WINNERS line; the
+winning shape gets wired into `SpoClient` next. New
+`redeemRefreshToken()` export in auth.mjs (cache-untouched, additive).
+
 ## v1.4 (2026-08-14)
 
 Live-run fix: **Graph cannot write hyperlink columns** — the probe
