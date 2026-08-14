@@ -446,6 +446,7 @@ async function main() {
     dry_run: dry,
     dockey_hits: 0,
     dockey_misses: 0,
+    out_of_scope: 0,
   };
 
   for (const item of files) {
@@ -483,10 +484,10 @@ async function main() {
     if (isFolder || !needsIndex || summary.processed >= sw.maxDocsPerRun) continue;
     summary.processed++; // incremented before Try_index, as in the flow
 
-    // local path in the synced library
-    const libRel = siteRel.startsWith(sp.libraryRootSegment + "/")
-      ? siteRel.slice(sp.libraryRootSegment.length + 1)
-      : siteRel;
+    // local path in the synced library; a doc outside the synced
+    // root segment is structurally unreachable (out-of-scope lane)
+    const inScope = siteRel.startsWith(sp.libraryRootSegment + "/");
+    const libRel = inScope ? siteRel.slice(sp.libraryRootSegment.length + 1) : siteRel;
     const localPath = path.join(cfg.paths.sourceLibrary, ...libRel.split("/"));
     const sourceLink = item.webUrl || "";
 
@@ -495,7 +496,7 @@ async function main() {
       step = "extract";
       await indexDoc({
         cfg, sw, sp, op, writer, summary,
-        item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey },
+        item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
         setStep: (s) => (step = s),
@@ -563,7 +564,38 @@ async function main() {
 
 async function indexDoc(ctx) {
   const { cfg, sw, sp, op, writer, summary, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
-  const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey } = item;
+  const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
+
+  // Out-of-scope lane: the source lives outside the synced library
+  // root (paths.sourceLibrary maps libraryRootSegment only), so no
+  // amount of retrying can read it. A stamped Skip with the reason
+  // in LastError — visible on the status page, no nightly rechurn.
+  // It re-enters Needs_index when the doc is modified or the
+  // PromptVersion bumps after the sync scope grows.
+  if (inScope === false) {
+    setStep("skip-out-of-scope");
+    summary.out_of_scope++;
+    const base = {
+      Title: name, FileName: name, DocKey: docKey,
+      IndexStatus: "Skipped", SourceModified: modified,
+      IndexedOn: new Date().toISOString(), PromptVersion: sw.promptVersion,
+      LastError: `out of sync scope: not under "${sp.libraryRootSegment}" — widen the OneDrive sync to index this doc`,
+    };
+    if (!existing) {
+      const created = await writer.createRow("docIndex", {
+        ...base,
+        SourceLink: { Url: sourceLink, Description: name },
+        FileType: fileTypeSafe, ExtractionLane: "none",
+      });
+      const row = { ID: created.id, ...base, TextFileUrl: "" };
+      caches.byDocKey.set(docKey, row);
+      caches.docIndexRows.push(row);
+    } else {
+      await writer.patchRow("docIndex", existing.ID, base);
+      Object.assign(existing, base);
+    }
+    return;
+  }
 
   // Switch_ext (incl. the oversize synthetic value)
   let docText = "", relsText = "", lane = "none";
@@ -571,7 +603,9 @@ async function indexDoc(ctx) {
   const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
   const oversize = size > sw.oversizeBytes && ext !== "xlsx";
   if (!fs.existsSync(localPath)) {
-    throw new Error(`source file not found locally: ${localPath} (is the library synced?)`);
+    // in scope but absent on disk: usually OneDrive lag — a real
+    // Error so it retries nightly until the file lands
+    throw new Error(`source file not found locally (OneDrive sync lag or unsynced subfolder?): ${localPath}`);
   }
 
   if (!oversize && (ext === "pptx" || ext === "docx")) {
@@ -925,6 +959,9 @@ function writeStatusPage(cfg, { summary, logFile, errorLane, fatal }) {
     `- **Result:** ${fatal ? "FAILED" : `${summary.processed} processed, ${summary.errors} errors, ${summary.library_items_seen} library items scanned`}`,
     `- **Prompt version:** ${cfg.sweep?.promptVersion ?? ""}`,
     `- **Run log:** \`${logFile || "(none — run aborted before logging)"}\` on the sweep machine`,
+    ...(summary.out_of_scope
+      ? [`- **Out of sync scope:** ${summary.out_of_scope} doc(s) stamped Skipped this run — widen the OneDrive sync (and touch the docs, or bump PromptVersion) to index them`]
+      : []),
     "",
     "## Action needed",
     "",
