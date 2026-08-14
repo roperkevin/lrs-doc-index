@@ -169,3 +169,30 @@ export class DelegatedAuth {
     if (this._mem) this._mem.expires_at = 0;
   }
 }
+
+/**
+ * Redeem an existing refresh token for a different resource (v1) or
+ * scope set (v2) WITHOUT touching any cache. Entra refresh tokens are
+ * client-bound, not resource-bound, so one sign-in can mint tokens
+ * for any resource that client is consented for — this is how the
+ * probe's token matrix tests every SPO token shape with zero extra
+ * sign-in prompts. Returns { ok, status, json } (json holds either
+ * the token response or the AADSTS error).
+ */
+export async function redeemRefreshToken({ clientId, refreshToken, tenantId, resource, scopes, tokenUrl }) {
+  const authority = `https://login.microsoftonline.com/${tenantId || "organizations"}`;
+  const url = tokenUrl || `${authority}/oauth2/${resource ? "" : "v2.0/"}token`;
+  const params = {
+    grant_type: "refresh_token",
+    client_id: clientId,
+    refresh_token: refreshToken,
+  };
+  if (resource) params.resource = resource;
+  else params.scope = scopes.join(" ");
+  const res = await fetch(url, { method: "POST", body: new URLSearchParams(params) });
+  let json = {};
+  try {
+    json = await res.json();
+  } catch { /* non-JSON error body */ }
+  return { ok: res.ok, status: res.status, json, tokenUrl: url };
+}
