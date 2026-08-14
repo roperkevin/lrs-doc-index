@@ -455,6 +455,9 @@ def main():
           and set(state.llm_last_request.get("requestv2", {})) >=
           {"FileName", "DocText", "ExistingKeywords"},
           str(state.llm_last_request)[:300])
+    check("aibuilder source telemetry present (Predict rejects without it)",
+          "consumptionSource" in str(state.llm_last_request.get("source", "")),
+          str(state.llm_last_request.get("source"))[:200])
 
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")

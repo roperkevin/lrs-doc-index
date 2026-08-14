@@ -13,3 +13,7 @@ __pycache__/
 # local sweep machine config (secrets referenced via env vars, but the
 # tenant/client ids and machine paths don't belong in the repo either)
 local/config.json
+
+# local sweep workDir when placed inside the repo (run logs + cached
+# sign-in tokens - must never be committed)
+work/

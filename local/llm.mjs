@@ -267,6 +267,15 @@ function braceSlice(text) {
   return a > -1 && b > a ? raw.slice(a, b + 1) : "{}";
 }
 
+// The Predict action requires a `source` telemetry string ("Source is
+// null" InvalidRequest without it). This is the exact literal the
+// flow's Run_prompt action sends (partnerSourceVersion = the flow
+// GUID); override with cfg.source if it ever needs to change.
+const AI_BUILDER_SOURCE =
+  '{"consumptionSource":"PowerAutomate","partnerSource":"AIBuilder",' +
+  '"consumptionSourceVersion":"Flow",' +
+  '"partnerSourceVersion":"d925d67e-4f70-41f5-90df-fe1069af1108"}';
+
 async function requestAiBuilder(cfg, inputs) {
   const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
   const url =
@@ -280,6 +289,7 @@ async function requestAiBuilder(cfg, inputs) {
       DocText: inputs.docText,
       ExistingKeywords: inputs.existingKeywords,
     },
+    source: cfg.source || AI_BUILDER_SOURCE,
   });
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
