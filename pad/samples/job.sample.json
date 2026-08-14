@@ -1,0 +1,30 @@
+{
+  "ops": [
+    {
+      "id": "smoke-regex",
+      "op": "regex",
+      "fileName": "ExB - Sample Doc V2.pptx",
+      "content": "#456 and https://devtopia.esri.com/A/b/issues/26161",
+      "defaultRepo": "A/b",
+      "title": "Sample Doc"
+    },
+    {
+      "id": "smoke-related",
+      "op": "related",
+      "selfId": "42",
+      "mode": "final",
+      "myKwsJson": [
+        { "Document": { "Id": 42 }, "Keyword": { "Id": 1, "Value": "locks" } }
+      ],
+      "sharersJson": [
+        { "Document": { "Id": 10 }, "Keyword": { "Id": 1, "Value": "locks" } }
+      ],
+      "linksJson": [],
+      "kwMetaJson": [],
+      "candsMetaJson": [],
+      "selfMetaJson": [],
+      "configJson": "{}",
+      "topN": 5
+    }
+  ]
+}

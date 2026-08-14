@@ -1,0 +1,33 @@
+# DocIndexCompute v1.0 — Doc Index compute offload (Robin, paste into
+# the PAD designer's Main canvas; see pad/PAD_Setup.md §3, including
+# the input/output variables to create FIRST and the manual-rebuild
+# table if your PAD version rejects this paste).
+#
+# Runs a batch job of Doc Index script operations through Node using
+# the repo's scripts/ files verbatim (pad/runner/run_job.mjs). Zero
+# Excel Online "Run script" calls.
+#
+# Inputs:  JobText      batch job JSON, passed by value (optional —
+#                       leave empty when passing JobFilePath instead)
+#          JobFilePath  local path to a batch job .json (optional)
+#          RepoRoot     local path of the lrs-doc-index repo copy
+#          LocalWorkDir local scratch dir (required with JobText)
+#          NodeExePath  node.exe override (optional; default: node
+#                       from PATH)
+# Outputs: ExitCode, ResultText, ResultFilePath, RunnerStdout,
+#          RunnerStderr
+SET NodeCmd TO $'''node'''
+IF %NodeExePath% <> $'''''' THEN
+    SET NodeCmd TO %NodeExePath%
+END
+SET RunJobPath TO $'''%RepoRoot%\pad\runner\run_job.mjs'''
+IF %JobText% <> $'''''' THEN
+    SET JobFilePath TO $'''%LocalWorkDir%\job.json'''
+    File.WriteText File: %JobFilePath% TextToWrite: %JobText% AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+END
+SET ResultFilePath TO $'''%JobFilePath%.result.json'''
+SET ResultText TO $''''''
+System.RunDOSCommand DOSCommandOrApplication: $'''"%NodeCmd%" --experimental-strip-types "%RunJobPath%" "%JobFilePath%"''' WorkingDirectory: $'''%RepoRoot%''' StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+IF %ExitCode% = 0 THEN
+    File.ReadTextFromFile.ReadText File: %ResultFilePath% Encoding: File.TextFileEncoding.UTF8 Content=> ResultText
+END
