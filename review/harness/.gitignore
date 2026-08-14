@@ -27,6 +27,7 @@ me_v12.ts
 # version-neutral runners (r2 rename) + r2 batch staging
 *_cur.ts
 rex_cases.json
+htt_cases_*.json
 stage_r2/
 # r2 gate generated runners/cases
 *_old.ts

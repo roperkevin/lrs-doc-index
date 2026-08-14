@@ -1,0 +1,11 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"Help-topic title as it should render in sidecar bullets and draft References — copy the page's own H1",Yes
+Url,Url,Hyperlink,"Public help-topic URL (always https — safe for hyperlink type); host must be on the fetch flow's AllowedHosts",Yes
+UrlKey,UrlKey,Single line of text,"Url lowercased; INDEXED — the identity/dedup key (DocKey precedent); curators fill it when adding a row",Yes
+Summary,Summary,Multiple lines of text,"PLAIN text (not enhanced); 1-2 curator sentences; rendered verbatim in the sidecar bullet — keep it short and quote/pipe-free",No
+MatchKeywords,MatchKeywords,Single line of text,"'; '-joined lowercase keyword titles this page should match — the CANONICAL keyword PLUS its common aliases (alias folding is a curation convention, not code; the Keywords list shows aliases via CanonicalRef); matched against each doc's prompt keywords + tools + products",Yes
+SurfaceScope,SurfaceScope,Choice,"Any; Pro; Experience Builder; Server; Enterprise; Other — default Any; non-Any rows only match docs with the same Surface",No
+CachedTextUrl,CachedTextUrl,Hyperlink,"Flow-written: link to the cached page-text .md in the LRS Doc Index library's Online Docs folder; empty until first successful fetch",No
+LastFetched,LastFetched,Date and Time,"Include time; flow-written on each successful fetch",No
+FetchStatus,FetchStatus,Choice,"Pending; Fetched; Error — default Pending; flow-owned",No
+LastError,LastError,Multiple lines of text,"PLAIN text (not enhanced); last fetch failure — failing action name + connector error (capped 4000 chars), or the thin-extract / blocked-host verdicts; cleared on the next successful fetch",No

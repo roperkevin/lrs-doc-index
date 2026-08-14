@@ -1,0 +1,657 @@
+{
+  "name": "b7c92d4e-5f31-4a86-9d15-8e2c7f4a1b63",
+  "id": "/providers/Microsoft.Flow/flows/b7c92d4e-5f31-4a86-9d15-8e2c7f4a1b63",
+  "type": "Microsoft.Flow/flows",
+  "properties": {
+    "apiId": "/providers/Microsoft.PowerApps/apis/shared_logicflows",
+    "displayName": "OnlineDocFetch",
+    "definition": {
+      "metadata": {
+        "workflowEntityId": null,
+        "processAdvisorMetadata": null,
+        "flowChargedByPaygo": null,
+        "flowclientsuspensionreason": "None",
+        "flowclientsuspensiontime": null,
+        "flowclientsuspensionreasondetails": null,
+        "creator": {
+          "id": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+          "type": "User",
+          "tenantId": "aee6e3c9-711e-4c7c-bd27-04f2307db20d"
+        },
+        "provisioningMethod": "FromDefinition",
+        "failureAlertSubscription": true,
+        "clientLastModifiedTime": "2026-08-14T00:00:00.0000000Z",
+        "lastModifiedBy": "a2d504fc-d9a9-4b9f-aab2-5660589613a3",
+        "connectionKeySavedTimeKey": "2026-08-14T00:00:00.0000000Z",
+        "creationSource": "Portal",
+        "modifiedSources": "Portal"
+      },
+      "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+      "contentVersion": "1.0.0.0",
+      "parameters": {
+        "$authentication": {
+          "defaultValue": {},
+          "type": "SecureObject"
+        },
+        "$connections": {
+          "defaultValue": {},
+          "type": "Object"
+        }
+      },
+      "triggers": {
+        "Recurrence": {
+          "recurrence": {
+            "interval": 1,
+            "frequency": "Week",
+            "schedule": {
+              "weekDays": [
+                "Sunday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            },
+            "timeZone": "US Mountain Standard Time"
+          },
+          "evaluatedRecurrence": {
+            "interval": 1,
+            "frequency": "Week",
+            "schedule": {
+              "weekDays": [
+                "Sunday"
+              ],
+              "hours": [
+                "8"
+              ],
+              "minutes": [
+                0
+              ]
+            },
+            "timeZone": "US Mountain Standard Time"
+          },
+          "type": "Recurrence"
+        }
+      },
+      "actions": {
+        "Config_od": {
+          "runAfter": {},
+          "type": "Compose",
+          "inputs": {
+            "SiteUrl": "https://esriis.sharepoint.com/sites/lrsworkspace",
+            "OnlineDocsList": "REPLACE-WITH-ONLINEDOCS-LIST-GUID",
+            "CacheFolder": "/LRS Doc Index/Online Docs",
+            "TextCap": 60000,
+            "RefreshDays": 13,
+            "MaxDocsPerRun": 50,
+            "AllowedHosts": "pro.arcgis.com; enterprise.arcgis.com; developers.arcgis.com; doc.arcgis.com",
+            "OnlineDocsFetchVersion": "v1.0"
+          }
+        },
+        "Init_FetchedCount": {
+          "runAfter": {
+            "Config_od": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "FetchedCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_ErrorCount": {
+          "runAfter": {
+            "Init_FetchedCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "ErrorCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Init_SkippedCount": {
+          "runAfter": {
+            "Init_ErrorCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "InitializeVariable",
+          "inputs": {
+            "variables": [
+              {
+                "name": "SkippedCount",
+                "type": "integer",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "Try_od": {
+          "actions": {
+            "Get_od_rows": {
+              "runAfter": {},
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                  "table": "REPLACE-WITH-ONLINEDOCS-LIST-GUID",
+                  "$top": "@outputs('Config_od')?['MaxDocsPerRun']"
+                },
+                "host": {
+                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                  "connectionName": "shared_sharepointonline",
+                  "operationId": "GetItems"
+                },
+                "authentication": "@parameters('$authentication')"
+              }
+            },
+            "For_each_od_row": {
+              "foreach": "@body('Get_od_rows')?['value']",
+              "runAfter": {
+                "Get_od_rows": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Foreach",
+              "runtimeConfiguration": {
+                "concurrency": {
+                  "repetitions": 1
+                }
+              },
+              "actions": {
+                "If_due": {
+                  "runAfter": {},
+                  "type": "If",
+                  "expression": "@or(not(equals(coalesce(items('For_each_od_row')?['FetchStatus']?['Value'], ''), 'Fetched')), less(ticks(coalesce(items('For_each_od_row')?['LastFetched'], '1900-01-01T00:00:00Z')), ticks(addDays(utcNow(), mul(-1, int(outputs('Config_od')?['RefreshDays']))))))",
+                  "actions": {
+                    "Try_row": {
+                      "actions": {
+                        "Url_value": {
+                          "runAfter": {},
+                          "type": "Compose",
+                          "inputs": "@{coalesce(items('For_each_od_row')?['Url']?['Url'], '')}"
+                        },
+                        "Host_value": {
+                          "runAfter": {
+                            "Url_value": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@{toLower(coalesce(split(outputs('Url_value'), '/')?[2], ''))}"
+                        },
+                        "If_host_ok": {
+                          "runAfter": {
+                            "Host_value": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "If",
+                          "expression": "@contains(split(outputs('Config_od')?['AllowedHosts'], '; '), outputs('Host_value'))",
+                          "actions": {
+                            "Fetch_page": {
+                              "runAfter": {},
+                              "type": "Http",
+                              "inputs": {
+                                "method": "GET",
+                                "uri": "@{outputs('Url_value')}",
+                                "headers": {
+                                  "Accept": "text/html,application/xhtml+xml"
+                                }
+                              }
+                            },
+                            "Run_htmltotext": {
+                              "runAfter": {
+                                "Fetch_page": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "OpenApiConnection",
+                              "inputs": {
+                                "parameters": {
+                                  "source": "sites/esriis.sharepoint.com,52614e28-1714-449f-977b-a92051656657,a62afb16-b77e-482a-9a46-e2e10ec78ec1",
+                                  "drive": "b!KE5hUhQXn0SXe6kgUWVmVxb7KqZ-typImkbi4Q7HjsH2AXghNcJlQI1H-7dZ8A4x",
+                                  "file": "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL",
+                                  "scriptId": "ms-officescript%3A%2F%2Fonedrive_business_itemlink%2FREPLACE-WITH-HTMLTOTEXT-SCRIPT-ID",
+                                  "ScriptParameters/html": "@{string(body('Fetch_page'))}",
+                                  "ScriptParameters/maxChars": "@outputs('Config_od')?['TextCap']"
+                                },
+                                "host": {
+                                  "apiId": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+                                  "connectionName": "shared_excelonlinebusiness",
+                                  "operationId": "RunScriptProd"
+                                },
+                                "authentication": "@parameters('$authentication')"
+                              },
+                              "metadata": {
+                                "01UO6O4P3WMBDE6EAQCRDYNOJAPMGOA5EL": "/Scripts.xlsx",
+                                "tableId": null
+                              }
+                            },
+                            "Od_result": {
+                              "runAfter": {
+                                "Run_htmltotext": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "Compose",
+                              "inputs": "@body('Run_htmltotext')?['result']"
+                            },
+                            "If_extract_ok": {
+                              "runAfter": {
+                                "Od_result": [
+                                  "Succeeded"
+                                ]
+                              },
+                              "type": "If",
+                              "expression": "@and(equals(coalesce(outputs('Od_result')?['note'], ''), ''), greater(int(coalesce(outputs('Od_result')?['chars'], 0)), 0))",
+                              "actions": {
+                                "Cache_name": {
+                                  "runAfter": {},
+                                  "type": "Compose",
+                                  "inputs": "@concat(toLower(replace(replace(replace(replace(coalesce(items('For_each_od_row')?['Title'], 'untitled'), ' ', '-'), '#', ''), '%', ''), '/', '-')), '__od', items('For_each_od_row')?['ID'], '.md')"
+                                },
+                                "Cache_body": {
+                                  "runAfter": {
+                                    "Cache_name": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@concat('# ', coalesce(outputs('Od_result')?['title'], items('For_each_od_row')?['Title']), decodeUriComponent('%0A%0A'), 'Source: <', outputs('Url_value'), '>', decodeUriComponent('%0A'), 'Fetched: ', utcNow(), '  ·  OnlineDocsFetchVersion: ', outputs('Config_od')?['OnlineDocsFetchVersion'], decodeUriComponent('%0A%0A'), '---', decodeUriComponent('%0A%0A'), outputs('Od_result')?['text'])"
+                                },
+                                "Save_cache": {
+                                  "runAfter": {
+                                    "Cache_body": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "folderPath": "@{outputs('Config_od')?['CacheFolder']}",
+                                      "name": "@outputs('Cache_name')",
+                                      "body": "@{outputs('Cache_body')}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "CreateFile"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                },
+                                "Cache_url": {
+                                  "runAfter": {
+                                    "Save_cache": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": "@concat(outputs('Config_od')?['SiteUrl'], outputs('Config_od')?['CacheFolder'], '/', outputs('Cache_name'))"
+                                },
+                                "Body_row_ok": {
+                                  "runAfter": {
+                                    "Cache_url": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "Compose",
+                                  "inputs": {
+                                    "CachedTextUrl": {
+                                      "Description": "@{replace(coalesce(items('For_each_od_row')?['Title'], ''), '\"', '')}",
+                                      "Url": "@{outputs('Cache_url')}"
+                                    },
+                                    "LastFetched": "@{utcNow()}",
+                                    "FetchStatus": "Fetched",
+                                    "LastError": null
+                                  }
+                                },
+                                "Update_row_ok": {
+                                  "runAfter": {
+                                    "Body_row_ok": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "OpenApiConnection",
+                                  "inputs": {
+                                    "parameters": {
+                                      "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                      "parameters/method": "POST",
+                                      "parameters/uri": "_api/web/lists(guid'@{outputs('Config_od')?['OnlineDocsList']}')/items(@{items('For_each_od_row')?['ID']})",
+                                      "parameters/headers": {
+                                        "Accept": "application/json;odata=nometadata",
+                                        "Content-Type": "application/json;odata=nometadata",
+                                        "IF-MATCH": "*",
+                                        "X-HTTP-Method": "MERGE"
+                                      },
+                                      "parameters/body": "@{string(outputs('Body_row_ok'))}"
+                                    },
+                                    "host": {
+                                      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                      "connectionName": "shared_sharepointonline",
+                                      "operationId": "HttpRequest"
+                                    },
+                                    "authentication": "@parameters('$authentication')"
+                                  }
+                                },
+                                "Inc_fetched": {
+                                  "runAfter": {
+                                    "Update_row_ok": [
+                                      "Succeeded"
+                                    ]
+                                  },
+                                  "type": "IncrementVariable",
+                                  "inputs": {
+                                    "name": "FetchedCount",
+                                    "value": 1
+                                  }
+                                }
+                              },
+                              "else": {
+                                "actions": {
+                                  "Body_row_thin": {
+                                    "runAfter": {},
+                                    "type": "Compose",
+                                    "inputs": {
+                                      "FetchStatus": "Error",
+                                      "LastError": "Run_htmltotext: @{coalesce(outputs('Od_result')?['note'], 'no result')} — chars=@{coalesce(outputs('Od_result')?['chars'], 0)}; page likely JS-rendered or empty; cache NOT written"
+                                    }
+                                  },
+                                  "Update_row_thin": {
+                                    "runAfter": {
+                                      "Body_row_thin": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "OpenApiConnection",
+                                    "inputs": {
+                                      "parameters": {
+                                        "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                        "parameters/method": "POST",
+                                        "parameters/uri": "_api/web/lists(guid'@{outputs('Config_od')?['OnlineDocsList']}')/items(@{items('For_each_od_row')?['ID']})",
+                                        "parameters/headers": {
+                                          "Accept": "application/json;odata=nometadata",
+                                          "Content-Type": "application/json;odata=nometadata",
+                                          "IF-MATCH": "*",
+                                          "X-HTTP-Method": "MERGE"
+                                        },
+                                        "parameters/body": "@{string(outputs('Body_row_thin'))}"
+                                      },
+                                      "host": {
+                                        "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                        "connectionName": "shared_sharepointonline",
+                                        "operationId": "HttpRequest"
+                                      },
+                                      "authentication": "@parameters('$authentication')"
+                                    }
+                                  },
+                                  "Inc_error_thin": {
+                                    "runAfter": {
+                                      "Update_row_thin": [
+                                        "Succeeded"
+                                      ]
+                                    },
+                                    "type": "IncrementVariable",
+                                    "inputs": {
+                                      "name": "ErrorCount",
+                                      "value": 1
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "else": {
+                            "actions": {
+                              "Body_row_blocked": {
+                                "runAfter": {},
+                                "type": "Compose",
+                                "inputs": {
+                                  "FetchStatus": "Error",
+                                  "LastError": "If_host_ok: URL host not in AllowedHosts — @{outputs('Host_value')}"
+                                }
+                              },
+                              "Update_row_blocked": {
+                                "runAfter": {
+                                  "Body_row_blocked": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "OpenApiConnection",
+                                "inputs": {
+                                  "parameters": {
+                                    "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                                    "parameters/method": "POST",
+                                    "parameters/uri": "_api/web/lists(guid'@{outputs('Config_od')?['OnlineDocsList']}')/items(@{items('For_each_od_row')?['ID']})",
+                                    "parameters/headers": {
+                                      "Accept": "application/json;odata=nometadata",
+                                      "Content-Type": "application/json;odata=nometadata",
+                                      "IF-MATCH": "*",
+                                      "X-HTTP-Method": "MERGE"
+                                    },
+                                    "parameters/body": "@{string(outputs('Body_row_blocked'))}"
+                                  },
+                                  "host": {
+                                    "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                                    "connectionName": "shared_sharepointonline",
+                                    "operationId": "HttpRequest"
+                                  },
+                                  "authentication": "@parameters('$authentication')"
+                                }
+                              },
+                              "Inc_error_blocked": {
+                                "runAfter": {
+                                  "Update_row_blocked": [
+                                    "Succeeded"
+                                  ]
+                                },
+                                "type": "IncrementVariable",
+                                "inputs": {
+                                  "name": "ErrorCount",
+                                  "value": 1
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "runAfter": {},
+                      "type": "Scope"
+                    },
+                    "Row_failed": {
+                      "actions": {
+                        "Filter_failed_row": {
+                          "runAfter": {},
+                          "type": "Query",
+                          "inputs": {
+                            "from": "@result('Try_row')",
+                            "where": "@or(equals(item()?['status'], 'Failed'), equals(item()?['status'], 'TimedOut'))"
+                          }
+                        },
+                        "Err_detail_row": {
+                          "runAfter": {
+                            "Filter_failed_row": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": "@take(replace(replace(concat(coalesce(first(body('Filter_failed_row'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed_row'))?['error'], first(body('Filter_failed_row'))?['outputs'], ''))), '\"', ''), decodeUriComponent('%0A'), ' '), 3800)"
+                        },
+                        "Body_row_err": {
+                          "runAfter": {
+                            "Err_detail_row": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "Compose",
+                          "inputs": {
+                            "FetchStatus": "Error",
+                            "LastError": "@{outputs('Err_detail_row')}"
+                          }
+                        },
+                        "Update_row_err": {
+                          "runAfter": {
+                            "Body_row_err": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "OpenApiConnection",
+                          "inputs": {
+                            "parameters": {
+                              "dataset": "https://esriis.sharepoint.com/sites/lrsworkspace",
+                              "parameters/method": "POST",
+                              "parameters/uri": "_api/web/lists(guid'@{outputs('Config_od')?['OnlineDocsList']}')/items(@{items('For_each_od_row')?['ID']})",
+                              "parameters/headers": {
+                                "Accept": "application/json;odata=nometadata",
+                                "Content-Type": "application/json;odata=nometadata",
+                                "IF-MATCH": "*",
+                                "X-HTTP-Method": "MERGE"
+                              },
+                              "parameters/body": "@{string(outputs('Body_row_err'))}"
+                            },
+                            "host": {
+                              "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+                              "connectionName": "shared_sharepointonline",
+                              "operationId": "HttpRequest"
+                            },
+                            "authentication": "@parameters('$authentication')"
+                          }
+                        },
+                        "Inc_error_row": {
+                          "runAfter": {
+                            "Update_row_err": [
+                              "Succeeded"
+                            ]
+                          },
+                          "type": "IncrementVariable",
+                          "inputs": {
+                            "name": "ErrorCount",
+                            "value": 1
+                          }
+                        }
+                      },
+                      "runAfter": {
+                        "Try_row": [
+                          "Failed",
+                          "TimedOut"
+                        ]
+                      },
+                      "type": "Scope"
+                    }
+                  },
+                  "else": {
+                    "actions": {
+                      "Inc_skipped": {
+                        "runAfter": {},
+                        "type": "IncrementVariable",
+                        "inputs": {
+                          "name": "SkippedCount",
+                          "value": 1
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Init_SkippedCount": [
+              "Succeeded"
+            ]
+          },
+          "type": "Scope"
+        },
+        "Catch_od": {
+          "actions": {
+            "Filter_failed_od": {
+              "runAfter": {},
+              "type": "Query",
+              "inputs": {
+                "from": "@result('Try_od')",
+                "where": "@or(equals(item()?['status'], 'Failed'), equals(item()?['status'], 'TimedOut'))"
+              }
+            },
+            "Err_detail_od": {
+              "runAfter": {
+                "Filter_failed_od": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Compose",
+              "inputs": "@take(concat(coalesce(first(body('Filter_failed_od'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed_od'))?['error'], first(body('Filter_failed_od'))?['outputs'], ''))), 4000)"
+            },
+            "Terminate_failed_od": {
+              "runAfter": {
+                "Err_detail_od": [
+                  "Succeeded"
+                ]
+              },
+              "type": "Terminate",
+              "inputs": {
+                "runStatus": "Failed",
+                "runError": {
+                  "code": "OnlineDocFetchFailed",
+                  "message": "@{outputs('Err_detail_od')}"
+                }
+              }
+            }
+          },
+          "runAfter": {
+            "Try_od": [
+              "Failed",
+              "TimedOut"
+            ]
+          },
+          "type": "Scope"
+        },
+        "Od_summary": {
+          "runAfter": {
+            "Try_od": [
+              "Succeeded"
+            ]
+          },
+          "type": "Compose",
+          "inputs": "@{concat('rows=', length(body('Get_od_rows')?['value']), ' fetched=', variables('FetchedCount'), ' errors=', variables('ErrorCount'), ' skipped=', variables('SkippedCount'))}"
+        }
+      }
+    },
+    "connectionReferences": {
+      "shared_sharepointonline": {
+        "connectionName": "9c9bfea530b9428aa0c7c2a438b2c0a8",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+        "tier": "NotSpecified",
+        "apiName": "sharepointonline",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      },
+      "shared_excelonlinebusiness": {
+        "connectionName": "shared-excelonlinebu-25a5634f-9e21-4ae9-86a3-2d28c2377935",
+        "source": "Embedded",
+        "id": "/providers/Microsoft.PowerApps/apis/shared_excelonlinebusiness",
+        "tier": "NotSpecified",
+        "apiName": "excelonlinebusiness",
+        "isProcessSimpleApiReferenceConversionAlreadyDone": false
+      }
+    },
+    "flowFailureAlertSubscribed": false,
+    "isManaged": false
+  }
+}
