@@ -1,4 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0"?>
+<!-- No encoding attribute above, deliberately: schtasks' XML parser
+     rejects mismatches between the declared and sniffed encoding
+     ("unable to switch the encoding") depending on how the file was
+     checked out; this file is pure ASCII, which parses under any
+     default. -->
 <!-- LRS Doc Index Sweep - Task Scheduler definition.
      Register (replaces any existing task of the same name):
        schtasks /create /tn "LRS Doc Index Sweep" /xml C:\Repos\lrs-doc-index\local\sweep_task.xml /f
