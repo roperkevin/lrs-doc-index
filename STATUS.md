@@ -3,19 +3,23 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-14 (TestPlanGen prompt v1.7 authored — per-case source sweep; earlier same day: prompt v1.6, granular one-behavior cases; 2026-08-13: live-export reconciliation: v2.6+v2.7 windows APPLIED on tenant with defects — §v2_7-fixes; flow v2.8 authored — hidden metadata + code fencing + products; r6 gate PASSED)**.
+Last updated: **2026-08-14 (SWEEP MIGRATED OFF POWER AUTOMATE: local sweep v1.4.3 deployed on the owner's machine, live smoke passed, Task Scheduler daily 17:00, DocIndexSweep cloud flow turned OFF — handover complete, cloud flow kept as rollback only; earlier same day: TestPlanGen prompt v1.7 authored — per-case source sweep; prompt v1.6, granular one-behavior cases; 2026-08-13: live-export reconciliation — §v2_7-fixes; flow v2.8 authored; r6 gate PASSED)**.
 
 ## Core sweep
 
 | Piece | Deployed | Authoritative file |
 |---|---|---|
-| Flow (DocIndexSweep) | **v2.7** — the 2026-08-13 live export proves the v2.6 AND v2.7 windows applied, but with 4 designer mis-picks + a stuck smoke knob (**§v2_7-fixes, apply ASAP** — image-bearing pptx docs error, keyword relateds dead, backfill stalled). **v2.8 authored** (hidden metadata comment frame, code fencing, product lines; built FROM the live export, fixes included) | live export (see `flow/v2_8/CHANGES.md`) / `flow/v2_8/definition.json` (authored) |
-| Config.PromptVersion | **v1.9** — but the v1.9 backfill has NOT run (SmokeFile stuck, FX-5); v2.0 authored, lands with the v2.8 window | live export / `flow/v2_8/definition.json` (authored) |
-| Config.SmokeFile | **"ExB - AutopopulateReferents.pptx" — MUST be cleared** (FX-5): pins every nightly run to one file | designer edit |
-| AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) | `prompts/DocIndex_Prompt.md` |
-| Local sweep (off-Power-Automate) | **NOT deployed** — v1.0 authored 2026-08-14 (gate 33/33); shadow checklist (`local/Local_Setup.md` §5) pending; cloud flow stays ON until the documented handover — never both live | `local/Local_Setup.md` / `local/CHANGES.md` |
+| **Local sweep — THE deployed sweep** | **v1.4.3, DEPLOYED 2026-08-14** on the owner's machine (`C:\Repos\lrs-doc-index`, tracks main): delegated device-code auth (no app registration), the flow's own AI Builder prompt via Dataverse Predict, hyperlink columns via SPO REST, PromptVersion **v2.0** (v2.8 sidecar format + all §v2_7-fixes semantics built in). Scheduled task "LRS Doc Index Sweep" daily 17:00 via `local\run_sweep.cmd`; one-doc live smoke + scheduled test-fire passed | `local/Local_Setup.md` / `local/CHANGES.md` |
+| Flow (DocIndexSweep) | **RETIRED — turned OFF 2026-08-14** (was v2.7 with the §v2_7-fixes defects; kept in the portal solely as rollback: turn it on + disable the scheduled task, never both). Its pending windows (§v2_7-fixes, v2.8) apply ONLY on rollback | live export (see `flow/v2_8/CHANGES.md`) / `flow/v2_8/definition.json` (authored, never imported) |
+| AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) — still live: the local sweep calls this same model via Dataverse Predict | `prompts/DocIndex_Prompt.md` |
 
 ## Office Scripts (pasted into the Automate-tab workbook)
+
+**2026-08-14 — pastes moot while the local sweep is the deployed
+sweep**: it runs the repo `scripts/*.ts` directly (via
+`pad/runner/ops.mjs`), so the tenant workbook copies below are only
+exercised on a cloud-flow rollback. The table records their state
+as of the handover; resume the paste plan only if rolling back.
 
 | Script | Repo version | Pasted on tenant |
 |---|---|---|
@@ -122,11 +126,11 @@ v1.2 describes them — paste with the window, step 6).
 
 ## Open actions
 
-1. **URGENT — §v2_7-fixes on the live flow** (`review/patches/designer-edits.md` §v2_7-fixes): FX-1 Extract_media_pptx zipBase64 (every image-bearing pptx errors), FX-2 Zip_extract_docx mediaPrefix, FX-3 Run_related_rank sharersJson (keyword relateds dead), FX-4 Run_regex content join, **FX-5 clear Config.SmokeFile — the v1.9 backfill has been stalled since the v2.7 window and the corpus still shows the old yaml-on-top layout**, **FX-6 re-point the three raw-REST creates (Create_idrow / Create_link / Create_dockw) to the CURRENT list GUIDs — their hand-typed URIs still target the pre-rebuild lists, erroring every keyworded/id-bearing doc**, FX-7 Check_dockw re-pick to the Doc Keywords list (bound to Keywords while filtering on `KWKey` — errors every keyworded doc after its sidecar is written; found 2026-08-13 via the errdrill capture). Two equivalent routes: the designer edits, or import `flow/DocIndexSweep_v2_7_fix.zip` (the live export + all seven fixes, still PromptVersion v1.9 — `flow/v2_7_fix/CHANGES.md`). Standalone-safe; also folded into the v2.8 definition if action 4 happens in the same window.
+1. ~~URGENT — §v2_7-fixes on the live flow~~ — **SUPERSEDED by the 2026-08-14 migration**: the cloud flow is OFF; the local sweep implements all seven fixes' semantics natively (config-driven list GUIDs, correct list bindings, no SmokeFile knob). Resurrect this action (designer edits or `flow/DocIndexSweep_v2_7_fix.zip`) only on rollback.
 2. Confirm + record the Q&A agent v1.1 instruction paste (`agent/CHANGES.md`).
 3. Confirm the curation v1.1 fix on the next all-resolved Saturday run (`curation/CHANGES.md`).
-4. r6 / flow v2.8 window: create the Doc Index **Products** column; paste SidecarPatch v1.6 (safe early), ZipTextExtract v2.1 + RegexExtract v1.4 (with the window; the pending r2 pastes of WorkbookDump v1.2 and MediaExtract v1.3 can ride along — `review/REVIEW_v2_5_r2.md` checklist step 5 with the r6 substitutions); then EITHER import `flow/DocIndexSweep_v2_8.zip` (carries §v2_7-fixes + X1–X5 + the r2-2/r2-3 hygiene baked, SmokeFile already empty, PromptVersion v2.0 — map connections, turn the old flow off; the import-first path, `testplangen/Coverage_Runbook.md` step 1) OR apply designer edits X1–X5 per `review/patches/designer-edits.md` §v2_8 incl. **clearing SmokeFile (FX-5)**; smoke with the header byte-check (`render_sample.py`); let the backfill converge; paste Q&A agent instructions v1.3 + re-run the agent smoke; then update this table.
-5. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).
+4. ~~r6 / flow v2.8 window~~ — **MOSTLY SUPERSEDED by the 2026-08-14 migration** (the local sweep ships the v2.8 format + PromptVersion v2.0, and script pastes are moot — see the Office Scripts note). **Still live from this action**: (a) let the v2.0 backfill converge under the nightly local runs (the Doc Index **Products** column exists — the 2026-08-14 probe wrote it); (b) paste Q&A agent instructions v1.3 + re-run the agent smoke; then update this table.
+5. ~~Designer edits §r2~~ — **SUPERSEDED by the migration** (cloud-flow-only; resurrect on rollback).
 6. ~~PV-1 residual~~ — **CLOSED (owner decision, 2026-08-12): accepted.** The repo stays public; the pre-scrub zips (containing the work email) remain reachable in git history, knowingly. Current-tree manifests stay scrubbed; the v2.8 zip (cut from the 2026-08-13 export) is scrubbed the same way. Revisit only if circumstances change (`review/REVIEW_v2_5_r2.md` §PV-1).
 7. ~~v2.6 window~~ / ~~v2.7 window~~ — **DONE on tenant** (evidenced by the 2026-08-13 live export: RelatedRank v2.x bindings + two-phase wiring, GFM header template, PromptVersion v1.9) — but see action 1 for the mis-picks the windows introduced; the sidecar-format benefit is NOT live until FX-5 unsticks the backfill.
 8. TestPlanGen v2.8 (independent window): paste prompt v1.4 + designer edits §testplangen-v2_8 (both live flows), smoke one draft in a GFM viewer, then update the TestPlanGen row (`testplangen/CHANGES.md` v2.8).
