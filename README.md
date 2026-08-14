@@ -64,7 +64,7 @@ keeps the old yaml-on-top layout).
 | review/patches/SidecarPatch_v1_6.ts | r6 patch (gated + promoted 2026-08-13; safe to paste any time before the v2.8 window) | v1.6 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
-| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.6 makes cases granular: one behavior per case) | v1.6 |
+| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.7 sweeps every related-plan case for applicability) | v1.7 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio; deployed) | v1.1 |
@@ -75,7 +75,7 @@ keeps the old yaml-on-top layout).
 | curation/flow/v1_1/definition.json | KeywordCuration flow definition (authored from the guide, not a tenant export; AI Builder prompt binding is a placeholder — re-pick on import) | v1.1 |
 | curation/CHANGES.md | Curation release notes | v1.1 |
 | testplangen/TestPlanGen_Setup.md | Generation flow build + deploy guide | current (component v2.7) |
-| testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.5 |
+| testplangen/TestPlanGen_Smoke.md | Generation verification suite | v1.6 |
 | testplangen/TestPlanGen_v1_0.zip | Generation flow import package (authored re-cut; post-import checks I1–I4 needed) | v2.0 (filename frozen at v1_0) |
 | testplangen/flow/v1_0/definition.json | Generation flow definition (package payload) | v2.0 (dirname frozen at v1_0) |
 | testplangen/TestPlanGenCore_v1_0.zip | Agent-ready child-flow import package | v2.0 (filename frozen at v1_0) |
@@ -86,7 +86,7 @@ keeps the old yaml-on-top layout).
 | testplangen/StoryLookupFlow_v1_0.zip | StoryLookupFlow import package (authored re-cut; agent-flow import caveat, Agent_Setup §1d) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v2.14 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.15 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,

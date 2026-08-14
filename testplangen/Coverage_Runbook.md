@@ -28,8 +28,9 @@ The compound, in causal order:
    in step 2.
 3. **The live prompt predates every coverage rule** — enumeration
    coverage (v1.2), reference grounding (v1.3), requirement-driven
-   case counts + the Coverage Map (v1.5), and granular one-behavior
-   cases (v1.6) are all paste-pending.
+   case counts + the Coverage Map (v1.5), granular one-behavior
+   cases (v1.6), and the per-case source sweep (v1.7) are all
+   paste-pending.
    Fixed by one paste in step 2.
 
 ## Which flows this touches
@@ -120,12 +121,12 @@ the FX-5 stall).
    add the fifth input parameter — exact name **`ReferenceText`**
    (skip if step 0 counted five).
 2. **Paste**: the delimited block from
-   `prompts/TestPlanGen_Prompt.md` (v1.6) into the same prompt —
+   `prompts/TestPlanGen_Prompt.md` (v1.7) into the same prompt —
    replaces every pending paste before it.
 3. **Import**: `testplangen/TestPlanGenCore_v1_0.zip` (Import
    package (Legacy)) — the payload carries the complete current
    core: reference lane (v2.0), GFM banner (v2.8), current list
-   bindings (v2.10), the v1.6 stamp (v2.14), and the v2.2 coverage
+   bindings (v2.10), the v1.7 stamp (v2.15), and the v2.2 coverage
    routing — design-doc references, same-surface overflow, slot
    config, budget fix (v2.12). Post-import clicks (each is a picker,
    not an expression):
@@ -149,7 +150,9 @@ result.)
 
 Check: the Setup §2 pane check passes — reply wrapped in the
 markers, six core sections, and a `## Coverage Map` whose rows all
-cite a case or an Open Questions entry. A live run's `Gen_summary`
+cite a case or an Open Questions entry (a live run with exemplars
+or references also carries the `## Source Case Sweep`, prompt
+v1.7). A live run's `Gen_summary`
 shows the new `exChars=`/`refChars=` fields (proof the v2.2 core is
 the one running).
 
