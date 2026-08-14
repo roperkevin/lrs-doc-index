@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * run_job.mjs v1.0 — Power Automate Desktop batch runner for the
+ * run_job.mjs v2.0 — Power Automate Desktop batch runner for the
  * Doc Index Office Scripts.
  * --------------------------------------------------------------------
  * Executes the UNMODIFIED scripts in `scripts/` (single source of
@@ -9,12 +9,36 @@
  * action contracts 1:1. Replaces the Excel Online "Run script" action
  * (1,600 calls/day quota) with local compute.
  *
- * Usage:
+ * Usage (batch mode — unchanged since v1.0):
  *   node --experimental-strip-types run_job.mjs <job.json>
  *
- * (The flag is required on Node 22; on Node >= 23.6 stripping is on
- * by default and the flag is accepted/ignored. Node 22+ required —
- * same floor as review/harness.)
+ * Usage (single-op mode — no job JSON to author):
+ *   node --experimental-strip-types run_job.mjs --op <op> \
+ *     [key=value ...] [key@=<file> ...] [--argsfile <file>] \
+ *     [--out <result.json>]
+ *
+ *   <op> is an op name (below) or a script file name, case-
+ *   insensitive ("workbookdump" == "WorkbookDump").
+ *   key=value    sets a string param verbatim (spaces fine — each
+ *                pair is one shell argument).
+ *   key@=<file>  reads the value from a UTF-8 file (same as the
+ *                {"$file": ...} indirection in batch jobs).
+ *   file=<path>  op-aware alias: the source-file param of the op
+ *                (zipFile for ziptext/media, xlsxFile for
+ *                workbookdump).
+ *   --argsfile   a UTF-8 file of key=value / key@= lines, one per
+ *                line; blank lines and #-comment lines are skipped.
+ *                Values run to end of line, raw — no quoting or
+ *                escaping ever needed (this is what the desktop
+ *                flow's quick-run mode writes).
+ *   --out        result-file path (default: <op>.result.json in the
+ *                working directory).
+ *   Args apply in order; later assignments win. The result envelope
+ *   is byte-identical to a one-op batch job's.
+ *
+ * (The strip-types flag is required on Node 22; on Node >= 23.6
+ * stripping is on by default and the flag is accepted/ignored.
+ * Node 22+ required — same floor as review/harness.)
  *
  * Job file shape (see pad/samples/):
  *   {
@@ -193,22 +217,97 @@ function runOp(mains, op) {
   }
 }
 
+// ---- single-op CLI mode ---------------------------------------------
+// Builds a one-op job from key=value arguments so nobody has to author
+// (or JSON-escape) a job file to run one script. Everything downstream
+// of the job object is the batch path — the result envelope is
+// identical by construction.
+
+const OP_ALIASES = {};
+for (const [opName, file] of Object.entries(SCRIPT_FILES)) {
+  OP_ALIASES[opName] = opName;
+  OP_ALIASES[file.replace(/\.ts$/, "").toLowerCase()] = opName;
+}
+
+// `file=` resolves to the op's source-file param.
+const FILE_PARAM = { ziptext: "zipFile", media: "zipFile", workbookdump: "xlsxFile" };
+
+function assignArg(op, pair, from) {
+  const eq = pair.indexOf("=");
+  if (eq <= 0) fail(`bad argument "${pair}"${from} — expected key=value or key@=file`);
+  let key = pair.slice(0, eq);
+  let value = pair.slice(eq + 1);
+  const indirect = key.endsWith("@");
+  if (indirect) key = key.slice(0, -1);
+  if (key === "file") {
+    const mapped = FILE_PARAM[op.op];
+    if (!mapped)
+      fail(`op "${op.op}" takes no source file — pass its named params instead ` +
+           `(see the op table in this file's header)`);
+    key = mapped;
+  }
+  op[key] = indirect ? { $file: value } : value;
+}
+
+function buildSingleOpJob(argv) {
+  const rawOp = argv[0];
+  if (!rawOp) fail("--op needs an op name");
+  const opName = OP_ALIASES[String(rawOp).toLowerCase()];
+  if (!opName)
+    fail(`unknown op "${rawOp}" — one of: ${Object.keys(SCRIPT_FILES).join(", ")}`);
+  const op = { id: "cli", op: opName };
+  let out = null;
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--out") {
+      out = argv[++i];
+      if (!out) fail("--out needs a path");
+    } else if (a === "--argsfile") {
+      const p = argv[++i];
+      if (!p) fail("--argsfile needs a path");
+      if (!fs.existsSync(p)) fail(`args file not found: ${p}`);
+      for (const rawLine of fs.readFileSync(p, "utf8").split("\n")) {
+        const line = rawLine.replace(/\r$/, "");
+        if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+        assignArg(op, line, ` in args file ${p}`);
+      }
+    } else {
+      assignArg(op, a, "");
+    }
+  }
+  return {
+    job: { ops: [op] },
+    resultFile: path.resolve(out === null ? opName + ".result.json" : out),
+  };
+}
+
 // ---- main -----------------------------------------------------------
 
-const jobPath = process.argv[2];
-if (!jobPath) fail("usage: node --experimental-strip-types run_job.mjs <job.json>");
-if (!fs.existsSync(jobPath)) fail(`job file not found: ${jobPath}`);
-
 let job;
-try {
-  job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
-} catch (e) {
-  fail(`job file is not valid JSON: ${e.message}`);
+let jobPath = null;
+let resultFile;
+
+if (process.argv[2] === "--op") {
+  ({ job, resultFile } = buildSingleOpJob(process.argv.slice(3)));
+} else {
+  jobPath = process.argv[2];
+  if (!jobPath)
+    fail(
+      "usage: node --experimental-strip-types run_job.mjs <job.json>\n" +
+      "       node --experimental-strip-types run_job.mjs --op <op> [key=value ...] " +
+      "[--argsfile <file>] [--out <result.json>]"
+    );
+  if (!fs.existsSync(jobPath)) fail(`job file not found: ${jobPath}`);
+  try {
+    job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
+  } catch (e) {
+    fail(`job file is not valid JSON: ${e.message}`);
+  }
+  if (!Array.isArray(job.ops) || job.ops.length === 0) fail("job has no ops");
+  resultFile = job.resultFile ? path.resolve(String(job.resultFile)) : jobPath + ".result.json";
 }
-if (!Array.isArray(job.ops) || job.ops.length === 0) fail("job has no ops");
 
 const scriptsDir = job.scriptsDir ? path.resolve(String(job.scriptsDir)) : DEFAULT_SCRIPTS_DIR;
-const resultFile = job.resultFile ? path.resolve(String(job.resultFile)) : jobPath + ".result.json";
 
 const badOps = job.ops.filter((o) => !SCRIPT_FILES[o.op]);
 if (badOps.length) fail("unknown op(s): " + badOps.map((o) => String(o.op)).join(", "));
@@ -245,7 +344,7 @@ for (let i = 0; i < job.ops.length; i++) {
 fs.rmSync(tmpDir, { recursive: true, force: true });
 
 const summary = {
-  jobFile: path.resolve(jobPath),
+  jobFile: jobPath === null ? null : path.resolve(jobPath),
   scriptsDir,
   opCount: job.ops.length,
   failures,

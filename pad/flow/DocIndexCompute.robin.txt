@@ -1,21 +1,32 @@
-# DocIndexCompute v1.1 — Doc Index compute offload (Robin, paste into
+# DocIndexCompute v2.0 — Doc Index compute offload (Robin, paste into
 # the PAD designer's Main canvas; see pad/PAD_Setup.md §3, including
 # the input/output variables to create FIRST and the manual-rebuild
-# table if your PAD version rejects this paste).
-# v1.1: re-serialized in the dialect of a live PAD export — variable
-# references in parameters/conditions are bare names, and quotes
-# inside $''' ''' literals are escaped \" — the two forms v1.0 got
-# wrong.
+# table if your PAD version rejects this paste). Serialized in the
+# live-export dialect established in v1.1 (bare variable names in
+# parameters/conditions, \" escapes inside $''' ''' literals).
 #
-# Runs a batch job of Doc Index script operations through Node using
-# the repo's scripts/ files verbatim (pad/runner/run_job.mjs). Zero
-# Excel Online "Run script" calls.
+# v2.0 rebuild: two modes, picked by whether ScriptName is set.
 #
-# Inputs:  JobText      batch job JSON, passed by value (optional —
-#                       leave empty when passing JobFilePath instead)
-#          JobFilePath  local path to a batch job .json (optional)
+# QUICK-RUN mode (new) — run one script with no job JSON:
+#   set ScriptName (op or script name, e.g. workbookdump) and
+#   SourceFile (for ziptext/media/workbookdump) and/or ScriptArgs
+#   (key=value lines, one per line, raw — no quoting/escaping).
+#   The flow writes the args file and invokes the runner's --op mode.
+#
+# BATCH mode (unchanged from v1.x) — leave ScriptName empty and pass
+#   JobText (job JSON by value) or JobFilePath (path to a job .json).
+#
+# Runs the repo's scripts/ files verbatim through Node
+# (pad/runner/run_job.mjs). Zero Excel Online "Run script" calls.
+#
+# Inputs:  ScriptName   op/script name => quick-run mode (optional)
+#          SourceFile   source file for the op (optional; quick-run)
+#          ScriptArgs   key=value lines (optional; quick-run)
+#          JobText      batch job JSON by value (optional; batch)
+#          JobFilePath  local path of a batch job .json (optional)
 #          RepoRoot     local path of the lrs-doc-index repo copy
-#          LocalWorkDir local scratch dir (required with JobText)
+#          LocalWorkDir local scratch dir (required in quick-run
+#                       mode and with JobText)
 #          NodeExePath  node.exe override (optional; default: node
 #                       from PATH)
 # Outputs: ExitCode, ResultText, ResultFilePath, RunnerStdout,
@@ -25,13 +36,25 @@ IF NodeExePath <> $'''''' THEN
     SET NodeCmd TO NodeExePath
 END
 SET RunJobPath TO $'''%RepoRoot%\pad\runner\run_job.mjs'''
-IF JobText <> $'''''' THEN
-    SET JobFilePath TO $'''%LocalWorkDir%\job.json'''
-    File.WriteText File: JobFilePath TextToWrite: JobText AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
-END
-SET ResultFilePath TO $'''%JobFilePath%.result.json'''
 SET ResultText TO $''''''
-System.RunDOSCommand DOSCommandOrApplication: $'''\"%NodeCmd%\" --experimental-strip-types \"%RunJobPath%\" \"%JobFilePath%\"''' WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+IF ScriptName <> $'''''' THEN
+    SET ArgsText TO ScriptArgs
+    IF SourceFile <> $'''''' THEN
+        SET ArgsText TO $'''file=%SourceFile%
+%ScriptArgs%'''
+    END
+    SET ArgsFilePath TO $'''%LocalWorkDir%\op.args'''
+    File.WriteText File: ArgsFilePath TextToWrite: ArgsText AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+    SET ResultFilePath TO $'''%LocalWorkDir%\op.result.json'''
+    System.RunDOSCommand DOSCommandOrApplication: $'''\"%NodeCmd%\" --experimental-strip-types \"%RunJobPath%\" --op %ScriptName% --argsfile \"%ArgsFilePath%\" --out \"%ResultFilePath%\"''' WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+ELSE
+    IF JobText <> $'''''' THEN
+        SET JobFilePath TO $'''%LocalWorkDir%\job.json'''
+        File.WriteText File: JobFilePath TextToWrite: JobText AppendNewLine: False IfFileExists: File.IfFileExists.Overwrite Encoding: File.FileEncoding.UTF8
+    END
+    SET ResultFilePath TO $'''%JobFilePath%.result.json'''
+    System.RunDOSCommand DOSCommandOrApplication: $'''\"%NodeCmd%\" --experimental-strip-types \"%RunJobPath%\" \"%JobFilePath%\"''' WorkingDirectory: RepoRoot StandardOutput=> RunnerStdout StandardError=> RunnerStderr ExitCode=> ExitCode Timeout: 1800
+END
 IF ExitCode = 0 THEN
     File.ReadTextFromFile.ReadText File: ResultFilePath Encoding: File.TextFileEncoding.UTF8 Content=> ResultText
 END

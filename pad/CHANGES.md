@@ -44,6 +44,45 @@ Deployment state: **authored, nothing on tenant**. The offload is
 opt-in per wiring (§5 of the guide); the Automate-tab workbook path
 keeps working unchanged.
 
+## v2.0 (2026-08-14)
+
+Full rebuild of the desktop flow around ease of running scripts —
+the v1.x flow required authoring a batch job JSON even for a single
+script run.
+
+- `runner/run_job.mjs` v2.0 — new **single-op CLI mode**:
+  `--op <name> key=value ...` builds the one-op job internally, so
+  no job JSON (and no JSON escaping of Windows paths) is ever
+  authored by hand. `<name>` accepts op or script file names,
+  case-insensitive; `file=` maps to the op's source-file param
+  (zipFile / xlsxFile); `key@=<path>` reads a value from a file
+  (the `$file` indirection, CLI-shaped); `--argsfile` takes a file
+  of such lines (blank/`#` lines skipped, values raw to end of
+  line); `--out` sets the result path. Everything downstream of the
+  parsed job is the v1.0 batch path — batch mode itself is
+  byte-for-byte unchanged, and the result envelope is identical by
+  construction.
+- `flow/DocIndexCompute.robin.txt` v2.0 — rebuilt with two modes on
+  one IF/ELSE: **quick-run** (new inputs `ScriptName`, `SourceFile`,
+  `ScriptArgs` — the flow writes the args file and invokes `--op`)
+  and **batch** (`JobText`/`JobFilePath`, logic identical to v1.1).
+  Same five outputs. With `RepoRoot`/`LocalWorkDir` given default
+  values in the Variables pane, a console run of any script is
+  ScriptName + SourceFile and Run. v1.1 Robin dialect kept.
+- `harness/check_pad_runner.py` — new single-op leg: key=value
+  parsing, script-name aliasing, `@=` indirection, `file=` alias,
+  args-file parsing (CRLF, comments, blanks), and single-op results
+  proven JSON-identical to the same ops through a batch job.
+  **Gate PASSED 2026-08-14 (27/27).**
+- `PAD_Setup.md` v2.0 — §2 single-op examples, §3 rebuilt (new
+  variables table, 15-action manual-rebuild table, quick-run
+  recipes).
+
+Redeploy: `git pull` on the PAD machine, then rebuild the flow —
+create the three new input variables and re-paste the Robin (or
+follow the §3 table). Existing cloud wiring is untouched: batch
+invocations of the flow behave exactly as v1.1.
+
 ## v1.1 (2026-08-14)
 
 Robin re-serialization of `flow/DocIndexCompute.robin.txt`, matching
