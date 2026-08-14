@@ -295,9 +295,18 @@ def main():
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
         f.write("Plain text notes about calibration points.")
     with open(os.path.join(src_dir, "spec.pdf"), "wb") as f:
-        f.write(b"%PDF-1.4 not extractable")
+        f.write(b"%PDF-1.4 text-bearing (stub pdftotext returns text for this one)")
+    with open(os.path.join(src_dir, "scan.pdf"), "wb") as f:
+        f.write(b"%PDF-1.4 image-only (stub pdftotext returns nothing)")
     with open(os.path.join(src_dir, "corrupt.pptx"), "wb") as f:
         f.write(b"this is not a zip archive")
+
+    # stub pdftotext: text for spec.pdf, nothing for anything else
+    # (argv: -layout -enc UTF-8 <file> - ; also handles -v detection)
+    pdftotext_stub = os.path.join(tmp, "pdftotext")
+    with open(pdftotext_stub, "w") as f:
+        f.write('#!/bin/sh\ncase "$4" in\n  *spec.pdf) echo "Spec text about pdf extraction methods." ;;\n  *) : ;;\nesac\n')
+    os.chmod(pdftotext_stub, 0o755)
 
     def src_item(iid, name, modified, seg="Shared Documents"):
         return {
@@ -325,11 +334,22 @@ def main():
         src_item(14, "corrupt.pptx", "2026-08-09T10:00:00Z"),
         src_item(15, "outside.docx", "2026-08-08T10:00:00Z", seg="Elsewhere"),
         src_item(16, "missing.txt", "2026-08-07T10:00:00Z"),
+        src_item(17, "scan.pdf", "2026-08-06T10:00:00Z"),
     ]
 
     state = MockState()
     # seeded canonical keyword — sweeps must reuse it, not re-mint
     state.seed(LISTS["keywords"], {"Title": "locks", "Kind": "topic"})
+    # spec.pdf pre-stamped Skipped at the CURRENT PromptVersion with no
+    # extraction attempt — exactly the tenant state the backfill leaves
+    # PDFs in; only the PDF-rescue gate can reprocess it (SourceModified
+    # matches the library, so no modified/promptVersion trigger)
+    state.seed(LISTS["docIndex"], {
+        "Title": "spec.pdf", "FileName": "spec.pdf",
+        "DocKey": "shared documents/spec.pdf", "IndexStatus": "Skipped",
+        "SourceModified": "2026-08-10T10:00:00Z", "PromptVersion": "v2.0",
+        "ExtractionLane": "none",
+    })
     state.llm_by_file = {
         "Alpha Plan.pptx": {
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
@@ -343,6 +363,10 @@ def main():
             "title": "", "docKind": "Other", "surface": "Other",
             "summary": "Calibration notes.", "pe": "", "dev": "",
             "targetRelease": "", "tools": [], "keywords": ["calibration points"]},
+        "spec.pdf": {
+            "title": "Spec", "docKind": "Other", "surface": "Other",
+            "summary": "PDF spec about extraction.", "pe": "", "dev": "",
+            "targetRelease": "", "tools": [], "keywords": ["pdf extraction"]},
     }
 
     server = ThreadingHTTPServer(
@@ -379,6 +403,7 @@ def main():
         "sweep": {
             "siteUrl": "https://mock.example/sites/lrsworkspace",
             "dryRun": True,
+            "pdftotextPath": pdftotext_stub,
         },
     }
     cfg_path = os.path.join(tmp, "config.json")
@@ -390,11 +415,13 @@ def main():
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
-    check("dry run processed 7", out.get("processed") == 7, str(out))
+    check("dry run processed 8 (incl. the PDF-rescued spec.pdf)",
+          out.get("processed") == 8, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run wrote no sidecars",
           not any(f.endswith(".md") for _, _, fs_ in os.walk(sidecar_dir) for f in fs_))
-    check("dry run created no rows", len(state.lists.get(LISTS["docIndex"], {})) == 0)
+    check("dry run created no rows (only the seeded spec.pdf row exists)",
+          len(state.lists.get(LISTS["docIndex"], {})) == 1)
     with open(out["logFile"]) as f:
         log = json.load(f)
     check("dry run recorded a write plan", len(log.get("plan") or []) > 10,
@@ -405,7 +432,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 7", out.get("processed") == 7, str(out))
+    check("live processed 8", out.get("processed") == 8, str(out))
     check("live errors 2 (corrupt.pptx, missing.txt)", out.get("errors") == 2, str(out))
     check("live counted 1 out-of-scope doc", out.get("out_of_scope") == 1, str(out))
 
@@ -413,7 +440,7 @@ def main():
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 7 docs", len(by_name) == 7, str(sorted(by_name)))
+    check("doc index rows for all 8 docs", len(by_name) == 8, str(sorted(by_name)))
 
     _, outside = by_name.get("outside.docx", (None, {}))
     check("out-of-scope doc -> stamped Skip",
@@ -438,8 +465,15 @@ def main():
           and alpha.get("SourceAuthor") == "Fixture Author")
 
     _, pdf = by_name.get("spec.pdf", (None, {}))
-    check("pdf skipped with stamp", pdf.get("IndexStatus") == "Skipped"
-          and pdf.get("PromptVersion") == "v2.0", str(pdf)[:200])
+    check("pre-stamped Skipped pdf rescued and indexed",
+          pdf.get("IndexStatus") == "Indexed"
+          and pdf.get("ExtractionLane") == "plaintext"
+          and pdf.get("Summary") == "PDF spec about extraction.", str(pdf)[:250])
+    _, scan = by_name.get("scan.pdf", (None, {}))
+    check("no-text pdf skipped with attempt stamp (lane plaintext)",
+          scan.get("IndexStatus") == "Skipped"
+          and scan.get("ExtractionLane") == "plaintext"
+          and scan.get("PromptVersion") == "v2.0", str(scan)[:250])
 
     _, bad = by_name.get("corrupt.pptx", (None, {}))
     check("corrupt doc -> Error row", bad.get("IndexStatus") == "Error", str(bad)[:200])
@@ -450,13 +484,13 @@ def main():
     md_files = {f: os.path.join(r, f)
                 for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
                 if f.endswith(".md") and not f.startswith("_Sweep")}
-    check("three sidecars written", len(md_files) == 3, str(sorted(md_files)))
+    check("four sidecars written (incl. the rescued pdf)", len(md_files) == 4, str(sorted(md_files)))
 
     # status page (live runs only, sidecar-library root)
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "7 processed, 2 errors" in status and "corrupt.pptx" in status,
+          "8 processed, 2 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
@@ -538,6 +572,27 @@ def main():
           os.path.basename(out["logFile"]) in run_logs
           and sum(1 for f in run_logs if f.startswith("sweep-0000-")) < 40,
           str(sorted(run_logs)[:5]))
+
+    # ---- leg 3b: no pdftotext on the machine — flow-era behavior ----
+    # a modified pdf skips gracefully (no Error, no hang) and the log
+    # says why; nothing else regresses
+    print("== pdf no-tool leg")
+    src_files[3]["fields"]["Modified"] = "2026-08-15T10:00:00Z"  # spec.pdf
+    cfg["sweep"]["pdftotextPath"] = os.path.join(tmp, "no-such-pdftotext")
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "spec.pdf"])
+    check("no-tool run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    check("no-tool run says why PDFs skip", "pdftotext not found" in proc.stderr,
+          proc.stderr[-400:])
+    _, pdf2 = [(i, f_) for i, f_ in state.lists[LISTS["docIndex"]].items()
+               if f_.get("FileName") == "spec.pdf"][0]
+    check("modified pdf without tool -> Skip lane (not Error)",
+          pdf2.get("IndexStatus") == "Skipped"
+          and pdf2.get("ExtractionLane") == "none", str(pdf2)[:250])
+    cfg["sweep"]["pdftotextPath"] = pdftotext_stub  # restore for later legs
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
