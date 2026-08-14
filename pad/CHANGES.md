@@ -43,3 +43,17 @@ pptx doc, so a 150-doc backfill run ≈ the whole quota).
 Deployment state: **authored, nothing on tenant**. The offload is
 opt-in per wiring (§5 of the guide); the Automate-tab workbook path
 keeps working unchanged.
+
+## v1.1 (2026-08-14)
+
+Robin re-serialization of `flow/DocIndexCompute.robin.txt`, matching
+the dialect of a live PAD export after v1.0's paste was rejected:
+
+- variable references in action parameters and IF conditions are
+  bare names (`IF JobText <> ...`, `File: JobFilePath`); the
+  `%Var%` form remains only for interpolation inside `$''' '''`
+  literals;
+- double quotes inside literals are escaped `\"` (v1.0's Run DOS
+  command carried six bare quotes — enough to void the whole paste);
+- actions and logic unchanged; the §3 manual-rebuild table still
+  produces the identical flow.
