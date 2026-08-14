@@ -1172,39 +1172,55 @@ Initialize variable **`ErrLeaf`** (String, value `@{string('')}`),
 inserted after `Init_DocRowId` (re-point `Get_keywords`'s run-after
 to it).
 
-## E2 — the drill chain inside Catch_index
+## E2 — the drill chain inside Catch_index (FLAT — sibling conditions)
 
-After `Filter_failed`, insert (then re-point `Err_detail`):
+> **Why flat (2026-08-13, found on live import):** nesting the drill
+> conditions inside each other put `Set_ErrLeaf_L4` at nesting level
+> 9 and the import failed template validation ("exceeds the maximum
+> nesting limit of '8'" — Catch_index already sits three levels
+> deep). The levels therefore run as SIBLINGS in one run-after
+> chain, passing state through the `ErrLeaf` STRING itself: each Set
+> writes `'path > name: err'`, and the next level's condition guards
+> with `startsWith(variables('ErrLeaf'), '<path prefix>:')` — a
+> variable read is always evaluable, and each guarded `result('X')`
+> still only evaluates when the previous level named X as its first
+> failure (which implies X executed). The trailing colon in every
+> guard prevents prefix collisions between action names.
 
-1. **`Set_ErrLeaf_L1`** (Set variable `ErrLeaf`):
-   `@{concat(coalesce(first(body('Filter_failed'))?['name'], 'unknown-action'), ': ', take(string(coalesce(first(body('Filter_failed'))?['error'], first(body('Filter_failed'))?['outputs'], '')), 3500))}`
-2. **`If_drill_has_text`** (Condition:
-   `@equals(coalesce(first(body('Filter_failed'))?['name'], ''), 'If_has_text')`),
-   Yes branch:
-   - **`Filter_failed_L2`** (Filter array): from
-     `@result('If_has_text')`, same Failed/TimedOut where-clause as
-     `Filter_failed`.
-   - **`If_L2_found`** (Condition:
-     `@greater(length(body('Filter_failed_L2')), 0)`), Yes branch:
-     - **`Set_ErrLeaf_L2`** — same concat shape over
-       `Filter_failed_L2`, prefixed `'If_has_text > '`.
-     - **`If_drill_signals`** (first L2 name == `If_related_signals`)
-       → `Filter_failed_L3` from `@result('If_related_signals')` →
-       `If_L3_found` → `Set_ErrLeaf_L3` (prefix
-       `'If_has_text > If_related_signals > '`) →
-       **`If_drill_hasrel`** (first L3 name == `If_has_related`) →
-       `Filter_failed_L4` from `@result('If_has_related')` →
-       `If_L4_found` → `Set_ErrLeaf_L4` (prefix
-       `'… > If_has_related > '`).
-     - **`If_drill_ids`** (first L2 name == `For_each_id`) →
-       `Filter_failed_ids` from `@result('For_each_id')` →
-       `If_ids_found` → `Set_ErrLeaf_ids` (prefix
-       `'If_has_text > For_each_id > '`).
-     - **`If_drill_kws`** (first L2 name == `For_each_kw`) →
-       `Filter_failed_kws` from `@result('For_each_kw')` →
-       `If_kws_found` → `Set_ErrLeaf_kws` (prefix
-       `'If_has_text > For_each_kw > '`).
-3. **`Err_detail`** — run-after re-pointed to `If_drill_has_text`
+After `Filter_failed`, insert this run-after chain (then re-point
+`Err_detail`). Every `Filter_failed_*` is a Filter array with the
+same Failed/TimedOut where-clause as `Filter_failed`; every
+`Set_ErrLeaf_*` uses the same concat shape
+`@{concat('<prefix>', coalesce(first(body('<filter>'))?['name'], '?'), ': ', take(string(coalesce(first(body('<filter>'))?['error'], first(body('<filter>'))?['outputs'], '')), 3500))}`:
+
+1. **`Set_ErrLeaf_L1`** (Set variable `ErrLeaf`): the concat over
+   `Filter_failed`, no prefix.
+2. **`If_drill_L2`** (Condition:
+   `@equals(coalesce(first(body('Filter_failed'))?['name'], ''), 'If_has_text')`)
+   — Yes: `Filter_failed_L2` from `@result('If_has_text')`;
+   `If_L2_found` (`@greater(length(body('Filter_failed_L2')), 0)`)
+   — Yes: `Set_ErrLeaf_L2`, prefix `'If_has_text > '`.
+3. **`If_drill_L3`** (Condition:
+   `@startsWith(variables('ErrLeaf'), 'If_has_text > If_related_signals:')`)
+   — Yes: `Filter_failed_L3` from `@result('If_related_signals')`;
+   `If_L3_found` — Yes: `Set_ErrLeaf_L3`, prefix
+   `'If_has_text > If_related_signals > '`.
+4. **`If_drill_L4`** (Condition:
+   `@startsWith(variables('ErrLeaf'), 'If_has_text > If_related_signals > If_has_related:')`)
+   — Yes: `Filter_failed_L4` from `@result('If_has_related')`;
+   `If_L4_found` — Yes: `Set_ErrLeaf_L4`, prefix
+   `'If_has_text > If_related_signals > If_has_related > '`.
+5. **`If_drill_ids`** (Condition:
+   `@startsWith(variables('ErrLeaf'), 'If_has_text > For_each_id:')`)
+   — Yes: `Filter_failed_ids` from `@result('For_each_id')`;
+   `If_ids_found` — Yes: `Set_ErrLeaf_ids`, prefix
+   `'If_has_text > For_each_id > '`.
+6. **`If_drill_kws`** (Condition:
+   `@startsWith(variables('ErrLeaf'), 'If_has_text > For_each_kw:')`)
+   — Yes: `Filter_failed_kws` from `@result('For_each_kw')`;
+   `If_kws_found` — Yes: `Set_ErrLeaf_kws`, prefix
+   `'If_has_text > For_each_kw > '`.
+7. **`Err_detail`** — run-after re-pointed to `If_drill_kws`
    (Succeeded, Failed, Skipped, Timed out); expression becomes the
    variable with the original first-degree fallback:
    `@take(if(empty(variables('ErrLeaf')), concat(coalesce(first(body('Filter_failed'))?['name'], 'unknown-action'), ': ', string(coalesce(first(body('Filter_failed'))?['error'], first(body('Filter_failed'))?['outputs'], ''))), variables('ErrLeaf')), 4000)`
