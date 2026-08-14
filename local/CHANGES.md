@@ -1,5 +1,30 @@
 # Local sweep — release notes
 
+## v1.7 (2026-08-14)
+
+**PDFs are indexed** (improvement plan #8; owner opted for the
+pdftotext route to keep the repo zero-npm-dependency). New `pdf`
+extraction branch shells out to Poppler's `pdftotext -layout -enc
+UTF-8` (`sweep.pdftotextPath` or PATH); text-bearing PDFs run the
+full pipeline (`ExtractionLane: plaintext` — an existing whitelist
+value, no schema risk), scanned/no-text PDFs land in the Skip lane
+with that lane recorded as the "attempted" stamp so they never
+rechurn. **PDF rescue**: rows stamped `Skipped` at the current
+PromptVersion by the flow or the pre-v1.7 sweep re-enter
+`Needs_index` exactly once when the tool is present — the corpus's
+PDF backlog indexes without a promptVersion bump (no full-corpus AI
+respend). No tool installed = flow-era behavior (Skip lane) with a
+log note. Also fixes `normalizeRows` dropping `LastError`/
+`ExtractionLane` from snapshots (the v1.5 status page's error lane
+was seeded empty because of it).
+
+Gate: stub `pdftotext` (text for spec.pdf, empty for scan.pdf);
+spec.pdf pre-seeded as `Skipped v2.0/lane none` — exactly the
+post-backfill tenant state — and proven rescued→Indexed with a
+sidecar; scan.pdf proven Skipped-with-stamp and NOT reprocessed on
+the idempotency leg; no-tool leg proves graceful flow-era skip +
+log note. **Gate PASSED 2026-08-14 (63/63).**
+
 ## v1.6 (2026-08-14)
 
 **Out-of-scope lane** (improvement plan #7, the cheap floor). The

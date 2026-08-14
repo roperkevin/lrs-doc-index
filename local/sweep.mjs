@@ -43,6 +43,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
 import { classifyDoc } from "./llm.mjs";
@@ -260,7 +261,8 @@ function normalizeRows(items, kind) {
           PromptVersion: f.PromptVersion || "", TextFileUrl: hyperlink(f.TextFileUrl),
           DocKind: f.DocKind || "", Surface: f.Surface || "",
           TargetRelease: f.TargetRelease || "", PE: f.PE || "", Dev: f.Dev || "",
-          Summary: f.Summary || "",
+          Summary: f.Summary || "", LastError: f.LastError || "",
+          ExtractionLane: f.ExtractionLane || "",
         });
         break;
       case "keywords":
@@ -383,6 +385,17 @@ async function main() {
   );
   const op = (o) => runOp(mains, o);
 
+  // PDF text extraction (improvement over the flow, which always
+  // skipped PDFs): shell out to Poppler's pdftotext when present.
+  // Absent tool = the flow's historical behavior (Skip lane), loudly.
+  const pdfTool = detectPdfTool(sw);
+  if (!pdfTool) {
+    process.stderr.write(
+      "note: pdftotext not found — PDFs stay in the Skip lane " +
+      "(install Poppler or set sweep.pdftotextPath to index them)\n"
+    );
+  }
+
   const graph = new GraphClient(cfg.graph);
   const spo = new SpoClient(cfg.spo);
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
@@ -398,7 +411,7 @@ async function main() {
   const docIndexRows = await fetch("docIndex", "docIndex", [
     "Title", "FileName", "DocKey", "IndexStatus", "SourceModified",
     "PromptVersion", "TextFileUrl", "DocKind", "Surface", "TargetRelease",
-    "PE", "Dev", "Summary", "LastError",
+    "PE", "Dev", "Summary", "LastError", "ExtractionLane",
   ]);
   const keywordRows = await fetch("keywords", "keywords", ["Title", "Kind", "CanonicalRefLookupId"]);
   const docIdRows = await fetch("docIds", "docIds", ["Title", "Repo", "IssueNumber", "Source", "IdKey", "DocumentLookupId"]);
@@ -475,9 +488,17 @@ async function main() {
     const ext = lower(name.split(".").pop());
     const fileTypeSafe = KNOWN_EXT.includes(ext) ? ext : IMAGE_EXT.includes(ext) ? "image" : "other";
 
-    // Needs_index
+    // Needs_index — plus the PDF rescue: rows the (pre-pdftotext)
+    // sweep or the cloud flow stamped Skipped get one re-index now
+    // that PDF text extraction exists; after that attempt their
+    // ExtractionLane is "plaintext", so they don't re-enter.
+    const pdfRescue =
+      ext === "pdf" && !!pdfTool &&
+      existing?.IndexStatus === "Skipped" &&
+      existing?.ExtractionLane !== "plaintext";
     const needsIndex =
       !existing ||
+      pdfRescue ||
       existing.IndexStatus === "Error" ||
       (existing.SourceModified || "1900-01-01T00:00:00Z") < modified ||
       (existing.PromptVersion || "") !== sw.promptVersion;
@@ -495,7 +516,7 @@ async function main() {
     try {
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary,
+        cfg, sw, sp, op, writer, summary, pdfTool,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -563,7 +584,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -636,22 +657,39 @@ async function indexDoc(ctx) {
     setStep("read-txt");
     docText = fs.readFileSync(localPath, "utf8");
     lane = "plaintext";
+  } else if (!oversize && ext === "pdf" && pdfTool) {
+    // pdftotext (Poppler). A text-bearing PDF indexes like any other
+    // doc; a scanned/image-only one yields no text and falls through
+    // to the Skip lane WITH lane="plaintext" recorded, which marks
+    // "extraction was attempted" and keeps it out of the PDF rescue.
+    setStep("pdftotext");
+    const r = spawnSync(pdfTool, ["-layout", "-enc", "UTF-8", localPath, "-"], {
+      encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+    });
+    if (r.error) throw new Error(`pdftotext: ${r.error.message}`);
+    if (r.status !== 0) {
+      throw new Error(`pdftotext exit ${r.status}: ${cut(String(r.stderr || ""), 300)}`);
+    }
+    docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
+    lane = "plaintext";
   }
-  // pdf/msg/html/image/other/oversize: DocText stays empty → Skip lane.
+  // pdf(no tool)/msg/html/image/other/oversize: DocText stays empty → Skip lane.
 
   if (!docText || docText === "") {
-    // Skip lane
+    // Skip lane (ExtractionLane recorded on patches too, so a
+    // no-text PDF's "plaintext" attempt-stamp sticks)
     setStep("skip-row");
     const base = {
       Title: name, FileName: name, DocKey: docKey,
       IndexStatus: "Skipped", SourceModified: modified,
       IndexedOn: new Date().toISOString(), PromptVersion: sw.promptVersion,
+      ExtractionLane: lane,
     };
     if (!existing) {
       const created = await writer.createRow("docIndex", {
         ...base,
         SourceLink: { Url: sourceLink, Description: name },
-        FileType: fileTypeSafe, ExtractionLane: lane,
+        FileType: fileTypeSafe,
       });
       const row = { ID: created.id, ...base, TextFileUrl: "" };
       caches.byDocKey.set(docKey, row);
@@ -914,6 +952,15 @@ function folderToLocal(folder, sw, cfg) {
   if (folder === sw.textsFolder) return cfg.paths.sidecarLibrary;
   if (!folder.startsWith(sw.textsFolder + "/")) return null;
   return path.join(cfg.paths.sidecarLibrary, ...folder.slice(sw.textsFolder.length + 1).split("/"));
+}
+
+/** Poppler's pdftotext, if present: sweep.pdftotextPath (a full
+ *  path) or plain "pdftotext" on PATH. Absent → null (PDFs skip,
+ *  as the cloud flow always did). */
+function detectPdfTool(sw) {
+  const p = sw.pdftotextPath || "pdftotext";
+  const r = spawnSync(p, ["-v"], { encoding: "utf8" });
+  return r.error ? null : p;
 }
 
 /** Keep the newest N per-run JSON logs; the stamp format sorts

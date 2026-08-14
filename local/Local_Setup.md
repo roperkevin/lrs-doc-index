@@ -31,6 +31,15 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
 - The PAD machine setup (Node 22.6+, repo clone at e.g.
   `C:\DocIndex\lrs-doc-index`, scratch dir) — see `pad/PAD_Setup.md`
   §1. Power Automate Desktop itself is NOT needed for the local sweep.
+- **Optional but recommended — Poppler's `pdftotext`**, which lets
+  the sweep index PDFs (the cloud flow always skipped them). Install
+  with `winget install poppler` (or grab a poppler-windows release
+  zip) and either put its `Library\bin` on PATH or set
+  `sweep.pdftotextPath` in config to the full `pdftotext.exe` path.
+  Without it the sweep behaves exactly as the flow did (PDFs →
+  Skip lane) and says so in the log. PDFs already stamped `Skipped`
+  are automatically rescued and indexed on the first run where the
+  tool is present.
 - **Both libraries synced** with the OneDrive client:
   - the LocationReferencing **Documents** library (source docs, read),
   - the lrsworkspace **LRS Doc Index** library (sidecars + `media/`,
@@ -231,6 +240,14 @@ Each is behavior-equivalent; all are exercised by the gate:
 - WorkbookDump reads the xlsx via `pad/runner/xlsx_grid.mjs` — the
   same content-equivalence caveat as the PAD offload
   (`pad/PAD_Setup.md` §7).
+- **PDFs are indexed** (a real deviation — the flow always skipped
+  them): with Poppler's `pdftotext` present (§1), text-bearing PDFs
+  go through the full pipeline with `ExtractionLane: plaintext`;
+  scanned/no-text PDFs land in the Skip lane with that lane recorded
+  as the "attempted" stamp so they don't rechurn. Rows stamped
+  `Skipped` before the tool existed re-enter `Needs_index` once
+  (the PDF rescue) and either index or re-stamp. No tool installed =
+  flow-era behavior, with a log note.
 - **Out-of-scope lane** (a real deviation — the flow could reach any
   file over the connector; local reads need the OneDrive sync): a doc
   outside `sharePoint.libraryRootSegment` gets a STAMPED `Skipped`
