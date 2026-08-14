@@ -1261,3 +1261,107 @@ drilled level — add another guarded level then, same pattern.
 Smoke: force one failure (e.g. temporarily break a list GUID in a
 `Check_*` action on a SmokeFile run), confirm the Error row carries
 the `A > B > leaf: {...}` path, revert.
+
+# v2_9 round — performance + instrumentation (IMPORT-FIRST)
+
+Paired artifacts: `flow/v2_9/definition.json` /
+`flow/DocIndexSweep_v2_9.zip` (payload byte-identical), ZipTextExtract
+v2.2 (`review/patches/ZipTextExtract_v2_2.ts`, gate `check_batch_r7.py`
+PASSED 2026-08-14). Release notes: `flow/v2_9/CHANGES.md`.
+
+**This round deploys by IMPORT, not by designer edits.** The P1
+rewiring (bulk pre-fetch replacing `Check_indexed`) touches ten
+expression sites across the definition; hand-applying them invites
+exactly the FX-class mis-picks this repo has spent three rounds
+cleaning up, and `check_flow.py` lints the authored definition — not
+a hand-edited live flow. The edit inventory below is the
+patch-in-place FALLBACK only.
+
+## Prerequisites (in order)
+
+1. Tenant flow state: v2.8 applied (or at minimum §v2_7-fixes) — the
+   import replaces the flow wholesale, so strictly this only matters
+   for rollback comparability.
+2. Doc Index **Products** column exists (the v2.8 prerequisite; the
+   v2.9 definition writes it too).
+3. **Paste ZipTextExtract v2.2 FIRST** (Automate-tab workbook,
+   `Scripts.xlsx`). Additive-safe under ANY flow version: v2.7/v2.8
+   never pass `wantMedia`, and the r7 gate proves byte-identity to
+   v2.1 in that mode. The reverse order (flow v2.9 live against
+   ZipTextExtract ≤ v2.1) does NOT error but silently skips images —
+   don't run in that state longer than the paste takes.
+   MediaExtract, WorkbookDump v1.2, RegexExtract v1.4, SidecarPatch
+   v1.6 pastes: unchanged guidance from the r6/r2 rounds; the
+   pending **MediaExtract v1.3 paste is MOOTED** (nothing calls it
+   once v2.9 is live — leave the tenant copy in place for rollback).
+
+## Import
+
+4. Import `flow/DocIndexSweep_v2_9.zip` (Update if the v2.8 flow was
+   itself imported, Create-new otherwise), map the three connections
+   (SharePoint, Excel Online Business, Dataverse/AI Builder), save.
+5. Turn the old flow **OFF** (do not delete until smoke passes).
+
+## Smoke (one pass, SmokeFile pinned)
+
+6. Set `Config.SmokeFile` to one image-bearing pptx filename; run.
+   Verify in the run history:
+   - `Get_index_rows` ran ONCE, before the loop; NO `Check_indexed`
+     inside any iteration (the gate phase should visibly fly);
+   - `Zip_extract_pptx` ran; **no `Extract_media_*` anywhere**; the
+     images landed in `/LRS Doc Index/media/`;
+   - the sidecar is byte-shaped like a v2.8 sidecar (header,
+     `<!-- metadata` frame, image links resolve);
+   - `Run_summary` carries the new fields: `index_rows_seen=`,
+     `ms_extract= ms_classify= ms_writes= ms_related= ms_total=`.
+7. **Clear `Config.SmokeFile`** (the FX-5 lesson — leaving it set
+   stalls the backfill and pins the nightly run to one file), save,
+   and let the nightly run take over. No PromptVersion bump: v2.9
+   changes no output bytes, so no backfill occurs or is needed.
+
+## Ops item (same window, source site)
+
+8. **Index the `Modified` column on the source library**
+   (LocationReferencing → library settings → Indexed columns). FL-4:
+   `Get_files` sorts `Modified desc`; past ~5000 items SharePoint
+   rejects a sort on an unindexed column outright, and indexes are
+   only cheap to add while the list is small.
+
+## Fallback: patch-in-place inventory (only if import is impossible)
+
+P1 — add `Get_index_rows` (Get items, Doc Index, `$select`
+`ID,DocKey,SourceModified,PromptVersion,TextFileUrl,IndexStatus`,
+`$top` 20000, pagination ON/20000) after `Get_files`;
+`Select_index_map` (Select, keys `k/id/m/s/p/u` per the authored
+definition) after it; re-point `Smoke_filter` run-after; replace
+`Check_indexed` with `Lookup_indexed` (Filter array,
+from `body('Select_index_map')`, where
+`@equals(item()?['k'], outputs('Doc_key'))`); rewrite the TEN
+consumer expressions (`Needs_index`, `Update_doc.id`,
+`If_doc_exists` expr, `Doc_item_id`, `Old_sidecar_url`,
+`Update_doc_skipped.id`, `If_skip_exists` expr,
+`Update_doc_error.id`, `If_err_exists` expr — copy each expression
+verbatim from `flow/v2_9/definition.json`).
+P2 — add `ScriptParameters/wantMedia` = `true` (expression editor —
+must be boolean, not the string "true") to both `Zip_extract_*`;
+delete both `Extract_media_*`; re-point both `For_each_img_*` to
+`@coalesce(outputs('Zip_extract_pptx')?['body/result/images'], json('[]'))`
+(docx symmetric).
+P3 — concurrency: `For_each_img_pptx`/`_docx` → 8,
+`For_each_patched` → 6 (leave every other loop at 1).
+P4 — the twelve timing actions (`Init_RunStart`, four `Init_Ms*`,
+`T_*` composes, `Add_Ms*` increments) and the `Run_summary`
+expression — copy from the authored definition.
+P5 — retry policies: fixed/2/PT30S on the seven RunScriptProd
+actions; none on `Create_idrow`/`Create_link`/`Create_dockw`.
+After all of it, export and diff against
+`flow/v2_9/definition.json`, then run `check_flow.py` against the
+export.
+
+## Rollback
+
+Turn the v2.8 flow back ON (or re-import `DocIndexSweep_v2_8.zip`),
+turn v2.9 off. ZipTextExtract v2.2 STAYS pasted (byte-identical to
+v2.1 under the old flow; the old flow's `Extract_media_*` still
+finds MediaExtract on the tenant). No PromptVersion or backfill
+implications in either direction.

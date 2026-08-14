@@ -1,6 +1,17 @@
 /**
  * MediaExtract v1.3 — pull raster images out of a pptx/docx, bounded
  * ------------------------------------------------------------
+ * ======================== RETIRED (r7) ========================
+ * ZipTextExtract v2.2 (MG-1) absorbed this script: its wantMedia
+ * parameter inflates the SC-4 selection set in the SAME walk that
+ * mints the sidecar's image links, with this file's SB-8 size
+ * verification carried over. The flow v2.9 window deletes the
+ * Extract_media_* actions, so nothing calls this script once that
+ * import lands — the v1.3 tenant paste that was PENDING is mooted.
+ * The file is kept for history (the repo's RelatedRank precedent);
+ * do NOT land new fixes here. See flow/v2_9/CHANGES.md and
+ * review/patches/designer-edits.md §v2_9.
+ * ==============================================================
  * r2 batch (REVIEW_v2_5_r2.md SB-5, SB-8) — gated by
  * check_batch_r2.py. Gate PASSED (check_batch_r2.py, 2026-08-11).
  * TENANT PASTE STILL PENDING — the live flow runs the previous

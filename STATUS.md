@@ -3,13 +3,13 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-13 (live-export reconciliation: v2.6+v2.7 windows APPLIED on tenant with defects — §v2_7-fixes; flow v2.8 authored — hidden metadata + code fencing + products; r6 gate PASSED)**.
+Last updated: **2026-08-14 (flow v2.9 authored — performance + instrumentation, import-first; ZipTextExtract v2.2 absorbs MediaExtract; r7 gate PASSED; new standing suites check_media.py + check_flow.py in CI)**.
 
 ## Core sweep
 
 | Piece | Deployed | Authoritative file |
 |---|---|---|
-| Flow (DocIndexSweep) | **v2.7** — the 2026-08-13 live export proves the v2.6 AND v2.7 windows applied, but with 4 designer mis-picks + a stuck smoke knob (**§v2_7-fixes, apply ASAP** — image-bearing pptx docs error, keyword relateds dead, backfill stalled). **v2.8 authored** (hidden metadata comment frame, code fencing, product lines; built FROM the live export, fixes included) | live export (see `flow/v2_8/CHANGES.md`) / `flow/v2_8/definition.json` (authored) |
+| Flow (DocIndexSweep) | **v2.7** — the 2026-08-13 live export proves the v2.6 AND v2.7 windows applied, but with 4 designer mis-picks + a stuck smoke knob (**§v2_7-fixes, apply ASAP** — image-bearing pptx docs error, keyword relateds dead, backfill stalled). **v2.8 authored** (hidden metadata comment frame, code fencing, product lines; built FROM the live export, fixes included). **v2.9 authored** (performance + instrumentation: bulk pre-fetch kills the per-item Check_indexed N+1, merged media extraction, write-only loop concurrency, run timing in Run_summary, retry tuning — no format changes, no backfill; **deploys by IMPORT**, `flow/DocIndexSweep_v2_9.zip`, with ZipTextExtract v2.2 pasted first — `flow/v2_9/CHANGES.md`, designer-edits §v2_9) | live export (see `flow/v2_8/CHANGES.md`) / `flow/v2_9/definition.json` (authored) |
 | Config.PromptVersion | **v1.9** — but the v1.9 backfill has NOT run (SmokeFile stuck, FX-5); v2.0 authored, lands with the v2.8 window | live export / `flow/v2_8/definition.json` (authored) |
 | Config.SmokeFile | **"ExB - AutopopulateReferents.pptx" — MUST be cleared** (FX-5): pins every nightly run to one file | designer edit |
 | AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) | `prompts/DocIndex_Prompt.md` |
@@ -18,8 +18,8 @@ Last updated: **2026-08-13 (live-export reconciliation: v2.6+v2.7 windows APPLIE
 
 | Script | Repo version | Pasted on tenant |
 |---|---|---|
-| ZipTextExtract | **v2.1** (r6) | tenant runs v1.9 (pasted 2026-08-11); v2.0 superseded in-repo before its paste — **paste v2.1 with the v2.8 window** |
-| MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
+| ZipTextExtract | **v2.2** (r7 — absorbs MediaExtract behind the optional `wantMedia` param; supersedes the never-pasted v2.0/v2.1, the RelatedRank v1.3 precedent) | tenant runs v1.9 (pasted 2026-08-11) — **paste v2.2**: additive-safe ANY time (byte-identical to v2.1 under flows that don't pass `wantMedia`), and REQUIRED before the flow v2.9 import |
+| MediaExtract | **v1.3 — RETIRED with the v2.9 window** (ZipTextExtract v2.2 absorbed it; file kept for history) | tenant runs v1.2 — the pending v1.3 paste is **MOOTED**: nothing calls the script once flow v2.9 is live. Leave the tenant copy in place (the v2.8-and-earlier flows still call it, incl. any rollback) |
 | RelatedRank | **v2.1** (r4) | **PASTED** with the v2.6 window — evidenced by the live export's v2.x parameter bindings and the title-affinity `why` prose in fresh sidecars |
 | SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
 | RegexExtract | **v1.4** (r6) | tenant runs v1.2 (pre-v2.2); v1.3 superseded in-repo before its paste — v1.4 is additive-safe under any flow, products surface with the v2.8 window |
@@ -116,8 +116,8 @@ v1.2 describes them — paste with the window, step 6).
 
 | Suite | Last green |
 |---|---|
-| check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) + check_batch_r4.py | 2026-08-13 (see `review/harness/README.md` run records) |
-| check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r5.py | skip as superseded by design (v1.9 / r2 / r3 / r5 generations) |
+| check_batch_r7.py (ZipTextExtract v2.2 merged media) + the NEW standing suites check_media.py (media contracts + response-budget leg) and check_flow.py (flow-definition lint: runAfter integrity, concurrency table, GUID map, ScriptParameters↔signature — the FX-1/2/6/7 classes) + full re-run of check_format / check_related / check_regex / render_sample / check_batch_r4 | 2026-08-14 (all wired into `.github/workflows/harness.yml`) |
+| check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r5.py / check_batch_r6.py | skip as superseded by design (v1.9 / r2 / r3 / r5 / r6 generations) |
 
 ## Open actions
 
@@ -126,6 +126,7 @@ v1.2 describes them — paste with the window, step 6).
 3. Confirm the curation v1.1 fix on the next all-resolved Saturday run (`curation/CHANGES.md`).
 4. r6 / flow v2.8 window: create the Doc Index **Products** column; paste SidecarPatch v1.6 (safe early), ZipTextExtract v2.1 + RegexExtract v1.4 (with the window; the pending r2 pastes of WorkbookDump v1.2 and MediaExtract v1.3 can ride along — `review/REVIEW_v2_5_r2.md` checklist step 5 with the r6 substitutions); then EITHER import `flow/DocIndexSweep_v2_8.zip` (carries §v2_7-fixes + X1–X5 + the r2-2/r2-3 hygiene baked, SmokeFile already empty, PromptVersion v2.0 — map connections, turn the old flow off; the import-first path, `testplangen/Coverage_Runbook.md` step 1) OR apply designer edits X1–X5 per `review/patches/designer-edits.md` §v2_8 incl. **clearing SmokeFile (FX-5)**; smoke with the header byte-check (`render_sample.py`); let the backfill converge; paste Q&A agent instructions v1.3 + re-run the agent smoke; then update this table.
 5. Designer edits per `review/patches/designer-edits.md` §r2 (SourceSiteUrl; optional trigger concurrency).
+10. **Flow v2.9 window (after action 4)**: paste ZipTextExtract v2.2 (safe early, any time), import `flow/DocIndexSweep_v2_9.zip` (map connections, old flow OFF), smoke per designer-edits §v2_9 steps 6–7 (verify `ms_*` telemetry + merged media, then clear SmokeFile), **index the `Modified` column on the source library** (FL-4, same window), then update this table. No PromptVersion bump, no backfill — v2.9 changes no output bytes.
 6. ~~PV-1 residual~~ — **CLOSED (owner decision, 2026-08-12): accepted.** The repo stays public; the pre-scrub zips (containing the work email) remain reachable in git history, knowingly. Current-tree manifests stay scrubbed; the v2.8 zip (cut from the 2026-08-13 export) is scrubbed the same way. Revisit only if circumstances change (`review/REVIEW_v2_5_r2.md` §PV-1).
 7. ~~v2.6 window~~ / ~~v2.7 window~~ — **DONE on tenant** (evidenced by the 2026-08-13 live export: RelatedRank v2.x bindings + two-phase wiring, GFM header template, PromptVersion v1.9) — but see action 1 for the mis-picks the windows introduced; the sidecar-format benefit is NOT live until FX-5 unsticks the backfill.
 8. TestPlanGen v2.8 (independent window): paste prompt v1.4 + designer edits §testplangen-v2_8 (both live flows), smoke one draft in a GFM viewer, then update the TestPlanGen row (`testplangen/CHANGES.md` v2.8).

@@ -13,6 +13,25 @@ when a batch is promoted:
 3. **Id/revision checks** (`check_regex.py`) — RegexExtract's full
    `IdResult` contract (ids, precedence, EXB routing, docRevision);
    cases inline, no fixtures — CI-friendly.
+3a. **Media checks** (`check_media.py`, r7) — ZipTextExtract v2.2's
+   merged media path (`wantMedia`): cap-aware selection == minted
+   links == returned images, byte fidelity vs the source archive,
+   the off-switch no-op, the wantMedia-only throw paths, and the
+   response-budget leg (worst-case 12-near-cap-image fixture,
+   serialized result < 4.7 MB). This — not check_format.py's
+   MediaExtract legs — is where media coverage lives now that
+   MediaExtract is retired.
+3b. **Flow definition lint** (`check_flow.py`, r7) — the first suite
+   that tests the FLOW, not the scripts: parses
+   `flow/v2_9/definition.json` and asserts runAfter integrity, the
+   exact loop-concurrency table (dedup loops serial, reviewed
+   parallel widths), the list-GUID map for every `table` binding
+   and raw-REST URI (the FX-6/FX-7 class), and that every
+   `ScriptParameters/*` key exists in the mapped script's `main()`
+   signature (the FX-1/FX-2 class). Pure stdlib, no fixtures —
+   runs in the fixture-free CI job. Point it at an older
+   definition (argv[1]) for a delta report; the v2.9-shape checks
+   fail there by design.
 4. **Equivalence gate** (`run_diff.py`) — the HISTORICAL v1.5-vs-v1.6 /
    v1.0-vs-v1.1 byte-diff, recorded below; both halves now skip
    gracefully unless their wraps are deliberately regenerated from git
@@ -23,8 +42,12 @@ when a batch is promoted:
    `check_batch_r3.py` — r3 era, skips as superseded;
    `check_batch_r4.py` — r4 era, RelatedRank v2.1, re-verifies the
    promotion; `check_batch_r5.py` — r5 era, SidecarPatch v1.5 /
-   the flow v2.7 details frame) — the template any future script
-   batch clones before its patches may be pasted.
+   the flow v2.7 details frame; `check_batch_r6.py` — r6 era, skips
+   as superseded; `check_batch_r7.py` — r7 era, ZipTextExtract v2.2
+   merged media: v2.1-equivalence with `wantMedia` absent,
+   media-identity vs MediaExtract v1.3, throw-parity, ES2017) — the
+   template any future script batch clones before its patches may
+   be pasted.
 6. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
    downloaded TestPlanGen draft .md and asserts the prompt v1.5
    coverage contract (section order incl. `## Coverage Map`, Trace
@@ -493,3 +516,27 @@ PASS against the promoted `scripts/`; `check_batch_r5.py` now skips
 as superseded (the r6 promotion moved SidecarPatch past its
 generation), joining r2/r3 and `check_batch.py`; `check_batch_r4.py`
 still PASSES (RelatedRank untouched by r6).
+
+### Last run (2026-08-14, Node 22.22.2) — r7 gate + promotion + v2.9 lint
+
+Gate run: **PASS** — `check_batch_r7.py`: the standing suites
+(`check_format.py` / `check_related.py` / `check_regex.py` + the new
+`check_media.py`) fully green over the staged batch; ZipTextExtract
+v2.1-vs-v2.2 IDENTICAL on all eight v2.1 fields across all fourteen
+fixtures with the new media fields inert (`wantMedia` absent) and
+throw-parity on the three malformed archives; the merged media path
+IDENTICAL to MediaExtract v1.3 (per-image name/b64, skipped list,
+count) on all three image-bearing fixtures with throw-parity on the
+lying-CD / media-NLEN / encrypted-media archives; the `wantMedia`
+discriminator fires; staged script type-checks at ES2017.
+`check_media.py`'s budget leg measured the worst-case merged result
+at **4.13 MB** (< 4.7 MB bar, ~5 MB cap). Promotion: v2.2 promoted
+to `scripts/` (snapshot `../patches/ZipTextExtract_v2_2.ts`);
+MediaExtract carries its RETIRED banner; `check_batch_r6.py` now
+skips as superseded; `check_batch_r4.py` still PASSES (RelatedRank
+untouched by r7). New in CI: `check_flow.py` PASSES against
+`flow/v2_9/definition.json` (runAfter integrity, exact concurrency
+table, GUID map, ScriptParameters↔signature); pointed at
+`flow/v2_8/definition.json` as a negative baseline it fails exactly
+the v2.9-shape and concurrency deltas — the GUID and signature
+invariants pass there, confirming the v2.8 FX corrections.

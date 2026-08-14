@@ -48,3 +48,9 @@ stage_r5/
 # r6 gate staging + generated cases
 stage_r6/
 rex_r6_cases.json
+# r7 gate staging + generated runners (check_media.py / check_batch_r7.py)
+stage_r7/
+zte_media.ts
+zte_r7_media.ts
+me_r7.ts
+budget_deck*

@@ -307,6 +307,21 @@ from v2.3 or earlier, do the v2.4 steps first
   column (see `flow/v2_5/CHANGES.md`).
 - **Edges** mint when the LATER doc of an ID-sharing pair
   processes; the graph self-assembles during backfill.
+- **Run telemetry** (v2.9): `Run_summary` reports
+  `library_items_seen= index_rows_seen= after_smoke_filter=
+  processed= errors= ms_extract= ms_classify= ms_writes=
+  ms_related= ms_total= smoke= related_flags=`. The `ms_*` fields
+  are accumulated wall-clock milliseconds across the run's
+  processed docs — divide by `processed=` for per-doc phase
+  averages (extract = download + script; classify = AI prompt +
+  regex; writes = row + sidecar + id/keyword loops; related = the
+  two-phase related pipeline). Catch-path docs contribute partial
+  phase time; `errors=` says how many to discount. Read these
+  before tuning anything further — they exist so optimization is
+  measured, not guessed. Since v2.9 the gate phase does ONE paged
+  Doc Index fetch (`index_rows_seen=`) instead of a per-item
+  lookup, so a mostly-indexed corpus should show the run's
+  wall-clock dominated by `ms_*` phases, not the file walk.
 - **Related documents** (v2.3, overhauled v2.6): each sidecar shows
   its top 5 related docs. Since v2.6 (RelatedRank v2.1) the score
   is `s = id-edges + min(soft, 999)`: every stored Doc Links edge

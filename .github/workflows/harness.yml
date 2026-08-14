@@ -1,6 +1,8 @@
 # Runs the Office Script harness suites on every push/PR (HG-7, r2).
-# Job 1 needs no binary fixtures — just Python + PyYAML + Node 22.
-# Job 2 builds the OOXML fixtures and runs the full format suite.
+# Job 1 needs no binary fixtures — just Python + PyYAML + Node 22;
+# since r7 it also lints the authored flow definition (check_flow.py).
+# Job 2 builds the OOXML fixtures and runs the full format suite,
+# the standing media suite (r7) and the current one-shot batch gate.
 name: harness
 
 on:
@@ -24,6 +26,7 @@ jobs:
       - run: pip install PyYAML
       - run: python3 check_related.py
       - run: python3 check_regex.py
+      - run: python3 check_flow.py
 
   full-format:
     runs-on: ubuntu-latest
@@ -41,4 +44,6 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python3 make_fixtures.py
       - run: python3 check_format.py
+      - run: python3 check_media.py
       - run: python3 render_sample.py
+      - run: python3 check_batch_r7.py
