@@ -1,0 +1,3 @@
+# PAD only parses pasted Robin split on Windows CRLF line endings —
+# keep the desktop-flow sources CRLF in every working tree.
+pad/flow/*.robin.txt text eol=crlf

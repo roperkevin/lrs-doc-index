@@ -87,6 +87,13 @@ keeps the old yaml-on-top layout).
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/CHANGES.md | Test-plan generation release notes | v2.15 |
+| pad/PAD_Setup.md | PAD compute-offload build + deploy guide (Run-script quota workaround) | v1.0 |
+| pad/flow/DocIndexCompute.robin.txt | PAD desktop flow (paste-ready Robin) | v1.0 |
+| pad/runner/run_job.mjs | Node batch runner — executes `scripts/` verbatim, all nine Run-script contracts | v1.0 |
+| pad/runner/xlsx_grid.mjs | xlsx → text grids for WorkbookDump's workbook mock | v1.0 |
+| pad/harness/check_pad_runner.py | PAD runner gate (generated fixtures + wrap.py parity leg; CI) | v1.0 |
+| pad/samples/job.sample.json | Fixture-free smoke job | — |
+| pad/CHANGES.md | PAD offload release notes | v1.0 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,
