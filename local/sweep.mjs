@@ -398,34 +398,21 @@ function yamlList(content, key) {
 const linkText = (entry) =>
   entry.title || titleFromSlug(String(entry.url).split("/").pop().replace(/\.html?$/, "")) || "documentation";
 
-function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
+function docsBlock(toolNames, m, toolLinks, topicLinks) {
+  // v1.22: just the pages. The product-level "overview / essential
+  // vocabulary" links are gone — identical on every doc of that
+  // product, so they were pure repetition (the `products` map stays
+  // in the JSON as crawl seeds). Names are gone too: the page titles
+  // say what they are, and one link per page keeps the block short.
   const lines = [];
-  // URLs already linked by a product line — a tool/topic that lands
-  // on the same page adds nothing
-  const productUrls = new Set();
-  for (const p of products || []) {
-    const links = Array.isArray(m.products?.[p]) ? m.products[p] : [];
-    const parts = [];
-    for (const l of links) {
-      if (!l || !l.url || !l.title) continue;
-      parts.push(`[${l.title}](${l.url})`);
-      productUrls.add(l.url);
-    }
-    if (parts.length) lines.push(`- **${p}** — ${parts.join(" · ")}`);
-  }
-  // ONE line per page: several names legitimately resolve to the same
-  // doc ("offset" / "location offset" / "referent" all describe
-  // storing-referent-and-offset-information), so labels merge instead
-  // of repeating the link.
   const byUrl = new Map();
   const unmatched = [];
   const seen = new Set();
   const addNamed = (name, entry) => {
-    if (!entry?.url || productUrls.has(entry.url)) return;
-    if (!byUrl.has(entry.url)) byUrl.set(entry.url, { entry, labels: [] });
+    if (!entry?.url) return;
     const rec = byUrl.get(entry.url);
-    if (!rec.labels.some((l) => lower(l) === lower(name))) rec.labels.push(name);
-    if (!rec.entry.title && entry.title) rec.entry = entry;
+    if (!rec) byUrl.set(entry.url, entry);
+    else if (!rec.title && entry.title) byUrl.set(entry.url, entry);
   };
   for (const t of toolNames || []) {
     const key = lower(t).trim();
@@ -443,20 +430,10 @@ function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
     seen.add(key);
     addNamed(name, entry);
   }
-  // matched tools/topics as a scannable two-column table: what the
-  // doc mentions, and the page that documents it (real page titles
-  // from the crawler, not a repeated "documentation")
   if (byUrl.size) {
-    if (lines.length) lines.push("");
-    lines.push("| Mentioned | Documentation |", "| --- | --- |");
-    for (const { entry, labels } of byUrl.values()) {
-      const shown = labels
-        .slice()
-        .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0))
-        .slice(0, 3);
-      const more = labels.length > shown.length ? ` +${labels.length - shown.length}` : "";
-      lines.push(`| ${shown.join(" · ")}${more} | [${linkText(entry)}](${entry.url}) |`);
-    }
+    lines.push(
+      [...byUrl.values()].map((e) => `[${linkText(e)}](${e.url})`).join(" · ")
+    );
   }
   // everything with no page match collapses into ONE line of search
   // links instead of a line each
@@ -466,7 +443,7 @@ function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
       .map((t) => `[${t}](${m.searchTemplate.replace("{q}", encodeURIComponent(String(t)))})`);
     const more = unmatched.length > 12 ? ` +${unmatched.length - 12}` : "";
     if (lines.length) lines.push("");
-    lines.push(`_No doc page matched — search:_ ${links.join(" · ")}${more}`);
+    lines.push(`_No page matched:_ ${links.join(" · ")}${more}`);
   }
   if (!lines.length) return "";
   return `${DOCS_BEGIN}\n## Esri documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
@@ -568,6 +545,44 @@ function tidyBody(text) {
     out.push(tight[i]);
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "") + "\n";
+}
+
+/**
+ * compactWhy — shorten RelatedRank's evidence prose for display
+ * (v1.21). The ranker's full string is great for debugging but long
+ * enough that five related entries dominate the sidecar:
+ *
+ *   similar text (0.46) · 5 title words: bit, editing, oid, +2 more ·
+ *   3 filename words: bit, editing, tools · also: same surface
+ *   ->  similar text 0.46 · 5 title words · 3 filename words · same surface
+ *
+ * Token enumerations collapse to their counts, keyword names cap at
+ * two, and the "also:" tail loses its repetition. Applied locally to
+ * the ranked entries before SidecarPatch renders them, so
+ * RelatedRank's own contract (and check_related) is untouched.
+ */
+function compactWhy(why) {
+  const parts = String(why || "").split(" · ");
+  const out = [];
+  for (const raw of parts) {
+    const p = raw.trim();
+    if (!p) continue;
+    let m;
+    if ((m = /^similar text \(([\d.]+)\)$/.exec(p))) {
+      out.push(`similar text ${m[1]}`);
+    } else if ((m = /^(\d+) (title|filename) words?:/.exec(p))) {
+      out.push(`${m[1]} ${m[2]} word${m[1] === "1" ? "" : "s"}`);
+    } else if ((m = /^(\d+) shared keywords?: (.+)$/.exec(p))) {
+      const names = m[2].replace(/, \+\d+ more$/, "").split(", ");
+      const shown = names.slice(0, 2).join(", ");
+      out.push(`${m[1]} shared keyword${m[1] === "1" ? "" : "s"}: ${shown}`);
+    } else if ((m = /^also: (.+)$/.exec(p))) {
+      out.push(m[1].replace(/\bsame /g, "").split(", ").join("/").replace(/^/, "same "));
+    } else {
+      out.push(p);
+    }
+  }
+  return out.join(" · ");
 }
 
 /**
@@ -1090,7 +1105,7 @@ async function main() {
         }
         const content = upsertDocsBlock(
           before,
-          docsBlock(rowProducts, rowTools, docLinks, toolLinks, topicLinks)
+          docsBlock(rowTools, docLinks, toolLinks, topicLinks)
         );
         if (content !== before) writer.writeFile(local, content);
         await rankRelated({
@@ -1558,7 +1573,7 @@ async function indexDoc(ctx) {
   // similarity index all keep the raw text
   const sidecarContent = upsertDocsBlock(
     header + tidyBody(docText),
-    docsBlock(products, ai.tools || [], docLinks, toolLinks, topicLinks)
+    docsBlock(ai.tools || [], docLinks, toolLinks, topicLinks)
   );
   writer.writeFile(localSidecar, sidecarContent);
   const textFileUrl = `${sw.siteUrl}${sidecarFolder}/${sidecarName}`;
@@ -1760,7 +1775,9 @@ async function rankRelated(ctx) {
     op: "sidecarpatch",
     filesJson: [selfFileObj, ...neighborFiles],
     selfId: String(rowId),
-    rankedJson: rank.related || [],
+    // v1.21: evidence prose compacted for display (the ranker's own
+    // output, and the score in the yaml, stay full-fidelity)
+    rankedJson: (rank.related || []).map((r) => ({ ...r, why: compactWhy(r.why) })),
     docsMetaJson: finalDocs,
     selfMetaJson: { doc: rowId, title, url: textFileUrl, file: selfFile.name },
     topN: sw.relatedTopN,
