@@ -160,10 +160,14 @@ class DocPageIndex {
     } catch { /* no inventory — matcher just never matches */ }
     for (const sec in inv) {
       const product = sectionProducts.get(sec) ?? null;
-      for (const url of inv[sec] || []) {
-        const base = String(url).split("/").pop().replace(/\.html?$/, "");
-        const tokens = DocPageIndex.tokensOf(base);
-        if (tokens.length) this.entries.push({ url, product, tokens });
+      for (const raw of inv[sec] || []) {
+        // entries are {url, title} (v1.19 crawler) or a bare url
+        const url = typeof raw === "string" ? raw : raw?.url;
+        if (!url) continue;
+        const title = typeof raw === "object" && raw.title ? String(raw.title) : "";
+        const slug = String(url).split("/").pop().replace(/\.html?$/, "");
+        const tokens = DocPageIndex.tokensOf(slug);
+        if (tokens.length) this.entries.push({ url, title, slug, product, tokens });
       }
     }
   }
@@ -189,14 +193,26 @@ class DocPageIndex {
     return s.length >= 4 && l.startsWith(s);
   }
 
-  /** Best page for the name, or null. minCov = required fraction of
-   *  the NAME's tokens the page must cover (tools 0.6, topics 1.0). */
+  /**
+   * Best page for the name as {url, title}, or null. minCov =
+   * required fraction of the NAME's tokens the page must cover
+   * (1.0 for both tools and topics — partial matches proved
+   * actively misleading; tools still fall through to probe/search).
+   *
+   * AMBIGUITY GUARD: when several DIFFERENT pages tie for best, the
+   * name is too generic to link — "route" matches extend-a-route,
+   * rename-a-route, retire-routes… equally, and picking one is
+   * arbitrary noise, so nothing is linked. A tie between the SAME
+   * slug in different product trees is not ambiguous: it's the same
+   * page in two products, resolved by the doc's product order.
+   */
   match(name, products, minCov) {
     const nt = DocPageIndex.tokensOf(name);
     if (!nt.length || !this.entries.length) return null;
-    const prods = new Set(products || []);
-    let best = null;
+    const prods = products || [];
+    const prodSet = new Set(prods);
     let bestScore = -1;
+    let tied = [];
     for (const e of this.entries) {
       let matched = 0;
       for (const t of nt) {
@@ -207,14 +223,24 @@ class DocPageIndex {
       if (cov < minCov) continue;
       const jac = matched / (nt.length + e.tokens.length - matched);
       let score = cov + jac * 0.5;
-      if (e.product && prods.size) score += prods.has(e.product) ? 0.5 : -0.25;
+      if (e.product && prodSet.size) score += prodSet.has(e.product) ? 0.5 : -0.25;
       score -= e.tokens.length * 0.001;
-      if (score > bestScore) {
+      if (score > bestScore + 1e-9) {
         bestScore = score;
-        best = e;
+        tied = [e];
+      } else if (Math.abs(score - bestScore) <= 1e-9) {
+        tied.push(e);
       }
     }
-    return best ? best.url : null;
+    if (!tied.length) return null;
+    if (new Set(tied.map((e) => e.slug)).size > 1) return null; // ambiguous
+    // same page across product trees — the doc's first product wins
+    tied.sort((a, b) => {
+      const ai = prods.indexOf(a.product);
+      const bi = prods.indexOf(b.product);
+      return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || (a.url < b.url ? -1 : 1);
+    });
+    return { url: tied[0].url, title: tied[0].title };
   }
 }
 
@@ -252,7 +278,7 @@ class ToolLinkResolver {
    *  weak topic link is noise; absence is fine). */
   topicLink(name, products) {
     const curated = this.curated.get(lower(name).trim());
-    if (curated) return curated;
+    if (curated) return { url: curated, title: "" };
     return this.pageIndex ? this.pageIndex.match(name, products, 1.0) : null;
   }
 
@@ -277,17 +303,19 @@ class ToolLinkResolver {
   async resolve(tool, products) {
     const key = lower(tool).trim();
     const curated = this.curated.get(key);
-    if (curated) return curated;
+    if (curated) return { url: curated, title: "" };
     // the crawled inventory beats slug-guessing: best token match
-    // against pages that actually exist
-    const matched = this.pageIndex ? this.pageIndex.match(tool, products, 0.6) : null;
+    // against pages that actually exist. FULL coverage required —
+    // at 0.6 "Add Point Events" matched "Add calibration points"
+    // (2 of 3 tokens), which is worse than no link at all.
+    const matched = this.pageIndex ? this.pageIndex.match(tool, products, 1.0) : null;
     if (matched) return matched;
     if (!this.enabled) return null;
     const slug = toolSlug(tool);
     if (!slug) return null;
     const hit = this.cache[slug];
     if (hit) {
-      if (hit.url) return hit.url;
+      if (hit.url) return { url: hit.url, title: "" };
       const age = Date.now() - Date.parse(hit.checked || 0);
       if (age < 30 * 86400000) return null; // fresh negative
     }
@@ -304,7 +332,7 @@ class ToolLinkResolver {
       if (res.ok) {
         this.cache[slug] = { url, checked: new Date().toISOString() };
         this._save();
-        return url;
+        return { url, title: "" };
       }
       if (res.status !== 404) all404 = false;
     }
@@ -324,6 +352,39 @@ const DOCS_END = "<!-- docs:end -->";
  *  tools map knows them (case-insensitive) and a templated search
  *  link otherwise — complete coverage with zero authoring, upgrade
  *  any tool to a direct link by adding one JSON line. */
+const DOC_ACRONYMS = new Set([
+  "lrs", "oid", "gp", "un", "api", "rest", "sql", "xml", "json", "csv",
+  "url", "3d", "2d", "apr", "rh", "cp", "id", "ui",
+]);
+
+/** Readable link text from a slug when the crawler had no <title>:
+ *  "create-and-modify-an-lrs-network" -> "Create and modify an LRS network" */
+function titleFromSlug(slug) {
+  const words = String(slug).split(/[-_]+/).filter(Boolean);
+  if (!words.length) return "";
+  return words
+    .map((w, i) => (DOC_ACRONYMS.has(w) ? w.toUpperCase() : i === 0 ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/** A list field from the sidecar's own metadata yaml (`tools: [...]`,
+ *  `keywords: [...]`). At rerank time these carry the ORIGINAL casing
+ *  the LLM produced ("Create LRS Network from existing dataset"),
+ *  where the keyword junctions only hold lowercased canonical titles. */
+function yamlList(content, key) {
+  const m = new RegExp(`^${key}:\\s*(\\[.*\\])\\s*$`, "m").exec(String(content));
+  if (!m) return [];
+  try {
+    const v = JSON.parse(m[1]);
+    return Array.isArray(v) ? v.filter((x) => typeof x === "string" && x.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+const linkText = (entry) =>
+  entry.title || titleFromSlug(String(entry.url).split("/").pop().replace(/\.html?$/, "")) || "documentation";
+
 function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
   const lines = [];
   // URLs already linked by a product line — a tool/topic that lands
@@ -344,48 +405,58 @@ function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
   // storing-referent-and-offset-information), so labels merge instead
   // of repeating the link.
   const byUrl = new Map();
-  const searchLines = [];
+  const unmatched = [];
   const seen = new Set();
-  const addNamed = (name, url) => {
-    if (productUrls.has(url)) return;
-    if (!byUrl.has(url)) byUrl.set(url, []);
-    const labels = byUrl.get(url);
-    if (!labels.some((l) => lower(l) === lower(name))) labels.push(name);
+  const addNamed = (name, entry) => {
+    if (!entry?.url || productUrls.has(entry.url)) return;
+    if (!byUrl.has(entry.url)) byUrl.set(entry.url, { entry, labels: [] });
+    const rec = byUrl.get(entry.url);
+    if (!rec.labels.some((l) => lower(l) === lower(name))) rec.labels.push(name);
+    if (!rec.entry.title && entry.title) rec.entry = entry;
   };
   for (const t of toolNames || []) {
     const key = lower(t).trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const direct = toolLinks?.get(t);
-    if (direct) {
-      addNamed(t, direct);
-    } else if (m.searchTemplate) {
-      searchLines.push(
-        `- **${t}** — [search Esri docs](${m.searchTemplate.replace("{q}", encodeURIComponent(String(t)))})`
-      );
-    }
+    if (direct) addNamed(t, direct);
+    else if (m.searchTemplate) unmatched.push(t);
   }
   // topic keywords: rendered only on a strong inventory match — no
   // search fallback (a weak topic link is noise)
-  for (const [name, url] of topicLinks || []) {
+  for (const [name, entry] of topicLinks || []) {
     const key = lower(name).trim();
-    if (!url || !key || seen.has(key)) continue;
+    if (!entry?.url || !key || seen.has(key)) continue;
     seen.add(key);
-    addNamed(name, url);
+    addNamed(name, entry);
   }
-  for (const [url, labels] of byUrl) {
-    // most specific label first; cap the list so a page matched by
-    // many near-synonyms stays one readable line
-    const shown = labels
-      .slice()
-      .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0))
-      .slice(0, 3);
-    const more = labels.length > shown.length ? ` +${labels.length - shown.length}` : "";
-    lines.push(`- **${shown.join(" · ")}${more}** — [documentation](${url})`);
+  // matched tools/topics as a scannable two-column table: what the
+  // doc mentions, and the page that documents it (real page titles
+  // from the crawler, not a repeated "documentation")
+  if (byUrl.size) {
+    if (lines.length) lines.push("");
+    lines.push("| Mentioned | Documentation |", "| --- | --- |");
+    for (const { entry, labels } of byUrl.values()) {
+      const shown = labels
+        .slice()
+        .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0))
+        .slice(0, 3);
+      const more = labels.length > shown.length ? ` +${labels.length - shown.length}` : "";
+      lines.push(`| ${shown.join(" · ")}${more} | [${linkText(entry)}](${entry.url}) |`);
+    }
   }
-  lines.push(...searchLines);
+  // everything with no page match collapses into ONE line of search
+  // links instead of a line each
+  if (unmatched.length) {
+    const links = unmatched
+      .slice(0, 12)
+      .map((t) => `[${t}](${m.searchTemplate.replace("{q}", encodeURIComponent(String(t)))})`);
+    const more = unmatched.length > 12 ? ` +${unmatched.length - 12}` : "";
+    if (lines.length) lines.push("");
+    lines.push(`_No doc page matched — search:_ ${links.join(" · ")}${more}`);
+  }
   if (!lines.length) return "";
-  return `${DOCS_BEGIN}\n## Product documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
+  return `${DOCS_BEGIN}\n## Esri documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
 }
 
 /** Insert/replace/remove the marked docs block in sidecar content.
@@ -845,13 +916,18 @@ async function main() {
         // sidecars gain/refresh links in the same pass
         const before = fs.readFileSync(local, "utf8");
         const rowProducts = String(r.Products || "").split("; ").filter(Boolean);
-        const rowTools = toolsOf(r.ID);
+        // prefer the sidecar's own yaml (original casing) over the
+        // lowercased junction titles for display
+        const yTools = yamlList(before, "tools");
+        const yKeywords = yamlList(before, "keywords");
+        const rowTools = yTools.length ? yTools : toolsOf(r.ID);
+        const rowTopics = yKeywords.length ? yKeywords : topicsOf(r.ID);
         const toolLinks = new Map();
         for (const t of rowTools) {
           toolLinks.set(t, await linkResolver.resolve(t, rowProducts));
         }
         const topicLinks = new Map();
-        for (const k of topicsOf(r.ID)) {
+        for (const k of rowTopics) {
           topicLinks.set(k, linkResolver.topicLink(k, rowProducts));
         }
         const content = upsertDocsBlock(

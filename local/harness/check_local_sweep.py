@@ -285,8 +285,9 @@ def make_handler(state, lib_guid, src_files):
             crawl_pages = {
                 "/docsec2/": '<a href="x.html">x</a> <a href="/docsec2/y.html">y</a>'
                              ' <a href="https://elsewhere.example/n.html">out</a>',
-                "/docsec2/x.html": '<a href="y.html#f">y</a> <a href="../escape.html">esc</a>',
-                "/docsec2/y.html": "<p>leaf</p>",
+                "/docsec2/x.html": '<title>Page X | ArcGIS Pro documentation</title>'
+                                   '<a href="y.html#f">y</a> <a href="../escape.html">esc</a>',
+                "/docsec2/y.html": "<title>Page Y</title><p>leaf</p>",
             }
             if p in crawl_pages:
                 enc = crawl_pages[p].encode()
@@ -452,8 +453,11 @@ def main():
             "targetRelease": "3.8",
             "tools": ["Reassign Routes", "Add Point Events", "Realign Route", "Extend Route"],
             # "offset" and "referent" both resolve to the SAME page
-            # (the live bug) — the block must merge, not duplicate
-            "keywords": ["locks", "acquisition", "offset", "referent"]},
+            # (the live bug) — the block must merge, not duplicate.
+            # "calibration point" matches two pages equally — the
+            # ambiguity guard must drop it rather than pick one.
+            "keywords": ["locks", "acquisition", "offset", "referent",
+                         "calibration point"]},
         "Beta Story.pptx": {
             "title": "Beta Story", "docKind": "User Story", "surface": "Pro",
             "summary": "A story about locks.", "pe": "", "dev": "",
@@ -499,10 +503,20 @@ def main():
     # deliberately absent so the probe path stays exercised
     with open(os.path.join(work_dir, "esri_doc_pages.json"), "w") as f:
         json.dump({base + "/docsec/": [
-            base + "/docsec/extend-a-route.html",
-            base + "/docsec/release-locks.html",
-            base + "/docsec/lrs-locks-table.html",
-            base + "/docsec/storing-referent-and-offset-information-for-event-location.html",
+            {"url": base + "/docsec/extend-a-route.html",
+             "title": "Extend a route"},
+            {"url": base + "/docsec/release-locks.html",
+             "title": "Release locks"},
+            {"url": base + "/docsec/lrs-locks-table.html",
+             "title": "LRS Locks table"},
+            {"url": base + "/docsec/storing-referent-and-offset-information-for-event-location.html",
+             "title": "Storing referent and offset information for event location"},
+            # two equally-good pages for a bare "calibration point" —
+            # the ambiguity guard must refuse to pick one
+            {"url": base + "/docsec/add-calibration-points.html",
+             "title": "Add calibration points"},
+            {"url": base + "/docsec/delete-calibration-points.html",
+             "title": "Delete calibration points"},
         ]}, f)
 
     cfg = {
@@ -682,15 +696,16 @@ def main():
     check("sidecar body appended", "Alpha test plan covering lock acquisition" in sc)
     check("product detected on the row",
           alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
-    check("sidecar carries the product-documentation links block",
-          "## Product documentation" in sc
+    check("sidecar carries the documentation block",
+          "## Esri documentation" in sc
           and "arcgis-roads-and-highways" in sc
           and "<!-- docs:begin -->" in sc and "<!-- docs:end -->" in sc,
           sc[-600:])
     check("curated tool gets a direct doc link",
           "reassign-routes.html" in sc, sc[-700:])
-    check("unmapped tool falls back to a search link",
-          "search Esri docs" in sc and "Add%20Point%20Events" in sc, sc[-700:])
+    check("unmatched tools collapse into ONE search line",
+          sc.count("_No doc page matched — search:_") == 1
+          and "Add%20Point%20Events" in sc, sc[-900:])
     check("probed tool got a direct link (page exists)",
           "/docs/realign-route.html" in sc, sc[-800:])
     check("probe results cached",
@@ -703,6 +718,13 @@ def main():
     check("same page linked once, labels merged",
           docs_sec.count("storing-referent-and-offset") == 1
           and "referent · offset" in docs_sec, docs_sec)
+    check("matched links render as a table with real page titles",
+          "| Mentioned | Documentation |" in docs_sec
+          and "[Extend a route](" in docs_sec
+          and "[Storing referent and offset information for event location](" in docs_sec,
+          docs_sec)
+    check("ambiguous name linked to nothing (two equal pages)",
+          "calibration-points.html" not in docs_sec, docs_sec)
     check("no duplicate page links anywhere in the block",
           len(re.findall(r"\]\((http[^)]+)\)", docs_sec)) ==
           len(set(re.findall(r"\]\((http[^)]+)\)", docs_sec))), docs_sec)
@@ -987,7 +1009,7 @@ def main():
           and "arcgis-roads-and-highways" in sc_rr,
           f"count={sc_rr.count('<!-- docs:begin -->')}")
     check("rerank rebuilt tool links from the junctions",
-          "reassign-routes.html" in sc_rr and "search Esri docs" in sc_rr,
+          "reassign-routes.html" in sc_rr and "_No doc page matched" in sc_rr,
           sc_rr[-700:])
     check("probe cache prevented re-probing across runs",
           state.probe_paths.count("/docs/realign-route.html") == 1
@@ -1005,12 +1027,18 @@ def main():
     )
     check("doc crawl exit 0", proc.returncode == 0, proc.stderr[-300:])
     inv = json.load(open(pages_out))
+    urls_of = lambda sec: sorted(
+        e["url"] if isinstance(e, dict) else e for e in inv.get(sec, []))
     check("sitemap-backed section enumerated (out-of-section excluded)",
-          sorted(inv.get(base + "/docsec/", [])) ==
+          urls_of(base + "/docsec/") ==
           [base + "/docsec/a.html", base + "/docsec/b.html"], str(inv))
     check("crawl fallback enumerated and stayed in section",
-          set(inv.get(base + "/docsec2/", [])) ==
+          set(urls_of(base + "/docsec2/")) ==
           {base + "/docsec2/x.html", base + "/docsec2/y.html"}, str(inv))
+    titled = [e for e in inv.get(base + "/docsec2/", [])
+              if isinstance(e, dict) and e.get("title")]
+    check("crawled pages carry their real <title>",
+          any(e["title"] == "Page X" for e in titled), str(titled))
     check("crawl printed the urls to stdout",
           base + "/docsec/a.html" in proc.stdout
           and base + "/docsec2/y.html" in proc.stdout, proc.stdout[-300:])
