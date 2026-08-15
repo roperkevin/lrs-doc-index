@@ -711,7 +711,7 @@ def main():
     spec_sc = open(spec_sc_path).read() if spec_sc_path else ""
     notes_id = int(by_name["notes.txt"][0])
     check("body-sim relates spec.pdf to notes.txt (no shared keyword)",
-          f"doc{notes_id}" in spec_sc and "similar text (" in spec_sc,
+          f"doc{notes_id}" in spec_sc and "similar text " in spec_sc,
           spec_sc[-500:])
 
     # status page (live runs only, sidecar-library root)
@@ -740,13 +740,15 @@ def main():
           alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
     check("sidecar carries the documentation block",
           "## Esri documentation" in sc
-          and "arcgis-roads-and-highways" in sc
           and "<!-- docs:begin -->" in sc and "<!-- docs:end -->" in sc,
           sc[-600:])
+    check("generic product-level links are gone",
+          "arcgis-roads-and-highways/overview" not in sc
+          and "Essential vocabulary" not in sc, sc[-600:])
     check("curated tool gets a direct doc link",
           "reassign-routes.html" in sc, sc[-700:])
     check("unmatched tools collapse into ONE search line",
-          sc.count("_No doc page matched — search:_") == 1
+          sc.count("_No page matched:_") == 1
           and "Add%20Point%20Events" in sc, sc[-900:])
     check("probed tool got a direct link (page exists)",
           "/docs/realign-route.html" in sc, sc[-800:])
@@ -757,11 +759,10 @@ def main():
     check("strong topic match got a doc link",
           "release-locks.html" in sc, sc[-900:])
     docs_sec = sc.split("<!-- docs:begin -->")[-1].split("<!-- docs:end -->")[0]
-    check("same page linked once, labels merged",
-          docs_sec.count("storing-referent-and-offset") == 1
-          and "referent · offset" in docs_sec, docs_sec)
-    check("matched links render as a table with real page titles",
-          "| Mentioned | Documentation |" in docs_sec
+    check("two keywords hitting one page link it once",
+          docs_sec.count("storing-referent-and-offset") == 1, docs_sec)
+    check("links render inline with real page titles, no name column",
+          "| Mentioned |" not in docs_sec
           and "[Extend a route](" in docs_sec
           and "[Storing referent and offset information for event location](" in docs_sec,
           docs_sec)
@@ -772,6 +773,15 @@ def main():
           len(set(re.findall(r"\]\((http[^)]+)\)", docs_sec))), docs_sec)
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
+    rel_region = sc.split("<!-- related:begin -->")[-1].split("<!-- related:end -->")[0]
+    check("related evidence is compact (no token enumerations)",
+          "title words:" not in rel_region and "filename words:" not in rel_region
+          and "also: same" not in rel_region
+          and re.search(r"similar text \d\.\d\d", rel_region) is not None,
+          rel_region)
+    check("compact evidence keeps the signal names",
+          re.search(r"same [a-z]+(/[a-z]+)*", rel_region) is not None,
+          rel_region)
     check("alpha related region patched (names beta)",
           f"doc{beta_id}" in sc.split("<!-- related:begin -->")[-1]
           or f"doc{beta_id}" in sc, sc[-500:])
@@ -1062,10 +1072,10 @@ def main():
           f"doc{beta_id}" in sc_rr, sc_rr[-400:])
     check("rerank upsert kept exactly one docs block",
           sc_rr.count("<!-- docs:begin -->") == 1
-          and "arcgis-roads-and-highways" in sc_rr,
+          and "[Extend a route](" in sc_rr,
           f"count={sc_rr.count('<!-- docs:begin -->')}")
     check("rerank rebuilt tool links from the junctions",
-          "reassign-routes.html" in sc_rr and "_No doc page matched" in sc_rr,
+          "reassign-routes.html" in sc_rr and "_No page matched:_" in sc_rr,
           sc_rr[-700:])
     check("probe cache prevented re-probing across runs",
           state.probe_paths.count("/docs/realign-route.html") == 1
@@ -1122,7 +1132,7 @@ def main():
           and base + "/docsec2/y.html" in proc.stdout, proc.stdout[-300:])
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
-          f"doc{notes_id}" in spec_rr and "similar text (" in spec_rr,
+          f"doc{notes_id}" in spec_rr and "similar text " in spec_rr,
           spec_rr[-400:])
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------

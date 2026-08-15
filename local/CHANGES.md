@@ -1,5 +1,30 @@
 # Local sweep — release notes
 
+## v1.21 (2026-08-15)
+
+**Both link sections cut down** — five related entries plus a
+product-documentation table were dominating sidecars.
+
+- **Compact relatedness evidence** (`compactWhy`): token
+  enumerations collapse to counts, keyword names cap at two, and the
+  `also:` tail loses its repetition —
+  `similar text (0.46) · 5 title words: bit, editing, oid, +2 more ·
+  3 filename words: bit, editing, tools · also: same kind, same
+  surface` becomes `similar text 0.46 · 5 title words · 3 filename
+  words · same kind/surface`. Applied to the ranked entries in the
+  sweep before SidecarPatch renders them, so RelatedRank's contract
+  and `check_related` are untouched; the yaml keeps full scores.
+- **Documentation block is just the pages**: the "Mentioned" column
+  is gone (page titles already say what they are) and the
+  product-level overview/vocabulary links are gone (identical on
+  every doc of that product — pure repetition). What remains is one
+  inline `·`-separated row of the specific pages this doc's tools
+  and topics resolve to, plus the single `_No page matched:_` line.
+  The `products` map stays in `esri_doc_links.json` as crawl seeds.
+
+`--reformat` doesn't rebuild these (they live above the seam) —
+`--rerank` refreshes both. **Gate PASSED 2026-08-15 (128/128).**
+
 ## v1.20 (2026-08-15)
 
 **Sidecar bodies are legible** — the extracted document text was
