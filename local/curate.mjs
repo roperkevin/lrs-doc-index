@@ -67,10 +67,11 @@ function loadConfig(argv) {
     else if (a === "--live") args.flags.live = true;
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--models") args.flags.models = true;
+    else if (a === "--drain") args.flags.drain = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--models]");
+    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--models|--drain]");
   }
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   cfg.llm = cfg.llm || {};
@@ -103,6 +104,7 @@ function loadConfig(argv) {
   if (args.flags.live) cfg.curation.dryRun = false;
   if (args.flags.dry) cfg.curation.dryRun = true;
   cfg._models = !!args.flags.models;
+  cfg._drain = !!args.flags.drain;
   return cfg;
 }
 
@@ -129,15 +131,27 @@ async function listModels(cfg) {
 async function main() {
   const cfg = loadConfig(process.argv.slice(2));
   if (cfg._models) return listModels(cfg);
-  const sp = cfg.sharePoint;
-  const cur = cfg.curation;
-  const dry = !!cur.dryRun;
   if (!cfg.llm.curationModelId) {
     throw new Error("llm.curationModelId is not set — run with --models to find the LRS Keyword Curation model GUID");
   }
-
   const graph = new GraphClient(cfg.graph);
-  const siteId = await graph.siteId(sp.hostname, sp.sitePath);
+  const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
+  // --drain: repeat full passes (each re-fetches the shrunken
+  // vocabulary) until a pass writes nothing. Terminates structurally:
+  // every written proposal removes its alias from future eligibility
+  // (merged in autoApprove mode; CurationStatus-blocked in manual).
+  const maxPasses = cfg._drain && !cfg.curation.dryRun ? 20 : 1;
+  for (let pass = 1; pass <= maxPasses; pass++) {
+    if (cfg._drain) process.stdout.write(`--- drain pass ${pass}\n`);
+    const r = await runCuration(cfg, graph, siteId);
+    if (r.written === 0) break;
+  }
+}
+
+async function runCuration(cfg, graph, siteId) {
+  const sp = cfg.sharePoint;
+  const cur = cfg.curation;
+  const dry = !!cur.dryRun;
   const listId = sp.lists.keywords;
   const plan = [];
   const patch = async (id, fields, what) => {
@@ -300,6 +314,7 @@ async function main() {
   process.stdout.write(JSON.stringify({ line, dry_run: dry, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) process.stdout.write(`dry run: ${plan.length} planned writes recorded in ${logFile}\n`);
+  return { written, merged, dropped, cleared };
 }
 
 main().catch((e) => {

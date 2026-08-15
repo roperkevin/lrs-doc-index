@@ -847,6 +847,20 @@ def main():
           "MERGED 'gantt charts' → 'gantt chart'" in (state.digest or "")
           and "MERGED (pending) 'wp' → 'work package'" in (state.digest or "")
           and "AUTOMATICALLY" in (state.digest or ""), (state.digest or "")[:400])
+    # --drain: passes repeat until one writes nothing. The mock returns
+    # the SAME proposals every pass — pass 1 merges wbs, pass 2 finds
+    # the alias already merged (guard drops it), writes 0, stops.
+    CUR["wbs"] = state.seed(LISTS["keywords"], {"Title": "wbs", "Kind": "topic"})
+    CUR["wbsfull"] = state.seed(LISTS["keywords"], {"Title": "work breakdown structure", "Kind": "topic"})
+    state.cur_response = {"proposals": [
+        {"alias": "wbs", "canonical": "work breakdown structure", "why": "abbreviation"},
+    ]}
+    proc = run_curate(cfg_path, ["--live", "--drain"])
+    check("drain stops when a pass writes nothing",
+          proc.returncode == 0
+          and "drain pass 2" in proc.stdout and "drain pass 3" not in proc.stdout
+          and kwrows[CUR["wbs"]].get("CanonicalRefLookupId") == int(CUR["wbsfull"]),
+          proc.stdout[-400:])
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")

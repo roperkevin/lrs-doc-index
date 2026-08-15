@@ -1,5 +1,20 @@
 # Local sweep — release notes
 
+## v1.12 (2026-08-15)
+
+**Backlog draining** for curation. The owner asked for a 500-proposal
+cap; a single reply that size would blow the model's output budget
+and truncate to zero parsed proposals, so the same end is reached in
+batches: curation prompt **v1.1** raises the per-reply cap 20 → 50
+(re-paste required — the instruction lives in the tenant prompt
+text, not config), and new `curate.mjs --drain` repeats full passes
+(each re-fetching the shrunken vocabulary) until a pass writes
+nothing, hard-capped at 20 passes. Termination is structural: every
+written proposal removes its alias from future eligibility (merged
+in autoApprove mode, CurationStatus-blocked in manual). Gate: static
+mock proposals — pass 1 merges, pass 2 finds the alias merged and
+stops. **Gate PASSED 2026-08-15 (89/89).**
+
 ## v1.11.1 (2026-08-15)
 
 `curation.autoApprove` (default **false** — the flow's

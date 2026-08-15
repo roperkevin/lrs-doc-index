@@ -1,3 +1,18 @@
+# CurationPromptVersion v1.1 — per-reply cap 20 → 50 (2026-08-15)
+
+For `curate.mjs --drain` (local/CHANGES v1.12): the backlog drains in
+50-proposal batches across repeated passes rather than one giant
+reply (which would truncate past the model's output budget and parse
+to zero). Text change is the single "At most 20 → 50" line. **Paste
+pending**: re-paste `prompts/KeywordCuration_Prompt.md` into the
+tenant "LRS Keyword Curation" prompt (same GUID), set
+`curation.promptVersion: "v1.1"` + `curation.maxProposals: 50` in
+config, record the paste date here.
+
+| Date | Tenant prompt | CurationPromptVersion |
+|---|---|---|
+| — (pending) | LRS Keyword Curation (`173b40ef-…`) | v1.1 |
+
 # Curation DEPLOYED locally — handover complete (2026-08-15)
 
 Deployment record:
