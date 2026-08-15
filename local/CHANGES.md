@@ -1,5 +1,19 @@
 # Local sweep — release notes
 
+## v1.18.1 (2026-08-15)
+
+Dedupe fix, found live: several keywords legitimately resolve to the
+same page ("offset" / "location offset" / "referent" all describe
+`storing-referent-and-offset-information-for-event-location`), and
+the block rendered a line per keyword — the same link three times.
+Now **one line per page**: labels merge (most specific first, capped
+at 3 with a `+N` tail), a tool/topic whose page is already covered
+by a product link is dropped entirely, and search-fallback lines
+sort last so known links lead. Gate: the live case reproduced as a
+fixture — two keywords, one page, merged labels — plus a
+no-duplicate-URLs-anywhere assertion over the whole block.
+**Gate PASSED 2026-08-15 (112/112).**
+
 ## v1.18 (2026-08-15)
 
 **Inventory matching** — tool/topic links now resolve against the

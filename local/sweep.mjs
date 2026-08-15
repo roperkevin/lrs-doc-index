@@ -326,23 +326,41 @@ const DOCS_END = "<!-- docs:end -->";
  *  any tool to a direct link by adding one JSON line. */
 function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
   const lines = [];
+  // URLs already linked by a product line — a tool/topic that lands
+  // on the same page adds nothing
+  const productUrls = new Set();
   for (const p of products || []) {
     const links = Array.isArray(m.products?.[p]) ? m.products[p] : [];
-    const parts = links
-      .filter((l) => l && l.url && l.title)
-      .map((l) => `[${l.title}](${l.url})`);
+    const parts = [];
+    for (const l of links) {
+      if (!l || !l.url || !l.title) continue;
+      parts.push(`[${l.title}](${l.url})`);
+      productUrls.add(l.url);
+    }
     if (parts.length) lines.push(`- **${p}** — ${parts.join(" · ")}`);
   }
+  // ONE line per page: several names legitimately resolve to the same
+  // doc ("offset" / "location offset" / "referent" all describe
+  // storing-referent-and-offset-information), so labels merge instead
+  // of repeating the link.
+  const byUrl = new Map();
+  const searchLines = [];
   const seen = new Set();
+  const addNamed = (name, url) => {
+    if (productUrls.has(url)) return;
+    if (!byUrl.has(url)) byUrl.set(url, []);
+    const labels = byUrl.get(url);
+    if (!labels.some((l) => lower(l) === lower(name))) labels.push(name);
+  };
   for (const t of toolNames || []) {
     const key = lower(t).trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     const direct = toolLinks?.get(t);
     if (direct) {
-      lines.push(`- **${t}** — [documentation](${direct})`);
+      addNamed(t, direct);
     } else if (m.searchTemplate) {
-      lines.push(
+      searchLines.push(
         `- **${t}** — [search Esri docs](${m.searchTemplate.replace("{q}", encodeURIComponent(String(t)))})`
       );
     }
@@ -353,8 +371,19 @@ function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
     const key = lower(name).trim();
     if (!url || !key || seen.has(key)) continue;
     seen.add(key);
-    lines.push(`- **${name}** — [documentation](${url})`);
+    addNamed(name, url);
   }
+  for (const [url, labels] of byUrl) {
+    // most specific label first; cap the list so a page matched by
+    // many near-synonyms stays one readable line
+    const shown = labels
+      .slice()
+      .sort((a, b) => b.length - a.length || (a < b ? -1 : a > b ? 1 : 0))
+      .slice(0, 3);
+    const more = labels.length > shown.length ? ` +${labels.length - shown.length}` : "";
+    lines.push(`- **${shown.join(" · ")}${more}** — [documentation](${url})`);
+  }
+  lines.push(...searchLines);
   if (!lines.length) return "";
   return `${DOCS_BEGIN}\n## Product documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
 }

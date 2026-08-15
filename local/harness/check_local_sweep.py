@@ -451,7 +451,9 @@ def main():
             "summary": "Covers lock acquisition.", "pe": "Claire Wang", "dev": "",
             "targetRelease": "3.8",
             "tools": ["Reassign Routes", "Add Point Events", "Realign Route", "Extend Route"],
-            "keywords": ["locks", "acquisition"]},
+            # "offset" and "referent" both resolve to the SAME page
+            # (the live bug) — the block must merge, not duplicate
+            "keywords": ["locks", "acquisition", "offset", "referent"]},
         "Beta Story.pptx": {
             "title": "Beta Story", "docKind": "User Story", "surface": "Pro",
             "summary": "A story about locks.", "pe": "", "dev": "",
@@ -500,6 +502,7 @@ def main():
             base + "/docsec/extend-a-route.html",
             base + "/docsec/release-locks.html",
             base + "/docsec/lrs-locks-table.html",
+            base + "/docsec/storing-referent-and-offset-information-for-event-location.html",
         ]}, f)
 
     cfg = {
@@ -696,6 +699,13 @@ def main():
           "extend-a-route.html" in sc, sc[-900:])
     check("strong topic match got a doc link",
           "release-locks.html" in sc, sc[-900:])
+    docs_sec = sc.split("<!-- docs:begin -->")[-1].split("<!-- docs:end -->")[0]
+    check("same page linked once, labels merged",
+          docs_sec.count("storing-referent-and-offset") == 1
+          and "referent · offset" in docs_sec, docs_sec)
+    check("no duplicate page links anywhere in the block",
+          len(re.findall(r"\]\((http[^)]+)\)", docs_sec)) ==
+          len(set(re.findall(r"\]\((http[^)]+)\)", docs_sec))), docs_sec)
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     check("alpha related region patched (names beta)",
