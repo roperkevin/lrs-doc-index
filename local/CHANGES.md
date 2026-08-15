@@ -1,5 +1,30 @@
 # Local sweep — release notes
 
+## v1.10 (2026-08-15)
+
+Quick-wins batch:
+
+- **Oversize cap 3.5 MB → 50 MB** (`sweep.oversizeBytes`). The old
+  cap was a Power Automate/Office Scripts payload limit; locally it's
+  only a memory/time guard. Big decks — often the richest docs — now
+  index instead of skipping; previously-stamped oversize Skips
+  reprocess as the backfill/modification triggers reach them. LLM
+  input stays bounded by `textCap` regardless of file size.
+- **HTML lane** — the `htmltotext` ExtractionLane the schema always
+  reserved but no flow version implemented: `.html`/`.htm` files are
+  read locally, tags/scripts/styles stripped and entities decoded
+  (zero-dependency), and run the full pipeline.
+- **Error-streak counter** — the status page's Error-lane table gains
+  a "Nights stuck" column (consecutive full runs in the lane,
+  persisted in `work/error-streaks.json`); the action line calls out
+  docs stuck 3+ nights. Smoke (`--only`) runs display but don't
+  advance streaks, since they don't retry the lane.
+
+Gate: guide.html fixture (script/style/entity content) proven
+Indexed with lane `htmltotext`, tags stripped and `&amp;` decoded in
+TextPreview; streak proven advancing to 2 on the idempotency leg's
+full rerun. **Gate PASSED 2026-08-15 (74/74).**
+
 ## v1.9 (2026-08-15)
 
 **Relatedness upgrade** (improvement plan follow-on): three new
