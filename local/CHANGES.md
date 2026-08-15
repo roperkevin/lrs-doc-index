@@ -1,5 +1,41 @@
 # Local sweep — release notes
 
+## v1.19 (2026-08-15)
+
+**Documentation block, readable** — the live output was 20 flat
+bullets, every link labelled "documentation", several of them
+arbitrary. Five changes:
+
+- **Real page titles as link text.** `doc_crawl` v1.2 captures each
+  page's `<title>` (minus the site suffix) into the inventory as
+  `{url, title}` entries; the sidecar renders
+  `[Storing referent and offset information for event location](…)`
+  instead of `[documentation](…)`. Bare-URL inventories still work,
+  falling back to a slug-derived title with acronym casing
+  (`create-and-modify-an-lrs-network` → "Create and modify an LRS
+  network").
+- **A table, not a bullet wall.** Product links stay as short lines;
+  matched tools/topics render as a two-column
+  `| Mentioned | Documentation |` table.
+- **One collapsed search line.** Unmatched tools no longer get a
+  line each — they join a single `_No doc page matched — search:_`
+  line (capped at 12 + `+N`), sorted last so real links lead.
+- **Ambiguity guard.** When several DIFFERENT pages tie for best
+  match, nothing is linked: "route" matched extend-a-route /
+  rename-a-route / retire-routes equally, and picking one was noise.
+  A tie between the same slug in two product trees is resolved by
+  the doc's product order, not dropped.
+- **Full-coverage matching for tools too** (was 0.6): "Add Point
+  Events" was matching "Add calibration points" on 2 of 3 tokens.
+  Tools still fall through to probe → search.
+- Rerank now reads the sidecar's own `tools:`/`keywords:` yaml for
+  labels, so names keep their original casing ("Create LRS Network
+  from existing dataset", not the lowercased junction title).
+
+Section heading renamed `## Product documentation` →
+`## Esri documentation` (it covers tools and topics now).
+**Gate PASSED 2026-08-15 (115/115).**
+
 ## v1.18.1 (2026-08-15)
 
 Dedupe fix, found live: several keywords legitimately resolve to the

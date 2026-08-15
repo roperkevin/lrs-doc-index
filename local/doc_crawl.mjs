@@ -146,7 +146,20 @@ async function sitemapLocs(smUrl) {
 
 const hrefRe = /href\s*=\s*["']([^"'#]+)["']/gi;
 
-async function crawlSection(section, seeds, cap, verbose) {
+/** The page's own <title>, minus the site suffix ("Add calibration
+ *  points | ArcGIS Pro documentation" -> "Add calibration points").
+ *  Real titles make far better sidecar link text than "documentation". */
+function pageTitle(html) {
+  const m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html || "");
+  if (!m) return "";
+  return m[1]
+    .replace(/&amp;/g, "&").replace(/&#39;/g, "'").replace(/&quot;/g, '"')
+    .split("|")[0]
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function crawlSection(section, seeds, cap, verbose, titles) {
   const urls = new Set();
   const visited = new Set();
   const queue = [...new Set([section, ...seeds])];
@@ -160,7 +173,11 @@ async function crawlSection(section, seeds, cap, verbose) {
     await sleep(160);
     if (fetched <= 6 || verbose) say(`   seed/page ${u} -> ${statusOf(r)}`);
     if (!r.ok) continue;
-    if (u.endsWith(".html")) urls.add(u);
+    if (u.endsWith(".html")) {
+      urls.add(u);
+      const t = pageTitle(r.text);
+      if (t) titles.set(u, t);
+    }
     let kept = 0;
     for (const m of r.text.matchAll(hrefRe)) {
       let link;
@@ -195,6 +212,7 @@ async function main() {
   }
   const known = knownUrls(map);
   const inventory = {};
+  const titles = new Map();
   for (const raw of sections) {
     const sec = raw.endsWith("/") ? raw : raw + "/";
     say(`== ${sec}`);
@@ -209,11 +227,17 @@ async function main() {
     } else {
       const seeds = known.filter((k) => k.startsWith(sec));
       say(`   sitemap empty — crawling from root + ${seeds.length} known seed page(s)`);
-      urls = await crawlSection(sec, seeds, args.cap, args.verbose);
+      urls = await crawlSection(sec, seeds, args.cap, args.verbose, titles);
       say(`   crawl: ${urls.size} page(s)`);
     }
-    inventory[sec] = [...urls].sort();
-    for (const u of inventory[sec]) process.stdout.write(u + "\n");
+    // {url, title} entries — the title is the page's own <title>
+    // (crawl mode); sitemap-only sections carry url alone
+    inventory[sec] = [...urls].sort().map((u) =>
+      titles.has(u) ? { url: u, title: titles.get(u) } : { url: u }
+    );
+    for (const e of inventory[sec]) {
+      process.stdout.write(e.title ? `${e.url}  ${e.title}\n` : e.url + "\n");
+    }
   }
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
   fs.writeFileSync(args.out, JSON.stringify(inventory, null, 1));
