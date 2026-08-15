@@ -39,6 +39,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 SWEEP = os.path.join(REPO, "local", "sweep.mjs")
 CURATE = os.path.join(REPO, "local", "curate.mjs")
+DOC_CRAWL = os.path.join(REPO, "local", "doc_crawl.mjs")
 CURATION_MODEL = "cabcabca-0000-4000-8000-000000000001"
 
 PASS = []
@@ -268,6 +269,32 @@ def make_handler(state, lib_guid, src_files):
                 if p == "/docs/realign-route.html":
                     return self._json({"page": "ok"})
                 return self._json({"error": "not found"}, 404)
+            # doc_crawl fixtures: /docsec/ is sitemap-covered,
+            # /docsec2/ is only discoverable by crawling
+            if p == "/sitemap.xml":
+                base_ = "http://" + self.headers.get("host", "")
+                body = ("<urlset><loc>%s/docsec/a.html</loc>"
+                        "<loc>%s/docsec/b.html</loc>"
+                        "<loc>%s/other/z.html</loc></urlset>") % (base_, base_, base_)
+                enc = body.encode()
+                self.send_response(200)
+                self.send_header("content-type", "text/xml")
+                self.send_header("content-length", str(len(enc)))
+                self.end_headers()
+                return self.wfile.write(enc)
+            crawl_pages = {
+                "/docsec2/": '<a href="x.html">x</a> <a href="/docsec2/y.html">y</a>'
+                             ' <a href="https://elsewhere.example/n.html">out</a>',
+                "/docsec2/x.html": '<a href="y.html#f">y</a> <a href="../escape.html">esc</a>',
+                "/docsec2/y.html": "<p>leaf</p>",
+            }
+            if p in crawl_pages:
+                enc = crawl_pages[p].encode()
+                self.send_response(200)
+                self.send_header("content-type", "text/html")
+                self.send_header("content-length", str(len(enc)))
+                self.end_headers()
+                return self.wfile.write(enc)
             m = re.match(r"^/v1\.0/sites/([^/]+):(/.+)$", p)
             if m:
                 return self._json({"id": "site-" + m.group(2).strip("/").split("/")[-1]})
@@ -943,6 +970,27 @@ def main():
           state.probe_paths.count("/docs/realign-route.html") == 1
           and state.probe_paths.count("/docs/add-point-events.html") == 1,
           str(state.probe_paths))
+
+    # ---- leg 3f: doc_crawl — page inventory for link matching ------
+    print("== doc crawl leg")
+    pages_out = os.path.join(tmp, "pages.json")
+    proc = subprocess.run(
+        ["node", "--experimental-strip-types", DOC_CRAWL,
+         "--section", base + "/docsec/", "--section", base + "/docsec2/",
+         "--out", pages_out],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    check("doc crawl exit 0", proc.returncode == 0, proc.stderr[-300:])
+    inv = json.load(open(pages_out))
+    check("sitemap-backed section enumerated (out-of-section excluded)",
+          sorted(inv.get(base + "/docsec/", [])) ==
+          [base + "/docsec/a.html", base + "/docsec/b.html"], str(inv))
+    check("crawl fallback enumerated and stayed in section",
+          set(inv.get(base + "/docsec2/", [])) ==
+          {base + "/docsec2/x.html", base + "/docsec2/y.html"}, str(inv))
+    check("crawl printed the urls to stdout",
+          base + "/docsec/a.html" in proc.stdout
+          and base + "/docsec2/y.html" in proc.stdout, proc.stdout[-300:])
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
           f"doc{notes_id}" in spec_rr and "similar text (" in spec_rr,

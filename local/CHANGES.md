@@ -1,5 +1,20 @@
 # Local sweep — release notes
 
+## v1.17 (2026-08-15)
+
+**`local/doc_crawl.mjs`** — enumerate the REAL page inventory of the
+Esri help sections (probing guessed one slug per tool; matching
+should work from what actually exists). Per section — defaults to
+the folders behind `probeTemplates`, override with repeated
+`--section`: the site's sitemap(s) first (`sitemap.xml` /
+`sitemap_index.xml`, child sitemaps followed), and a polite BFS
+crawl (same-section `.html` links, ~6 req/s, page cap, honest UA)
+only when the sitemap yields nothing for the section. URLs print to
+stdout and the inventory saves to `work/esri_doc_pages.json` for the
+upcoming topic→page matching step. Gate: mock sitemap section and
+mock crawl-only section both enumerated, out-of-section links
+excluded. **Gate PASSED 2026-08-15 (108/108).**
+
 ## v1.16 (2026-08-15)
 
 **Probed tool links** — the owner's first real search-link
