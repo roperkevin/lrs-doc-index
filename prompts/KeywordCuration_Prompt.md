@@ -1,9 +1,16 @@
-# Keyword Curation Prompt — v1.0
+# Keyword Curation Prompt — v1.1
+
+v1.1 (2026-08-15): the per-reply cap rises 20 → 50 to support
+`curate.mjs --drain` (backlog draining in batches; one reply must
+stay comfortably inside the model's output budget — bigger caps
+risk truncated JSON, which parses to zero proposals). No other text
+change. Re-paste into the tenant "LRS Keyword Curation" prompt and
+set `curation.promptVersion: "v1.1"` in config.
 
 The AI Builder custom prompt for the weekly **KeywordCuration** flow
 (build guide: `curation/Curation_Setup.md`). A separate prompt from the
 indexing one — it has its own version line, `CurationPromptVersion:
-v1.0`, recorded in `curation/CHANGES.md`, and bumping it NEVER touches
+v1.1`, recorded in `curation/CHANGES.md`, and bumping it NEVER touches
 `Config.PromptVersion` (no corpus reindex is ever driven from here).
 
 Two item/requestv2 input keys, exact names: **Vocabulary**,
@@ -72,7 +79,7 @@ NEVER MERGE:
 - anything listed in DoNotPropose may not appear as an alias.
 
 When in doubt, omit the pair — a missed merge costs nothing; a wrong
-merge corrupts the catalog. At most 20 proposals, highest-certainty
+merge corrupts the catalog. At most 50 proposals, highest-certainty
 only.
 
 JSON RULES
