@@ -117,26 +117,59 @@ function loadDocLinks(sw) {
   const file =
     sw.docLinksFile ||
     path.join(path.dirname(fileURLToPath(import.meta.url)), "esri_doc_links.json");
+  let map = {};
   try {
-    const map = JSON.parse(fs.readFileSync(file, "utf8"));
-    return map && typeof map === "object" ? map : {};
-  } catch {
-    return {};
+    const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (raw && typeof raw === "object") map = raw;
+  } catch { /* absent/unparseable = empty map */ }
+  if (map.products || map.tools || map.searchTemplate) {
+    return {
+      products: map.products || {},
+      tools: map.tools || {},
+      searchTemplate: typeof map.searchTemplate === "string" ? map.searchTemplate : "",
+    };
   }
+  // legacy flat shape: product keys at top level
+  const products = {};
+  for (const k in map) {
+    if (Array.isArray(map[k])) products[k] = map[k];
+  }
+  return { products, tools: {}, searchTemplate: "" };
 }
 
 const DOCS_BEGIN = "<!-- docs:begin -->";
 const DOCS_END = "<!-- docs:end -->";
 
-/** The marked block ("" when no product has links). */
-function docsBlock(products, linkMap) {
+/** The marked block ("" when nothing has links). Products render
+ *  their curated link lists; tools render a DIRECT link when the
+ *  tools map knows them (case-insensitive) and a templated search
+ *  link otherwise — complete coverage with zero authoring, upgrade
+ *  any tool to a direct link by adding one JSON line. */
+function docsBlock(products, toolNames, m) {
   const lines = [];
   for (const p of products || []) {
-    const links = Array.isArray(linkMap?.[p]) ? linkMap[p] : [];
+    const links = Array.isArray(m.products?.[p]) ? m.products[p] : [];
     const parts = links
       .filter((l) => l && l.url && l.title)
       .map((l) => `[${l.title}](${l.url})`);
     if (parts.length) lines.push(`- **${p}** — ${parts.join(" · ")}`);
+  }
+  const toolIndex = new Map(
+    Object.keys(m.tools || {}).map((k) => [lower(k).trim(), m.tools[k]])
+  );
+  const seen = new Set();
+  for (const t of toolNames || []) {
+    const key = lower(t).trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const direct = toolIndex.get(key);
+    if (direct) {
+      lines.push(`- **${t}** — [documentation](${direct})`);
+    } else if (m.searchTemplate) {
+      lines.push(
+        `- **${t}** — [search Esri docs](${m.searchTemplate.replace("{q}", encodeURIComponent(String(t)))})`
+      );
+    }
   }
   if (!lines.length) return "";
   return `${DOCS_BEGIN}\n## Product documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
@@ -547,6 +580,19 @@ async function main() {
   // corpus-wide in one pass instead of waiting on lazy reindexes.
   if (sw.rerank) {
     const caches = { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows };
+    // tool names per doc, reconstructed from the junctions: keywords
+    // of Kind "tool" (alias rows fold to their canonical)
+    const kwById = new Map(keywordRows.map((k) => [k.ID, k]));
+    const toolsOf = (docId) => {
+      const out = [];
+      for (const j of docKwRows) {
+        if (j.DocumentId !== docId) continue;
+        let k = kwById.get(j.KeywordId);
+        if (k && k.CanonicalRefId) k = kwById.get(k.CanonicalRefId) || k;
+        if (k && lower(k.Kind) === "tool" && k.Title) out.push(k.Title);
+      }
+      return out;
+    };
     const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
     const rsum = { mode: "rerank", dry_run: dry, eligible: 0, reranked: 0, no_sidecar: 0, errors: 0, related_flags: "" };
     for (const r of docIndexRows) {
@@ -566,7 +612,7 @@ async function main() {
         // sidecars gain/refresh links in the same pass
         const before = fs.readFileSync(local, "utf8");
         const rowProducts = String(r.Products || "").split("; ").filter(Boolean);
-        const content = upsertDocsBlock(before, docsBlock(rowProducts, docLinks));
+        const content = upsertDocsBlock(before, docsBlock(rowProducts, toolsOf(r.ID), docLinks));
         if (content !== before) writer.writeFile(local, content);
         await rankRelated({
           cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
@@ -1018,10 +1064,13 @@ async function indexDoc(ctx) {
   // (g) sidecar write + row URL patch + recycle-on-move
   setStep("sidecar");
   const localSidecar = path.join(cfg.paths.sidecarLibrary, kindFolder, sidecarName);
-  // product-documentation links block (v1.14), inserted after the
-  // related region — driven by the Products detection + the editable
-  // local/esri_doc_links.json map
-  const sidecarContent = upsertDocsBlock(header + docText, docsBlock(products, docLinks));
+  // product/tool documentation links block (v1.14/v1.15), inserted
+  // after the related region — products from RegexExtract, tools from
+  // the LLM's tools list, links from local/esri_doc_links.json
+  const sidecarContent = upsertDocsBlock(
+    header + docText,
+    docsBlock(products, ai.tools || [], docLinks)
+  );
   writer.writeFile(localSidecar, sidecarContent);
   const textFileUrl = `${sw.siteUrl}${sidecarFolder}/${sidecarName}`;
   await writer.patchRow("docIndex", rowId, {

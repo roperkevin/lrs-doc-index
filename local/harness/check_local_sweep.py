@@ -415,7 +415,9 @@ def main():
         "Alpha Plan.pptx": {
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
             "summary": "Covers lock acquisition.", "pe": "Claire Wang", "dev": "",
-            "targetRelease": "3.8", "tools": [], "keywords": ["locks", "acquisition"]},
+            "targetRelease": "3.8",
+            "tools": ["Reassign Routes", "Add Point Events"],
+            "keywords": ["locks", "acquisition"]},
         "Beta Story.pptx": {
             "title": "Beta Story", "docKind": "User Story", "surface": "Pro",
             "summary": "A story about locks.", "pe": "", "dev": "",
@@ -629,6 +631,10 @@ def main():
           and "arcgis-roads-and-highways" in sc
           and "<!-- docs:begin -->" in sc and "<!-- docs:end -->" in sc,
           sc[-600:])
+    check("curated tool gets a direct doc link",
+          "reassign-routes.html" in sc, sc[-700:])
+    check("unmapped tool falls back to a search link",
+          "search Esri docs" in sc and "Add%20Point%20Events" in sc, sc[-700:])
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     check("alpha related region patched (names beta)",
@@ -909,6 +915,9 @@ def main():
           sc_rr.count("<!-- docs:begin -->") == 1
           and "arcgis-roads-and-highways" in sc_rr,
           f"count={sc_rr.count('<!-- docs:begin -->')}")
+    check("rerank rebuilt tool links from the junctions",
+          "reassign-routes.html" in sc_rr and "search Esri docs" in sc_rr,
+          sc_rr[-700:])
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
           f"doc{notes_id}" in spec_rr and "similar text (" in spec_rr,
