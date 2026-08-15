@@ -110,6 +110,7 @@ class MockState:
         self.cur_last_request = None
         self.cur_response = {"proposals": []}
         self.cur_calls = 0
+        self.probe_paths = []
         self.graph_last_auth = None
         self.spo_last_auth = None
 
@@ -261,6 +262,12 @@ def make_handler(state, lib_guid, src_files):
 
         def do_GET(self):
             p = urlparse(self.path).path
+            # doc-link probing: realign-route exists, everything else 404s
+            if p.startswith("/docs/"):
+                state.probe_paths.append(p)
+                if p == "/docs/realign-route.html":
+                    return self._json({"page": "ok"})
+                return self._json({"error": "not found"}, 404)
             m = re.match(r"^/v1\.0/sites/([^/]+):(/.+)$", p)
             if m:
                 return self._json({"id": "site-" + m.group(2).strip("/").split("/")[-1]})
@@ -416,7 +423,7 @@ def main():
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
             "summary": "Covers lock acquisition.", "pe": "Claire Wang", "dev": "",
             "targetRelease": "3.8",
-            "tools": ["Reassign Routes", "Add Point Events"],
+            "tools": ["Reassign Routes", "Add Point Events", "Realign Route"],
             "keywords": ["locks", "acquisition"]},
         "Beta Story.pptx": {
             "title": "Beta Story", "docKind": "User Story", "surface": "Pro",
@@ -450,6 +457,15 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     base = f"http://127.0.0.1:{port}"
 
+    # doc-links file: repo copy with probing pointed at the mock —
+    # the gate must never touch real doc.esri.com
+    with open(os.path.join(REPO, "local", "esri_doc_links.json")) as f:
+        dl = json.load(f)
+    dl["probeTemplates"] = [{"url": base + "/docs/{slug}.html"}]
+    doclinks_path = os.path.join(tmp, "doclinks.json")
+    with open(doclinks_path, "w") as f:
+        json.dump(dl, f)
+
     cfg = {
         "sharePoint": {
             "hostname": "mock.example",
@@ -480,6 +496,7 @@ def main():
             "siteUrl": "https://mock.example/sites/lrsworkspace",
             "dryRun": True,
             "pdftotextPath": pdftotext_stub,
+            "docLinksFile": doclinks_path,
         },
     }
     cfg_path = os.path.join(tmp, "config.json")
@@ -635,6 +652,10 @@ def main():
           "reassign-routes.html" in sc, sc[-700:])
     check("unmapped tool falls back to a search link",
           "search Esri docs" in sc and "Add%20Point%20Events" in sc, sc[-700:])
+    check("probed tool got a direct link (page exists)",
+          "/docs/realign-route.html" in sc, sc[-800:])
+    check("probe results cached",
+          os.path.exists(os.path.join(work_dir, "doc-links-cache.json")))
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     check("alpha related region patched (names beta)",
@@ -918,6 +939,10 @@ def main():
     check("rerank rebuilt tool links from the junctions",
           "reassign-routes.html" in sc_rr and "search Esri docs" in sc_rr,
           sc_rr[-700:])
+    check("probe cache prevented re-probing across runs",
+          state.probe_paths.count("/docs/realign-route.html") == 1
+          and state.probe_paths.count("/docs/add-point-events.html") == 1,
+          str(state.probe_paths))
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
           f"doc{notes_id}" in spec_rr and "similar text (" in spec_rr,

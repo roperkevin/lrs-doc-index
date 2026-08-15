@@ -253,10 +253,16 @@ Each is behavior-equivalent; all are exercised by the gate:
   carry a `## Product documentation` section — product-level links
   (from the detected `Products`) plus per-tool links (from the doc's
   detected tools): a DIRECT link when `local/esri_doc_links.json`'s
-  `tools` map knows the tool, else a `searchTemplate`-driven "search
-  Esri docs" link, so coverage is complete with zero authoring. Edit
-  the JSON + git pull = deploy; `--rerank` refreshes every existing
-  sidecar (tools reconstructed from the doc's tool-kind keywords).
+  `tools` map knows the tool, else a PROBED direct link (candidate
+  URLs from `probeTemplates` are fetched — product-matched
+  doc.esri.com folders first — and the first HTTP 200 wins; results
+  cache in `workDir/doc-links-cache.json`, so each tool costs one
+  probe round ever; `sweep.probeDocLinks: false` disables), else a
+  `searchTemplate`-driven "search Esri docs" link — coverage is
+  complete with zero authoring and upgrades itself as pages are
+  found. Edit the JSON + git pull = deploy; `--rerank` refreshes
+  every existing sidecar (tools reconstructed from the doc's
+  tool-kind keywords).
 - **Richer relatedness** (a real deviation — additive): on top of the
   flow's keyword/edge relatedness, the sweep computes **body-text
   similarity** (BM25 cosine over the sidecar corpus, in-memory, no AI

@@ -1,5 +1,27 @@
 # Local sweep — release notes
 
+## v1.16 (2026-08-15)
+
+**Probed tool links** — the owner's first real search-link
+("realign" → a Google page) showed the fallback should try harder.
+New `ToolLinkResolver`: for a detected tool with no curated entry,
+candidate URLs are built from the JSON's new `probeTemplates`
+(`{slug}` = kebab-cased tool name; product-matched folders tried
+first — the doc.esri.com scheme the owner's URLs demonstrated) and
+FETCHED from the sweep machine; the first HTTP 200 becomes a direct
+link. Hits and definitive all-404 misses cache in
+`workDir/doc-links-cache.json` — each tool costs at most one probe
+round ever (misses re-probe after 30 days; network errors are never
+cached). Resolution order per tool: curated map → cache → probe →
+searchTemplate fallback. No API keys, no scraping — just testing
+the documented URL scheme. `sweep.probeDocLinks: false` disables.
+
+Gate: mock probe endpoint — existing page → direct link in the
+sidecar; missing page → search fallback; cache file written; across
+dry + live + rerank runs each slug probed exactly once. The gate's
+doc-links file points probing at the mock, never the real site.
+**Gate PASSED 2026-08-15 (104/104).**
+
 ## v1.15 (2026-08-15)
 
 **Tool-level documentation links** (owner request: a user story

@@ -122,11 +122,12 @@ function loadDocLinks(sw) {
     const raw = JSON.parse(fs.readFileSync(file, "utf8"));
     if (raw && typeof raw === "object") map = raw;
   } catch { /* absent/unparseable = empty map */ }
-  if (map.products || map.tools || map.searchTemplate) {
+  if (map.products || map.tools || map.searchTemplate || map.probeTemplates) {
     return {
       products: map.products || {},
       tools: map.tools || {},
       searchTemplate: typeof map.searchTemplate === "string" ? map.searchTemplate : "",
+      probeTemplates: Array.isArray(map.probeTemplates) ? map.probeTemplates : [],
     };
   }
   // legacy flat shape: product keys at top level
@@ -134,7 +135,94 @@ function loadDocLinks(sw) {
   for (const k in map) {
     if (Array.isArray(map[k])) products[k] = map[k];
   }
-  return { products, tools: {}, searchTemplate: "" };
+  return { products, tools: {}, searchTemplate: "", probeTemplates: [] };
+}
+
+const toolSlug = (t) =>
+  lower(t).replaceAll("&", "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+/**
+ * ToolLinkResolver — turns a detected tool name into the best link:
+ *   1. the curated tools map (case-insensitive), else
+ *   2. a PROBED direct link: candidate URLs built from the JSON's
+ *      probeTemplates ({slug} = kebab-cased tool name; templates may
+ *      carry a "product" to try product-matched folders first) are
+ *      fetched, and the first HTTP 200 wins. Results — hits AND
+ *      definitive all-404 misses — are cached in
+ *      workDir/doc-links-cache.json so each tool costs at most one
+ *      probe round ever (misses re-probe after 30 days, since docs
+ *      pages get added). Network errors are never cached.
+ *   3. null → the caller renders the searchTemplate fallback.
+ */
+class ToolLinkResolver {
+  constructor(linkMap, workDir, enabled) {
+    this.map = linkMap;
+    this.enabled = enabled && (linkMap.probeTemplates || []).length > 0;
+    this.cachePath = path.join(workDir || ".", "doc-links-cache.json");
+    this.curated = new Map(
+      Object.keys(linkMap.tools || {}).map((k) => [lower(k).trim(), linkMap.tools[k]])
+    );
+    try {
+      this.cache = JSON.parse(fs.readFileSync(this.cachePath, "utf8"));
+    } catch {
+      this.cache = {};
+    }
+  }
+
+  _save() {
+    try {
+      fs.mkdirSync(path.dirname(this.cachePath), { recursive: true });
+      fs.writeFileSync(this.cachePath, JSON.stringify(this.cache, null, 1));
+    } catch { /* best effort */ }
+  }
+
+  _templatesFor(products) {
+    const tpls = (this.map.probeTemplates || []).map((t) =>
+      typeof t === "string" ? { url: t } : t
+    ).filter((t) => t && typeof t.url === "string" && t.url.includes("{slug}"));
+    const set = new Set(products || []);
+    const matched = tpls.filter((t) => t.product && set.has(t.product));
+    const generic = tpls.filter((t) => !t.product);
+    const rest = tpls.filter((t) => t.product && !set.has(t.product));
+    return [...matched, ...generic, ...rest];
+  }
+
+  async resolve(tool, products) {
+    const key = lower(tool).trim();
+    const curated = this.curated.get(key);
+    if (curated) return curated;
+    if (!this.enabled) return null;
+    const slug = toolSlug(tool);
+    if (!slug) return null;
+    const hit = this.cache[slug];
+    if (hit) {
+      if (hit.url) return hit.url;
+      const age = Date.now() - Date.parse(hit.checked || 0);
+      if (age < 30 * 86400000) return null; // fresh negative
+    }
+    let all404 = true;
+    for (const t of this._templatesFor(products)) {
+      const url = t.url.replace("{slug}", slug);
+      let res;
+      try {
+        res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(10000) });
+      } catch {
+        all404 = false; // network trouble — don't cache a miss
+        continue;
+      }
+      if (res.ok) {
+        this.cache[slug] = { url, checked: new Date().toISOString() };
+        this._save();
+        return url;
+      }
+      if (res.status !== 404) all404 = false;
+    }
+    if (all404) {
+      this.cache[slug] = { url: null, checked: new Date().toISOString() };
+      this._save();
+    }
+    return null;
+  }
 }
 
 const DOCS_BEGIN = "<!-- docs:begin -->";
@@ -145,7 +233,7 @@ const DOCS_END = "<!-- docs:end -->";
  *  tools map knows them (case-insensitive) and a templated search
  *  link otherwise — complete coverage with zero authoring, upgrade
  *  any tool to a direct link by adding one JSON line. */
-function docsBlock(products, toolNames, m) {
+function docsBlock(products, toolNames, m, toolLinks) {
   const lines = [];
   for (const p of products || []) {
     const links = Array.isArray(m.products?.[p]) ? m.products[p] : [];
@@ -154,15 +242,12 @@ function docsBlock(products, toolNames, m) {
       .map((l) => `[${l.title}](${l.url})`);
     if (parts.length) lines.push(`- **${p}** — ${parts.join(" · ")}`);
   }
-  const toolIndex = new Map(
-    Object.keys(m.tools || {}).map((k) => [lower(k).trim(), m.tools[k]])
-  );
   const seen = new Set();
   for (const t of toolNames || []) {
     const key = lower(t).trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    const direct = toolIndex.get(key);
+    const direct = toolLinks?.get(t);
     if (direct) {
       lines.push(`- **${t}** — [documentation](${direct})`);
     } else if (m.searchTemplate) {
@@ -533,6 +618,11 @@ async function main() {
   const spo = new SpoClient(cfg.spo);
   const bodyIndex = new BodyIndex();
   const docLinks = loadDocLinks(sw);
+  const linkResolver = new ToolLinkResolver(
+    docLinks,
+    cfg.paths?.workDir,
+    sw.probeDocLinks !== false
+  );
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
   const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
   const writer = new Writer(graph, siteId, sp.lists, dry, spo);
@@ -612,7 +702,12 @@ async function main() {
         // sidecars gain/refresh links in the same pass
         const before = fs.readFileSync(local, "utf8");
         const rowProducts = String(r.Products || "").split("; ").filter(Boolean);
-        const content = upsertDocsBlock(before, docsBlock(rowProducts, toolsOf(r.ID), docLinks));
+        const rowTools = toolsOf(r.ID);
+        const toolLinks = new Map();
+        for (const t of rowTools) {
+          toolLinks.set(t, await linkResolver.resolve(t, rowProducts));
+        }
+        const content = upsertDocsBlock(before, docsBlock(rowProducts, rowTools, docLinks, toolLinks));
         if (content !== before) writer.writeFile(local, content);
         await rankRelated({
           cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
@@ -741,7 +836,7 @@ async function main() {
     try {
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks,
+        cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, linkResolver,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -873,7 +968,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, linkResolver, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -1064,12 +1159,17 @@ async function indexDoc(ctx) {
   // (g) sidecar write + row URL patch + recycle-on-move
   setStep("sidecar");
   const localSidecar = path.join(cfg.paths.sidecarLibrary, kindFolder, sidecarName);
-  // product/tool documentation links block (v1.14/v1.15), inserted
+  // product/tool documentation links block (v1.14–v1.16), inserted
   // after the related region — products from RegexExtract, tools from
-  // the LLM's tools list, links from local/esri_doc_links.json
+  // the LLM's tools list; per-tool links resolved curated → probed →
+  // search fallback (local/esri_doc_links.json)
+  const toolLinks = new Map();
+  for (const t of ai.tools || []) {
+    toolLinks.set(t, await linkResolver.resolve(t, products));
+  }
   const sidecarContent = upsertDocsBlock(
     header + docText,
-    docsBlock(products, ai.tools || [], docLinks)
+    docsBlock(products, ai.tools || [], docLinks, toolLinks)
   );
   writer.writeFile(localSidecar, sidecarContent);
   const textFileUrl = `${sw.siteUrl}${sidecarFolder}/${sidecarName}`;
