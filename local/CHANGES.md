@@ -1,5 +1,18 @@
 # Local sweep — release notes
 
+## v1.17.1 (2026-08-15)
+
+doc_crawl v1.1 — the first live run found 0 pages with no clue why.
+Now diagnosable and resilient: sitemap discovery via robots.txt
+`Sitemap:` directives + candidate sitemap.xml at every ancestor path
+of the section (not just the origin root), each attempt printing its
+HTTP status; the BFS seeds from every known page under the section
+in esri_doc_links.json (the section root often 404s — no directory
+index — which silently emptied the v1.0 crawl); a browser-like
+default User-Agent (CDNs 403 obvious bots; `--ua` overrides); and a
+JS-rendered-site warning when a 200 page yields zero same-section
+links. Gate re-PASSED unchanged (108/108).
+
 ## v1.17 (2026-08-15)
 
 **`local/doc_crawl.mjs`** — enumerate the REAL page inventory of the

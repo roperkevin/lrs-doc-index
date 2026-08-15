@@ -1,30 +1,29 @@
 #!/usr/bin/env node
 /**
- * doc_crawl.mjs v1.0 — enumerate every documentation page under the
- * Esri help sections we link into sidecars (Roads & Highways,
- * Pipeline Referencing), so tool/topic → page matching can work from
- * the REAL page inventory instead of guessed slugs.
+ * doc_crawl.mjs v1.1 — enumerate every documentation page under the
+ * Esri help sections we link into sidecars, so tool/topic → page
+ * matching can work from the REAL page inventory.
  *
- * Two passes per section, cheapest first:
- *   1. sitemap: fetch {origin}/sitemap.xml and /sitemap_index.xml,
- *      follow child sitemaps, keep <loc> URLs under the section
- *      prefix. Most doc sites publish complete sitemaps — this is
- *      the reliable route.
- *   2. BFS crawl fallback (only when the sitemap yielded nothing for
- *      a section): fetch pages starting at the section root, extract
- *      href links, follow same-section .html pages. Polite: ~6
- *      requests/second, honest User-Agent, page cap per section.
+ * v1.1 (first live run found 0 pages, silently): now diagnosable and
+ * far more resilient —
+ *   - sitemap DISCOVERY: robots.txt "Sitemap:" directives + candidate
+ *     sitemap.xml at every ancestor path of the section, not just the
+ *     origin root; each attempt prints its HTTP status.
+ *   - BFS SEEDS: the section root often 404s (no directory index), so
+ *     the crawl also seeds from every known page under the section in
+ *     esri_doc_links.json (products + tools URLs) — the owner-verified
+ *     pages guarantee at least one living entry point.
+ *   - UA: browser-like by default (CDNs 403 obvious bots); --ua
+ *     overrides. Rate limit unchanged (~6 req/s).
+ *   - Loud: seed/sitemap fetches print status; a 200 page yielding
+ *     zero same-section links prints a JS-rendered-site warning.
  *
- * Output: URLs printed per section (sorted), and the full inventory
- * written as JSON (--out, default work/esri_doc_pages.json) for the
- * matching step to consume.
- *
- * Sections default to the folders behind probeTemplates in
- * local/esri_doc_links.json; override/add with repeated --section.
+ * Output: URLs to stdout; inventory JSON to --out (default
+ * work/esri_doc_pages.json).
  *
  * Usage:
  *   node --experimental-strip-types local/doc_crawl.mjs
- *   node --experimental-strip-types local/doc_crawl.mjs --section https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/ --out work/pages.json
+ *   ... [--section <url-prefix>]... [--out <file>] [--cap N] [--ua <string>] [--verbose]
  */
 
 import fs from "node:fs";
@@ -32,92 +31,138 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const UA = "lrs-doc-index/doc_crawl (internal documentation link mapper)";
 
 function parseArgs(argv) {
-  const args = { sections: [], out: path.join("work", "esri_doc_pages.json"), cap: 800 };
+  const args = {
+    sections: [],
+    out: path.join("work", "esri_doc_pages.json"),
+    cap: 800,
+    verbose: false,
+    ua: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) lrs-doc-index-crawler",
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--section") args.sections.push(argv[++i]);
     else if (a === "--out") args.out = argv[++i];
     else if (a === "--cap") args.cap = Number(argv[++i]) || args.cap;
-    else throw new Error(`unknown argument: ${a} (usage: [--section <url-prefix>]... [--out <file>] [--cap N])`);
-  }
-  if (!args.sections.length) {
-    const linksFile = path.join(path.dirname(fileURLToPath(import.meta.url)), "esri_doc_links.json");
-    try {
-      const map = JSON.parse(fs.readFileSync(linksFile, "utf8"));
-      for (const t of map.probeTemplates || []) {
-        const url = typeof t === "string" ? t : t?.url;
-        if (typeof url === "string" && url.includes("{slug}")) {
-          args.sections.push(url.slice(0, url.indexOf("{slug}")));
-        }
-      }
-    } catch { /* fall through to the error below */ }
-  }
-  if (!args.sections.length) {
-    throw new Error("no sections: pass --section <url-prefix> or add probeTemplates to esri_doc_links.json");
+    else if (a === "--ua") args.ua = argv[++i];
+    else if (a === "--verbose") args.verbose = true;
+    else throw new Error(`unknown argument: ${a}`);
   }
   return args;
 }
 
-async function get(url) {
+function loadLinkMap() {
+  const linksFile = path.join(path.dirname(fileURLToPath(import.meta.url)), "esri_doc_links.json");
   try {
-    const res = await fetch(url, {
-      redirect: "follow",
-      headers: { "user-agent": UA },
-      signal: AbortSignal.timeout(20000),
-    });
-    if (!res.ok) return null;
-    return await res.text();
+    return JSON.parse(fs.readFileSync(linksFile, "utf8")) || {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-const locRe = /<loc>\s*([^<]+?)\s*<\/loc>/g;
-
-/** All <loc> URLs from {origin}/sitemap.xml (+ index children). */
-async function sitemapUrls(origin, seen = new Set()) {
+function defaultSections(map) {
   const out = [];
-  for (const p of ["/sitemap.xml", "/sitemap_index.xml"]) {
-    const url = origin + p;
-    if (seen.has(url)) continue;
-    seen.add(url);
-    const xml = await get(url);
-    if (!xml) continue;
-    const locs = [...xml.matchAll(locRe)].map((m) => m[1]);
-    if (/<sitemapindex/i.test(xml)) {
-      for (const child of locs.slice(0, 50)) {
-        if (seen.has(child)) continue;
-        seen.add(child);
-        const childXml = await get(child);
-        if (childXml) out.push(...[...childXml.matchAll(locRe)].map((m) => m[1]));
-        await sleep(150);
-      }
-    } else {
-      out.push(...locs);
+  for (const t of map.probeTemplates || []) {
+    const url = typeof t === "string" ? t : t?.url;
+    if (typeof url === "string" && url.includes("{slug}")) {
+      out.push(url.slice(0, url.indexOf("{slug}")));
     }
   }
   return out;
 }
 
+/** Every known page URL in the links map (seeds for the BFS). */
+function knownUrls(map) {
+  const out = [];
+  for (const k in map.products || {}) {
+    for (const l of map.products[k] || []) {
+      if (l && typeof l.url === "string") out.push(l.url);
+    }
+  }
+  for (const k in map.tools || {}) {
+    if (typeof map.tools[k] === "string") out.push(map.tools[k]);
+  }
+  return out;
+}
+
+let UA = "";
+async function get(url) {
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" },
+      signal: AbortSignal.timeout(20000),
+    });
+    const text = res.ok ? await res.text() : "";
+    return { status: res.status, ok: res.ok, text };
+  } catch (e) {
+    return { status: 0, ok: false, text: "", err: e.cause?.code || e.name || e.message };
+  }
+}
+
+const say = (s) => process.stderr.write(s + "\n");
+const statusOf = (r) => (r.status === 0 ? `error(${r.err})` : String(r.status));
+const locRe = /<loc>\s*([^<]+?)\s*<\/loc>/g;
+
+/** Candidate sitemap URLs: robots.txt directives + ancestor paths. */
+async function sitemapCandidates(section) {
+  const u = new URL(section);
+  const candidates = [];
+  const robots = await get(u.origin + "/robots.txt");
+  say(`   robots.txt -> ${statusOf(robots)}`);
+  if (robots.ok) {
+    for (const m of robots.text.matchAll(/^\s*sitemap:\s*(\S+)/gim)) candidates.push(m[1]);
+  }
+  const segs = u.pathname.split("/").filter(Boolean);
+  for (let i = 0; i <= Math.min(segs.length, 4); i++) {
+    const base = u.origin + (i ? "/" + segs.slice(0, i).join("/") : "");
+    candidates.push(base + "/sitemap.xml");
+  }
+  candidates.push(u.origin + "/sitemap_index.xml");
+  return [...new Set(candidates)];
+}
+
+const smFetched = new Map(); // sitemap url -> [locs]
+async function sitemapLocs(smUrl) {
+  if (smFetched.has(smUrl)) return smFetched.get(smUrl);
+  const r = await get(smUrl);
+  say(`   sitemap? ${smUrl} -> ${statusOf(r)}`);
+  let locs = [];
+  if (r.ok) {
+    const found = [...r.text.matchAll(locRe)].map((m) => m[1]);
+    if (/<sitemapindex/i.test(r.text)) {
+      for (const child of found.slice(0, 50)) {
+        locs.push(...(await sitemapLocs(child)));
+        await sleep(150);
+      }
+    } else {
+      locs = found;
+    }
+  }
+  smFetched.set(smUrl, locs);
+  return locs;
+}
+
 const hrefRe = /href\s*=\s*["']([^"'#]+)["']/gi;
 
-/** BFS within the section prefix, .html pages only. */
-async function crawlSection(section, cap) {
+async function crawlSection(section, seeds, cap, verbose) {
   const urls = new Set();
   const visited = new Set();
-  const queue = [section];
+  const queue = [...new Set([section, ...seeds])];
+  let fetched = 0;
   while (queue.length && visited.size < cap) {
     const u = queue.shift();
     if (visited.has(u)) continue;
     visited.add(u);
-    const html = await get(u);
-    await sleep(150);
-    if (!html) continue;
+    const r = await get(u);
+    fetched++;
+    await sleep(160);
+    if (fetched <= 6 || verbose) say(`   seed/page ${u} -> ${statusOf(r)}`);
+    if (!r.ok) continue;
     if (u.endsWith(".html")) urls.add(u);
-    for (const m of html.matchAll(hrefRe)) {
+    let kept = 0;
+    for (const m of r.text.matchAll(hrefRe)) {
       let link;
       try {
         link = new URL(m[1], u);
@@ -128,7 +173,13 @@ async function crawlSection(section, cap) {
       link.search = "";
       const s = link.toString();
       if (!s.startsWith(section) || visited.has(s)) continue;
-      if (s.endsWith(".html") || s.endsWith("/")) queue.push(s);
+      if (s.endsWith(".html") || s.endsWith("/")) {
+        queue.push(s);
+        kept++;
+      }
+    }
+    if (kept === 0 && r.ok && (fetched <= 6 || verbose)) {
+      say(`     (200 but no same-section links in the HTML — JS-rendered page?)`);
     }
   }
   return urls;
@@ -136,22 +187,30 @@ async function crawlSection(section, cap) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  UA = args.ua;
+  const map = loadLinkMap();
+  const sections = args.sections.length ? args.sections : defaultSections(map);
+  if (!sections.length) {
+    throw new Error("no sections: pass --section <url-prefix> or add probeTemplates to esri_doc_links.json");
+  }
+  const known = knownUrls(map);
   const inventory = {};
-  const smCache = new Map(); // origin -> sitemap urls (fetched once)
-  for (const section of args.sections) {
-    const sec = section.endsWith("/") ? section : section + "/";
-    process.stderr.write(`== ${sec}\n`);
-    const origin = new URL(sec).origin;
-    if (!smCache.has(origin)) smCache.set(origin, await sitemapUrls(origin));
-    const fromSitemap = smCache.get(origin).filter((u) => u.startsWith(sec));
-    let urls;
-    if (fromSitemap.length) {
-      urls = new Set(fromSitemap);
-      process.stderr.write(`   sitemap: ${urls.size} page(s)\n`);
+  for (const raw of sections) {
+    const sec = raw.endsWith("/") ? raw : raw + "/";
+    say(`== ${sec}`);
+    let urls = new Set();
+    for (const cand of await sitemapCandidates(sec)) {
+      const locs = await sitemapLocs(cand);
+      for (const loc of locs) if (loc.startsWith(sec)) urls.add(loc);
+      if (urls.size) break; // first sitemap that covers the section wins
+    }
+    if (urls.size) {
+      say(`   sitemap: ${urls.size} page(s)`);
     } else {
-      process.stderr.write("   sitemap empty for this section — crawling\n");
-      urls = await crawlSection(sec, args.cap);
-      process.stderr.write(`   crawl: ${urls.size} page(s)\n`);
+      const seeds = known.filter((k) => k.startsWith(sec));
+      say(`   sitemap empty — crawling from root + ${seeds.length} known seed page(s)`);
+      urls = await crawlSection(sec, seeds, args.cap, args.verbose);
+      say(`   crawl: ${urls.size} page(s)`);
     }
     inventory[sec] = [...urls].sort();
     for (const u of inventory[sec]) process.stdout.write(u + "\n");
@@ -159,7 +218,7 @@ async function main() {
   fs.mkdirSync(path.dirname(args.out), { recursive: true });
   fs.writeFileSync(args.out, JSON.stringify(inventory, null, 1));
   const total = Object.values(inventory).reduce((n, a) => n + a.length, 0);
-  process.stderr.write(`\n${total} page URL(s) across ${args.sections.length} section(s) -> ${args.out}\n`);
+  say(`\n${total} page URL(s) across ${sections.length} section(s) -> ${args.out}`);
 }
 
 main().catch((e) => {
