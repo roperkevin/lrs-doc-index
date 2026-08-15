@@ -6,7 +6,7 @@ SourceLink,SourceLink,Hyperlink,"Absolute link to the file (always https — saf
 Library,Library,Single line of text,"RESERVED — no flow version reads or writes this; safe to omit on a fresh tenant",No
 FileType,FileType,Choice,"pptx; docx; xlsx; pdf; msg; txt; html; image; other",No
 DocKind,DocKind,Choice,"Test Plan; User Story; Design Spike; Data Template; Schedule; Doc Review; Other",No
-IndexStatus,IndexStatus,Choice,"Pending; Indexed; Skipped; Error — default Pending",Yes
+IndexStatus,IndexStatus,Choice,"Pending; Indexed; Skipped; Error; Archived — default Pending; Archived added 2026-08-15 for the local sweep's ghost reconciliation (rows whose source doc was deleted) — add the value to the live list's choices, the sweep halts archiving with a log note until it exists",Yes
 SourceETag,SourceETag,Single line of text,"RESERVED — no flow version reads or writes this; change detection is SourceModified; safe to omit on a fresh tenant",No
 SourceModified,SourceModified,Date and Time,"Include time",No
 TextPreview,TextPreview,Multiple lines of text,"PLAIN text (not enhanced); first ~5000 chars of extracted text — skim/search aid",No
