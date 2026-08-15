@@ -109,6 +109,7 @@ class MockState:
         self.digest = None
         self.cur_last_request = None
         self.cur_response = {"proposals": []}
+        self.cur_calls = 0
         self.graph_last_auth = None
         self.spo_last_auth = None
 
@@ -188,6 +189,7 @@ def make_handler(state, lib_guid, src_files):
                 body = json.loads(self._read())
                 # the curation prompt is its OWN model — route by GUID
                 if mp.group(1) == CURATION_MODEL:
+                    state.cur_calls += 1
                     state.cur_last_request = body
                     text = ("Sure! Here is the JSON:\n```json\n"
                             + json.dumps(state.cur_response) + "\n```")
@@ -861,6 +863,20 @@ def main():
           and "drain pass 2" in proc.stdout and "drain pass 3" not in proc.stdout
           and kwrows[CUR["wbs"]].get("CanonicalRefLookupId") == int(CUR["wbsfull"]),
           proc.stdout[-400:])
+    # vocabulary chunking: small chunk size -> one Predict call per
+    # alphabetical chunk (timeout guard for big vocabularies)
+    cfg["curation"]["vocabChunk"] = 3
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    state.cur_response = {"proposals": []}
+    state.cur_calls = 0
+    proc = run_curate(cfg_path, ["--live"])
+    check("vocabulary sent in chunks (one Predict call each)",
+          proc.returncode == 0 and state.cur_calls >= 3,
+          f"calls={state.cur_calls} " + proc.stderr[-200:])
+    del cfg["curation"]["vocabChunk"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")

@@ -92,6 +92,13 @@ function loadConfig(argv) {
     digestName: "Keyword_Curation_Digest.md",
     digestDrivePath: "", // site default drive root = Shared Documents
     maxProposals: 20,
+    // vocabulary lines per Predict call. One giant call over the full
+    // vocabulary times out the AI Builder gateway (408) once replies
+    // grow; alphabetical chunks keep each call small AND keep the
+    // main variant classes (plural/typo/hyphen/concatenation)
+    // adjacent in the same chunk. Cross-chunk pairs (abbreviation vs
+    // expansion far apart alphabetically) are the accepted miss.
+    vocabChunk: 700,
     promptVersion: "v1.0",
     // false = the flow's propose-then-approve contract (a human sets
     // CanonicalRef). true = guard-passing merges apply immediately,
@@ -187,27 +194,39 @@ async function runCuration(cfg, graph, siteId) {
   // 2) vocabulary + blocked lines (from the run-start snapshot, as
   // the flow reads Get_keywords_all's body throughout)
   const canon = rows.filter((r) => !r.CanonicalRefId);
-  const vocabLines = canon.map((r) => `${r.Title} [${r.Kind}]`).join("\n");
   const blockedRows = canon.filter((r) => r.CurationStatus);
   const blockedLines = blockedRows.map((r) => r.Title).join("\n");
 
-  // 3) the tenant's curation prompt, one call
-  const response = await aiBuilderPredict(
-    cfg.llm,
-    { Vocabulary: vocabLines, DoNotPropose: blockedLines },
-    cfg.llm.curationModelId
+  // 3) the tenant's curation prompt — one call per alphabetical
+  // vocabulary chunk (see vocabChunk above); per-chunk cap applies,
+  // proposals concatenate across chunks
+  const canonSorted = [...canon].sort((a, b) =>
+    lower(a.Title) < lower(b.Title) ? -1 : lower(a.Title) > lower(b.Title) ? 1 : 0
   );
-  const text = response?.responsev2?.predictionOutput?.text ?? "{}";
-  let parsed = {};
-  try {
-    parsed = JSON.parse(braceSlice(text));
-  } catch {
-    process.stderr.write("curate: unparseable model output — zero proposals this week\n");
+  const chunkSize = Math.max(1, Number(cur.vocabChunk) || 700);
+  const cap = Number(cur.maxProposals) || 20;
+  const proposals = [];
+  for (let i = 0; i < canonSorted.length; i += chunkSize) {
+    const chunk = canonSorted.slice(i, i + chunkSize);
+    const response = await aiBuilderPredict(
+      cfg.llm,
+      {
+        Vocabulary: chunk.map((r) => `${r.Title} [${r.Kind}]`).join("\n"),
+        DoNotPropose: blockedLines,
+      },
+      cfg.llm.curationModelId
+    );
+    const text = response?.responsev2?.predictionOutput?.text ?? "{}";
+    let parsed = {};
+    try {
+      parsed = JSON.parse(braceSlice(text));
+    } catch {
+      process.stderr.write("curate: unparseable model output for one chunk — skipping it\n");
+    }
+    proposals.push(
+      ...(Array.isArray(parsed?.proposals) ? parsed.proposals : []).slice(0, cap)
+    );
   }
-  const proposals = (Array.isArray(parsed?.proposals) ? parsed.proposals : []).slice(
-    0,
-    Number(cur.maxProposals) || 20
-  );
 
   // 4) digest lines — pending rows first. In autoApprove mode a
   // pending proposal from manual-mode weeks is APPLIED now (canonical

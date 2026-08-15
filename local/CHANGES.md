@@ -1,5 +1,22 @@
 # Local sweep — release notes
 
+## v1.12.1 (2026-08-15)
+
+Timeout fix, found on the first live drain: AI Builder's gateway
+408s once the vocabulary+reply combination gets big enough (the
+1880-line vocabulary with the v1.1 50-proposal cap crossed it). Two
+changes: 408 joins 429/5xx as a retryable status in
+`aiBuilderPredict` (transient under load), and the vocabulary is now
+sent in **alphabetical chunks** (`curation.vocabChunk`, default 700
+lines) — one Predict call per chunk, per-chunk proposal cap,
+proposals concatenated, hallucination guard still validating against
+the FULL row set. Alphabetical ordering keeps the main variant
+classes (plural/typo/hyphen/concatenation) adjacent within one
+chunk; abbreviation-vs-expansion pairs far apart alphabetically are
+the accepted miss (documented). Deviation from the flow's
+one-giant-call shape — which is exactly what was timing out. Gate:
+chunk leg proves one call per chunk. **PASSED 2026-08-15 (90/90).**
+
 ## v1.12 (2026-08-15)
 
 **Backlog draining** for curation. The owner asked for a 500-proposal
