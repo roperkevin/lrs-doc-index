@@ -1,17 +1,24 @@
 {
-  "$comment": "Official Esri documentation links rendered into each sidecar's 'Product documentation' section, keyed by the EXACT canonical product names RegexExtract emits (the Doc Index Products field). Edit freely — links deploy on the next run via the self-updating git pull; a sweep --rerank refreshes every existing sidecar. Remove a product's entry (or the whole file) to drop its links; sidecars clean themselves up on the next write. VERIFY these seed URLs against the live sites — they were authored offline.",
-  "Roads & Highways": [
-    { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-roads-and-highways/overview" },
-    { "title": "Location Referencing in ArcGIS Pro", "url": "https://pro.arcgis.com/en/pro-app/latest/help/production/location-referencing/get-started-with-location-referencing.htm" },
-    { "title": "Roads and Highways in ArcGIS Enterprise", "url": "https://enterprise.arcgis.com/en/roads-highways/" }
-  ],
-  "Pipeline Referencing": [
-    { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-pipeline-referencing/overview" },
-    { "title": "Location Referencing in ArcGIS Pro", "url": "https://pro.arcgis.com/en/pro-app/latest/help/production/location-referencing/get-started-with-location-referencing.htm" },
-    { "title": "Pipeline Referencing in ArcGIS Enterprise", "url": "https://enterprise.arcgis.com/en/pipeline-referencing/" }
-  ],
-  "Utility Network": [
-    { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-utility-network/overview" },
-    { "title": "Utility Network in ArcGIS Pro", "url": "https://pro.arcgis.com/en/pro-app/latest/help/data/utility-network/what-is-a-utility-network-.htm" }
-  ]
+  "$comment": "Esri documentation links rendered into each sidecar's 'Product documentation' section. Three parts: products (keyed by the EXACT canonical Products names) render product-level links; tools (keyed by tool name, case-insensitive) render DIRECT deep links for a doc's detected tools; searchTemplate renders a search link for any detected tool NOT in the tools map ({q} = URL-encoded tool name) — so coverage is complete on day one and any frequently-hit tool can be upgraded to a direct link by adding one line here. Edit freely: git pull deploys, and a sweep --rerank refreshes every existing sidecar. The doc.esri.com URLs were supplied/verified by the owner 2026-08-15; the esri.com overview URLs remain unverified.",
+  "searchTemplate": "https://www.google.com/search?q=%22{q}%22+site%3Adoc.esri.com",
+  "products": {
+    "Roads & Highways": [
+      { "title": "Essential vocabulary", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/essential-roads-and-highways-vocabulary.html" },
+      { "title": "LRS data model", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/lrs-data-model.html" },
+      { "title": "LRS data products", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/lrs-data-products.html" },
+      { "title": "What is event behavior", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/what-is-event-behavior.html" },
+      { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-roads-and-highways/overview" }
+    ],
+    "Pipeline Referencing": [
+      { "title": "Essential vocabulary", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/location-referencing-pipelines/essential-pipeline-referencing-vocabulary.html" },
+      { "title": "Share web layers with linear referencing capability", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/location-referencing-pipelines/share-web-layers-with-linear-referencing-capability.html" },
+      { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-pipeline-referencing/overview" }
+    ],
+    "Utility Network": [
+      { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-utility-network/overview" }
+    ]
+  },
+  "tools": {
+    "Reassign Routes": "https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/reassign-routes.html"
+  }
 }

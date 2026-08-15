@@ -1,5 +1,32 @@
 # Local sweep — release notes
 
+## v1.15 (2026-08-15)
+
+**Tool-level documentation links** (owner request: a user story
+about the Add Point Events tool should link that tool's docs).
+Layered design in the same sidecar block and the same editable
+`local/esri_doc_links.json`:
+
+- **Curated direct links**: new `tools` map (tool name →
+  URL, case-insensitive) renders `- **Reassign Routes** —
+  [documentation](…)`. Seeded with the owner-verified doc.esri.com
+  URL scheme; upgrade any tool by adding one JSON line.
+- **Templated search fallback**: tools NOT in the map render
+  `[search Esri docs]` via `searchTemplate` (`{q}` = the encoded
+  tool name; default a doc.esri.com-scoped web search) — complete
+  coverage with zero authoring, never a 404.
+- Detection: the LLM's `tools` output at index time; the doc's
+  `Kind: tool` keywords (alias-folded) at `--rerank` time — the two
+  converge because tools are minted as tool-kind keywords.
+- `products` map re-seeded with the owner-supplied doc.esri.com
+  pages (essential vocabulary, LRS data model/products, event
+  behavior; pipeline vocabulary + web-layer sharing). Legacy flat
+  JSON shape still parses.
+
+Gate: curated tool → direct link; unmapped tool → encoded search
+link; rerank rebuilds both from junctions alone; still exactly one
+block after re-passes. **Gate PASSED 2026-08-15 (101/101).**
+
 ## v1.14 (2026-08-15)
 
 **Product-documentation links in sidecars.** Docs whose `Products`
