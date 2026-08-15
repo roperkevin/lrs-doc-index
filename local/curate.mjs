@@ -92,6 +92,11 @@ function loadConfig(argv) {
     digestDrivePath: "", // site default drive root = Shared Documents
     maxProposals: 20,
     promptVersion: "v1.0",
+    // false = the flow's propose-then-approve contract (a human sets
+    // CanonicalRef). true = guard-passing merges apply immediately,
+    // pending proposals from manual mode included; the digest becomes
+    // an audit log with undo instructions.
+    autoApprove: false,
     dryRun: true,
     ...(cfg.curation || {}),
   };
@@ -190,17 +195,36 @@ async function main() {
     Number(cur.maxProposals) || 20
   );
 
-  // 4) digest lines: pending carryover first, then this run's writes
+  // 4) digest lines — pending rows first. In autoApprove mode a
+  // pending proposal from manual-mode weeks is APPLIED now (canonical
+  // resolved from the ProposedCanonical "<title> — <why>" prefix);
+  // unresolvable ones stay listed as pending.
+  const byLower = new Map(rows.map((r) => [lower(r.Title), r]));
   let lines = "";
+  let merged = 0;
   for (const r of rows) {
-    if (!r.CanonicalRefId && r.CurationStatus === "Proposed") {
+    if (r.CanonicalRefId || r.CurationStatus !== "Proposed") continue;
+    let canonRow = null;
+    if (cur.autoApprove) {
+      const canonTitle = String(r.ProposedCanonical || "").split(" — ")[0].trim();
+      const found = byLower.get(lower(canonTitle));
+      if (found && found.ID !== r.ID && !found.CanonicalRefId) canonRow = found;
+    }
+    if (canonRow) {
+      await patch(
+        r.ID,
+        { CanonicalRefLookupId: canonRow.ID, CurationStatus: null, ProposedCanonical: null },
+        "auto-approve-pending"
+      );
+      merged++;
+      lines += `- MERGED (pending) '${r.Title}' → '${canonRow.Title}'\n`;
+    } else {
       lines += `- (pending) '${r.Title}' → ${r.ProposedCanonical}\n`;
     }
   }
 
   // 5) hallucination guard + proposal writes (snapshot semantics, as
   // in the flow — Find_alias/Find_canon read the run-start body)
-  const byLower = new Map(rows.map((r) => [lower(r.Title), r]));
   let written = 0;
   let dropped = 0;
   for (const p of proposals) {
@@ -219,12 +243,18 @@ async function main() {
       continue;
     }
     const why = String(p.why ?? "").replaceAll('"', "").replaceAll("\n", " ").slice(0, 160);
-    await patch(
-      aliasRow.ID,
-      { CurationStatus: "Proposed", ProposedCanonical: `${canonRow.Title} — ${why}` },
-      "write-proposal"
-    );
-    lines += `- '${aliasRow.Title}' → '${canonRow.Title}' — ${why}\n`;
+    if (cur.autoApprove) {
+      await patch(aliasRow.ID, { CanonicalRefLookupId: canonRow.ID }, "auto-approve");
+      merged++;
+      lines += `- MERGED '${aliasRow.Title}' → '${canonRow.Title}' — ${why}\n`;
+    } else {
+      await patch(
+        aliasRow.ID,
+        { CurationStatus: "Proposed", ProposedCanonical: `${canonRow.Title} — ${why}` },
+        "write-proposal"
+      );
+      lines += `- '${aliasRow.Title}' → '${canonRow.Title}' — ${why}\n`;
+    }
     written++;
   }
 
@@ -233,13 +263,16 @@ async function main() {
   const head =
     `# Keyword curation digest\n\n` +
     `Run: ${new Date().toISOString()}  ·  CurationPromptVersion: ${cur.promptVersion}\n\n`;
+  const howTo = cur.autoApprove
+    ? "Merges are applied AUTOMATICALLY (curation.autoApprove).\n" +
+      "Undo a wrong merge: clear the row's CanonicalRef AND set " +
+      "CurationStatus = Rejected (blocks re-proposal).\n\n"
+    : "Approve: open the Keywords row, set CanonicalRef to the named row.\n" +
+      "Reject: set CurationStatus = Rejected.\n" +
+      "Review view: Keywords → Curation queue.\n\n";
   const digest =
     lines !== ""
-      ? head +
-        "Approve: open the Keywords row, set CanonicalRef to the named row.\n" +
-        "Reject: set CurationStatus = Rejected.\n" +
-        "Review view: Keywords → Curation queue.\n\n" +
-        lines
+      ? head + howTo + lines
       : head +
         "The queue is EMPTY — no pending proposals. All previously proposed " +
         "merges have been approved or rejected; the next Saturday run may " +
@@ -252,7 +285,8 @@ async function main() {
   const line =
     `canon=${canon.length} blocked=${blockedRows.length} ` +
     `proposed_by_model=${proposals.length} written=${written} ` +
-    `dropped=${dropped} cleared=${cleared}`;
+    `dropped=${dropped} cleared=${cleared}` +
+    (cur.autoApprove ? ` merged=${merged}` : "");
   const logDir = cfg.paths?.workDir || ".";
   fs.mkdirSync(logDir, { recursive: true });
   const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);

@@ -351,6 +351,15 @@ sign-ins, no new prompts):
 4. **Turn the KeywordCuration cloud flow OFF** in the portal (keep as
    rollback) — never both live — and record the handover in STATUS.
 
+**Optional — `curation.autoApprove: true`** trades the human gate
+for convenience: guard-passing merges apply immediately (the job
+sets CanonicalRef itself; pending proposals left from manual mode
+apply on the next run), and the digest becomes an audit log. Undo a
+wrong merge by clearing the row's CanonicalRef AND setting
+CurationStatus = Rejected (blocks re-proposal). The guard still
+drops anything not matching real, uncurated rows verbatim — but
+nothing reviews semantic judgment before it lands; default is false.
+
 Prompt promotion stays the AI Builder paste (CurationPromptVersion in
 `curation/CHANGES.md`; update `curation.promptVersion` in config so
 the digest header reports it). Parse-failure behavior deviates

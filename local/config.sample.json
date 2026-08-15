@@ -38,10 +38,11 @@
   },
 
   "curation": {
-    "$comment": "Weekly keyword curation (local/curate.mjs — Local_Setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur.",
+    "$comment": "Weekly keyword curation (local/curate.mjs — Local_Setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur. autoApprove: true applies guard-passing merges immediately (digest becomes an audit log; undo = clear CanonicalRef + set CurationStatus Rejected).",
     "digestName": "Keyword_Curation_Digest.md",
     "maxProposals": 20,
     "promptVersion": "v1.0",
+    "autoApprove": false,
     "dryRun": true
   },
 

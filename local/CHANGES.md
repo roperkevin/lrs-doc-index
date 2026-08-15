@@ -1,5 +1,21 @@
 # Local sweep — release notes
 
+## v1.11.1 (2026-08-15)
+
+`curation.autoApprove` (default **false** — the flow's
+propose-then-approve contract stays the default). When true:
+guard-passing merges apply immediately (the job sets CanonicalRef —
+the one thing the cloud flow deliberately never did, now an explicit
+owner opt-in), pending proposals left over from manual-mode weeks
+are applied too (canonical resolved from the ProposedCanonical
+prefix; unresolvable ones stay pending), the digest becomes an
+audit log with undo instructions (clear CanonicalRef + set
+CurationStatus Rejected, which blocks re-proposal via the existing
+DoNotPropose mechanism), and the summary line gains `merged=`.
+Gate: week-3 auto-approve leg — fresh proposal and manual-era
+pending row both merged, digest audit format.
+**Gate PASSED 2026-08-15 (88/88).**
+
 ## v1.11 (2026-08-15)
 
 **Keyword curation goes local** (`local/curate.mjs`) — the LAST Power
