@@ -320,7 +320,9 @@ export async function aiBuilderPredict(cfg, requestv2, modelId) {
       lastErr = new Error(`AI Builder 401: ${(await res.text()).slice(0, 300)}`);
       continue;
     }
-    if (res.status === 429 || res.status >= 500) {
+    if (res.status === 429 || res.status === 408 || res.status >= 500) {
+      // 408: the AI Builder gateway timing out a long generation —
+      // transient under load, so it gets the same backoff-retry
       lastErr = new Error(`AI Builder ${res.status}: ${(await res.text()).slice(0, 300)}`);
       continue;
     }
