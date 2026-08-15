@@ -43,6 +43,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
@@ -105,6 +106,68 @@ const folderOf = (k) => {
   const i = String(k).lastIndexOf("/");
   return i >= 0 ? String(k).slice(0, i) : "";
 };
+
+/**
+ * Product-documentation links (local/esri_doc_links.json, or
+ * sweep.docLinksFile): official Esri doc pages per canonical product
+ * name, rendered as a marked block in each sidecar. Missing or
+ * unparseable file = empty map = blocks are removed on next write.
+ */
+function loadDocLinks(sw) {
+  const file =
+    sw.docLinksFile ||
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "esri_doc_links.json");
+  try {
+    const map = JSON.parse(fs.readFileSync(file, "utf8"));
+    return map && typeof map === "object" ? map : {};
+  } catch {
+    return {};
+  }
+}
+
+const DOCS_BEGIN = "<!-- docs:begin -->";
+const DOCS_END = "<!-- docs:end -->";
+
+/** The marked block ("" when no product has links). */
+function docsBlock(products, linkMap) {
+  const lines = [];
+  for (const p of products || []) {
+    const links = Array.isArray(linkMap?.[p]) ? linkMap[p] : [];
+    const parts = links
+      .filter((l) => l && l.url && l.title)
+      .map((l) => `[${l.title}](${l.url})`);
+    if (parts.length) lines.push(`- **${p}** — ${parts.join(" · ")}`);
+  }
+  if (!lines.length) return "";
+  return `${DOCS_BEGIN}\n## Product documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
+}
+
+/** Insert/replace/remove the marked docs block in sidecar content.
+ *  Fresh insertion goes right after the related region (or before
+ *  the header seam as a fallback); unrecognizable shapes are left
+ *  alone rather than guessed at. */
+function upsertDocsBlock(content, block) {
+  const s = String(content);
+  const at = s.indexOf(DOCS_BEGIN);
+  if (at >= 0) {
+    const end = s.indexOf(DOCS_END, at);
+    if (end < 0) return s; // malformed — don't touch
+    const old = s.slice(at, end + DOCS_END.length);
+    if (block === "") {
+      return s.replace("\n\n" + old, "").replace(old, "");
+    }
+    return s.replace(old, block);
+  }
+  if (block === "") return s;
+  const relEnd = s.indexOf("<!-- related:end -->");
+  if (relEnd >= 0) {
+    const cut2 = relEnd + "<!-- related:end -->".length;
+    return s.slice(0, cut2) + "\n\n" + block + s.slice(cut2);
+  }
+  const seam = s.lastIndexOf("\n---\n");
+  if (seam >= 0) return s.slice(0, seam) + "\n\n" + block + s.slice(seam);
+  return s;
+}
 
 /** Zero-dependency HTML → text: scripts/styles/comments dropped,
  *  tags stripped, common entities decoded, whitespace collapsed. */
@@ -299,7 +362,7 @@ function normalizeRows(items, kind) {
           DocKind: f.DocKind || "", Surface: f.Surface || "",
           TargetRelease: f.TargetRelease || "", PE: f.PE || "", Dev: f.Dev || "",
           Summary: f.Summary || "", LastError: f.LastError || "",
-          ExtractionLane: f.ExtractionLane || "",
+          ExtractionLane: f.ExtractionLane || "", Products: f.Products || "",
         });
         break;
       case "keywords":
@@ -436,6 +499,7 @@ async function main() {
   const graph = new GraphClient(cfg.graph);
   const spo = new SpoClient(cfg.spo);
   const bodyIndex = new BodyIndex();
+  const docLinks = loadDocLinks(sw);
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
   const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
   const writer = new Writer(graph, siteId, sp.lists, dry, spo);
@@ -449,7 +513,7 @@ async function main() {
   const docIndexRows = await fetch("docIndex", "docIndex", [
     "Title", "FileName", "DocKey", "IndexStatus", "SourceModified",
     "PromptVersion", "TextFileUrl", "DocKind", "Surface", "TargetRelease",
-    "PE", "Dev", "Summary", "LastError", "ExtractionLane",
+    "PE", "Dev", "Summary", "LastError", "ExtractionLane", "Products",
   ]);
   const keywordRows = await fetch("keywords", "keywords", ["Title", "Kind", "CanonicalRefLookupId"]);
   const docIdRows = await fetch("docIds", "docIds", ["Title", "Repo", "IssueNumber", "Source", "IdKey", "DocumentLookupId"]);
@@ -498,6 +562,12 @@ async function main() {
         continue;
       }
       try {
+        // upsert the product-documentation block first, so existing
+        // sidecars gain/refresh links in the same pass
+        const before = fs.readFileSync(local, "utf8");
+        const rowProducts = String(r.Products || "").split("; ").filter(Boolean);
+        const content = upsertDocsBlock(before, docsBlock(rowProducts, docLinks));
+        if (content !== before) writer.writeFile(local, content);
         await rankRelated({
           cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
           setStep: () => {},
@@ -513,7 +583,7 @@ async function main() {
           selfFile: {
             name: rel.split("/").pop(),
             folder: rel.slice(0, rel.lastIndexOf("/")),
-            content: fs.readFileSync(local, "utf8"),
+            content,
           },
           textFileUrl: url,
         });
@@ -625,7 +695,7 @@ async function main() {
     try {
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex,
+        cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -757,7 +827,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -948,7 +1018,11 @@ async function indexDoc(ctx) {
   // (g) sidecar write + row URL patch + recycle-on-move
   setStep("sidecar");
   const localSidecar = path.join(cfg.paths.sidecarLibrary, kindFolder, sidecarName);
-  writer.writeFile(localSidecar, header + docText);
+  // product-documentation links block (v1.14), inserted after the
+  // related region — driven by the Products detection + the editable
+  // local/esri_doc_links.json map
+  const sidecarContent = upsertDocsBlock(header + docText, docsBlock(products, docLinks));
+  writer.writeFile(localSidecar, sidecarContent);
   const textFileUrl = `${sw.siteUrl}${sidecarFolder}/${sidecarName}`;
   await writer.patchRow("docIndex", rowId, {
     Title: title, FileName: name, DocKey: docKey, IndexStatus: "Indexed",
@@ -1052,7 +1126,7 @@ async function indexDoc(ctx) {
       kind: docKind, surface, release: ai.targetRelease || "",
       pe: ai.pe || "", dev: ai.dev || "", modified,
     },
-    selfFile: { name: sidecarName, folder: sidecarFolder, content: header + docText },
+    selfFile: { name: sidecarName, folder: sidecarFolder, content: sidecarContent },
     textFileUrl,
     upsertText: docText,
   });

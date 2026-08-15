@@ -249,6 +249,13 @@ Each is behavior-equivalent; all are exercised by the gate:
 - **HTML indexes** (deviation — the flow always skipped it): the
   schema's reserved `htmltotext` lane is implemented locally
   (zero-dependency tag stripper).
+- **Product-documentation links** (additive deviation): sidecars for
+  docs with a detected `Products` value carry a
+  `## Product documentation` section linking the official Esri docs,
+  driven by the editable `local/esri_doc_links.json` (keys = the
+  canonical product names; edit + git pull = deploy; `--rerank`
+  refreshes every existing sidecar). Verify the seed URLs — they
+  were authored offline.
 - **Richer relatedness** (a real deviation — additive): on top of the
   flow's keyword/edge relatedness, the sweep computes **body-text
   similarity** (BM25 cosine over the sidecar corpus, in-memory, no AI

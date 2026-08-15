@@ -1,0 +1,17 @@
+{
+  "$comment": "Official Esri documentation links rendered into each sidecar's 'Product documentation' section, keyed by the EXACT canonical product names RegexExtract emits (the Doc Index Products field). Edit freely — links deploy on the next run via the self-updating git pull; a sweep --rerank refreshes every existing sidecar. Remove a product's entry (or the whole file) to drop its links; sidecars clean themselves up on the next write. VERIFY these seed URLs against the live sites — they were authored offline.",
+  "Roads & Highways": [
+    { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-roads-and-highways/overview" },
+    { "title": "Location Referencing in ArcGIS Pro", "url": "https://pro.arcgis.com/en/pro-app/latest/help/production/location-referencing/get-started-with-location-referencing.htm" },
+    { "title": "Roads and Highways in ArcGIS Enterprise", "url": "https://enterprise.arcgis.com/en/roads-highways/" }
+  ],
+  "Pipeline Referencing": [
+    { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-pipeline-referencing/overview" },
+    { "title": "Location Referencing in ArcGIS Pro", "url": "https://pro.arcgis.com/en/pro-app/latest/help/production/location-referencing/get-started-with-location-referencing.htm" },
+    { "title": "Pipeline Referencing in ArcGIS Enterprise", "url": "https://enterprise.arcgis.com/en/pipeline-referencing/" }
+  ],
+  "Utility Network": [
+    { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-utility-network/overview" },
+    { "title": "Utility Network in ArcGIS Pro", "url": "https://pro.arcgis.com/en/pro-app/latest/help/data/utility-network/what-is-a-utility-network-.htm" }
+  ]
+}
