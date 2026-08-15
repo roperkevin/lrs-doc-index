@@ -878,6 +878,30 @@ def main():
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
+    # ---- leg 3e: full-corpus re-rank (no AI, no extraction) --------
+    print("== rerank leg")
+    llm_before_rr = state.llm_calls
+    cur_before_rr = state.cur_calls
+    proc = run_sweep(cfg_path, ["--live", "--rerank"])
+    check("rerank exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    # 6 = the Indexed docs at this point (alpha, beta, notes, html,
+    # outside.txt, outside.pdf); spec.pdf sits re-Skipped since the
+    # no-tool leg, so rerank rightly leaves it (and its sidecar) alone
+    check("rerank covered every indexed doc with a sidecar",
+          out.get("mode") == "rerank" and out.get("reranked") == 6
+          and out.get("no_sidecar") == 0 and out.get("errors") == 0, str(out))
+    check("rerank made zero AI calls",
+          state.llm_calls == llm_before_rr and state.cur_calls == cur_before_rr,
+          f"llm={state.llm_calls} vs {llm_before_rr}")
+    sc_rr = open(alpha_sc).read()
+    check("rerank preserved keyword/id relateds (alpha still names beta)",
+          f"doc{beta_id}" in sc_rr, sc_rr[-400:])
+    spec_rr = open(spec_sc_path).read()
+    check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
+          f"doc{notes_id}" in spec_rr and "similar text (" in spec_rr,
+          spec_rr[-400:])
+
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
     cfg["llm"] = {"provider": "anthropic", "apiKey": "mock-key",

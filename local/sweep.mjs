@@ -164,15 +164,20 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--max") args.flags.max = Number(argv[++i]);
     else if (a === "--only") args.flags.only = argv[++i];
+    else if (a === "--rerank") args.flags.rerank = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank]");
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   cfg.sweep = { ...FLOW_DEFAULTS, ...(cfg.sweep || {}) };
   if (args.flags.live) cfg.sweep.dryRun = false;
   if (args.flags.dry) cfg.sweep.dryRun = true;
-  if (args.flags.max !== undefined) cfg.sweep.maxDocsPerRun = args.flags.max;
+  if (args.flags.max !== undefined) {
+    cfg.sweep.maxDocsPerRun = args.flags.max;
+    cfg.sweep._maxSet = true; // rerank is uncapped unless --max is explicit
+  }
   if (args.flags.only !== undefined) cfg.sweep.smokeFile = args.flags.only;
+  if (args.flags.rerank) cfg.sweep.rerank = true;
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   // device-mode refresh-token caches (one per resource) live in workDir
@@ -471,6 +476,66 @@ async function main() {
     .filter((r) => !r.CanonicalRefId)
     .map((r) => r.Title)
     .join(", ");
+
+  // ---- --rerank: rebuild every related section from persisted state
+  // (no extraction, no AI calls — pure local compute + sidecar
+  // writes). Use after keyword-curation merges to propagate them
+  // corpus-wide in one pass instead of waiting on lazy reindexes.
+  if (sw.rerank) {
+    const caches = { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows };
+    const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
+    const rsum = { mode: "rerank", dry_run: dry, eligible: 0, reranked: 0, no_sidecar: 0, errors: 0, related_flags: "" };
+    for (const r of docIndexRows) {
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      rsum.eligible++;
+      if (rsum.reranked >= cap) continue;
+      const url = String(r.TextFileUrl);
+      const rel = url.replace(sw.siteUrl, "");
+      const local = urlToLocal(url, sw, cfg);
+      if (!rel.startsWith("/") || !local || !fs.existsSync(local)) {
+        rsum.no_sidecar++;
+        continue;
+      }
+      try {
+        await rankRelated({
+          cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
+          setStep: () => {},
+          rowId: r.ID,
+          name: r.FileName || "",
+          docKey: lower(r.DocKey),
+          title: r.Title || r.FileName || "",
+          meta: {
+            kind: r.DocKind || "", surface: r.Surface || "",
+            release: r.TargetRelease || "", pe: r.PE || "",
+            dev: r.Dev || "", modified: r.SourceModified || "",
+          },
+          selfFile: {
+            name: rel.split("/").pop(),
+            folder: rel.slice(0, rel.lastIndexOf("/")),
+            content: fs.readFileSync(local, "utf8"),
+          },
+          textFileUrl: url,
+        });
+        rsum.reranked++;
+      } catch (e) {
+        rsum.errors++;
+        process.stderr.write(`RERANK ERROR ${r.FileName}: ${e.message}\n`);
+      }
+    }
+    rsum.related_flags = rsum.related_flags.trim();
+    const rDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(rDir, { recursive: true });
+    const rStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const rLog = path.join(rDir, `sweep-${rStamp}.json`);
+    fs.writeFileSync(rLog, JSON.stringify({ summary: rsum, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(rDir);
+    process.stdout.write(JSON.stringify({ ...rsum, logFile: rLog }) + "\n");
+    if (dry) {
+      process.stdout.write(`dry run: ${writer.plan.length} planned writes recorded in ${rLog}\n`);
+    }
+    return;
+  }
 
   // ---- selection ----
   const files = await graph.listItems(srcSiteId, sp.lists.sourceLibrary, {
@@ -978,12 +1043,37 @@ async function indexDoc(ctx) {
     }
   }
 
-  // (j) relatedness — see flow §5 (+ v1.9: body-text similarity as a
-  // candidate source, so semantically similar docs relate even with
-  // no shared keyword/edge)
+  // (j) relatedness — extracted to rankRelated so `--rerank` can run
+  // the identical path from persisted state (rows + on-disk sidecars)
+  await rankRelated({
+    cfg, sw, op, writer, summary, bodyIndex, caches, kwSnapshot, setStep,
+    rowId, name, docKey, title,
+    meta: {
+      kind: docKind, surface, release: ai.targetRelease || "",
+      pe: ai.pe || "", dev: ai.dev || "", modified,
+    },
+    selfFile: { name: sidecarName, folder: sidecarFolder, content: header + docText },
+    textFileUrl,
+    upsertText: docText,
+  });
+}
+
+/**
+ * Relatedness + sidecar patching for one doc — flow §5's
+ * shortlist→final→sidecarpatch, plus the v1.9 body-sim candidate
+ * source. Called by indexDoc with fresh state, and by `--rerank`
+ * with persisted state (row metadata, junction/edge lists, the
+ * on-disk sidecar as selfFile.content, no upsertText — the body
+ * index already carries the doc from disk).
+ */
+async function rankRelated(ctx) {
+  const {
+    cfg, sw, op, writer, summary, bodyIndex, caches, kwSnapshot, setStep,
+    rowId, name, docKey, title, meta, selfFile, textFileUrl, upsertText,
+  } = ctx;
   setStep("related");
   bodyIndex.ensureBuilt(caches.docIndexRows, sw, cfg);
-  bodyIndex.upsert(rowId, docText);
+  if (upsertText !== undefined) bodyIndex.upsert(rowId, upsertText);
   const sims = bodyIndex.query(rowId);
   const simMin = sw.relatedBodySimMin === undefined ? 0.15 : Number(sw.relatedBodySimMin);
   const simTop = sims.filter((s) => s.sim >= simMin).slice(0, sw.relatedShortlist);
@@ -1002,8 +1092,8 @@ async function indexDoc(ctx) {
     .filter((r) => sharerIds.has(r.KeywordId))
     .slice(0, sw.sharersTop);
   const selfMetaRank = {
-    kind: docKind, surface, release: ai.targetRelease || "",
-    pe: ai.pe || "", dev: ai.dev || "", modified, title,
+    kind: meta.kind, surface: meta.surface, release: meta.release,
+    pe: meta.pe, dev: meta.dev, modified: meta.modified, title,
     // v1.9 (RelatedRank v2.2 self gates): filename + folder affinity
     filename: name, folder: folderOf(docKey),
   };
@@ -1053,14 +1143,14 @@ async function indexDoc(ctx) {
   }
 
   setStep("sidecar-patch");
-  const selfFile = { doc: rowId, name: sidecarName, folder: sidecarFolder, content: header + docText };
+  const selfFileObj = { doc: rowId, name: selfFile.name, folder: selfFile.folder, content: selfFile.content };
   const patch = op({
     op: "sidecarpatch",
-    filesJson: [selfFile, ...neighborFiles],
+    filesJson: [selfFileObj, ...neighborFiles],
     selfId: String(rowId),
     rankedJson: rank.related || [],
     docsMetaJson: finalDocs,
-    selfMetaJson: { doc: rowId, title, url: textFileUrl, file: sidecarName },
+    selfMetaJson: { doc: rowId, title, url: textFileUrl, file: selfFile.name },
     topN: sw.relatedTopN,
   });
   for (const file of patch.files || []) {

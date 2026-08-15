@@ -164,7 +164,10 @@ is automatically a **shadow run**: full enumeration and compute, zero
 writes, a plan file in `paths.workDir`. It's also where the two §2
 device-code sign-ins happen, so run it from a console. Flags:
 `--live` (perform writes), `--dry-run`, `--max N` (cap docs),
-`--only <filename>` (the SmokeFile equivalent — one doc).
+`--only <filename>` (the SmokeFile equivalent — one doc),
+`--rerank` (rebuild every Related Documents section from persisted
+state — no AI calls, no extraction; run after keyword-curation
+merges to propagate them corpus-wide in one pass).
 
 **Schedule it** (replaces the Recurrence trigger; unlike attended PAD
 runs, Task Scheduler works with the machine locked). Register from
