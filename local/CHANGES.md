@@ -1,5 +1,27 @@
 # Local sweep — release notes
 
+## v1.14 (2026-08-15)
+
+**Product-documentation links in sidecars.** Docs whose `Products`
+field names Roads & Highways / Pipeline Referencing / Utility
+Network (RegexExtract's canonical detection) get a
+`## Product documentation` section — official Esri doc links per
+product — inserted after the related region inside
+`<!-- docs:begin/end -->` markers. The links live in the **editable**
+`local/esri_doc_links.json` (override: `sweep.docLinksFile`), keyed
+by the exact canonical product names: editing the file + the
+self-updating git pull is the whole deploy; removing an entry (or
+the file) removes the block from sidecars on their next write.
+Written on fresh indexes AND upserted corpus-wide by `--rerank`
+(idempotent — replace-in-place). ⚠ The seed URLs were authored
+offline (Esri domains unreachable from the build sandbox) — verify
+them in a browser and correct the JSON as needed.
+
+Gate: product detected end-to-end from fixture text ("Roads and
+Highways" → row `Products` → sidecar block with the overview URL);
+rerank leg proves exactly one block after re-passes.
+**Gate PASSED 2026-08-15 (98/98).**
+
 ## v1.13 (2026-08-15)
 
 **`sweep.mjs --rerank`** — rebuild every Indexed doc's Related

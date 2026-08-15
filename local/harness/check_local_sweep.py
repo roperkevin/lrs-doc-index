@@ -320,7 +320,8 @@ def main():
 
     # fixture corpus
     make_pptx(os.path.join(src_dir, "Alpha Plan.pptx"),
-              "Alpha test plan covering lock acquisition #123", with_media=True)
+              "Alpha test plan covering lock acquisition #123 for Roads and Highways",
+              with_media=True)
     make_pptx(os.path.join(src_dir, "Beta Story.pptx"),
               "Beta user story about locks and issue #123")
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
@@ -621,6 +622,13 @@ def main():
           and "| **Kind** | Test Plan · Pro |" in sc, sc[:300])
     check("sidecar issue row + yaml", "#123" in sc and 'issues: ["' in sc)
     check("sidecar body appended", "Alpha test plan covering lock acquisition" in sc)
+    check("product detected on the row",
+          alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
+    check("sidecar carries the product-documentation links block",
+          "## Product documentation" in sc
+          and "arcgis-roads-and-highways" in sc
+          and "<!-- docs:begin -->" in sc and "<!-- docs:end -->" in sc,
+          sc[-600:])
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     check("alpha related region patched (names beta)",
@@ -897,6 +905,10 @@ def main():
     sc_rr = open(alpha_sc).read()
     check("rerank preserved keyword/id relateds (alpha still names beta)",
           f"doc{beta_id}" in sc_rr, sc_rr[-400:])
+    check("rerank upsert kept exactly one docs block",
+          sc_rr.count("<!-- docs:begin -->") == 1
+          and "arcgis-roads-and-highways" in sc_rr,
+          f"count={sc_rr.count('<!-- docs:begin -->')}")
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
           f"doc{notes_id}" in spec_rr and "similar text (" in spec_rr,
