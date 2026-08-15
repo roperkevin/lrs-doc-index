@@ -489,30 +489,39 @@ async function main() {
     const ext = lower(name.split(".").pop());
     const fileTypeSafe = KNOWN_EXT.includes(ext) ? ext : IMAGE_EXT.includes(ext) ? "image" : "other";
 
-    // Needs_index — plus the PDF rescue: rows the (pre-pdftotext)
-    // sweep or the cloud flow stamped Skipped get one re-index now
-    // that PDF text extraction exists; after that attempt their
-    // ExtractionLane is "plaintext", so they don't re-enter.
-    const pdfRescue =
-      ext === "pdf" && !!pdfTool &&
-      existing?.IndexStatus === "Skipped" &&
-      existing?.ExtractionLane !== "plaintext";
-    const needsIndex =
-      !existing ||
-      pdfRescue ||
-      existing.IndexStatus === "Error" ||
-      existing.IndexStatus === "Archived" || // deleted doc restored → re-index
-      (existing.SourceModified || "1900-01-01T00:00:00Z") < modified ||
-      (existing.PromptVersion || "") !== sw.promptVersion;
-    if (isFolder || !needsIndex || summary.processed >= sw.maxDocsPerRun) continue;
-    summary.processed++; // incremented before Try_index, as in the flow
-
     // local path in the synced library; a doc outside the synced
     // root segment is structurally unreachable (out-of-scope lane)
     const inScope = siteRel.startsWith(sp.libraryRootSegment + "/");
     const libRel = inScope ? siteRel.slice(sp.libraryRootSegment.length + 1) : siteRel;
     const localPath = path.join(cfg.paths.sourceLibrary, ...libRel.split("/"));
     const sourceLink = item.webUrl || "";
+
+    // Needs_index — plus two self-healing rescues, both gated on
+    // inScope so an unreachable doc is stamped once, never nightly:
+    //  - PDF rescue: rows the (pre-pdftotext) sweep or the cloud
+    //    flow stamped Skipped re-index now that PDF extraction
+    //    exists; the "plaintext" lane marks the attempt.
+    //  - scope rescue: rows stamped "out of sync scope" re-index
+    //    automatically once the OneDrive sync is widened — no
+    //    promptVersion bump (and no corpus-wide AI respend) needed.
+    const pdfRescue =
+      ext === "pdf" && !!pdfTool && inScope &&
+      existing?.IndexStatus === "Skipped" &&
+      existing?.ExtractionLane !== "plaintext";
+    const scopeRescue =
+      inScope &&
+      existing?.IndexStatus === "Skipped" &&
+      String(existing?.LastError || "").startsWith("out of sync scope");
+    const needsIndex =
+      !existing ||
+      pdfRescue ||
+      scopeRescue ||
+      existing.IndexStatus === "Error" ||
+      existing.IndexStatus === "Archived" || // deleted doc restored → re-index
+      (existing.SourceModified || "1900-01-01T00:00:00Z") < modified ||
+      (existing.PromptVersion || "") !== sw.promptVersion;
+    if (isFolder || !needsIndex || summary.processed >= sw.maxDocsPerRun) continue;
+    summary.processed++; // incremented before Try_index, as in the flow
 
     let step = "start";
     try {
@@ -1055,7 +1064,7 @@ function writeStatusPage(cfg, { summary, logFile, errorLane, fatal }) {
     `- **Prompt version:** ${cfg.sweep?.promptVersion ?? ""}`,
     `- **Run log:** \`${logFile || "(none — run aborted before logging)"}\` on the sweep machine`,
     ...(summary.out_of_scope
-      ? [`- **Out of sync scope:** ${summary.out_of_scope} doc(s) stamped Skipped this run — widen the OneDrive sync (and touch the docs, or bump PromptVersion) to index them`]
+      ? [`- **Out of sync scope:** ${summary.out_of_scope} doc(s) stamped Skipped this run — widen the OneDrive sync to cover them and they re-index automatically on the next run`]
       : []),
     ...(summary.archived
       ? [`- **Archived this run:** ${summary.archived} row(s) whose source was deleted from the library (sidecars pruned; a restored doc re-indexes automatically)`]
