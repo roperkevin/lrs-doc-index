@@ -142,6 +142,83 @@ const toolSlug = (t) =>
   lower(t).replaceAll("&", "and").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
 /**
+ * DocPageIndex — the crawled page inventory (doc_crawl.mjs →
+ * workDir/esri_doc_pages.json) as a token-match index. A tool/topic
+ * name matches a page when its distinctive tokens cover the name
+ * (plural-insensitive, prefix-tolerant: "realign" ~ "realignment"),
+ * ranked by coverage + Jaccard, with a decisive boost for pages in
+ * the section matching the doc's detected product (the same slug
+ * exists in BOTH the R&H and Pipeline trees — a Pipeline doc should
+ * link the Pipeline copy).
+ */
+class DocPageIndex {
+  constructor(file, sectionProducts) {
+    this.entries = [];
+    let inv = {};
+    try {
+      inv = JSON.parse(fs.readFileSync(file, "utf8")) || {};
+    } catch { /* no inventory — matcher just never matches */ }
+    for (const sec in inv) {
+      const product = sectionProducts.get(sec) ?? null;
+      for (const url of inv[sec] || []) {
+        const base = String(url).split("/").pop().replace(/\.html?$/, "");
+        const tokens = DocPageIndex.tokensOf(base);
+        if (tokens.length) this.entries.push({ url, product, tokens });
+      }
+    }
+  }
+
+  static normTok(t) {
+    return t.length > 3 && t.endsWith("s") ? t.slice(0, -1) : t;
+  }
+
+  static tokensOf(name) {
+    const out = [];
+    for (const p of lower(name).split(/[^a-z0-9]+/)) {
+      if (p.length < 3 && !/\d/.test(p)) continue;
+      const n = DocPageIndex.normTok(p);
+      if (n && !out.includes(n)) out.push(n);
+    }
+    return out;
+  }
+
+  static tokMatch(a, b) {
+    if (a === b) return true;
+    const s = a.length <= b.length ? a : b;
+    const l = a.length <= b.length ? b : a;
+    return s.length >= 4 && l.startsWith(s);
+  }
+
+  /** Best page for the name, or null. minCov = required fraction of
+   *  the NAME's tokens the page must cover (tools 0.6, topics 1.0). */
+  match(name, products, minCov) {
+    const nt = DocPageIndex.tokensOf(name);
+    if (!nt.length || !this.entries.length) return null;
+    const prods = new Set(products || []);
+    let best = null;
+    let bestScore = -1;
+    for (const e of this.entries) {
+      let matched = 0;
+      for (const t of nt) {
+        if (e.tokens.some((s) => DocPageIndex.tokMatch(t, s))) matched++;
+      }
+      if (matched === 0) continue;
+      const cov = matched / nt.length;
+      if (cov < minCov) continue;
+      const jac = matched / (nt.length + e.tokens.length - matched);
+      let score = cov + jac * 0.5;
+      if (e.product && prods.size) score += prods.has(e.product) ? 0.5 : -0.25;
+      score -= e.tokens.length * 0.001;
+      if (score > bestScore) {
+        bestScore = score;
+        best = e;
+      }
+    }
+    return best ? best.url : null;
+  }
+}
+
+/**
  * ToolLinkResolver — turns a detected tool name into the best link:
  *   1. the curated tools map (case-insensitive), else
  *   2. a PROBED direct link: candidate URLs built from the JSON's
@@ -155,9 +232,10 @@ const toolSlug = (t) =>
  *   3. null → the caller renders the searchTemplate fallback.
  */
 class ToolLinkResolver {
-  constructor(linkMap, workDir, enabled) {
+  constructor(linkMap, workDir, enabled, pageIndex) {
     this.map = linkMap;
     this.enabled = enabled && (linkMap.probeTemplates || []).length > 0;
+    this.pageIndex = pageIndex;
     this.cachePath = path.join(workDir || ".", "doc-links-cache.json");
     this.curated = new Map(
       Object.keys(linkMap.tools || {}).map((k) => [lower(k).trim(), linkMap.tools[k]])
@@ -167,6 +245,15 @@ class ToolLinkResolver {
     } catch {
       this.cache = {};
     }
+  }
+
+  /** Topic keywords: inventory match only, and only when the page
+   *  covers EVERY name token — no probing, no search fallback (a
+   *  weak topic link is noise; absence is fine). */
+  topicLink(name, products) {
+    const curated = this.curated.get(lower(name).trim());
+    if (curated) return curated;
+    return this.pageIndex ? this.pageIndex.match(name, products, 1.0) : null;
   }
 
   _save() {
@@ -191,6 +278,10 @@ class ToolLinkResolver {
     const key = lower(tool).trim();
     const curated = this.curated.get(key);
     if (curated) return curated;
+    // the crawled inventory beats slug-guessing: best token match
+    // against pages that actually exist
+    const matched = this.pageIndex ? this.pageIndex.match(tool, products, 0.6) : null;
+    if (matched) return matched;
     if (!this.enabled) return null;
     const slug = toolSlug(tool);
     if (!slug) return null;
@@ -233,7 +324,7 @@ const DOCS_END = "<!-- docs:end -->";
  *  tools map knows them (case-insensitive) and a templated search
  *  link otherwise — complete coverage with zero authoring, upgrade
  *  any tool to a direct link by adding one JSON line. */
-function docsBlock(products, toolNames, m, toolLinks) {
+function docsBlock(products, toolNames, m, toolLinks, topicLinks) {
   const lines = [];
   for (const p of products || []) {
     const links = Array.isArray(m.products?.[p]) ? m.products[p] : [];
@@ -255,6 +346,14 @@ function docsBlock(products, toolNames, m, toolLinks) {
         `- **${t}** — [search Esri docs](${m.searchTemplate.replace("{q}", encodeURIComponent(String(t)))})`
       );
     }
+  }
+  // topic keywords: rendered only on a strong inventory match — no
+  // search fallback (a weak topic link is noise)
+  for (const [name, url] of topicLinks || []) {
+    const key = lower(name).trim();
+    if (!url || !key || seen.has(key)) continue;
+    seen.add(key);
+    lines.push(`- **${name}** — [documentation](${url})`);
   }
   if (!lines.length) return "";
   return `${DOCS_BEGIN}\n## Product documentation\n\n${lines.join("\n")}\n${DOCS_END}`;
@@ -618,10 +717,23 @@ async function main() {
   const spo = new SpoClient(cfg.spo);
   const bodyIndex = new BodyIndex();
   const docLinks = loadDocLinks(sw);
+  // crawled page inventory (doc_crawl.mjs) with section→product from
+  // the probe templates, so matches prefer the right product's tree
+  const sectionProducts = new Map();
+  for (const t of docLinks.probeTemplates || []) {
+    const url = typeof t === "string" ? t : t?.url;
+    const product = t && typeof t === "object" ? t.product : undefined;
+    if (typeof url === "string" && url.includes("{slug}")) {
+      sectionProducts.set(url.slice(0, url.indexOf("{slug}")), product ?? null);
+    }
+  }
+  const pagesFile = sw.docPagesFile || path.join(cfg.paths?.workDir || ".", "esri_doc_pages.json");
+  const pageIndex = new DocPageIndex(pagesFile, sectionProducts);
   const linkResolver = new ToolLinkResolver(
     docLinks,
     cfg.paths?.workDir,
-    sw.probeDocLinks !== false
+    sw.probeDocLinks !== false,
+    pageIndex
   );
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
   const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
@@ -673,16 +785,18 @@ async function main() {
     // tool names per doc, reconstructed from the junctions: keywords
     // of Kind "tool" (alias rows fold to their canonical)
     const kwById = new Map(keywordRows.map((k) => [k.ID, k]));
-    const toolsOf = (docId) => {
+    const kwOfKind = (docId, kind) => {
       const out = [];
       for (const j of docKwRows) {
         if (j.DocumentId !== docId) continue;
         let k = kwById.get(j.KeywordId);
         if (k && k.CanonicalRefId) k = kwById.get(k.CanonicalRefId) || k;
-        if (k && lower(k.Kind) === "tool" && k.Title) out.push(k.Title);
+        if (k && lower(k.Kind) === kind && k.Title && !out.includes(k.Title)) out.push(k.Title);
       }
       return out;
     };
+    const toolsOf = (docId) => kwOfKind(docId, "tool");
+    const topicsOf = (docId) => kwOfKind(docId, "topic");
     const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
     const rsum = { mode: "rerank", dry_run: dry, eligible: 0, reranked: 0, no_sidecar: 0, errors: 0, related_flags: "" };
     for (const r of docIndexRows) {
@@ -707,7 +821,14 @@ async function main() {
         for (const t of rowTools) {
           toolLinks.set(t, await linkResolver.resolve(t, rowProducts));
         }
-        const content = upsertDocsBlock(before, docsBlock(rowProducts, rowTools, docLinks, toolLinks));
+        const topicLinks = new Map();
+        for (const k of topicsOf(r.ID)) {
+          topicLinks.set(k, linkResolver.topicLink(k, rowProducts));
+        }
+        const content = upsertDocsBlock(
+          before,
+          docsBlock(rowProducts, rowTools, docLinks, toolLinks, topicLinks)
+        );
         if (content !== before) writer.writeFile(local, content);
         await rankRelated({
           cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
@@ -1167,9 +1288,13 @@ async function indexDoc(ctx) {
   for (const t of ai.tools || []) {
     toolLinks.set(t, await linkResolver.resolve(t, products));
   }
+  const topicLinks = new Map();
+  for (const k of ai.keywords || []) {
+    topicLinks.set(k, linkResolver.topicLink(k, products));
+  }
   const sidecarContent = upsertDocsBlock(
     header + docText,
-    docsBlock(products, ai.tools || [], docLinks, toolLinks)
+    docsBlock(products, ai.tools || [], docLinks, toolLinks, topicLinks)
   );
   writer.writeFile(localSidecar, sidecarContent);
   const textFileUrl = `${sw.siteUrl}${sidecarFolder}/${sidecarName}`;
