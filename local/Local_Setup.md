@@ -240,6 +240,16 @@ Each is behavior-equivalent; all are exercised by the gate:
 - WorkbookDump reads the xlsx via `pad/runner/xlsx_grid.mjs` — the
   same content-equivalence caveat as the PAD offload
   (`pad/PAD_Setup.md` §7).
+- **Richer relatedness** (a real deviation — additive): on top of the
+  flow's keyword/edge relatedness, the sweep computes **body-text
+  similarity** (BM25 cosine over the sidecar corpus, in-memory, no AI
+  spend) plus filename-family and folder affinities, via RelatedRank
+  v2.2's dormant optional fields. Docs above
+  `sweep.relatedBodySimMin` (default 0.15) can relate with no shared
+  keyword at all. Weights tune in `RelatedWeights`
+  (`body`/`fname`/`folder` keys); related lists refresh gradually as
+  docs reindex. Flow-shaped calls are byte-identical (no tenant paste;
+  rollback unaffected).
 - **Ghost reconciliation** (a real deviation — the flow let rows for
   deleted docs linger forever): after each full run, rows whose
   DocKey no longer matches any library file are set

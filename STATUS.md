@@ -25,7 +25,7 @@ as of the handover; resume the paste plan only if rolling back.
 |---|---|---|
 | ZipTextExtract | **v2.1** (r6) | tenant runs v1.9 (pasted 2026-08-11); v2.0 superseded in-repo before its paste — **paste v2.1 with the v2.8 window** |
 | MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
-| RelatedRank | **v2.1** (r4) | **PASTED** with the v2.6 window — evidenced by the live export's v2.x parameter bindings and the title-affinity `why` prose in fresh sidecars |
+| RelatedRank | **v2.2** (2026-08-15 — body-sim/filename/folder as dormant optional fields for the local sweep; flow-shaped output byte-identical to v2.1, `check_related` PASSED) | **PASTED v2.1** with the v2.6 window — sufficient on rollback (v2.2's fields stay dormant on the flow); paste v2.2 only if desired |
 | SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
 | RegexExtract | **v1.4** (r6) | tenant runs v1.2 (pre-v2.2); v1.3 superseded in-repo before its paste — v1.4 is additive-safe under any flow, products surface with the v2.8 window |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |

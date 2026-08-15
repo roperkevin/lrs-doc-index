@@ -303,10 +303,13 @@ def main():
 
     # stub pdftotext: text for spec.pdf, nothing for anything else
     # (argv: -layout -enc UTF-8 <file> - ; also handles -v detection)
+    # spec.pdf's body deliberately shares vocabulary with notes.txt
+    # (calibration...) while sharing NO keyword — only the body-sim
+    # candidate source can relate them
     pdftotext_stub = os.path.join(tmp, "pdftotext")
     with open(pdftotext_stub, "w") as f:
         f.write('#!/bin/sh\ncase "$4" in\n'
-                '  *spec.pdf) echo "Spec text about pdf extraction methods." ;;\n'
+                '  *spec.pdf) echo "Spec text describing calibration points and calibration procedures." ;;\n'
                 '  *outside.pdf) echo "Outside pdf, reachable after the sync widened." ;;\n'
                 '  *) : ;;\nesac\n')
     os.chmod(pdftotext_stub, 0o755)
@@ -533,6 +536,15 @@ def main():
                 for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
                 if f.endswith(".md") and not f.startswith("_Sweep")}
     check("four sidecars written (incl. the rescued pdf)", len(md_files) == 4, str(sorted(md_files)))
+
+    # body-text similarity: spec.pdf and notes.txt share body words but
+    # NO keyword/edge — only the BodySim candidate source can join them
+    spec_sc_path = next((p for n, p in md_files.items() if "spec" in n.lower()), None)
+    spec_sc = open(spec_sc_path).read() if spec_sc_path else ""
+    notes_id = int(by_name["notes.txt"][0])
+    check("body-sim relates spec.pdf to notes.txt (no shared keyword)",
+          f"doc{notes_id}" in spec_sc and "similar text (" in spec_sc,
+          spec_sc[-500:])
 
     # status page (live runs only, sidecar-library root)
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
