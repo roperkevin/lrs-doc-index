@@ -167,7 +167,10 @@ device-code sign-ins happen, so run it from a console. Flags:
 `--only <filename>` (the SmokeFile equivalent — one doc),
 `--rerank` (rebuild every Related Documents section from persisted
 state — no AI calls, no extraction; run after keyword-curation
-merges to propagate them corpus-wide in one pass).
+merges to propagate them corpus-wide in one pass),
+`--reformat` (re-extract each source and rewrite ONLY the sidecar
+body below the `---` seam — no AI calls; run after a change to the
+body formatting so the whole corpus picks it up).
 
 **Schedule it** (replaces the Recurrence trigger; unlike attended PAD
 runs, Task Scheduler works with the machine locked). Register from

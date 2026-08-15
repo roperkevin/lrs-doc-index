@@ -93,6 +93,48 @@ def make_pptx(fpath, text, with_media=False):
         z.writestr("docProps/core.xml", CORE_XML)
 
 
+def make_messy_pptx(fpath, text):
+    """Three slides carrying every mess tidyBody must clean: slide-number
+    placeholder lines, padded/nested bullets, and a notes part holding
+    nothing but the slide number."""
+    def para(t, lvl=None, bullet=False):
+        ppr = ""
+        if lvl is not None:
+            ppr = f'<a:pPr lvl="{lvl}"><a:buChar char="-"/></a:pPr>'
+        elif bullet:
+            ppr = '<a:pPr><a:buChar char="-"/></a:pPr>'
+        return f"<a:p>{ppr}<a:r><a:t>{t}</a:t></a:r></a:p>"
+
+    def slide(paras):
+        return ("<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+                + "".join(paras) + "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>")
+
+    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("ppt/slides/slide1.xml", slide([
+            para(text), para("1"),
+        ]))
+        z.writestr("ppt/slides/slide2.xml", slide([
+            para("Scope of testing"),
+            para("These GP tools support 64-bit values", bullet=True),
+            para("          use existing 64bit FC", lvl=1),
+            para("Create LRS from existing dataset", lvl=1),
+            para("Append Events", lvl=1),
+            para("2"),
+        ]))
+        z.writestr("ppt/slides/slide3.xml", slide([para("Verification"), para("3")]))
+        # notes for slide 3 hold only the slide number
+        z.writestr("ppt/slides/_rels/slide3.xml.rels",
+                   '<Relationships><Relationship Id="rId1" '
+                   'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                   'relationships/notesSlide" Target="../notesSlides/notesSlide1.xml"/>'
+                   "</Relationships>")
+        z.writestr("ppt/notesSlides/notesSlide1.xml",
+                   "<p:notes><p:cSld><p:spTree><p:sp><p:txBody>"
+                   "<a:p><a:r><a:t>3</a:t></a:r></a:p>"
+                   "</p:txBody></p:sp></p:spTree></p:cSld></p:notes>")
+        z.writestr("docProps/core.xml", CORE_XML)
+
+
 # ---- mock Graph + LLM server ---------------------------------------
 
 class MockState:
@@ -357,8 +399,8 @@ def main():
     make_pptx(os.path.join(src_dir, "Alpha Plan.pptx"),
               "Alpha test plan covering lock acquisition #123 for Roads and Highways",
               with_media=True)
-    make_pptx(os.path.join(src_dir, "Beta Story.pptx"),
-              "Beta user story about locks and issue #123")
+    make_messy_pptx(os.path.join(src_dir, "Beta Story.pptx"),
+                    "Beta user story about locks and issue #123")
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
         f.write("Plain text notes about calibration points.")
     with open(os.path.join(src_dir, "spec.pdf"), "wb") as f:
@@ -738,6 +780,20 @@ def main():
           f"doc{alpha_id}" in beta_content and "_None yet._" not in beta_content,
           beta_content[-500:])
 
+    # body presentation (tidyBody)
+    beta_body = beta_content[beta_content.rindex("\n---\n") + 5:]
+    check("slide-number placeholder lines dropped",
+          not re.search(r"(?m)^[123]$", beta_body), beta_body)
+    check("bullet padding collapsed and depth normalized",
+          "- use existing 64bit FC" in beta_body
+          and "-          use" not in beta_body, beta_body)
+    check("consecutive bullets are a tight list (no blank between)",
+          not re.search(r"(?m)^\s*- .*\n\n\s*- ", beta_body), beta_body)
+    check("empty notes section dropped",
+          "### Notes" not in beta_body, beta_body)
+    check("body still carries the slide content",
+          "Scope of testing" in beta_body and "## Slide 2" in beta_body, beta_body)
+
     # media
     media = os.listdir(os.path.join(sidecar_dir, "media"))
     check("media extracted with src-id prefix",
@@ -1015,6 +1071,28 @@ def main():
           state.probe_paths.count("/docs/realign-route.html") == 1
           and state.probe_paths.count("/docs/add-point-events.html") == 1,
           str(state.probe_paths))
+
+    # ---- leg 3e2: --reformat rewrites bodies, nothing else ---------
+    print("== reformat leg")
+    cur_sc = open(beta_sc).read()
+    head_before = cur_sc[:cur_sc.rindex("\n---\n") + 5]
+    with open(beta_sc, "w") as f:  # simulate an old, untidied body
+        f.write(head_before + "\nOLD BODY MARKER\n\n- a\n\n- b\n7\n")
+    llm_before_rf = state.llm_calls
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    check("reformat exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    after = open(beta_sc).read()
+    check("reformat rewrote stale bodies",
+          out.get("mode") == "reformat" and out.get("rewritten") >= 1
+          and out.get("errors") == 0 and "OLD BODY MARKER" not in after, str(out))
+    check("reformat preserved everything above the seam",
+          after.startswith(head_before), after[:200])
+    check("reformat body is freshly extracted and tidied",
+          "## Slide 2" in after and "- Append Events" in after
+          and "### Notes" not in after, after[-400:])
+    check("reformat spent no AI calls", state.llm_calls == llm_before_rf,
+          f"{state.llm_calls} vs {llm_before_rf}")
 
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")
