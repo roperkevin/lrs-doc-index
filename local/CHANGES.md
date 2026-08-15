@@ -1,5 +1,28 @@
 # Local sweep — release notes
 
+## v1.18 (2026-08-15)
+
+**Inventory matching** — tool/topic links now resolve against the
+141 REAL pages `doc_crawl` found, not a guessed slug. New
+`DocPageIndex` (reads `workDir/esri_doc_pages.json`, override
+`sweep.docPagesFile`) tokenizes every page slug and scores a
+tool/topic name against it: plural-insensitive, prefix-tolerant
+(`realign` ~ `realignment`), ranked by token coverage + Jaccard,
+with a decisive boost for the section matching the doc's product —
+the same slug exists in BOTH the R&H and Pipeline trees, and a
+Pipeline doc must link the Pipeline copy.
+
+Resolution order per tool: curated map → **inventory match** (≥60%
+of the name's tokens covered) → cached probe → probe → search
+fallback. **Topic keywords now get links too** — inventory-only,
+and only on a total match (every name token covered), with no
+search fallback, since a weak topic link is noise.
+
+Gate: fixture inventory — a tool resolved by inventory match with
+no probe fired; a topic keyword linked; the probe path still
+exercised for a tool absent from the inventory.
+**Gate PASSED 2026-08-15 (110/110).**
+
 ## v1.17.1 (2026-08-15)
 
 doc_crawl v1.1 — the first live run found 0 pages with no clue why.

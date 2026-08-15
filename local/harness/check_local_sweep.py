@@ -450,7 +450,7 @@ def main():
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
             "summary": "Covers lock acquisition.", "pe": "Claire Wang", "dev": "",
             "targetRelease": "3.8",
-            "tools": ["Reassign Routes", "Add Point Events", "Realign Route"],
+            "tools": ["Reassign Routes", "Add Point Events", "Realign Route", "Extend Route"],
             "keywords": ["locks", "acquisition"]},
         "Beta Story.pptx": {
             "title": "Beta Story", "docKind": "User Story", "surface": "Pro",
@@ -492,6 +492,15 @@ def main():
     doclinks_path = os.path.join(tmp, "doclinks.json")
     with open(doclinks_path, "w") as f:
         json.dump(dl, f)
+    # crawled-page inventory fixture (workDir default path): matcher
+    # fodder — "Extend Route" and topic "locks" match; realign is
+    # deliberately absent so the probe path stays exercised
+    with open(os.path.join(work_dir, "esri_doc_pages.json"), "w") as f:
+        json.dump({base + "/docsec/": [
+            base + "/docsec/extend-a-route.html",
+            base + "/docsec/release-locks.html",
+            base + "/docsec/lrs-locks-table.html",
+        ]}, f)
 
     cfg = {
         "sharePoint": {
@@ -683,6 +692,10 @@ def main():
           "/docs/realign-route.html" in sc, sc[-800:])
     check("probe results cached",
           os.path.exists(os.path.join(work_dir, "doc-links-cache.json")))
+    check("inventory-matched tool got a direct link (no probe needed)",
+          "extend-a-route.html" in sc, sc[-900:])
+    check("strong topic match got a doc link",
+          "release-locks.html" in sc, sc[-900:])
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     check("alpha related region patched (names beta)",
