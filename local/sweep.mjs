@@ -460,6 +460,7 @@ async function main() {
     dockey_hits: 0,
     dockey_misses: 0,
     out_of_scope: 0,
+    archived: 0,
   };
 
   for (const item of files) {
@@ -500,6 +501,7 @@ async function main() {
       !existing ||
       pdfRescue ||
       existing.IndexStatus === "Error" ||
+      existing.IndexStatus === "Archived" || // deleted doc restored → re-index
       (existing.SourceModified || "1900-01-01T00:00:00Z") < modified ||
       (existing.PromptVersion || "") !== sw.promptVersion;
     if (isFolder || !needsIndex || summary.processed >= sw.maxDocsPerRun) continue;
@@ -552,6 +554,50 @@ async function main() {
       } catch (e2) {
         process.stderr.write(`ERROR-row write failed for ${name}: ${e2.message}\n`);
       }
+    }
+  }
+
+  // ---- ghost reconciliation: rows whose source vanished ----------
+  // Skipped on smoke runs (--only must stay surgical) and when the
+  // library listing came back empty (a throttled/failed listing must
+  // never archive the world). Capped per run as a second safety rail.
+  if (!sw.smokeFile && files.length > 0) {
+    const liveKeys = new Set();
+    for (const it of files) {
+      const f = it.fields || {};
+      if (String(f.FSObjType) === "1" || it.contentType?.name === "Folder") continue;
+      const fileRef = String(f.FileRef || "");
+      const siteRel = fileRef.startsWith(sp.docKeyStrip)
+        ? fileRef.slice(sp.docKeyStrip.length)
+        : fileRef.replace(/^\//, "");
+      liveKeys.add(lower(siteRel));
+    }
+    const ghosts = docIndexRows.filter(
+      (r) => r.DocKey && r.IndexStatus !== "Archived" && !liveKeys.has(lower(r.DocKey))
+    );
+    const cap = sw.maxArchivesPerRun === undefined ? 20 : Number(sw.maxArchivesPerRun);
+    for (const g of ghosts.slice(0, cap)) {
+      try {
+        await writer.patchRow("docIndex", g.ID, {
+          IndexStatus: "Archived", IndexedOn: new Date().toISOString(),
+          LastError: `archived ${new Date().toISOString().slice(0, 10)}: source no longer in the library`,
+        });
+      } catch (e) {
+        // most likely: "Archived" missing from the IndexStatus choices
+        process.stderr.write(
+          "ghost reconciliation halted: could not write IndexStatus " +
+          `"Archived" (add it to the Doc Index IndexStatus choice values): ${e.message.slice(0, 200)}\n`
+        );
+        break;
+      }
+      g.IndexStatus = "Archived";
+      errorLane.delete(lower(g.DocKey));
+      summary.archived++;
+      const local = urlToLocal(g.TextFileUrl || "", sw, cfg);
+      if (local && fs.existsSync(local)) writer.deleteFile(local);
+    }
+    if (ghosts.length > cap) {
+      process.stderr.write(`note: ${ghosts.length - cap} more ghost row(s) will archive on later runs (cap ${cap}/run)\n`);
     }
   }
 
@@ -895,7 +941,9 @@ async function indexDoc(ctx) {
   }
   if (!(shortlist.count > 0)) return;
 
-  const candRows = caches.docIndexRows.filter((r) => shortlist.docIds.includes(r.ID));
+  const candRows = caches.docIndexRows.filter(
+    (r) => shortlist.docIds.includes(r.ID) && r.IndexStatus !== "Archived"
+  );
   // "final" without the flow's trailing space — RelatedRank reads any
   // non-"shortlist" mode as final.
   const rank = op({ ...relatedCommon, mode: "final", candsMetaJson: candRows, topN: sw.relatedTopN });
@@ -1008,6 +1056,9 @@ function writeStatusPage(cfg, { summary, logFile, errorLane, fatal }) {
     `- **Run log:** \`${logFile || "(none — run aborted before logging)"}\` on the sweep machine`,
     ...(summary.out_of_scope
       ? [`- **Out of sync scope:** ${summary.out_of_scope} doc(s) stamped Skipped this run — widen the OneDrive sync (and touch the docs, or bump PromptVersion) to index them`]
+      : []),
+    ...(summary.archived
+      ? [`- **Archived this run:** ${summary.archived} row(s) whose source was deleted from the library (sidecars pruned; a restored doc re-indexes automatically)`]
       : []),
     "",
     "## Action needed",

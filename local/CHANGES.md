@@ -1,5 +1,31 @@
 # Local sweep — release notes
 
+## v1.8 (2026-08-15)
+
+**Ghost reconciliation** (improvement plan #9). After each full run
+the sweep compares every Doc Index row's DocKey against the actual
+library listing; rows whose source doc was deleted are set
+`IndexStatus: Archived` with a dated LastError note, their sidecar
+is pruned (dry-run-aware), they leave the relatedness candidate pool
+(no more "related" links to dead docs), and their error-lane entry
+clears. A doc restored from the recycle bin re-enters `Needs_index`
+via the new Archived trigger and re-indexes automatically.
+
+Safety rails, in order: reconciliation is skipped on `--only` smoke
+runs and whenever the library listing comes back empty (a throttled
+listing must never archive the world); archives are capped at
+`sweep.maxArchivesPerRun` (default 20) per run with a log note when
+more remain. **One-time tenant step**: add `Archived` to the Doc
+Index `IndexStatus` choice values — until then the sweep halts
+archiving with a log note naming the fix and runs normally
+otherwise (`schemas/SPList_DocIndex.csv` updated).
+
+Gate: seeded ghost row (Indexed, no matching file, stale sidecar on
+disk) — dry leg proves the archive is planned but not executed;
+live leg proves Archived + dated note + sidecar pruned + status-page
+callout; idempotency leg proves archived rows are not re-archived.
+**Gate PASSED 2026-08-15 (67/67).**
+
 ## v1.7 (2026-08-14)
 
 **PDFs are indexed** (improvement plan #8; owner opted for the

@@ -350,6 +350,20 @@ def main():
         "SourceModified": "2026-08-10T10:00:00Z", "PromptVersion": "v2.0",
         "ExtractionLane": "none",
     })
+    # ghost: an Indexed row whose source doc no longer exists in the
+    # library, with a stale sidecar on disk — reconciliation must
+    # archive the row and prune the sidecar
+    ghost_sc = os.path.join(sidecar_dir, "Test Plans", "Ghost Doc.md")
+    os.makedirs(os.path.dirname(ghost_sc), exist_ok=True)
+    with open(ghost_sc, "w") as f:
+        f.write("# Ghost Doc\nstale sidecar\n")
+    state.seed(LISTS["docIndex"], {
+        "Title": "Ghost Doc", "FileName": "Ghost Doc.pptx",
+        "DocKey": "shared documents/ghost doc.pptx", "IndexStatus": "Indexed",
+        "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
+        "TextFileUrl": {"Url": "https://mock.example/sites/lrsworkspace/LRS Doc Index/Test Plans/Ghost Doc.md",
+                        "Description": "Ghost Doc.md"},
+    })
     state.llm_by_file = {
         "Alpha Plan.pptx": {
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
@@ -412,16 +426,25 @@ def main():
 
     # ---- leg 1: dry run -------------------------------------------
     print("== dry-run leg")
+    md_before = {os.path.join(r, f) for r, _, fs_ in os.walk(sidecar_dir)
+                 for f in fs_ if f.endswith(".md")}
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
     check("dry run processed 8 (incl. the PDF-rescued spec.pdf)",
           out.get("processed") == 8, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
-    check("dry run wrote no sidecars",
-          not any(f.endswith(".md") for _, _, fs_ in os.walk(sidecar_dir) for f in fs_))
-    check("dry run created no rows (only the seeded spec.pdf row exists)",
-          len(state.lists.get(LISTS["docIndex"], {})) == 1)
+    check("dry run planned the ghost archive without executing",
+          out.get("archived") == 1
+          and state.lists[LISTS["docIndex"]][
+              [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+               if f_.get("FileName") == "Ghost Doc.pptx"][0]].get("IndexStatus") == "Indexed"
+          and os.path.exists(ghost_sc), str(out))
+    md_after = {os.path.join(r, f) for r, _, fs_ in os.walk(sidecar_dir)
+                for f in fs_ if f.endswith(".md")}
+    check("dry run wrote/deleted no sidecars", md_after == md_before)
+    check("dry run created no rows (only the two seeded rows exist)",
+          len(state.lists.get(LISTS["docIndex"], {})) == 2)
     with open(out["logFile"]) as f:
         log = json.load(f)
     check("dry run recorded a write plan", len(log.get("plan") or []) > 10,
@@ -440,7 +463,14 @@ def main():
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 8 docs", len(by_name) == 8, str(sorted(by_name)))
+    check("doc index rows for all 8 docs + the ghost", len(by_name) == 9, str(sorted(by_name)))
+
+    _, ghost = by_name.get("Ghost Doc.pptx", (None, {}))
+    check("ghost row archived with dated note",
+          ghost.get("IndexStatus") == "Archived"
+          and "archived" in str(ghost.get("LastError", ""))
+          and out.get("archived") == 1, str(ghost)[:250])
+    check("ghost sidecar pruned", not os.path.exists(ghost_sc))
 
     _, outside = by_name.get("outside.docx", (None, {}))
     check("out-of-scope doc -> stamped Skip",
@@ -496,6 +526,8 @@ def main():
           "ziptext-pptx:" in status, status[:300])
     check("status page reports out-of-scope docs",
           "Out of sync scope:** 1" in status, status[:400])
+    check("status page reports the archive",
+          "Archived this run:** 1" in status, status[:400])
     alpha_sc = next((p for n, p in md_files.items() if "alpha" in n), None)
     beta_sc = next((p for n, p in md_files.items() if "beta" in n), None)
     check("alpha sidecar in kind folder", alpha_sc is not None and os.sep + "Test Plans" + os.sep in alpha_sc,
@@ -563,7 +595,8 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     out = json.loads(proc.stdout.splitlines()[0])
     check("second run reprocesses only the two Error docs (not the stamped out-of-scope Skip)",
-          out.get("processed") == 2 and out.get("out_of_scope") == 0, str(out))
+          out.get("processed") == 2 and out.get("out_of_scope") == 0
+          and out.get("archived") == 0, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
     run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]

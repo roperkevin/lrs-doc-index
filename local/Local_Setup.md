@@ -240,6 +240,20 @@ Each is behavior-equivalent; all are exercised by the gate:
 - WorkbookDump reads the xlsx via `pad/runner/xlsx_grid.mjs` — the
   same content-equivalence caveat as the PAD offload
   (`pad/PAD_Setup.md` §7).
+- **Ghost reconciliation** (a real deviation — the flow let rows for
+  deleted docs linger forever): after each full run, rows whose
+  DocKey no longer matches any library file are set
+  `IndexStatus: Archived` with a dated LastError note and their
+  sidecar is pruned; archived docs leave the relatedness candidate
+  pool, and a doc restored from the recycle bin re-indexes
+  automatically. Safety rails: skipped on `--only` smoke runs and on
+  an empty library listing; capped at `sweep.maxArchivesPerRun`
+  (default 20) per run. **One-time tenant step**: add `Archived` to
+  the Doc Index `IndexStatus` choice values (list settings → the
+  IndexStatus column) — until it exists the sweep halts archiving
+  with a log note and everything else runs normally. Doc Keywords /
+  Doc Links junction rows for archived docs are left in place
+  (harmless; their doc side is Archived).
 - **PDFs are indexed** (a real deviation — the flow always skipped
   them): with Poppler's `pdftotext` present (§1), text-bearing PDFs
   go through the full pipeline with `ExtractionLane: plaintext`;
