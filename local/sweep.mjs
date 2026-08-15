@@ -82,7 +82,11 @@ const FLOW_DEFAULTS = {
     Other: "Other",
   },
   maxCellsWorkbookDump: 60000,
-  oversizeBytes: 3500000,
+  // v1.10: 50 MB. The flow's 3.5 MB cap was a Power Automate/Office
+  // Scripts payload limit; locally it's only a memory/time guard, so
+  // big decks — often the richest docs — index instead of skipping.
+  // (LLM input is still bounded by textCap regardless of file size.)
+  oversizeBytes: 52428800,
 };
 
 const DOC_KINDS = [
@@ -101,6 +105,29 @@ const folderOf = (k) => {
   const i = String(k).lastIndexOf("/");
   return i >= 0 ? String(k).slice(0, i) : "";
 };
+
+/** Zero-dependency HTML → text: scripts/styles/comments dropped,
+ *  tags stripped, common entities decoded, whitespace collapsed. */
+function htmlToText(html) {
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (m, d) => {
+      const n = Number(d);
+      return n > 31 && n < 65536 ? String.fromCharCode(n) : " ";
+    })
+    .replace(/&amp;/gi, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+}
 
 function yamlEscape(s) {
   return String(s ?? "")
@@ -629,7 +656,27 @@ async function main() {
   const logFile = path.join(logDir, `sweep-${stamp}.json`);
   fs.writeFileSync(logFile, JSON.stringify({ summary, line, plan: dry ? writer.plan : undefined }, null, 1));
   pruneRunLogs(logDir);
-  if (!dry) writeStatusPage(cfg, { summary, logFile, errorLane });
+  if (!dry) {
+    // consecutive-run error streaks: docs that fail night after night
+    // stand out from last night's newcomers on the status page
+    const streakFile = path.join(logDir, "error-streaks.json");
+    let prev = {};
+    try {
+      prev = JSON.parse(fs.readFileSync(streakFile, "utf8"));
+    } catch { /* first run */ }
+    const streaks = {};
+    for (const k of errorLane.keys()) {
+      // a smoke run (--only) doesn't retry the whole lane, so it
+      // displays the standing streaks without advancing them
+      streaks[k] = sw.smokeFile ? Number(prev[k]) || 1 : (Number(prev[k]) || 0) + 1;
+    }
+    if (!sw.smokeFile) {
+      try {
+        fs.writeFileSync(streakFile, JSON.stringify(streaks, null, 1));
+      } catch { /* best effort */ }
+    }
+    writeStatusPage(cfg, { summary, logFile, errorLane, streaks });
+  }
 
   process.stdout.write(JSON.stringify({ ...summary, logFile }) + "\n");
   process.stdout.write(line + "\n");
@@ -718,6 +765,12 @@ async function indexDoc(ctx) {
     setStep("read-txt");
     docText = fs.readFileSync(localPath, "utf8");
     lane = "plaintext";
+  } else if (!oversize && (ext === "html" || ext === "htm")) {
+    // v1.10: the htmltotext lane the ExtractionLane schema always
+    // reserved but no flow version implemented — HTML finally indexes
+    setStep("htmltotext");
+    docText = htmlToText(fs.readFileSync(localPath, "utf8"));
+    lane = "htmltotext";
   } else if (!oversize && ext === "pdf" && pdfTool) {
     // pdftotext (Poppler). A text-bearing PDF indexes like any other
     // doc; a scanned/image-only one yields no text and falls through
@@ -734,7 +787,8 @@ async function indexDoc(ctx) {
     docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
     lane = "plaintext";
   }
-  // pdf(no tool)/msg/html/image/other/oversize: DocText stays empty → Skip lane.
+  // pdf(no tool)/msg/image/other/oversize (and empty html): DocText
+  // stays empty → Skip lane.
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
@@ -1165,19 +1219,25 @@ function pruneRunLogs(logDir, keep = 30) {
  * Live runs only (a dry run is a rehearsal); also written on a fatal
  * abort so a dead scheduled run is visible in SharePoint.
  */
-function writeStatusPage(cfg, { summary, logFile, errorLane, fatal }) {
+function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fatal }) {
   const dir = cfg?.paths?.sidecarLibrary;
   if (!dir) return;
   const esc = (s) => String(s).replaceAll("|", "\\|").replaceAll("\n", " ").slice(0, 140);
-  const lane = [...(errorLane?.values() ?? [])];
+  const lane = [...(errorLane?.entries() ?? [])].map(([k, v]) => ({
+    ...v,
+    streak: Number(streaks?.[k]) || 1,
+  }));
+  const chronic = lane.filter((d) => d.streak >= 3).length;
   const action = fatal
     ? `**RUN FAILED — needs attention.** ${esc(fatal)}\n\n` +
       "If the error above says AUTH EXPIRED, run the sweep once from a " +
       "console on the sweep machine and complete the sign-in."
     : lane.length
       ? `${lane.length} document(s) are stuck in the Error lane (table below). ` +
-        "They retry automatically every run; a doc that stays here across " +
-        "several nights needs a look."
+        "They retry automatically every run" +
+        (chronic
+          ? `; **${chronic} of them have been stuck 3+ nights** — those need a look.`
+          : "; a doc that stays here across several nights needs a look.")
       : "None — pipeline healthy.";
   const md = [
     "# Doc Index Sweep — status",
@@ -1202,8 +1262,8 @@ function writeStatusPage(cfg, { summary, logFile, errorLane, fatal }) {
     `## Error lane (${lane.length})`,
     "",
     ...(lane.length
-      ? ["| Document | Last error |", "|---|---|",
-         ...lane.map((d) => `| ${esc(d.name)} | ${esc(d.err)} |`)]
+      ? ["| Document | Nights stuck | Last error |", "|---|---|---|",
+         ...lane.map((d) => `| ${esc(d.name)} | ${d.streak} | ${esc(d.err)} |`)]
       : ["(empty)"]),
     "",
   ].join("\n");

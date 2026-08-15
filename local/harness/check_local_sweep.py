@@ -300,6 +300,11 @@ def main():
         f.write(b"%PDF-1.4 image-only (stub pdftotext returns nothing)")
     with open(os.path.join(src_dir, "corrupt.pptx"), "wb") as f:
         f.write(b"this is not a zip archive")
+    with open(os.path.join(src_dir, "guide.html"), "w") as f:
+        f.write("<html><head><title>x</title><script>var sneaky=1;</script>"
+                "<style>p{color:red}</style></head><body>"
+                "<h1>Onboarding &amp; Setup</h1>"
+                "<p>Guide about onboarding new hires.</p></body></html>")
 
     # stub pdftotext: text for spec.pdf, nothing for anything else
     # (argv: -layout -enc UTF-8 <file> - ; also handles -v detection)
@@ -344,6 +349,7 @@ def main():
         src_item(16, "missing.txt", "2026-08-07T10:00:00Z"),
         src_item(17, "scan.pdf", "2026-08-06T10:00:00Z"),
         src_item(18, "outside.pdf", "2026-08-05T10:00:00Z", seg="Shared Documents"),
+        src_item(19, "guide.html", "2026-08-04T10:00:00Z"),
     ]
 
     state = MockState()
@@ -398,6 +404,10 @@ def main():
             "title": "Outside PDF", "docKind": "Other", "surface": "Other",
             "summary": "Rescued pdf after the sync widened.", "pe": "", "dev": "",
             "targetRelease": "", "tools": [], "keywords": []},
+        "guide.html": {
+            "title": "Onboarding Guide", "docKind": "Other", "surface": "Other",
+            "summary": "Onboarding guide.", "pe": "", "dev": "",
+            "targetRelease": "", "tools": [], "keywords": ["onboarding"]},
     }
 
     server = ThreadingHTTPServer(
@@ -448,8 +458,8 @@ def main():
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
-    check("dry run processed 9 (incl. the PDF-rescued spec.pdf)",
-          out.get("processed") == 9, str(out))
+    check("dry run processed 10 (incl. the PDF-rescued spec.pdf)",
+          out.get("processed") == 10, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run planned the ghost archive without executing",
           out.get("archived") == 1
@@ -472,7 +482,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 9", out.get("processed") == 9, str(out))
+    check("live processed 10", out.get("processed") == 10, str(out))
     check("live errors 2 (corrupt.pptx, missing.txt)", out.get("errors") == 2, str(out))
     check("live counted 2 out-of-scope docs", out.get("out_of_scope") == 2, str(out))
 
@@ -480,7 +490,18 @@ def main():
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 9 docs + the ghost", len(by_name) == 10, str(sorted(by_name)))
+    check("doc index rows for all 10 docs + the ghost", len(by_name) == 11, str(sorted(by_name)))
+
+    _, html = by_name.get("guide.html", (None, {}))
+    check("html indexed via the htmltotext lane",
+          html.get("IndexStatus") == "Indexed"
+          and html.get("ExtractionLane") == "htmltotext"
+          and html.get("FileType") == "html", str(html)[:250])
+    check("html text stripped and entities decoded",
+          "Onboarding & Setup" in str(html.get("TextPreview", ""))
+          and "sneaky" not in str(html.get("TextPreview", ""))
+          and "<h1>" not in str(html.get("TextPreview", "")),
+          str(html.get("TextPreview"))[:200])
 
     _, ghost = by_name.get("Ghost Doc.pptx", (None, {}))
     check("ghost row archived with dated note",
@@ -535,7 +556,7 @@ def main():
     md_files = {f: os.path.join(r, f)
                 for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
                 if f.endswith(".md") and not f.startswith("_Sweep")}
-    check("four sidecars written (incl. the rescued pdf)", len(md_files) == 4, str(sorted(md_files)))
+    check("five sidecars written (incl. rescued pdf + html)", len(md_files) == 5, str(sorted(md_files)))
 
     # body-text similarity: spec.pdf and notes.txt share body words but
     # NO keyword/edge — only the BodySim candidate source can join them
@@ -550,7 +571,7 @@ def main():
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "9 processed, 2 errors" in status and "corrupt.pptx" in status,
+          "10 processed, 2 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
@@ -629,6 +650,13 @@ def main():
           and out.get("archived") == 0, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
+    # streaks: run 1 stamped 1 night; this full run makes it 2
+    status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
+    check("error streaks advance on full runs",
+          "Nights stuck" in status2
+          and "| corrupt.pptx | 2 |" in status2
+          and "| missing.txt | 2 |" in status2, status2[:600])
+
     run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]
     check("run logs pruned to 30", len(run_logs) == 30, str(len(run_logs)))
     check("pruning kept the newest logs",

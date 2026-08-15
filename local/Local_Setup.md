@@ -240,6 +240,12 @@ Each is behavior-equivalent; all are exercised by the gate:
 - WorkbookDump reads the xlsx via `pad/runner/xlsx_grid.mjs` — the
   same content-equivalence caveat as the PAD offload
   (`pad/PAD_Setup.md` §7).
+- **Oversize cap 50 MB** (deviation — the flow skipped anything over
+  3.5 MB, a Power Automate payload limit that doesn't apply locally):
+  tune with `sweep.oversizeBytes`. LLM input is still `textCap`-bound.
+- **HTML indexes** (deviation — the flow always skipped it): the
+  schema's reserved `htmltotext` lane is implemented locally
+  (zero-dependency tag stripper).
 - **Richer relatedness** (a real deviation — additive): on top of the
   flow's keyword/edge relatedness, the sweep computes **body-text
   similarity** (BM25 cosine over the sidecar corpus, in-memory, no AI
