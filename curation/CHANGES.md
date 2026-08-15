@@ -1,3 +1,18 @@
+# Curation DEPLOYED locally — handover complete (2026-08-15)
+
+Deployment record:
+
+| Date | Piece | State |
+|---|---|---|
+| 2026-08-15 | Tenant AI Builder prompt "LRS Keyword Curation" | **CREATED** (`173b40ef-c376-4f81-b75b-65c72323d533`, prompt text = `prompts/KeywordCuration_Prompt.md` v1.0). Its absence from the environment's model list proved the cloud flow was **never functional** — the v1.0/v1.1 "live" entries below never actually ran; nothing to turn off, no rollback flow exists. |
+| 2026-08-15 | `local/curate.mjs` v1.11.1 | **DEPLOYED** — smoke: dry run `canon=1880 proposed_by_model=20 written=3 dropped=17` (guard verified live); first live run produced the first real digest; owner enabled `curation.autoApprove` and the pending proposals merged (`merged=2`: centerlines→centerline, centerlinesequencetable→centerline sequence table — the first curation merges in the catalog's history). |
+| 2026-08-15 | Task Scheduler "LRS Keyword Curation" | registered from `local/curation_task.xml` (Saturday 08:00, catch-up + battery) |
+
+Ongoing ops: the digest at Shared Documents root is a weekly audit
+log (autoApprove mode); undo = clear CanonicalRef + set
+CurationStatus Rejected. Prompt promotion = AI Builder paste +
+`curation.promptVersion` config bump + entry here.
+
 # Curation ported off Power Automate — `local/curate.mjs` (2026-08-15)
 
 The weekly job is reimplemented as a local Node process alongside the
