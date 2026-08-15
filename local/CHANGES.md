@@ -1,5 +1,29 @@
 # Local sweep — release notes
 
+## v1.8.1 (2026-08-15)
+
+Rescue-gating fixes, found when the tenant's PDF rescue hit docs
+living outside the synced `General` folder:
+
+- **Out-of-scope PDFs looped through the PDF rescue nightly** (their
+  Skip stamp keeps `ExtractionLane` ≠ "plaintext"), re-stamping the
+  same rows every run and eating slots in the 150-doc cap. Both
+  rescues now gate on `inScope` — an unreachable doc is stamped
+  once, period.
+- **Scope rescue**: the `"out of sync scope"` stamp now doubles as a
+  rescue marker. After the OneDrive sync is widened (guide §6), every
+  stamped doc re-indexes automatically on the first run where its
+  file is reachable — no promptVersion bump, no corpus-wide AI
+  respend, no touching files.
+
+Gate: the widening is now simulated faithfully (server paths and
+DocKeys unchanged; only the local root and `libraryRootSegment`
+grow, exactly as the guide prescribes — fixtures restructured under
+`Shared Documents/General` to match the real tenant): out-of-scope
+txt AND pdf are stamped once, NOT reprocessed on the idempotency
+leg, then both re-index by themselves after the widening.
+**Gate PASSED 2026-08-15 (70/70).**
+
 ## v1.8 (2026-08-15)
 
 **Ghost reconciliation** (improvement plan #9). After each full run

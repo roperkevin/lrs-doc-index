@@ -305,10 +305,13 @@ def main():
     # (argv: -layout -enc UTF-8 <file> - ; also handles -v detection)
     pdftotext_stub = os.path.join(tmp, "pdftotext")
     with open(pdftotext_stub, "w") as f:
-        f.write('#!/bin/sh\ncase "$4" in\n  *spec.pdf) echo "Spec text about pdf extraction methods." ;;\n  *) : ;;\nesac\n')
+        f.write('#!/bin/sh\ncase "$4" in\n'
+                '  *spec.pdf) echo "Spec text about pdf extraction methods." ;;\n'
+                '  *outside.pdf) echo "Outside pdf, reachable after the sync widened." ;;\n'
+                '  *) : ;;\nesac\n')
     os.chmod(pdftotext_stub, 0o755)
 
-    def src_item(iid, name, modified, seg="Shared Documents"):
+    def src_item(iid, name, modified, seg="Shared Documents/General"):
         return {
             "id": str(iid),
             "webUrl": f"https://mock.example/src/{name}",
@@ -323,18 +326,21 @@ def main():
 
     # Beta newer than Alpha -> Beta indexes first; Alpha then finds the
     # sharer, mints the edge, and reciprocally patches Beta's sidecar.
-    # outside.docx lives outside the synced root segment (out-of-scope
-    # lane: stamped Skip); missing.txt is in scope but absent on disk
-    # (sync lag: a retryable Error).
+    # outside.txt + outside.pdf live outside the synced root segment
+    # (out-of-scope lane: stamped Skip; the pdf also proves no nightly
+    # rescue loop); missing.txt is in scope but absent on disk (sync
+    # lag: a retryable Error). The scope-rescue leg later moves both
+    # outside.* fixtures into scope and proves they re-index alone.
     src_files = [
         src_item(11, "Beta Story.pptx", "2026-08-13T10:00:00Z"),
         src_item(10, "Alpha Plan.pptx", "2026-08-12T10:00:00Z"),
         src_item(12, "notes.txt", "2026-08-11T10:00:00Z"),
         src_item(13, "spec.pdf", "2026-08-10T10:00:00Z"),
         src_item(14, "corrupt.pptx", "2026-08-09T10:00:00Z"),
-        src_item(15, "outside.docx", "2026-08-08T10:00:00Z", seg="Elsewhere"),
+        src_item(15, "outside.txt", "2026-08-08T10:00:00Z", seg="Shared Documents"),
         src_item(16, "missing.txt", "2026-08-07T10:00:00Z"),
         src_item(17, "scan.pdf", "2026-08-06T10:00:00Z"),
+        src_item(18, "outside.pdf", "2026-08-05T10:00:00Z", seg="Shared Documents"),
     ]
 
     state = MockState()
@@ -346,7 +352,7 @@ def main():
     # matches the library, so no modified/promptVersion trigger)
     state.seed(LISTS["docIndex"], {
         "Title": "spec.pdf", "FileName": "spec.pdf",
-        "DocKey": "shared documents/spec.pdf", "IndexStatus": "Skipped",
+        "DocKey": "shared documents/general/spec.pdf", "IndexStatus": "Skipped",
         "SourceModified": "2026-08-10T10:00:00Z", "PromptVersion": "v2.0",
         "ExtractionLane": "none",
     })
@@ -381,6 +387,14 @@ def main():
             "title": "Spec", "docKind": "Other", "surface": "Other",
             "summary": "PDF spec about extraction.", "pe": "", "dev": "",
             "targetRelease": "", "tools": [], "keywords": ["pdf extraction"]},
+        "outside.txt": {
+            "title": "Outside Notes", "docKind": "Other", "surface": "Other",
+            "summary": "Rescued after the sync widened.", "pe": "", "dev": "",
+            "targetRelease": "", "tools": [], "keywords": []},
+        "outside.pdf": {
+            "title": "Outside PDF", "docKind": "Other", "surface": "Other",
+            "summary": "Rescued pdf after the sync widened.", "pe": "", "dev": "",
+            "targetRelease": "", "tools": [], "keywords": []},
     }
 
     server = ThreadingHTTPServer(
@@ -395,7 +409,7 @@ def main():
             "sitePath": "/sites/lrsworkspace",
             "sourceSitePath": "/sites/LocationReferencing",
             "docKeyStrip": "/sites/LocationReferencing/",
-            "libraryRootSegment": "Shared Documents",
+            "libraryRootSegment": "Shared Documents/General",
             "lists": LISTS,
         },
         "paths": {"sourceLibrary": src_dir, "sidecarLibrary": sidecar_dir, "workDir": work_dir},
@@ -431,8 +445,8 @@ def main():
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
-    check("dry run processed 8 (incl. the PDF-rescued spec.pdf)",
-          out.get("processed") == 8, str(out))
+    check("dry run processed 9 (incl. the PDF-rescued spec.pdf)",
+          out.get("processed") == 9, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run planned the ghost archive without executing",
           out.get("archived") == 1
@@ -455,15 +469,15 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 8", out.get("processed") == 8, str(out))
+    check("live processed 9", out.get("processed") == 9, str(out))
     check("live errors 2 (corrupt.pptx, missing.txt)", out.get("errors") == 2, str(out))
-    check("live counted 1 out-of-scope doc", out.get("out_of_scope") == 1, str(out))
+    check("live counted 2 out-of-scope docs", out.get("out_of_scope") == 2, str(out))
 
     rows = state.lists[LISTS["docIndex"]]
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 8 docs + the ghost", len(by_name) == 9, str(sorted(by_name)))
+    check("doc index rows for all 9 docs + the ghost", len(by_name) == 10, str(sorted(by_name)))
 
     _, ghost = by_name.get("Ghost Doc.pptx", (None, {}))
     check("ghost row archived with dated note",
@@ -472,11 +486,15 @@ def main():
           and out.get("archived") == 1, str(ghost)[:250])
     check("ghost sidecar pruned", not os.path.exists(ghost_sc))
 
-    _, outside = by_name.get("outside.docx", (None, {}))
+    _, outside = by_name.get("outside.txt", (None, {}))
     check("out-of-scope doc -> stamped Skip",
           outside.get("IndexStatus") == "Skipped"
           and outside.get("PromptVersion") == "v2.0"
           and "out of sync scope" in str(outside.get("LastError", "")), str(outside)[:250])
+    _, outpdf = by_name.get("outside.pdf", (None, {}))
+    check("out-of-scope pdf -> stamped Skip too",
+          outpdf.get("IndexStatus") == "Skipped"
+          and "out of sync scope" in str(outpdf.get("LastError", "")), str(outpdf)[:250])
 
     _, missing = by_name.get("missing.txt", (None, {}))
     check("in-scope missing file -> retryable Error",
@@ -520,12 +538,12 @@ def main():
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "8 processed, 2 errors" in status and "corrupt.pptx" in status,
+          "9 processed, 2 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
     check("status page reports out-of-scope docs",
-          "Out of sync scope:** 1" in status, status[:400])
+          "Out of sync scope:** 2" in status, status[:400])
     check("status page reports the archive",
           "Archived this run:** 1" in status, status[:400])
     alpha_sc = next((p for n, p in md_files.items() if "alpha" in n), None)
@@ -626,6 +644,39 @@ def main():
     cfg["sweep"]["pdftotextPath"] = pdftotext_stub  # restore for later legs
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
+
+    # ---- leg 3c: sync widened — stamped docs rescue automatically ----
+    # the real widening: server paths (and DocKeys) don't change; the
+    # LOCAL sync root grows from .../General to the whole library.
+    # Simulated with a widened dir (General/ inside it) + config edits
+    # exactly as the setup guide prescribes. Each stamped doc must
+    # re-index by itself — no promptVersion bump, no touch.
+    print("== scope rescue leg")
+    widened_dir = os.path.join(tmp, "source-wide")
+    shutil.copytree(src_dir, os.path.join(widened_dir, "General"))
+    with open(os.path.join(widened_dir, "outside.txt"), "w") as f:
+        f.write("Notes that lived outside the synced scope.")
+    with open(os.path.join(widened_dir, "outside.pdf"), "wb") as f:
+        f.write(b"%PDF-1.4 reachable after the sync widened")
+    cfg["paths"]["sourceLibrary"] = widened_dir
+    cfg["sharePoint"]["libraryRootSegment"] = "Shared Documents"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "outside.txt"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "outside.txt"][0]
+    check("widened sync: stamped doc re-indexed via scope rescue",
+          out.get("processed") == 1 and row.get("IndexStatus") == "Indexed"
+          and row.get("Summary") == "Rescued after the sync widened.",
+          str(out) + " " + str(row)[:200])
+    proc = run_sweep(cfg_path, ["--live", "--only", "outside.pdf"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "outside.pdf"][0]
+    check("widened sync: stamped pdf re-indexed too",
+          out.get("processed") == 1 and row.get("IndexStatus") == "Indexed",
+          str(out) + " " + str(row)[:200])
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")

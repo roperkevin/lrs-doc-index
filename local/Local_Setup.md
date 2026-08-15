@@ -267,7 +267,9 @@ Each is behavior-equivalent; all are exercised by the gate:
   outside `sharePoint.libraryRootSegment` gets a STAMPED `Skipped`
   row with `LastError` `"out of sync scope: ..."` — once, not a
   nightly Error. The status page counts them. To index those docs,
-  widen the OneDrive sync and touch them (or bump promptVersion). A
+  widen the OneDrive sync; the stamp doubles as a rescue marker, so
+  they re-index automatically on the first run where their file is
+  reachable (no promptVersion bump, no corpus-wide AI respend). A
   doc IN scope whose file is missing on disk is treated as OneDrive
   sync lag: a retryable Error that clears itself when the file lands.
 
