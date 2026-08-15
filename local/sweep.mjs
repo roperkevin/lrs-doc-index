@@ -347,6 +347,19 @@ class ToolLinkResolver {
 const DOCS_BEGIN = "<!-- docs:begin -->";
 const DOCS_END = "<!-- docs:end -->";
 
+/** Offset where a sidecar's BODY begins: just past the `---` seam
+ *  that follows the related region (and the docs block). -1 when the
+ *  file doesn't have the expected shape — those are left alone. */
+function bodySeamEnd(content) {
+  const s = String(content);
+  const anchor = s.indexOf("<!-- related:end -->");
+  const i = anchor >= 0 ? s.indexOf("\n---\n", anchor) : s.lastIndexOf("\n---\n");
+  if (i < 0) return -1;
+  let end = i + "\n---\n".length;
+  while (s[end] === "\n") end++;
+  return end;
+}
+
 /** The marked block ("" when nothing has links). Products render
  *  their curated link lists; tools render a DIRECT link when the
  *  tools map knows them (case-insensitive) and a templated search
@@ -486,6 +499,149 @@ function upsertDocsBlock(content, block) {
   return s;
 }
 
+/**
+ * tidyBody — presentation polish for the extracted document text
+ * (v1.20). Applied to the SIDECAR BODY ONLY: the LLM input, the
+ * TextPreview field and the similarity index keep the raw text, so
+ * classification and ranking are untouched. Deliberately here and
+ * not in ZipTextExtract — that script is tenant-pasted and under
+ * byte-equivalence gates; this is local presentation.
+ *
+ *   - drops the slide-number placeholder line PowerPoint leaves on
+ *     each slide ("3" alone under "## Slide 3")
+ *   - normalizes bullets: consistent 2-space depth steps, padding
+ *     inside the marker collapsed ("-          text" -> "- text"),
+ *     empty bullets dropped
+ *   - tightens lists: no blank line between consecutive bullets
+ *     (markdown renders them loose/sprawling otherwise)
+ *   - drops "### Notes" sections that hold nothing but the slide
+ *     number, and collapses runs of blank lines
+ */
+function tidyBody(text) {
+  const isBullet = (s) => /^\s*[-*]\s/.test(s);
+  const lines = String(text).replace(/\r\n?/g, "\n").split("\n");
+  const kept = [];
+  let slideNo = null;
+  for (const raw of lines) {
+    let ln = raw.replace(/[ \t]+$/, "");
+    const h = /^##+ Slide (\d+)/.exec(ln);
+    if (h) slideNo = h[1];
+    if (slideNo && ln.trim() === slideNo) continue; // slide-number noise
+    if (isBullet(ln)) {
+      const m = /^([ \t]*)[-*][ \t]+([\s\S]*)$/.exec(ln);
+      if (m) {
+        const width = m[1].replace(/\t/g, "  ").length;
+        const body = m[2].replace(/^[\s ]+/, "").replace(/[\s ]+$/, "");
+        if (!body) continue; // empty bullet
+        ln = "  ".repeat(Math.floor(width / 2)) + "- " + body;
+      }
+    }
+    kept.push(ln);
+  }
+  // tighten: drop blanks between consecutive bullets, collapse runs
+  const tight = [];
+  for (let i = 0; i < kept.length; i++) {
+    if (kept[i].trim() !== "") {
+      tight.push(kept[i]);
+      continue;
+    }
+    let n = i + 1;
+    while (n < kept.length && kept[n].trim() === "") n++;
+    const prev = tight.length ? tight[tight.length - 1] : "";
+    const next = n < kept.length ? kept[n] : "";
+    if (!tight.length) continue; // leading blanks
+    if (isBullet(prev) && isBullet(next)) continue; // inside a list
+    if (prev.trim() === "") continue; // already blank
+    tight.push("");
+  }
+  // drop "### Notes" headings whose section is empty
+  const out = [];
+  for (let i = 0; i < tight.length; i++) {
+    if (/^###+ Notes\s*$/.test(tight[i])) {
+      let j = i + 1;
+      while (j < tight.length && tight[j].trim() === "") j++;
+      if (j >= tight.length || /^#{2,4} /.test(tight[j])) {
+        i = j - 1;
+        continue;
+      }
+    }
+    out.push(tight[i]);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").replace(/\s+$/, "") + "\n";
+}
+
+/**
+ * extractDocText — the flow's Switch_ext lane dispatch, shared by
+ * indexDoc and the `--reformat` pass (which re-extracts without
+ * spending an AI call). withMedia=false skips media extraction:
+ * the images are already on disk from the original index.
+ */
+function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext, srcItemId, modified, withMedia }) {
+  let docText = "", relsText = "", lane = "none";
+  let srcAuthor = "", srcEditor = "", srcEdited = "";
+  const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
+  const oversize = size > sw.oversizeBytes && ext !== "xlsx";
+  if (!fs.existsSync(localPath)) {
+    // in scope but absent on disk: usually OneDrive lag — a real
+    // Error so it retries nightly until the file lands
+    throw new Error(`source file not found locally (OneDrive sync lag or unsynced subfolder?): ${localPath}`);
+  }
+
+  if (!oversize && (ext === "pptx" || ext === "docx")) {
+    setStep(`ziptext-${ext}`);
+    const zt = op({
+      op: "ziptext", zipFile: localPath,
+      mediaPrefix: `../media/doc${srcItemId}_`,
+    });
+    docText = zt.text || "";
+    relsText = zt.rels || "";
+    lane = "xmlstrip";
+    srcAuthor = zt.author || "";
+    srcEditor = zt.lastEditedBy || "";
+    srcEdited = zt.lastEdited || modified || "";
+    if (withMedia && zt.media && zt.media.length) {
+      setStep("media");
+      const md = op({ op: "media", zipFile: localPath });
+      for (const img of md.images || []) {
+        const imgPath = path.join(cfg.paths.sidecarLibrary, "media", `doc${srcItemId}_${img.name}`);
+        writer.writeFile(imgPath, Buffer.from(img.b64 || img.base64 || "", "base64"));
+      }
+    }
+  } else if (!oversize && ext === "xlsx") {
+    setStep("workbookdump");
+    docText = op({ op: "workbookdump", xlsxFile: localPath, maxCells: sw.maxCellsWorkbookDump });
+    lane = "workbookdump";
+  } else if (!oversize && ext === "txt") {
+    setStep("read-txt");
+    docText = fs.readFileSync(localPath, "utf8");
+    lane = "plaintext";
+  } else if (!oversize && (ext === "html" || ext === "htm")) {
+    // v1.10: the htmltotext lane the ExtractionLane schema always
+    // reserved but no flow version implemented — HTML finally indexes
+    setStep("htmltotext");
+    docText = htmlToText(fs.readFileSync(localPath, "utf8"));
+    lane = "htmltotext";
+  } else if (!oversize && ext === "pdf" && pdfTool) {
+    // pdftotext (Poppler). A text-bearing PDF indexes like any other
+    // doc; a scanned/image-only one yields no text and falls through
+    // to the Skip lane WITH lane="plaintext" recorded, which marks
+    // "extraction was attempted" and keeps it out of the PDF rescue.
+    setStep("pdftotext");
+    const r = spawnSync(pdfTool, ["-layout", "-enc", "UTF-8", localPath, "-"], {
+      encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
+    });
+    if (r.error) throw new Error(`pdftotext: ${r.error.message}`);
+    if (r.status !== 0) {
+      throw new Error(`pdftotext exit ${r.status}: ${cut(String(r.stderr || ""), 300)}`);
+    }
+    docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
+    lane = "plaintext";
+  }
+  // pdf(no tool)/msg/image/other/oversize (and empty html): DocText
+  // stays empty → Skip lane.
+  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited };
+}
+
 /** Zero-dependency HTML → text: scripts/styles/comments dropped,
  *  tags stripped, common entities decoded, whitespace collapsed. */
 function htmlToText(html) {
@@ -545,9 +701,10 @@ function loadConfig(argv) {
     else if (a === "--max") args.flags.max = Number(argv[++i]);
     else if (a === "--only") args.flags.only = argv[++i];
     else if (a === "--rerank") args.flags.rerank = true;
+    else if (a === "--reformat") args.flags.reformat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat]");
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   cfg.sweep = { ...FLOW_DEFAULTS, ...(cfg.sweep || {}) };
   if (args.flags.live) cfg.sweep.dryRun = false;
@@ -558,6 +715,7 @@ function loadConfig(argv) {
   }
   if (args.flags.only !== undefined) cfg.sweep.smokeFile = args.flags.only;
   if (args.flags.rerank) cfg.sweep.rerank = true;
+  if (args.flags.reformat) cfg.sweep.reformat = true;
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   // device-mode refresh-token caches (one per resource) live in workDir
@@ -984,6 +1142,10 @@ async function main() {
     )
   );
 
+  const rfsum = {
+    mode: "reformat", dry_run: dry, eligible: 0, rewritten: 0,
+    unchanged: 0, no_sidecar: 0, no_seam: 0, no_text: 0, errors: 0,
+  };
   const summary = {
     library_items_seen: files.length,
     after_smoke_filter: 0,
@@ -1030,6 +1192,47 @@ async function main() {
     const libRel = inScope ? siteRel.slice(sp.libraryRootSegment.length + 1) : siteRel;
     const localPath = path.join(cfg.paths.sourceLibrary, ...libRel.split("/"));
     const sourceLink = item.webUrl || "";
+
+    // --reformat: re-extract and rewrite ONLY the sidecar body, so
+    // presentation improvements (tidyBody) reach the whole corpus
+    // without an AI call or a promptVersion bump. Header, metadata,
+    // related region and docs block are preserved byte-for-byte.
+    if (sw.reformat) {
+      if (isFolder || !inScope || !existing || existing.IndexStatus !== "Indexed" || !existing.TextFileUrl) continue;
+      rfsum.eligible++;
+      if (rfsum.rewritten + rfsum.unchanged >= (sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity)) continue;
+      const scLocal = urlToLocal(String(existing.TextFileUrl), sw, cfg);
+      if (!scLocal || !fs.existsSync(scLocal)) {
+        rfsum.no_sidecar++;
+        continue;
+      }
+      try {
+        const cur = fs.readFileSync(scLocal, "utf8");
+        const seam = bodySeamEnd(cur);
+        if (seam < 0) {
+          rfsum.no_seam++;
+          continue;
+        }
+        const { docText } = extractDocText({
+          sw, cfg, op, writer, pdfTool, setStep: () => {},
+          localPath, ext, srcItemId, modified, withMedia: false,
+        });
+        if (!docText) {
+          rfsum.no_text++;
+          continue;
+        }
+        const next = cur.slice(0, seam) + tidyBody(docText);
+        if (next === cur) rfsum.unchanged++;
+        else {
+          writer.writeFile(scLocal, next);
+          rfsum.rewritten++;
+        }
+      } catch (e) {
+        rfsum.errors++;
+        process.stderr.write(`REFORMAT ERROR ${name}: ${e.message}\n`);
+      }
+      continue;
+    }
 
     // Needs_index — plus two self-healing rescues, both gated on
     // inScope so an unreachable doc is stamped once, never nightly:
@@ -1099,6 +1302,18 @@ async function main() {
         process.stderr.write(`ERROR-row write failed for ${name}: ${e2.message}\n`);
       }
     }
+  }
+
+  if (sw.reformat) {
+    const rDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(rDir, { recursive: true });
+    const rStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const rLog = path.join(rDir, `sweep-${rStamp}.json`);
+    fs.writeFileSync(rLog, JSON.stringify({ summary: rfsum, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(rDir);
+    process.stdout.write(JSON.stringify({ ...rfsum, logFile: rLog }) + "\n");
+    if (dry) process.stdout.write(`dry run: ${writer.plan.length} planned writes recorded in ${rLog}\n`);
+    return;
   }
 
   // ---- ghost reconciliation: rows whose source vanished ----------
@@ -1228,69 +1443,11 @@ async function indexDoc(ctx) {
     return;
   }
 
-  // Switch_ext (incl. the oversize synthetic value)
-  let docText = "", relsText = "", lane = "none";
-  let srcAuthor = "", srcEditor = "", srcEdited = "";
-  const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
-  const oversize = size > sw.oversizeBytes && ext !== "xlsx";
-  if (!fs.existsSync(localPath)) {
-    // in scope but absent on disk: usually OneDrive lag — a real
-    // Error so it retries nightly until the file lands
-    throw new Error(`source file not found locally (OneDrive sync lag or unsynced subfolder?): ${localPath}`);
-  }
-
-  if (!oversize && (ext === "pptx" || ext === "docx")) {
-    setStep(`ziptext-${ext}`);
-    const zt = op({
-      op: "ziptext", zipFile: localPath,
-      mediaPrefix: `../media/doc${srcItemId}_`,
-    });
-    docText = zt.text || "";
-    relsText = zt.rels || "";
-    lane = "xmlstrip";
-    srcAuthor = zt.author || "";
-    srcEditor = zt.lastEditedBy || "";
-    srcEdited = zt.lastEdited || modified || "";
-    if (zt.media && zt.media.length) {
-      setStep("media");
-      const md = op({ op: "media", zipFile: localPath });
-      for (const img of md.images || []) {
-        const imgPath = path.join(cfg.paths.sidecarLibrary, "media", `doc${srcItemId}_${img.name}`);
-        writer.writeFile(imgPath, Buffer.from(img.b64 || img.base64 || "", "base64"));
-      }
-    }
-  } else if (!oversize && ext === "xlsx") {
-    setStep("workbookdump");
-    docText = op({ op: "workbookdump", xlsxFile: localPath, maxCells: sw.maxCellsWorkbookDump });
-    lane = "workbookdump";
-  } else if (!oversize && ext === "txt") {
-    setStep("read-txt");
-    docText = fs.readFileSync(localPath, "utf8");
-    lane = "plaintext";
-  } else if (!oversize && (ext === "html" || ext === "htm")) {
-    // v1.10: the htmltotext lane the ExtractionLane schema always
-    // reserved but no flow version implemented — HTML finally indexes
-    setStep("htmltotext");
-    docText = htmlToText(fs.readFileSync(localPath, "utf8"));
-    lane = "htmltotext";
-  } else if (!oversize && ext === "pdf" && pdfTool) {
-    // pdftotext (Poppler). A text-bearing PDF indexes like any other
-    // doc; a scanned/image-only one yields no text and falls through
-    // to the Skip lane WITH lane="plaintext" recorded, which marks
-    // "extraction was attempted" and keeps it out of the PDF rescue.
-    setStep("pdftotext");
-    const r = spawnSync(pdfTool, ["-layout", "-enc", "UTF-8", localPath, "-"], {
-      encoding: "utf8", maxBuffer: 64 * 1024 * 1024,
-    });
-    if (r.error) throw new Error(`pdftotext: ${r.error.message}`);
-    if (r.status !== 0) {
-      throw new Error(`pdftotext exit ${r.status}: ${cut(String(r.stderr || ""), 300)}`);
-    }
-    docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
-    lane = "plaintext";
-  }
-  // pdf(no tool)/msg/image/other/oversize (and empty html): DocText
-  // stays empty → Skip lane.
+  // Switch_ext lane dispatch (shared with the --reformat pass)
+  const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited } = extractDocText({
+    sw, cfg, op, writer, pdfTool, setStep,
+    localPath, ext, srcItemId, modified, withMedia: true,
+  });
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
@@ -1397,8 +1554,10 @@ async function indexDoc(ctx) {
   for (const k of ai.keywords || []) {
     topicLinks.set(k, linkResolver.topicLink(k, products));
   }
+  // body gets the v1.20 presentation tidy; the LLM input, preview and
+  // similarity index all keep the raw text
   const sidecarContent = upsertDocsBlock(
-    header + docText,
+    header + tidyBody(docText),
     docsBlock(products, ai.tools || [], docLinks, toolLinks, topicLinks)
   );
   writer.writeFile(localSidecar, sidecarContent);

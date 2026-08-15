@@ -1,5 +1,37 @@
 # Local sweep — release notes
 
+## v1.20 (2026-08-15)
+
+**Sidecar bodies are legible** — the extracted document text was
+sprawling: a stray slide-number line under every slide heading,
+blank lines between every bullet (markdown renders those as loose,
+double-spaced lists), bullet text padded from the source
+(`-           use existing 64bit FC`), and `### Notes` sections
+holding nothing but the slide number. New `tidyBody()` fixes all
+four plus collapses blank-line runs.
+
+Deliberately **not** in `ZipTextExtract`: that script is
+tenant-pasted and under byte-equivalence gates, so this lives in the
+local sweep as presentation. It applies to the **sidecar body
+only** — the LLM input, the `TextPreview` field and the similarity
+index all keep the raw text, so classification, previews and
+relatedness are provably unchanged.
+
+**`sweep.mjs --reformat`** applies it corpus-wide with **no AI
+spend**: for each Indexed doc it re-extracts the source (free,
+local) and replaces only the text below the `---` seam, preserving
+the header, metadata yaml, related region and docs block
+byte-for-byte. The Switch_ext lane dispatch is factored into a
+shared `extractDocText()` used by both indexing and reformatting,
+so the lanes cannot drift.
+
+Gate: a messy three-slide fixture reproducing every defect from the
+live corpus (slide-number lines, padded/nested bullets, loose list,
+notes-with-just-a-number) proves the tidy; the reformat leg
+overwrites a sidecar with a stale body and proves it is rebuilt,
+tidied, header preserved, and zero AI calls spent.
+**Gate PASSED 2026-08-15 (125/125).**
+
 ## v1.19 (2026-08-15)
 
 **Documentation block, readable** — the live output was 20 flat
