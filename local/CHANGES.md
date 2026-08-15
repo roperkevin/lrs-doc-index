@@ -1,5 +1,26 @@
 # Local sweep — release notes
 
+## v1.13 (2026-08-15)
+
+**`sweep.mjs --rerank`** — rebuild every Indexed doc's Related
+Documents section in one pass from persisted state: row metadata,
+junction/edge lists, and the on-disk sidecar bodies. **No extraction,
+no AI calls, no row writes** — pure local compute + sidecar file
+patches (reciprocal neighbor merges included), so a full-corpus pass
+costs nothing but minutes. The related pipeline (flow §5 +
+body-sim) is extracted into `rankRelated()`, shared verbatim by
+indexDoc and the rerank driver. Uncapped by default (`--max` caps it
+explicitly; `--only` narrows it; `--dry-run` plans it). Intended
+use: right after a keyword-curation drain, to propagate merges
+corpus-wide immediately instead of over months of lazy reindexes —
+and it back-fills body-sim/filename/folder relateds (v1.9) into
+every sidecar written before those signals existed.
+
+Gate: rerank leg — full pass over the corpus fixture proves per-doc
+coverage, zero AI calls, keyword/id and body-sim relateds intact,
+and non-Indexed docs' sidecars untouched.
+**Gate PASSED 2026-08-15 (95/95).**
+
 ## v1.12.1 (2026-08-15)
 
 Timeout fix, found on the first live drain: AI Builder's gateway
