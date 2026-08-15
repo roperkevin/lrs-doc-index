@@ -820,6 +820,33 @@ def main():
           and not kwrows[CUR["centerlines"]].get("CurationStatus"), str(out))
     check("emptied queue overwrites the digest (DX-11)",
           "queue is EMPTY" in (state.digest or ""), (state.digest or "")[:300])
+    # week 3: autoApprove — guard-passing merges apply immediately, and
+    # a pending proposal left over from manual mode is applied too
+    cfg["curation"] = {"autoApprove": True}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    CUR["gantts"] = state.seed(LISTS["keywords"], {"Title": "gantt charts", "Kind": "topic"})
+    CUR["gantt"] = state.seed(LISTS["keywords"], {"Title": "gantt chart", "Kind": "topic"})
+    CUR["wp"] = state.seed(LISTS["keywords"], {"Title": "wp", "Kind": "topic",
+                                               "CurationStatus": "Proposed",
+                                               "ProposedCanonical": "work package — abbreviation"})
+    CUR["workpackage"] = state.seed(LISTS["keywords"], {"Title": "work package", "Kind": "topic"})
+    state.cur_response = {"proposals": [
+        {"alias": "gantt charts", "canonical": "gantt chart", "why": "plural"},
+    ]}
+    proc = run_curate(cfg_path, ["--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("autoApprove merges proposal + pending directly",
+          proc.returncode == 0 and "merged=2" in out.get("line", "")
+          and kwrows[CUR["gantts"]].get("CanonicalRefLookupId") == int(CUR["gantt"])
+          and not kwrows[CUR["gantts"]].get("CurationStatus")
+          and kwrows[CUR["wp"]].get("CanonicalRefLookupId") == int(CUR["workpackage"])
+          and not kwrows[CUR["wp"]].get("CurationStatus"),
+          str(out) + " " + str(kwrows[CUR["gantts"]]) + str(kwrows[CUR["wp"]]))
+    check("autoApprove digest is an audit log with undo instructions",
+          "MERGED 'gantt charts' → 'gantt chart'" in (state.digest or "")
+          and "MERGED (pending) 'wp' → 'work package'" in (state.digest or "")
+          and "AUTOMATICALLY" in (state.digest or ""), (state.digest or "")[:400])
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
