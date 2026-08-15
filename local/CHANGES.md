@@ -1,5 +1,41 @@
 # Local sweep — release notes
 
+## v1.9 (2026-08-15)
+
+**Relatedness upgrade** (improvement plan follow-on): three new
+signals, all local and free — no AI spend, no dependencies, no
+tenant changes. Rollout is gradual and cheap: each doc's related
+list refreshes on its next reindex (+ reciprocal neighbor patches).
+
+- **Body-text similarity** — new `BodyIndex` in sweep.mjs: a
+  BM25-weighted cosine over the sidecar corpus (bodies below the
+  header seam), built once per run from disk and upserted with each
+  doc's fresh text as the run proceeds. Docs above
+  `sweep.relatedBodySimMin` (default 0.15) join the candidate
+  universe even with NO shared keyword/edge — the fix for docs about
+  the same subject whose LLM keywords never matched — and every
+  candidate carries `BodySim` into the final ranking.
+- **Filename-family affinity** — camelCase-split filename tokens
+  (`ComplexRouteShapesEventBehaviorRealign` → complex route shapes
+  event behavior realign) score shared distinctive tokens, clustering
+  the corpus's doc series.
+- **Folder affinity** — same-folder candidates get a small bonus.
+
+Implemented as **RelatedRank v2.2** with the r4 dormant-field
+pattern: `BodySim`/`Folder` on candidate rows and `filename`/`folder`
+in selfMeta activate the terms; flow-shaped input (the tenant-pasted
+v2.1's wiring) produces byte-identical output — `check_related`
+standing suite PASSED unchanged, no tenant paste needed, rollback
+unaffected. Weights live in `RelatedWeights` config (`body.weight` 3,
+`fname` 0.5×cap 6, `folder` 0.5), all inside the softCap bucket, so
+id-link dominance still holds. Similarity is cosine (symmetric) —
+the reciprocal-merge score contract survives.
+
+Gate: spec.pdf's body shares calibration vocabulary with notes.txt
+while sharing zero keywords — the live leg proves they relate through
+the body-sim source alone, with "similar text (…)" in the why prose.
+**Gate PASSED 2026-08-15 (71/71)**; PAD 27/27; `check_related` PASS.
+
 ## v1.8.1 (2026-08-15)
 
 Rescue-gating fixes, found when the tenant's PDF rescue hit docs

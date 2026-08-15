@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sweep.mjs v1.5 — the Doc Index sweep as a local Node orchestrator.
+ * sweep.mjs v1.9 — the Doc Index sweep as a local Node orchestrator.
  * Replaces the DocIndexSweep Power Automate cloud flow (v2.8): same
  * pipeline, same list writes, same sidecar bytes — no Power Automate,
  * no Run-script quota, no AI Builder.
@@ -61,6 +61,7 @@ const FLOW_DEFAULTS = {
   maxDocsPerRun: 150,
   relatedTopN: 5,
   relatedShortlist: 12,
+  relatedBodySimMin: 0.15,
   myKwsTop: 100,
   sharersTop: 2000,
   linksTop: 200,
@@ -96,6 +97,10 @@ const IMAGE_EXT = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"];
 
 const lower = (s) => String(s ?? "").toLowerCase();
 const cut = (s, n) => (String(s).length > n ? String(s).slice(0, n) : String(s));
+const folderOf = (k) => {
+  const i = String(k).lastIndexOf("/");
+  return i >= 0 ? String(k).slice(0, i) : "";
+};
 
 function yamlEscape(s) {
   return String(s ?? "")
@@ -398,6 +403,7 @@ async function main() {
 
   const graph = new GraphClient(cfg.graph);
   const spo = new SpoClient(cfg.spo);
+  const bodyIndex = new BodyIndex();
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
   const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
   const writer = new Writer(graph, siteId, sp.lists, dry, spo);
@@ -527,7 +533,7 @@ async function main() {
     try {
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool,
+        cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -639,7 +645,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -918,13 +924,20 @@ async function indexDoc(ctx) {
     }
   }
 
-  // (j) relatedness — see flow §5
+  // (j) relatedness — see flow §5 (+ v1.9: body-text similarity as a
+  // candidate source, so semantically similar docs relate even with
+  // no shared keyword/edge)
   setStep("related");
+  bodyIndex.ensureBuilt(caches.docIndexRows, sw, cfg);
+  bodyIndex.upsert(rowId, docText);
+  const sims = bodyIndex.query(rowId);
+  const simMin = sw.relatedBodySimMin === undefined ? 0.15 : Number(sw.relatedBodySimMin);
+  const simTop = sims.filter((s) => s.sim >= simMin).slice(0, sw.relatedShortlist);
   const myKws = caches.docKwRows.filter((r) => r.DocumentId === rowId).slice(0, sw.myKwsTop);
   const idLinks = caches.docLinkRows
     .filter((r) => r.DocAId === rowId || r.DocBId === rowId)
     .slice(0, sw.linksTop);
-  if (!myKws.length && !idLinks.length) return;
+  if (!myKws.length && !idLinks.length && !simTop.length) return;
 
   const myKwIds = new Set(myKws.map((r) => r.KeywordId ?? -1));
   const kwMeta = kwSnapshot.filter(
@@ -937,6 +950,8 @@ async function indexDoc(ctx) {
   const selfMetaRank = {
     kind: docKind, surface, release: ai.targetRelease || "",
     pe: ai.pe || "", dev: ai.dev || "", modified, title,
+    // v1.9 (RelatedRank v2.2 self gates): filename + folder affinity
+    filename: name, folder: folderOf(docKey),
   };
   const relatedCommon = {
     op: "related", selfId: String(rowId),
@@ -948,14 +963,23 @@ async function indexDoc(ctx) {
   if (shortlist.flags && shortlist.flags !== "") {
     summary.related_flags += `${rowId}:${shortlist.flags} `;
   }
-  if (!(shortlist.count > 0)) return;
+  if (!(shortlist.count > 0) && !simTop.length) return;
 
+  // candidate universe = keyword/edge shortlist ∪ top body-sim docs;
+  // each candidate row carries its BodySim + Folder for the ranker
+  const simById = new Map(sims.map((s) => [s.id, s.sim]));
+  const candIds = new Set([...(shortlist.docIds || []), ...simTop.map((s) => s.id)]);
   const candRows = caches.docIndexRows.filter(
-    (r) => shortlist.docIds.includes(r.ID) && r.IndexStatus !== "Archived"
+    (r) => candIds.has(r.ID) && r.IndexStatus !== "Archived"
   );
+  const candsMeta = candRows.map((r) => ({
+    ...r,
+    BodySim: simById.get(r.ID) || 0,
+    Folder: folderOf(lower(r.DocKey)),
+  }));
   // "final" without the flow's trailing space — RelatedRank reads any
   // non-"shortlist" mode as final.
-  const rank = op({ ...relatedCommon, mode: "final", candsMetaJson: candRows, topN: sw.relatedTopN });
+  const rank = op({ ...relatedCommon, mode: "final", candsMetaJson: candsMeta, topN: sw.relatedTopN });
   const finalDocs = candRows.filter((r) => (rank.docIds || []).includes(r.ID));
 
   setStep("neighbors");
@@ -1018,6 +1042,107 @@ function detectPdfTool(sw) {
   const p = sw.pdftotextPath || "pdftotext";
   const r = spawnSync(p, ["-v"], { encoding: "utf8" });
   return r.error ? null : p;
+}
+
+/**
+ * BodyIndex — BM25-weighted cosine similarity over sidecar bodies.
+ * Pure in-memory JS: no dependencies, no AI spend. Built lazily from
+ * the on-disk sidecar corpus once per run (the body below the header
+ * seam, so template boilerplate doesn't score); docs indexed during
+ * the run are upserted from their fresh text, so same-run neighbors
+ * see each other. Cosine is symmetric — RelatedRank's score-symmetry
+ * contract (reciprocal sidecar merges) holds.
+ */
+class BodyIndex {
+  constructor() {
+    this.docs = new Map(); // rowId -> Map(term -> tf)
+    this.df = new Map(); // term -> #docs carrying it
+    this.built = false;
+  }
+
+  static tokenize(text) {
+    const tf = new Map();
+    const parts = String(text).slice(0, 80000).toLowerCase().match(/[a-z0-9]{3,}/g) || [];
+    for (const p of parts) {
+      if (!/[a-z]/.test(p)) continue;
+      tf.set(p, (tf.get(p) || 0) + 1);
+    }
+    return tf;
+  }
+
+  _remove(id) {
+    const old = this.docs.get(id);
+    if (!old) return;
+    for (const t of old.keys()) {
+      const n = (this.df.get(t) || 1) - 1;
+      if (n <= 0) this.df.delete(t);
+      else this.df.set(t, n);
+    }
+    this.docs.delete(id);
+  }
+
+  upsert(id, text) {
+    this._remove(id);
+    const tf = BodyIndex.tokenize(text);
+    if (tf.size === 0) return;
+    for (const t of tf.keys()) this.df.set(t, (this.df.get(t) || 0) + 1);
+    this.docs.set(id, tf);
+  }
+
+  ensureBuilt(rows, sw, cfg) {
+    if (this.built) return;
+    this.built = true;
+    for (const r of rows) {
+      if (!r.ID || r.IndexStatus === "Archived" || !r.TextFileUrl) continue;
+      const local = urlToLocal(r.TextFileUrl, sw, cfg);
+      if (!local) continue;
+      let txt;
+      try {
+        txt = fs.readFileSync(local, "utf8");
+      } catch {
+        continue; // sidecar not synced/deleted — doc just lacks the signal
+      }
+      const seam = txt.lastIndexOf("\n---\n");
+      this.upsert(r.ID, seam >= 0 ? txt.slice(seam + 5) : txt);
+    }
+  }
+
+  _idf(t) {
+    const d = this.df.get(t) || 0;
+    return Math.log(1 + (this.docs.size - d + 0.5) / (d + 0.5));
+  }
+
+  /** Similarity of selfId's vector vs every other doc, sorted desc. */
+  query(selfId) {
+    const selfTf = this.docs.get(selfId);
+    if (!selfTf || this.docs.size < 2) return [];
+    const selfW = new Map();
+    let selfNorm = 0;
+    for (const [t, f] of selfTf) {
+      const w = (1 + Math.log(f)) * this._idf(t);
+      selfW.set(t, w);
+      selfNorm += w * w;
+    }
+    selfNorm = Math.sqrt(selfNorm);
+    if (selfNorm <= 0) return [];
+    const out = [];
+    for (const [id, tf] of this.docs) {
+      if (id === selfId) continue;
+      let dot = 0;
+      let norm = 0;
+      for (const [t, f] of tf) {
+        const w = (1 + Math.log(f)) * this._idf(t);
+        norm += w * w;
+        const sw2 = selfW.get(t);
+        if (sw2) dot += w * sw2;
+      }
+      if (dot <= 0 || norm <= 0) continue;
+      const sim = Math.round((dot / (Math.sqrt(norm) * selfNorm)) * 1000) / 1000;
+      if (sim > 0) out.push({ id, sim });
+    }
+    out.sort((a, b) => b.sim - a.sim || b.id - a.id);
+    return out;
+  }
 }
 
 /** Keep the newest N per-run JSON logs; the stamp format sorts

@@ -1,5 +1,34 @@
 /**
- * RelatedRank v2.1 — score and rank a document's related documents
+ * RelatedRank v2.2 — score and rank a document's related documents
+ * ------------------------------------------------------------------
+ * v2.2 (2026-08-15, local-sweep era): three OPTIONAL signals for the
+ * local sweep's richer caller, all dormant on flow-shaped input —
+ * output is byte-identical to v2.1 unless the caller opts in (the
+ * standing gates prove it, unchanged):
+ *
+ *   (a) Body-text similarity: candidate rows may carry "BodySim"
+ *       (0..1, precomputed by the caller — the local sweep's BM25
+ *       cosine over sidecar bodies; symmetric by construction).
+ *       Scores body.weight × sim into the soft bucket, and — unlike
+ *       every other soft signal — ADMITS the candidate into the
+ *       scoring universe in final mode even with no shared
+ *       edge/keyword: semantically similar docs that never met
+ *       through curation can now relate. Flow rows have no BodySim,
+ *       so the flow's universe is unchanged.
+ *   (b) Filename-family affinity: when selfMetaJson carries
+ *       "filename", shared distinctive filename tokens (camelCase
+ *       and non-alphanumeric splits, title-stopword filtered) score
+ *       fname.weight each up to fname.cap — clusters corpus series
+ *       like ComplexRouteShapesEventBehavior*. Pair-symmetric
+ *       (shared-token set). Self gate: no "filename", no term.
+ *   (c) Folder affinity: when selfMetaJson carries "folder" and it
+ *       equals the candidate row's "Folder" (case-insensitive,
+ *       both non-empty), folder.weight is added. Self-gated too.
+ *
+ * All three live inside the softCap bucket — id-link dominance holds.
+ * NO tenant paste required: the flow never sends the new fields, so
+ * the pasted v2.1 and this v2.2 behave identically on the flow; on
+ * a rollback the paste is optional.
  * ------------------------------------------------------------------
  * r4 batch (related-ranking upgrade) — gated by check_batch_r4.py.
  * Gate PASSED (check_batch_r4.py, 2026-08-12).
@@ -150,6 +179,9 @@ interface RankConfig {
   kwKind: { [k: string]: number };
   meta: { kind: number; surface: number; release: number; pe: number; dev: number };
   title: { weight: number; cap: number; stop: string[] };
+  body: { weight: number };
+  fname: { weight: number; cap: number };
+  folder: { weight: number };
   recency: { weight: number; halfLifeDays: number };
   softCap: number;
   tops: { myKws: number; sharers: number; links: number };
@@ -164,6 +196,9 @@ interface DocMeta {
   dev: string;
   modified: string;
   title: string;
+  fname: string;
+  folder: string;
+  sim: number;
 }
 
 function parseRows(json: string): SpRow[] {
@@ -274,12 +309,29 @@ function titleTokens(title: string, extraStop: { [t: string]: boolean }): { [t: 
   return set;
 }
 
+// v2.2: filename tokens — extension stripped, camelCase and
+// letter/digit boundaries split ("ComplexRouteShapesEventBehavior"
+// -> complex route shapes event behavior), then the same distinctive
+// filter as titles. Pair-shared sets stay symmetric.
+function fnameTokens(fname: string, extraStop: { [t: string]: boolean }): { [t: string]: boolean } {
+  const dot = fname.lastIndexOf(".");
+  const stem = dot > 0 ? fname.slice(0, dot) : fname;
+  const spaced = stem
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Za-z])([0-9])/g, "$1 $2")
+    .replace(/([0-9])([A-Za-z])/g, "$1 $2");
+  return titleTokens(spaced, extraStop);
+}
+
 function defaultConfig(): RankConfig {
   return {
     edge: { id: 1000, review: 100, gantt: 60, titlematch: 40 },
     kwKind: { topic: 1.0, tool: 0.6, product: 0.4 },
     meta: { kind: 0.5, surface: 0.5, release: 1.0, pe: 0.75, dev: 0.75 },
     title: { weight: 0.4, cap: 6, stop: [] },
+    body: { weight: 3.0 },
+    fname: { weight: 0.5, cap: 6 },
+    folder: { weight: 0.5 },
     recency: { weight: 1.0, halfLifeDays: 180 },
     softCap: 999,
     tops: { myKws: 100, sharers: 2000, links: 200 },
@@ -327,6 +379,20 @@ function mergeConfig(json: string): RankConfig {
       }
     }
   }
+  const body = raw["body"] as SpRow | undefined;
+  if (body && typeof body === "object") {
+    cfg.body.weight = numOr(body["weight"], cfg.body.weight);
+  }
+  const fname = raw["fname"] as SpRow | undefined;
+  if (fname && typeof fname === "object") {
+    cfg.fname.weight = numOr(fname["weight"], cfg.fname.weight);
+    const fcap = numOr(fname["cap"], cfg.fname.cap);
+    cfg.fname.cap = fcap >= 0 ? Math.floor(fcap) : cfg.fname.cap;
+  }
+  const folder = raw["folder"] as SpRow | undefined;
+  if (folder && typeof folder === "object") {
+    cfg.folder.weight = numOr(folder["weight"], cfg.folder.weight);
+  }
   const rec = raw["recency"] as SpRow | undefined;
   if (rec && typeof rec === "object") {
     cfg.recency.weight = numOr(rec["weight"], cfg.recency.weight);
@@ -347,7 +413,10 @@ function mergeConfig(json: string): RankConfig {
 }
 
 // Doc Index row -> the metadata slice the affinity terms read.
+// v2.2: BodySim/Folder are caller-computed extras (local sweep);
+// flow rows never carry them, so sim reads 0 and folder "".
 function docMetaOf(row: SpRow): DocMeta {
+  const rawSim = row["BodySim"];
   return {
     kind: choiceValue(row, "DocKind"),
     surface: choiceValue(row, "Surface"),
@@ -356,6 +425,9 @@ function docMetaOf(row: SpRow): DocMeta {
     dev: strField(row, "Dev"),
     modified: strField(row, "SourceModified"),
     title: strField(row, "Title"),
+    fname: strField(row, "FileName"),
+    folder: strField(row, "Folder"),
+    sim: typeof rawSim === "number" && isFinite(rawSim) && rawSim > 0 ? rawSim : 0,
   };
 }
 
@@ -518,6 +590,10 @@ function main(
     dev: strField(selfRaw, "dev"),
     modified: strField(selfRaw, "modified"),
     title: strField(selfRaw, "title"),
+    // v2.2 self gates: absent (flow-shaped input) = terms off
+    fname: strField(selfRaw, "filename"),
+    folder: strField(selfRaw, "folder"),
+    sim: 0,
   };
   const todayMs = cfg.today ? Date.parse(cfg.today) : Date.now();
   const selfMs = Date.parse(selfMeta.modified);
@@ -530,6 +606,9 @@ function main(
   const selfPe = personSet(selfMeta.pe);
   const selfDev = personSet(selfMeta.dev);
   const selfToks = titleTokens(selfMeta.title, extraStop);
+  // v2.2 self-side precomputes (empty when the caller didn't opt in)
+  const selfFnameToks = selfMeta.fname ? fnameTokens(selfMeta.fname, extraStop) : {};
+  const selfFolder = normKey(selfMeta.folder);
 
   // --- score, merge, sort, cap ------------------------------------
   const docs: { [doc: number]: boolean } = {};
@@ -541,6 +620,18 @@ function main(
   }
   for (const d in edgeN) {
     docs[parseInt(d, 10)] = true;
+  }
+  // v2.2: body similarity ADMITS candidates — semantically similar
+  // docs with no shared edge/keyword enter the universe. Only sim
+  // does this; fname/folder stay re-rankers. Flow rows carry no
+  // BodySim, so the flow universe is untouched.
+  if (finalMode && cfg.body.weight > 0) {
+    for (const d in candMeta) {
+      const doc = parseInt(d, 10);
+      if (candMeta[doc].sim > 0) {
+        docs[doc] = true;
+      }
+    }
   }
 
   const entries: RankedEntry[] = [];
@@ -590,6 +681,10 @@ function main(
     const metaParts: string[] = [];
     let titleScore = 0;
     let titleShared: string[] = [];
+    let bodyScore = 0;
+    let bodySim = 0;
+    let fnameScore = 0;
+    let fnameShared: string[] = [];
     let recScore = 0;
     if (finalMode && doc in candMeta) {
       const cm = candMeta[doc];
@@ -627,6 +722,28 @@ function main(
         titleShared = titleShared.slice(0, cfg.title.cap);
         titleScore = cfg.title.weight * titleShared.length;
       }
+      // v2.2: body-text similarity (caller-computed, symmetric)
+      if (cm.sim > 0 && cfg.body.weight > 0) {
+        bodySim = cm.sim;
+        bodyScore = cfg.body.weight * cm.sim;
+      }
+      // v2.2: filename-family affinity — self-gated on "filename"
+      if (selfMeta.fname && cm.fname && cfg.fname.weight > 0 && cfg.fname.cap > 0) {
+        const candFToks = fnameTokens(cm.fname, extraStop);
+        for (const t in candFToks) {
+          if (selfFnameToks[t]) {
+            fnameShared.push(t);
+          }
+        }
+        fnameShared.sort();
+        fnameShared = fnameShared.slice(0, cfg.fname.cap);
+        fnameScore = cfg.fname.weight * fnameShared.length;
+      }
+      // v2.2: folder affinity — self-gated on "folder"
+      if (selfFolder && normKey(cm.folder) === selfFolder && cfg.folder.weight > 0) {
+        metaScore += cfg.folder.weight;
+        metaParts.push("same folder");
+      }
       // recency: pair-min — the OLDER doc's age, so the bonus is
       // symmetric; missing either date means no bonus
       const candMs = Date.parse(cm.modified);
@@ -638,9 +755,13 @@ function main(
     }
 
     // v2.1: EVERYTHING soft — non-id edges, keywords, metadata,
-    // title, recency — shares one softCap bucket; with the default
-    // 999 / edge.id 1000 an id link outranks any accumulation
-    const soft = Math.min(eSoft + kwScore + metaScore + titleScore + recScore, cfg.softCap);
+    // title, recency (v2.2: + body sim, filename, folder) — shares
+    // one softCap bucket; with the default 999 / edge.id 1000 an id
+    // link outranks any accumulation
+    const soft = Math.min(
+      eSoft + kwScore + metaScore + titleScore + bodyScore + fnameScore + recScore,
+      cfg.softCap
+    );
     let s = eScore + Math.round(soft * 1000) / 1000;
     s = Math.round(s * 1000) / 1000;
     if (s <= 0) {
@@ -661,12 +782,23 @@ function main(
         ": " + shown + more
       );
     }
+    if (bodySim > 0) {
+      parts.push("similar text (" + bodySim.toFixed(2) + ")");
+    }
     if (titleShared.length > 0) {
       const tShown = titleShared.slice(0, 3).join(", ");
       const tMore = titleShared.length > 3 ? ", +" + (titleShared.length - 3) + " more" : "";
       parts.push(
         titleShared.length + " title word" + (titleShared.length === 1 ? "" : "s") +
         ": " + tShown + tMore
+      );
+    }
+    if (fnameShared.length > 0) {
+      const fShown = fnameShared.slice(0, 3).join(", ");
+      const fMore = fnameShared.length > 3 ? ", +" + (fnameShared.length - 3) + " more" : "";
+      parts.push(
+        fnameShared.length + " filename word" + (fnameShared.length === 1 ? "" : "s") +
+        ": " + fShown + fMore
       );
     }
     if (metaParts.length > 0) {
