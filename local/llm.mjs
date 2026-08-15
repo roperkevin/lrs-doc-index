@@ -221,7 +221,7 @@ let _dvToken = null;
 let _dvExpires = 0;
 let _dvDelegated = null;
 
-async function dataverseToken(cfg) {
+export async function dataverseToken(cfg) {
   const dv = cfg.dataverse || {};
   const mode = dv.auth || (dv.clientSecret !== undefined ? "app" : "device");
   if (mode === "device") {
@@ -260,7 +260,7 @@ async function dataverseToken(cfg) {
 
 // Flow §4.3(a) steps 3–5: coalesce '{}', slice first '{' .. last '}',
 // json(). Tolerates code fences and prose around the JSON.
-function braceSlice(text) {
+export function braceSlice(text) {
   const raw = text ?? "{}";
   const a = raw.indexOf("{");
   const b = raw.lastIndexOf("}");
@@ -276,18 +276,21 @@ const AI_BUILDER_SOURCE =
   '"consumptionSourceVersion":"Flow",' +
   '"partnerSourceVersion":"d925d67e-4f70-41f5-90df-fe1069af1108"}';
 
-async function requestAiBuilder(cfg, inputs) {
+/**
+ * Generic AI Builder custom-prompt Predict call: any requestv2 input
+ * fields, any model id (defaults to cfg.modelId). Used by the doc
+ * classify step and by the curation job (its own prompt + model).
+ */
+export async function aiBuilderPredict(cfg, requestv2, modelId) {
   const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
   const url =
-    `${cfg.environmentUrl}/api/data/v9.2/msdyn_aimodels(${cfg.modelId})` +
+    `${cfg.environmentUrl}/api/data/v9.2/msdyn_aimodels(${modelId || cfg.modelId})` +
     `/Microsoft.Dynamics.CRM.Predict`;
   const body = JSON.stringify({
     version: "2.0",
     requestv2: {
       "@odata.type": "#Microsoft.Dynamics.CRM.expando",
-      FileName: inputs.fileName,
-      DocText: inputs.docText,
-      ExistingKeywords: inputs.existingKeywords,
+      ...requestv2,
     },
     source: cfg.source || AI_BUILDER_SOURCE,
   });
@@ -339,7 +342,11 @@ export async function classifyDoc(cfg, { fileName, docText, existingKeywords }) 
   const provider = cfg.provider || (cfg.environmentUrl ? "aibuilder" : "anthropic");
 
   if (provider === "aibuilder") {
-    const response = await requestAiBuilder(cfg, { fileName, docText, existingKeywords });
+    const response = await aiBuilderPredict(cfg, {
+      FileName: fileName,
+      DocText: docText,
+      ExistingKeywords: existingKeywords,
+    });
     const text = response?.responsev2?.predictionOutput?.text ?? "{}";
     try {
       return JSON.parse(braceSlice(text));

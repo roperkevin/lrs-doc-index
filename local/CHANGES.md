@@ -1,5 +1,33 @@
 # Local sweep — release notes
 
+## v1.11 (2026-08-15)
+
+**Keyword curation goes local** (`local/curate.mjs`) — the LAST Power
+Automate piece of the pipeline. Mirrors the KeywordCuration cloud
+flow v1.1 action-for-action from `curation/flow/v1_1/definition.json`:
+approved-row cleanup, vocabulary/blocked composition, one call to the
+tenant's own "LRS Keyword Curation" AI Builder prompt
+(`llm.curationModelId` — discover it with `curate.mjs --models`),
+brace-slice parse, the verbatim hallucination guard, proposal writes,
+the pending-carryover digest overwritten at a fixed name in Shared
+Documents (via new `GraphClient.putFile` drive upload — that library
+isn't synced, and the digest deliberately lives outside the Q&A
+agent's reach), DX-11 empty-queue overwrite, and the Cur_summary
+line. Never writes CanonicalRef — the propose-then-approve contract
+is unchanged. Reuses the sweep's config, sign-ins and auth
+(`aiBuilderPredict` generalized in llm.mjs); `--dry-run` plans
+without writing; scheduling via `local/run_curate.cmd` +
+`local/curation_task.xml` (Saturday 08:00, catch-up + battery
+settings). One documented deviation: malformed model JSON degrades
+to zero proposals with a log note instead of failing the run.
+Deploy + handover: guide §9 (turn the KeywordCuration cloud flow OFF
+after the smoke — never both live).
+
+Gate: full two-week cycle against the mock — propose (incl. a
+blocked and a hallucinated alias, both dropped), digest contents,
+librarian approval, cleanup, DX-11 empty digest; dry-run leg writes
+nothing. **Gate PASSED 2026-08-15 (86/86).**
+
 ## v1.10 (2026-08-15)
 
 Quick-wins batch:

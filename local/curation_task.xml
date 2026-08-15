@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<!-- No encoding attribute, deliberately: schtasks' XML parser rejects
+     declared/sniffed encoding mismatches; this file is pure ASCII. -->
+<!-- LRS Keyword Curation - Task Scheduler definition.
+     Register (replaces any existing task of the same name):
+       schtasks /create /tn "LRS Keyword Curation" /xml C:\Repos\lrs-doc-index\local\curation_task.xml /f
+     Weekly, Saturday 08:00 local time (the cloud flow's slot), with
+     catch-up (StartWhenAvailable) and laptop battery settings.
+     Edit the <Command> path if the repo lives somewhere other than
+     C:\Repos\lrs-doc-index. -->
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Weekly LRS keyword curation (local\run_curate.cmd; log: work\curate-task.log)</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <CalendarTrigger>
+      <StartBoundary>2026-08-15T08:00:00</StartBoundary>
+      <Enabled>true</Enabled>
+      <ScheduleByWeek>
+        <WeeksInterval>1</WeeksInterval>
+        <DaysOfWeek>
+          <Saturday />
+        </DaysOfWeek>
+      </ScheduleByWeek>
+    </CalendarTrigger>
+  </Triggers>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <ExecutionTimeLimit>PT1H</ExecutionTimeLimit>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>C:\Repos\lrs-doc-index\local\run_curate.cmd</Command>
+    </Exec>
+  </Actions>
+</Task>

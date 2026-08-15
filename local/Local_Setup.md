@@ -321,3 +321,39 @@ same tenant AI Builder endpoint the cloud flow sends it to today.
 (Switching to the `anthropic` provider changes that — document text
 would flow to the Anthropic API under its data terms; clear that with
 whoever owns the decision before flipping the config.)
+
+## 9. Weekly keyword curation (curate.mjs)
+
+The KeywordCuration cloud flow (v1.1) as a local weekly job — the
+LAST Power Automate piece; with this deployed the pipeline is 100%
+local. Same identities, same tenant AI Builder prompt
+("LRS Keyword Curation"), same propose-then-approve contract: the
+job NEVER writes CanonicalRef — a human approves by setting the
+lookup, and the job clears the flow-owned columns
+(CurationStatus/ProposedCanonical) on its next run. The digest
+overwrites `Keyword_Curation_Digest.md` in the site's **Shared
+Documents root** (outside the LRS Doc Index library so the Q&A agent
+never ingests it) via a Graph drive upload — no extra sync needed.
+
+Setup (after the sweep's §1–§4 — it reuses the same config and
+sign-ins, no new prompts):
+
+1. Find the curation model GUID:
+   `node --experimental-strip-types local\curate.mjs --config local\config.json --models`
+   and copy the "LRS Keyword Curation" line's GUID into config as
+   `llm.curationModelId`.
+2. Smoke: `... curate.mjs --config local\config.json --dry-run`
+   (plan only), then `--live` once and check the digest file + the
+   Cur_summary line (`canon= blocked= proposed_by_model= written=
+   dropped= cleared=`) against a portal run of the flow.
+3. Schedule (Saturday 08:00, the flow's slot):
+   `schtasks /create /tn "LRS Keyword Curation" /xml C:\Repos\lrs-doc-index\local\curation_task.xml /f`
+4. **Turn the KeywordCuration cloud flow OFF** in the portal (keep as
+   rollback) — never both live — and record the handover in STATUS.
+
+Prompt promotion stays the AI Builder paste (CurationPromptVersion in
+`curation/CHANGES.md`; update `curation.promptVersion` in config so
+the digest header reports it). Parse-failure behavior deviates
+gently: malformed model JSON degrades to zero proposals with a log
+note (the flow failed the run); everything else is action-for-action
+from `curation/flow/v1_1/definition.json`.

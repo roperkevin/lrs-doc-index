@@ -38,6 +38,8 @@ from urllib.parse import urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 SWEEP = os.path.join(REPO, "local", "sweep.mjs")
+CURATE = os.path.join(REPO, "local", "curate.mjs")
+CURATION_MODEL = "cabcabca-0000-4000-8000-000000000001"
 
 PASS = []
 FAIL = []
@@ -104,6 +106,9 @@ class MockState:
         self.devicecode_hits = 0
         self.device_grants = 0
         self.refresh_grants = 0
+        self.digest = None
+        self.cur_last_request = None
+        self.cur_response = {"proposals": []}
         self.graph_last_auth = None
         self.spo_last_auth = None
 
@@ -178,8 +183,15 @@ def make_handler(state, lib_guid, src_files):
                     "content": [{"type": "text", "text": json.dumps(out)}],
                 })
             # Dataverse Predict — the AI Builder custom prompt endpoint
-            if re.match(r"^/api/data/v9\.2/msdyn_aimodels\([0-9a-f-]+\)/Microsoft\.Dynamics\.CRM\.Predict$", p):
+            mp = re.match(r"^/api/data/v9\.2/msdyn_aimodels\(([0-9a-f-]+)\)/Microsoft\.Dynamics\.CRM\.Predict$", p)
+            if mp:
                 body = json.loads(self._read())
+                # the curation prompt is its OWN model — route by GUID
+                if mp.group(1) == CURATION_MODEL:
+                    state.cur_last_request = body
+                    text = ("Sure! Here is the JSON:\n```json\n"
+                            + json.dumps(state.cur_response) + "\n```")
+                    return self._json({"responsev2": {"predictionOutput": {"text": text}}})
                 state.llm_calls += 1
                 state.llm_last_headers = {
                     "authorization": self.headers.get("authorization"),
@@ -226,6 +238,15 @@ def make_handler(state, lib_guid, src_files):
                 return self._json({"id": iid, "fields": fields}, 201)
             return self._json({"error": "unhandled POST " + p}, 500)
 
+        def do_PUT(self):
+            p = urlparse(self.path).path
+            # Graph drive upload — the curation digest lands in the
+            # site's default drive (Shared Documents), never a list
+            if re.match(r"^/v1\.0/sites/[^/]+/drive/root:/.+:/content$", p):
+                state.digest = self._read().decode()
+                return self._json({"id": "digest"})
+            return self._json({"error": "unhandled PUT " + p}, 500)
+
         def do_PATCH(self):
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)/fields$", urlparse(self.path).path)
             if m:
@@ -266,6 +287,14 @@ LISTS = {
     "docLinks": "list-doclinks",
     "sourceLibrary": "list-library",
 }
+
+
+def run_curate(cfg_path, extra):
+    return subprocess.run(
+        ["node", "--experimental-strip-types", CURATE, "--config", cfg_path] + extra,
+        capture_output=True, text=True, cwd=REPO,
+        env=dict(os.environ, DOCINDEX_ALLOW_DEVICE_PROMPT="1"),
+    )
 
 
 def run_sweep(cfg_path, extra, env=None):
@@ -433,7 +462,8 @@ def main():
         },
         "llm": {
             "provider": "aibuilder", "environmentUrl": base,
-            "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6", "maxRetries": 0,
+            "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6",
+            "curationModelId": CURATION_MODEL, "maxRetries": 0,
         },
         "spo": {
             "auth": "app", "tenantId": "mock", "clientId": "mock",
@@ -717,6 +747,79 @@ def main():
     check("widened sync: stamped pdf re-indexed too",
           out.get("processed") == 1 and row.get("IndexStatus") == "Indexed",
           str(out) + " " + str(row)[:200])
+
+    # ---- leg 3d: keyword curation job (curate.mjs) -----------------
+    # two simulated weeks: propose -> librarian approves -> cleanup +
+    # DX-11 empty digest. Proposals include a blocked alias and a
+    # hallucinated one, both of which the guard must drop.
+    print("== curation leg")
+    CUR = {
+        "centerlines": state.seed(LISTS["keywords"], {"Title": "centerlines", "Kind": "topic"}),
+        "centerline": state.seed(LISTS["keywords"], {"Title": "centerline", "Kind": "topic"}),
+        "rejected": state.seed(LISTS["keywords"], {"Title": "rejected thing", "Kind": "topic",
+                                                   "CurationStatus": "Rejected"}),
+        "sld": state.seed(LISTS["keywords"], {"Title": "sld", "Kind": "tool",
+                                              "CurationStatus": "Proposed",
+                                              "ProposedCanonical": "straight line diagram — abbreviation"}),
+        "stale": state.seed(LISTS["keywords"], {"Title": "stale approved", "Kind": "topic",
+                                                "CanonicalRefLookupId": 1,
+                                                "CurationStatus": "Proposed",
+                                                "ProposedCanonical": "locks — old"}),
+    }
+    state.cur_response = {"proposals": [
+        {"alias": "centerlines", "canonical": "centerline", "why": "plural of centerline"},
+        {"alias": "rejected thing", "canonical": "centerline", "why": "blocked alias"},
+        {"alias": "ghost word", "canonical": "centerline", "why": "hallucinated"},
+    ]}
+    kwrows = state.lists[LISTS["keywords"]]
+    proc = run_curate(cfg_path, ["--dry-run"])
+    check("curation dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    check("curation dry run wrote nothing",
+          state.digest is None
+          and kwrows[CUR["centerlines"]].get("CurationStatus") is None
+          and kwrows[CUR["stale"]].get("CurationStatus") == "Proposed")
+    proc = run_curate(cfg_path, ["--live"])
+    check("curation run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("curation summary counts",
+          "written=1 dropped=2 cleared=1" in out.get("line", ""), str(out))
+    check("approved-row cleanup cleared the flow-owned columns",
+          not kwrows[CUR["stale"]].get("CurationStatus")
+          and not kwrows[CUR["stale"]].get("ProposedCanonical"),
+          str(kwrows[CUR["stale"]]))
+    req = (state.cur_last_request or {}).get("requestv2", {})
+    check("vocabulary lines 'title [kind]', canonical rows only",
+          "centerlines [topic]" in req.get("Vocabulary", "")
+          and "sld [tool]" in req.get("Vocabulary", "")
+          and "stale approved" not in req.get("Vocabulary", ""),
+          req.get("Vocabulary", "")[:300])
+    check("blocked list carries rejected + pending titles",
+          "rejected thing" in req.get("DoNotPropose", "")
+          and "sld" in req.get("DoNotPropose", ""), req.get("DoNotPropose", "")[:200])
+    check("valid proposal written to the alias row",
+          kwrows[CUR["centerlines"]].get("CurationStatus") == "Proposed"
+          and str(kwrows[CUR["centerlines"]].get("ProposedCanonical", "")).startswith("centerline — "),
+          str(kwrows[CUR["centerlines"]]))
+    check("guard dropped the blocked + hallucinated aliases",
+          not kwrows[CUR["rejected"]].get("ProposedCanonical"),
+          str(kwrows[CUR["rejected"]]))
+    digest = state.digest or ""
+    check("digest lists the proposal and the pending carryover",
+          "- 'centerlines' → 'centerline' — plural of centerline" in digest
+          and "(pending) 'sld'" in digest
+          and "CurationPromptVersion: v1.0" in digest, digest[:400])
+    # week 2: librarian approves both; model proposes nothing
+    kwrows[CUR["centerlines"]]["CanonicalRefLookupId"] = int(CUR["centerline"])
+    kwrows[CUR["sld"]]["CanonicalRefLookupId"] = 1
+    state.cur_response = {"proposals": []}
+    proc = run_curate(cfg_path, ["--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("second week clears both approved rows",
+          proc.returncode == 0 and "written=0" in out.get("line", "")
+          and "cleared=2" in out.get("line", "")
+          and not kwrows[CUR["centerlines"]].get("CurationStatus"), str(out))
+    check("emptied queue overwrites the digest (DX-11)",
+          "queue is EMPTY" in (state.digest or ""), (state.digest or "")[:300])
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
