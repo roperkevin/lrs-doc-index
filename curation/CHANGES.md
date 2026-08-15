@@ -1,3 +1,16 @@
+# Curation ported off Power Automate — `local/curate.mjs` (2026-08-15)
+
+The weekly job is reimplemented as a local Node process alongside the
+local sweep (`local/CHANGES.md` v1.11; deploy guide
+`local/Local_Setup.md` §9): same tenant AI Builder prompt via
+Dataverse Predict, same propose-then-approve contract (CanonicalRef
+never written by automation), same digest name/location, DX-11
+included. Gated end-to-end against a mock two-week cycle (86/86 with
+the sweep gate). **Deployment state: authored, cloud flow still ON**
+— the handover (schedule the local task, smoke, turn KeywordCuration
+off — never both live) is §9 steps 1–4; record it here and in STATUS
+when done. The v1.1 flow remains the rollback.
+
 # Curation flow definition authored — `curation/flow/v1_1/definition.json` (2026-08-12)
 
 Closes the "provenance export" queued follow-on from

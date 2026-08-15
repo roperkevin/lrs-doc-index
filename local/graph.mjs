@@ -179,6 +179,33 @@ export class GraphClient {
   async deleteItem(siteId, listId, itemId) {
     return this.request("DELETE", `/sites/${siteId}/lists/${listId}/items/${itemId}`);
   }
+
+  /** Create/overwrite a file in the site's DEFAULT drive (the
+   *  "Documents"/Shared Documents library) by drive-root path, e.g.
+   *  "/Keyword_Curation_Digest.md". Used for files that live outside
+   *  any synced folder (the curation digest, deliberately outside
+   *  the LRS Doc Index library so the Q&A agent never ingests it). */
+  async putFile(siteId, drivePath, content) {
+    const url = `${this.baseUrl}/sites/${siteId}/drive/root:${drivePath}:/content`;
+    let res;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          authorization: "Bearer " + (await this.token()),
+          "content-type": "text/markdown",
+        },
+        body: content,
+      });
+      if (res.status !== 401) break;
+      this._token = null;
+      if (this.delegated) this.delegated.invalidate();
+    }
+    if (!res.ok) {
+      throw new Error(`Graph PUT ${drivePath}: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    }
+    return res.json();
+  }
 }
 
 /**

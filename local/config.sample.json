@@ -33,7 +33,16 @@
     "$comment": "provider 'aibuilder' calls the SAME AI Builder custom prompt the cloud flow uses — same model, same tenant-hosted prompt text, same AI Builder credit metering — via the Dataverse Web API. Auth follows the graph section above (default: device sign-in as you — you own the prompt, so no extra grant is needed; Local_Setup.md §3). environmentUrl = the environment's Dataverse URL; modelId = the flow's Run_prompt recordId. Alternative: \"provider\": \"anthropic\" (Claude-account OAuth via `ant auth login`, or auth 'apiKey') executes prompts/DocIndex_Prompt.md instead — see local/CHANGES.md v1.1.",
     "provider": "aibuilder",
     "environmentUrl": "https://<org>.crm.dynamics.com",
-    "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6"
+    "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6",
+    "curationModelId": "<run: curate.mjs --models — the 'LRS Keyword Curation' GUID>"
+  },
+
+  "curation": {
+    "$comment": "Weekly keyword curation (local/curate.mjs — Local_Setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur.",
+    "digestName": "Keyword_Curation_Digest.md",
+    "maxProposals": 20,
+    "promptVersion": "v1.0",
+    "dryRun": true
   },
 
   "sweep": {
