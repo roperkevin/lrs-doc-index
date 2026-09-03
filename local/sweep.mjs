@@ -581,6 +581,124 @@ function tidyBody(text) {
 }
 
 /**
+ * caseHeadings — test-case-derived slide headings (v1.25, TC-1).
+ * The test-plan decks in this corpus put one test case per slide, but
+ * few of those slides carry a title placeholder — so their sections
+ * rendered as bare "## Slide 12" and the reader had to open each one
+ * to learn which case it holds. This pass rewrites a BARE slide
+ * heading from the case text the slide itself states:
+ *
+ *   ## Slide 5   →  ## Case 2 — Loop – Split measure: 20 <!-- slide 5 -->
+ *
+ * Deterministic by decision (recorded in local/CHANGES.md v1.25): the
+ * slide's own case line IS the header the user wants, an LLM pass
+ * would put AI spend and nondeterminism into the no-AI --reformat
+ * path, and a slide with no case text keeps its honest "## Slide N".
+ *
+ * Rules, per section under a heading that is EXACTLY "## Slide N"
+ * (a slide the author titled keeps that title; "### Notes" and later
+ * sections are never scanned):
+ *   a. exactly ONE numbered line ("2. Loop – Split measure : 20",
+ *      "8) Gap …", bullet or plain) → "## Case 2 — <cleaned text>".
+ *      Two or more numbered lines mean the slide is a CHECKLIST of
+ *      verifications, not a case — the heading stays untouched.
+ *   b. no numbered line, but a Positive/Negative classification line
+ *      is present (the corpus marker of a case slide) → the first
+ *      short digit-bearing content line is the case text ("Normal
+ *      route - Split measure :16"). Lines opening "current date" or
+ *      "modify" (the decks' modify-this-case notes) never qualify.
+ *   c. otherwise, a line of the shape "<name> test cases" titles the
+ *      section ("Conflict Prevention test cases").
+ * Table rows, image/figure links and fenced code are never candidates.
+ * The promoted line is removed from the body under rules a/b (its
+ * text now IS the heading); a "current date: …" tail stripped from
+ * the heading is re-emitted as its own body line so nothing is lost.
+ * The original slide number rides along as an HTML comment (hidden by
+ * every renderer, like the metadata frame) so provenance survives.
+ *
+ * Applied with tidyBody to the SIDECAR BODY ONLY — the LLM input,
+ * TextPreview and the similarity index keep the raw extracted text,
+ * and ZipTextExtract stays untouched (tenant-pasted, byte-equivalence
+ * gated); a cloud-flow rollback simply keeps "## Slide N".
+ */
+function caseHeadings(text) {
+  const lines = String(text).split("\n");
+  const clean = (s) => {
+    let t = String(s)
+      .replace(/[|#]/g, " ")
+      .replace(/\s*[-–—,]?\s*current date\s*:.*$/i, "")
+      .replace(/\s*:\s*/g, ": ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[\s\-–—,:;]+$/, "");
+    if (t.length > 90) {
+      t = t.slice(0, 90);
+      const cut = t.lastIndexOf(" ");
+      if (cut > 60) t = t.slice(0, cut);
+    }
+    return t;
+  };
+  for (let i = 0; i < lines.length; i++) {
+    const hm = /^## Slide (\d+)$/.exec(lines[i]);
+    if (!hm) continue;
+    let end = lines.length;
+    for (let j = i + 1; j < lines.length; j++) {
+      if (/^#{2,3} /.test(lines[j])) { end = j; break; }
+    }
+    // candidate content lines: no tables, links, figures, fenced code
+    const cands = [];
+    let fenced = false;
+    for (let j = i + 1; j < end; j++) {
+      const s = lines[j].trim();
+      if (s.indexOf("```") === 0) { fenced = !fenced; continue; }
+      if (fenced || s === "" || s.charAt(0) === "|" ||
+          s.indexOf("![") === 0 || s.indexOf("[figure:") === 0) continue;
+      cands.push({ at: j, s });
+    }
+    const numbered = [];
+    for (const c of cands) {
+      const m = /^(?:- )?(\d{1,3})[.)]\s+(.*)$/.exec(c.s);
+      if (m && /[A-Za-z]/.test(m[2])) numbered.push({ at: c.at, num: m[1], text: m[2] });
+    }
+    let heading = "", promoted = -1, tail = "";
+    if (numbered.length === 1) {
+      const t = clean(numbered[0].text);
+      if (t) {
+        heading = `Case ${numbered[0].num} — ${t}`;
+        promoted = numbered[0].at;
+      }
+    } else if (numbered.length === 0) {
+      const classed = cands.some((c) =>
+        /^(Positive|Negative)\b/i.test(c.s) && c.s.length <= 100);
+      if (classed) {
+        for (const c of cands) {
+          const s = c.s.replace(/^- /, "");
+          if (/^(Positive|Negative|current date\b|modify\b)/i.test(s)) continue;
+          if (s.length > 100 || !/\d/.test(s)) continue;
+          const t = clean(s);
+          if (t) { heading = t; promoted = c.at; }
+          break;
+        }
+      }
+      if (!heading) {
+        for (const c of cands) {
+          const m = /^(.{1,60}?)\s*test cases\b/i.exec(c.s);
+          if (m && clean(m[1])) { heading = `${clean(m[1])} test cases`; break; }
+        }
+      }
+    }
+    if (!heading) continue;
+    lines[i] = `## ${heading} <!-- slide ${hm[1]} -->`;
+    if (promoted >= 0) {
+      const tm = /(current date\s*:\s*\S.*)$/i.exec(lines[promoted]);
+      if (tm) tail = tm[1].charAt(0).toUpperCase() + tm[1].slice(1);
+      lines.splice(promoted, 1, ...(tail ? [tail] : []));
+    }
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
  * compactWhy — shorten RelatedRank's evidence prose for display
  * (v1.21). The ranker's full string is great for debugging but long
  * enough that five related entries dominate the sidecar:
@@ -1282,7 +1400,7 @@ async function main() {
     const sourceLink = item.webUrl || "";
 
     // --reformat: re-extract and rewrite ONLY the sidecar body, so
-    // presentation improvements (tidyBody) reach the whole corpus
+    // presentation improvements (tidyBody, caseHeadings) reach the corpus
     // without an AI call or a promptVersion bump. Header, metadata,
     // related region and docs block are preserved byte-for-byte.
     if (sw.reformat) {
@@ -1311,7 +1429,7 @@ async function main() {
           rfsum.no_text++;
           continue;
         }
-        const next = cur.slice(0, seam) + tidyBody(docText);
+        const next = cur.slice(0, seam) + caseHeadings(tidyBody(docText));
         if (next === cur) rfsum.unchanged++;
         else {
           writer.writeFile(scLocal, next);
@@ -1647,10 +1765,10 @@ async function indexDoc(ctx) {
   for (const k of ai.keywords || []) {
     topicLinks.set(k, linkResolver.topicLink(k, products));
   }
-  // body gets the v1.20 presentation tidy; the LLM input, preview and
-  // similarity index all keep the raw text
+  // body gets the v1.20 presentation tidy + v1.25 case headings; the
+  // LLM input, preview and similarity index all keep the raw text
   const sidecarContent = upsertDocsBlock(
-    header + tidyBody(docText),
+    header + caseHeadings(tidyBody(docText)),
     docsBlock(ai.tools || [], docLinks, toolLinks, topicLinks)
   );
   writer.writeFile(localSidecar, sidecarContent);

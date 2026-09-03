@@ -120,9 +120,12 @@ def diagram_shapes():
 
 
 def make_messy_pptx(fpath, text):
-    """Three slides carrying every mess tidyBody must clean: slide-number
-    placeholder lines, padded/nested bullets, and a notes part holding
-    nothing but the slide number."""
+    """Five slides: three carrying every mess tidyBody must clean
+    (slide-number placeholder lines, padded/nested bullets, a notes part
+    holding nothing but the slide number), plus a test-case slide and a
+    numbered checklist slide exercising caseHeadings (v1.25 TC-1): the
+    case slide's heading must be rewritten from its own case line, the
+    checklist slide's must stay "## Slide 5"."""
     def para(t, lvl=None, bullet=False):
         ppr = ""
         if lvl is not None:
@@ -148,6 +151,18 @@ def make_messy_pptx(fpath, text):
             para("2"),
         ]))
         z.writestr("ppt/slides/slide3.xml", slide([para("Verification"), para("3")]))
+        # a case slide the way the test-plan decks draw them: one
+        # classification line, ONE numbered case line, a current-date line
+        z.writestr("ppt/slides/slide4.xml", slide([
+            para("Positive - Non spanning line event"),
+            para("2. Loop – Split measure : 20"),
+            para("current date: 3/29/2022"),
+        ]))
+        # a checklist slide: 2+ numbered lines mean verifications, not a case
+        z.writestr("ppt/slides/slide5.xml", slide([
+            para("17. Verify the effective date defaults to today"),
+            para("18. Verify route information is shown on hover"),
+        ]))
         # notes for slide 3 hold only the slide number
         z.writestr("ppt/slides/_rels/slide3.xml.rels",
                    '<Relationships><Relationship Id="rId1" '
@@ -885,6 +900,17 @@ def main():
     check("body still carries the slide content",
           "Scope of testing" in beta_body and "## Slide 2" in beta_body, beta_body)
 
+    # case headings (caseHeadings, v1.25 TC-1)
+    check("case slide heading rewritten from its case line",
+          "## Case 2 — Loop – Split measure: 20 <!-- slide 4 -->" in beta_body,
+          beta_body)
+    check("promoted case line removed from the body",
+          not re.search(r"(?m)^2\. Loop", beta_body), beta_body)
+    check("checklist slide keeps its bare slide heading",
+          "## Slide 5" in beta_body
+          and "17. Verify the effective date defaults to today" in beta_body,
+          beta_body)
+
     # media
     media = os.listdir(os.path.join(sidecar_dir, "media"))
     check("media extracted with src-id prefix",
@@ -1182,6 +1208,9 @@ def main():
     check("reformat body is freshly extracted and tidied",
           "## Slide 2" in after and "- Append Events" in after
           and "### Notes" not in after, after[-400:])
+    check("reformat re-derives case headings",
+          "## Case 2 — Loop – Split measure: 20 <!-- slide 4 -->" in after,
+          after[-600:])
     check("reformat spent no AI calls", state.llm_calls == llm_before_rf,
           f"{state.llm_calls} vs {llm_before_rf}")
 

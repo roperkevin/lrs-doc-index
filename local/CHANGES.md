@@ -1,5 +1,66 @@
 # Local sweep — release notes
 
+## v1.25 (2026-09-03)
+
+**Test-case slide headings (TC-1).** The test-plan decks put one test
+case per slide but almost never title the slide, so their sidecar
+sections rendered as bare `## Slide 12` and a reader (or the Q&A
+agent's citation) had to open each section to learn which case it
+holds. A new presentation pass, `caseHeadings()`, rewrites a bare
+slide heading from the case text the slide itself states:
+
+    ## Slide 5   →   ## Case 2 — Loop – Split measure: 20 <!-- slide 5 -->
+
+Rules, applied only to headings that are EXACTLY `## Slide N` (a slide
+the author titled keeps that title; `### Notes` is never scanned):
+
+- **One numbered line** (`2. Loop – Split measure : 20`, bullet or
+  plain) is the case → `## Case 2 — …`. Two or more numbered lines
+  mean the slide is a *checklist* of verifications, not a case — the
+  heading stays untouched.
+- **No numbered line but a Positive/Negative classification line**
+  (the corpus marker of a case slide): the first short digit-bearing
+  content line is the case text (`Normal route - Split measure :16`).
+  Lines opening `current date` or `modify` (the decks'
+  modify-this-case notes) never qualify.
+- Otherwise a line shaped `<name> test cases` titles the section
+  (`Conflict Prevention test cases`, `Negative test cases`).
+
+Table rows, image/figure links and fenced code are never candidates.
+The promoted line leaves the body (its text now IS the heading); a
+`current date: …` tail stripped from the heading is re-emitted as its
+own body line, so nothing is lost. The original slide number rides
+along as an HTML comment — hidden by every renderer, like the
+metadata frame — so provenance survives. Heading text is cleaned the
+way slide titles already are (`|`/`#` stripped, colons normalized,
+90-char cap at a word boundary).
+
+**Deterministic by decision, not AI.** An LLM-generated header was
+considered (and would help the headless checklist slides), but was
+rejected on the same grounds figures are "always re-rendered, never
+AI": headings must ride the no-AI-spend `--reformat` path, re-index
+runs must not churn sidecar diffs nondeterministically, and per-slide
+Predict calls would multiply AI spend ~25× per deck while coupling the
+sidecar body to the prompt-version/backfill machinery. The slide's own
+case line is the header the user asked for; a slide with no case text
+keeps its honest `## Slide N`.
+
+Like tidyBody (v1.20), this is sidecar-body-only presentation: the
+LLM input, TextPreview and the similarity index keep the raw text,
+ZipTextExtract stays untouched (tenant-pasted, byte-equivalence
+gated), and a cloud-flow rollback simply keeps `## Slide N`.
+
+Rollout: `sweep.mjs --reformat` (no AI spend, no PromptVersion bump) —
+the same one pass open action 11 already owes the corpus for figures
+covers this too.
+
+Gate: `check_local_sweep.py` **146/146** (was 142) — the messy-deck
+fixture gains a case slide and a numbered checklist slide; the live
+leg asserts the exact rewritten heading (provenance comment included),
+the promoted line's removal, and the checklist heading staying bare;
+the reformat leg proves the headings re-derive. PAD 27/27; standing
+suites green.
+
 ## v1.24 (2026-09-03)
 
 **Interactive sign-in (`auth: "interactive"`)** — a Conditional Access
