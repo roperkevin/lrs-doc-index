@@ -1,7 +1,46 @@
-# Diagram style framework (SlideFigures v1.0)
+# Diagram style framework (SlideFigures v1.1)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
+
+## One figure per diagram, not per slide (v1.1)
+
+A slide often carries several diagrams — an input row and a result row, or
+two cases side by side. Graphic primitives (connectors, shape-lines, nodes,
+freeform paths) cluster by union-find over their bounding boxes: boxes merge
+while the clear air between them is under **90 px horizontally and 150 px
+vertically**, so the stacked bands of one diagram stay together and genuinely
+separate drawings split. Loose labels then join the nearest cluster within
+60 px (labels never bridge two clusters into one); a label near nothing is
+debris and is dropped. Each qualifying cluster renders as its own figure:
+
+- a slide's **only** figure keeps the v1.0 name `slideN.svg`, so
+  `--reformat` overwrites in place;
+- siblings are `slideN_fig1.svg`, `slideN_fig2.svg`, … in top-to-bottom,
+  left-to-right order, and their titles say which of how many
+  (*"Slide 4 route diagram (2 of 3)"*). The sweep links them under the
+  slide heading in the same order.
+
+## Beyond rulers: the graph lane (v1.1)
+
+Rulers stay the primary language, but decks also draw **node diagrams** —
+boxes and ovals joined by connectors — and freeform scribbles. These render
+in the same framework:
+
+| Element | Rendering |
+|---|---|
+| Preset shape with a visible fill/outline | A **node**: box (one 7 px corner radius for the whole corpus), ellipse or diamond family; palette-**tinted** fill and palette stroke from the source colour by the same hue-family rule; label centred, wrapped to two lines |
+| Line drawn as a shape (`prstGeom` line/connector) | Same as a connector — decks use both interchangeably |
+| Connector between nodes | A slate **edge** (1.8 px), palette-mapped when the source coloured it; head/tail arrowheads carried over |
+| Freeform `custGeom` path | Re-emitted as an SVG path (`moveTo/lnTo/cubicBezTo/quadBezTo/close`); closed+filled paths get a palette tint |
+| Dash patterns | Normalised to two canonical dashes (dashed / dotted) — one rhythm across the corpus |
+
+A shape counts as a node only when the deck made it **visible** (explicit
+fill or outline, or a themed style reference) — plain textboxes have
+neither, which is what keeps prose slides silent. A cluster qualifies as a
+graph figure with 2+ nodes joined by at least one connector or path, or 2+
+freeform paths; theme accent fills map to palette slots by accent index
+(accent1→cool … accent6→muted), as deterministic as the hue rule.
 
 ## Why figures exist
 
@@ -98,10 +137,15 @@ place every part by hand.
 
 ## Known limits
 
-- Curved and custom-geometry source shapes, shape rotation and text wrapping
-  are not read from vector slides; the redraw path covers the shapes this
-  corpus actually uses (straight, vertical, loop, lollipop, branch, alpha,
-  infinity, gap).
+- Shape rotation is not read from vector slides; `arcTo` segments in
+  freeform paths are not emitted (their endpoint is implicit, so a wrong
+  guess would draw a wrong curve — omission is the honest failure). The
+  redraw path covers the shapes this corpus actually uses (straight,
+  vertical, loop, lollipop, branch, alpha, infinity, gap).
+- Band compression is skipped in a ruler figure that also contains nodes or
+  freeform paths — compressBands cannot see them, and moving the ruler out
+  from under a node it shares space with would misplace exactly the thing
+  being kept.
 - The redraw is a schematic: it is accurate to the slide's stated measures,
   split and topology, but its layout is ours, not a reproduction of the
   author's drawing.

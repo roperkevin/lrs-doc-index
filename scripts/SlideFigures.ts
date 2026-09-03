@@ -1,10 +1,30 @@
 /**
- * SlideFigures v1.0 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.1 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
- * DF-1 (2026-09-03). Companion to ZipTextExtract, same input (the file's
- * bytes as base64). Returns one SVG per slide that has a diagram:
+ * DF-1 (2026-09-03); DF-2 (2026-09-03) widens coverage. Companion to
+ * ZipTextExtract, same input (the file's bytes as base64). Returns one SVG
+ * per DIAGRAM (a slide can carry several):
  *
  *   { figures: [{ slide, name, svg, alt }], count, skipped }
+ *
+ * v1.1 (DF-2):
+ *   - MULTI-FIGURE SLIDES. Primitives are spatially clustered (union-find
+ *     over expanded bounding boxes; loose labels join the nearest cluster)
+ *     and each qualifying cluster renders as its own figure. A slide's only
+ *     figure keeps the v1.0 name `slideN.svg` (so --reformat overwrites in
+ *     place); siblings are `slideN_fig1.svg`, `slideN_fig2.svg`, … in
+ *     top-to-bottom, left-to-right order. Stacked bands closer than the
+ *     cluster gap stay ONE figure — two rulers an inch apart are one
+ *     diagram's input/output rows, not two diagrams.
+ *   - ALL GRAPHIC CONTENT, one visual language. Beyond connectors: lines
+ *     drawn as shapes (prstGeom line/*Connector*), preset-geometry shapes
+ *     with a visible fill or outline rendered as standardized NODES
+ *     (box/ellipse/diamond families, palette-tinted fill, palette stroke,
+ *     centred wrapped label), freeform custGeom paths re-emitted as SVG
+ *     paths (moveTo/lnTo/cubicBezTo/quadBezTo/close), dash patterns
+ *     normalised to two canonical dashes, and head/tail arrowheads carried
+ *     onto connector edges. A cluster of 2+ nodes joined by a connector —
+ *     or 2+ freeform paths — is a diagram even without a ruler.
  *
  * Why this exists: these test plans are route/measure diagrams, and the
  * extracted markdown used to reduce them to loose one-token lines (v2.2
@@ -64,6 +84,10 @@ const LABEL_MIN_GAP = 26;
 const BAND_GAP = 46;
 const FIG_PAD = 20;
 const FIG_W = 760;
+const CLUST_GX = 90;   // px of clear air that separates side-by-side diagrams
+const CLUST_GY = 150;  // px of clear air that separates stacked diagrams
+const TEXT_REACH = 60; // a loose label joins a cluster within this distance
+const NODE_RX = 7;     // one corner radius for every box node in the corpus
 
 function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult {
   const bytes = b64ToBytes(zipBase64);
@@ -82,10 +106,18 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult 
       skipped.push("slide" + no + ":unreadable");
       continue;
     }
-    const fig = buildFigure(xml, no);
-    if (!fig) continue;
-    if (fig.svg.length > FIG_MAX_ONE) { skipped.push("slide" + no + ":oversize"); continue; }
-    figures.push(fig);
+    const figs = buildFigures(xml, no);
+    for (const fig of figs) {
+      if (figures.length >= FIG_MAX_COUNT) {
+        skipped.push(fig.name.replace(/\.svg$/, "") + ":cap");
+        continue;
+      }
+      if (fig.svg.length > FIG_MAX_ONE) {
+        skipped.push(fig.name.replace(/\.svg$/, "") + ":oversize");
+        continue;
+      }
+      figures.push(fig);
+    }
   }
   return { figures: figures, count: figures.length, skipped: skipped.join(",") };
 }
@@ -94,8 +126,12 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult 
 interface FGroup { s: number; e: number; gx: number; gy: number; gw: number; gh: number; cx: number; cy: number; cw: number; ch: number; }
 interface FLine { x1: number; y1: number; x2: number; y2: number; cls: string; extra: string; }
 interface FText { x: number; y: number; t: string; cls: string; anchor: string; }
-interface FRaw { x1: number; y1: number; x2: number; y2: number; w: number; h: number; col: string; }
+interface FRaw { x1: number; y1: number; x2: number; y2: number; w: number; h: number; col: string; dash: string; arrow: boolean; }
 interface FRuler { x0: number; x1: number; y: number; }
+interface FNode { x: number; y: number; w: number; h: number; shape: string; sRole: string; tRole: string; label: string; }
+interface FPath { d: string; x0: number; y0: number; x1: number; y1: number; role: string; dash: string; closed: boolean; fillRole: string; }
+interface Parsed { lines: FRaw[]; nodes: FNode[]; paths: FPath[]; texts: FText[]; }
+interface Cluster { lines: FRaw[]; nodes: FNode[]; paths: FPath[]; texts: FText[]; x0: number; y0: number; x1: number; y1: number; }
 
 function fnum(v: number): string {
   const r = Math.round(v * 10) / 10;
@@ -184,6 +220,15 @@ function figStyle(): string {
     ".leader{stroke:#6E8285;stroke-width:1}" +
     ".split{stroke:#16302F;stroke-width:1.4;stroke-dasharray:3 2.5;opacity:.55}" +
     ".splitdot{fill:#FFFFFF;stroke:#16302F;stroke-width:1.6}" +
+    ".edge{stroke:#4E6265;stroke-width:1.8}" +
+    ".free{stroke-width:2.2}" +
+    ".freefill{stroke-width:2.2;stroke-linejoin:round}" +
+    ".dashed{stroke-dasharray:7 4.5}.dotted{stroke-dasharray:1.6 3.6}" +
+    ".node{fill:#FFFFFF;stroke:#16302F;stroke-width:1.6}" +
+    ".t-plain{fill:#FFFFFF}.t-ink{fill:#E9EDED}.t-muted{fill:#EFF2F2}" +
+    ".t-cool{fill:#E5F0F5}.t-warm{fill:#F9F0E2}.t-green{fill:#E6F2EC}" +
+    ".t-violet{fill:#EFEAF7}.t-red{fill:#F8E9E5}" +
+    ".nlabel{font-size:12px;fill:#16302F;font-weight:500}" +
     ".s-ink{stroke:#16302F}.f-ink{fill:#16302F}" +
     ".s-muted{stroke:#6E8285}.f-muted{fill:#6E8285}" +
     ".s-cool{stroke:#1B6E8C}.f-cool{fill:#1B6E8C}" +
@@ -197,7 +242,10 @@ function figStyle(): string {
     "</style>" +
     '<defs><marker id="ar" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="5.2" ' +
     'markerHeight="5.2" orient="auto-start-reverse">' +
-    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#16302F"/></marker></defs>';
+    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#16302F"/></marker>' +
+    '<marker id="ae" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="5.6" ' +
+    'markerHeight="5.6" orient="auto-start-reverse">' +
+    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#4E6265"/></marker></defs>';
 }
 
 function svgWrap(no: number, w: number, h: number, title: string, desc: string, body: string): string {
@@ -279,30 +327,109 @@ function classifyLines(raw: FRaw[]): { r: FRaw; role: string }[] {
   return out;
 }
 
-function buildVector(xml: string, no: number): SlideFigure | null {
-  const gs = figGroups(xml);
-  const raw: FRaw[] = [];
-  const texts: FText[] = [];
-  const cre = /<p:cxnSp>([\s\S]*?)<\/p:cxnSp>/g;
-  let m: RegExpExecArray | null;
-  while ((m = cre.exec(xml)) !== null) {
-    const b = m[1];
-    const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
-    const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
-    if (!o || !e) continue;
-    const t = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
-                       parseInt(e[1], 10), parseInt(e[2], 10));
-    const xf = b.match(/<a:xfrm([^>]*)>/);
-    const fl = xf ? xf[1] : "";
-    const X = t[0] * EMU_PX, Y = t[1] * EMU_PX, W = t[2] * EMU_PX, H = t[3] * EMU_PX;
-    const c = b.match(/<a:ln\b[^>]*>[\s\S]*?<a:srgbClr val="([0-9A-Fa-f]{6})"/);
-    raw.push({
-      x1: fl.indexOf('flipH="1"') >= 0 ? X + W : X,
-      y1: fl.indexOf('flipV="1"') >= 0 ? Y + H : Y,
-      x2: fl.indexOf('flipH="1"') >= 0 ? X : X + W,
-      y2: fl.indexOf('flipV="1"') >= 0 ? Y : Y + H,
-      w: W, h: H, col: c ? c[1] : "" });
+// dash patterns normalise to two canonical dashes: anything dotted reads as
+// "dotted", every other prstDash as "dashed" — one rhythm across the corpus
+function figDash(b: string): string {
+  const m = b.match(/<a:prstDash val="([^"]+)"/);
+  if (!m) return "";
+  const v = m[1].toLowerCase();
+  if (v === "solid") return "";
+  return v.indexOf("dot") >= 0 && v.indexOf("dash") < 0 ? "dotted" : "dashed";
+}
+
+// theme accents are not resolved through the theme part (too deep for a
+// pasted script); they map to palette slots by INDEX, which is just as
+// deterministic across the corpus as the hue-family rule is for srgb
+const SCHEME_SLOT: { [k: string]: string } = {
+  accent1: "cool", accent2: "warm", accent3: "green",
+  accent4: "violet", accent5: "red", accent6: "muted",
+};
+
+function pushLine(lines: FRaw[], gs: FGroup[], at: number, b: string): void {
+  const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  if (!o || !e) return;
+  const t = figXform(gs, at, parseInt(o[1], 10), parseInt(o[2], 10),
+                     parseInt(e[1], 10), parseInt(e[2], 10));
+  const xf = b.match(/<a:xfrm([^>]*)>/);
+  const fl = xf ? xf[1] : "";
+  const X = t[0] * EMU_PX, Y = t[1] * EMU_PX, W = t[2] * EMU_PX, H = t[3] * EMU_PX;
+  const lnB = (b.match(/<a:ln\b[\s\S]*?<\/a:ln>/) || [""])[0];
+  const c = lnB.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/);
+  const arrow = /<a:(?:tailEnd|headEnd) type="(?:triangle|arrow|stealth)"/.test(lnB);
+  lines.push({
+    x1: fl.indexOf('flipH="1"') >= 0 ? X + W : X,
+    y1: fl.indexOf('flipV="1"') >= 0 ? Y + H : Y,
+    x2: fl.indexOf('flipH="1"') >= 0 ? X : X + W,
+    y2: fl.indexOf('flipV="1"') >= 0 ? Y : Y + H,
+    w: W, h: H, col: c ? c[1] : "", dash: figDash(lnB), arrow: arrow });
+}
+
+// freeform custGeom → SVG path, path-space scaled into the shape's extent.
+// moveTo/lnTo/cubicBezTo/quadBezTo/close cover what these decks draw; arcTo
+// is not emitted (its endpoint is implicit, so a wrong guess draws a wrong
+// curve — omission is the honest failure).
+function figFreeform(pp: string, X: number, Y: number, W: number, H: number): FPath | null {
+  const cg = pp.match(/<a:custGeom>[\s\S]*?<\/a:custGeom>/);
+  if (!cg) return null;
+  const out: string[] = [];
+  let closed = false;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const pre = /<a:path w="(\d+)" h="(\d+)"[^>]*>([\s\S]*?)<\/a:path>/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = pre.exec(cg[0])) !== null) {
+    const sx = W / (parseInt(pm[1], 10) || 1), sy = H / (parseInt(pm[2], 10) || 1);
+    const tok = /<a:(moveTo|lnTo|cubicBezTo|quadBezTo|close)\b|<a:pt x="(-?\d+)" y="(-?\d+)"/g;
+    let cmd = "";
+    let pts: number[][] = [];
+    const flush = (): void => {
+      const P = (i: number): string => {
+        const px = X + pts[i][0] * sx, py = Y + pts[i][1] * sy;
+        x0 = Math.min(x0, px); x1 = Math.max(x1, px);
+        y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+        return fnum(px) + " " + fnum(py);
+      };
+      if (cmd === "moveTo" && pts.length >= 1) out.push("M " + P(0));
+      else if (cmd === "lnTo" && pts.length >= 1) out.push("L " + P(0));
+      else if (cmd === "cubicBezTo" && pts.length >= 3) out.push("C " + P(0) + " " + P(1) + " " + P(2));
+      else if (cmd === "quadBezTo" && pts.length >= 2) out.push("Q " + P(0) + " " + P(1));
+      cmd = ""; pts = [];
+    };
+    let t2: RegExpExecArray | null;
+    while ((t2 = tok.exec(pm[3])) !== null) {
+      if (t2[1]) {
+        flush();
+        if (t2[1] === "close") closed = true;
+        else cmd = t2[1];
+      } else if (cmd) {
+        pts.push([parseInt(t2[2], 10), parseInt(t2[3], 10)]);
+      }
+    }
+    flush();
+    if (closed && out.length) out.push("Z");
   }
+  if (out.length < 2 || x0 > x1) return null;
+  const lnB = (pp.match(/<a:ln\b[\s\S]*?<\/a:ln>/) || [""])[0];
+  const col = (lnB.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+  const fillPart = lnB ? pp.slice(0, pp.indexOf(lnB)) : pp;
+  const fCol = (fillPart.match(/<a:solidFill><a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+  const filled = closed && fillPart.indexOf("<a:solidFill>") >= 0;
+  return { d: out.join(" "), x0: x0, y0: y0, x1: x1, y1: y1,
+    role: figRole(col, "ink"), dash: figDash(lnB),
+    closed: closed, fillRole: filled ? figRole(fCol, "muted") : "" };
+}
+
+// one pass over the slide: every graphic primitive, classified at parse time
+// into lines / nodes / freeform paths / loose labels
+function parseSlide(xml: string): Parsed {
+  const gs = figGroups(xml);
+  const lines: FRaw[] = [];
+  const nodes: FNode[] = [];
+  const paths: FPath[] = [];
+  const texts: FText[] = [];
+  let m: RegExpExecArray | null;
+  const cre = /<p:cxnSp>([\s\S]*?)<\/p:cxnSp>/g;
+  while ((m = cre.exec(xml)) !== null) pushLine(lines, gs, m.index, m[1]);
   const sre = /<p:sp>([\s\S]*?)<\/p:sp>/g;
   while ((m = sre.exec(xml)) !== null) {
     const b = m[1];
@@ -310,46 +437,284 @@ function buildVector(xml: string, no: number): SlideFigure | null {
     const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
     const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
     if (!o || !e) continue;
+    const pp = (b.match(/<p:spPr>[\s\S]*?<\/p:spPr>/) || [""])[0];
+    const prst = (pp.match(/<a:prstGeom prst="([^"]+)"/) || ["", ""])[1];
+    // decks draw "lines" as shapes as often as connectors
+    if (/^(line|straightConnector\d*|bentConnector\d*|curvedConnector\d*)$/.test(prst)) {
+      pushLine(lines, gs, m.index, b);
+      continue;
+    }
+    const g = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
+                       parseInt(e[1], 10), parseInt(e[2], 10));
+    const X = g[0] * EMU_PX, Y = g[1] * EMU_PX, W = g[2] * EMU_PX, H = g[3] * EMU_PX;
+    if (pp.indexOf("<a:custGeom>") >= 0) {
+      const fp = figFreeform(pp, X, Y, W, H);
+      if (fp) { paths.push(fp); continue; }
+    }
     const parts: string[] = [];
     const tre = /<a:t>([^<]*)<\/a:t>/g;
     let tm: RegExpExecArray | null;
     while ((tm = tre.exec(b)) !== null) { const v = tm[1].trim(); if (v) parts.push(v); }
     const t = parts.join(" ").replace(/\s+/g, " ").trim();
+    // node vs loose label: a NODE is a shape the deck made visible — an
+    // explicit fill or outline in spPr, or a themed <p:style> fill/line
+    // reference. Plain textboxes have neither, which is what keeps prose
+    // slides silent.
+    const lnB = (pp.match(/<a:ln\b[\s\S]*?<\/a:ln>/) || [""])[0];
+    const fillPart = lnB ? pp.slice(0, pp.indexOf(lnB)) : pp;
+    const fillCol = (fillPart.match(/<a:solidFill><a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+    const fillSolid = fillPart.indexOf("<a:solidFill>") >= 0;
+    const lnSolid = lnB.indexOf("<a:solidFill>") >= 0;
+    const lnCol = (lnB.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+    const st = (b.match(/<p:style>[\s\S]*?<\/p:style>/) || [""])[0];
+    const stFill = (st.match(/<a:fillRef idx="[1-9]\d*">\s*<a:schemeClr val="(\w+)"/) || ["", ""])[1];
+    const stLn = (st.match(/<a:lnRef idx="[1-9]\d*">\s*<a:schemeClr val="(\w+)"/) || ["", ""])[1];
+    if (fillSolid || lnSolid || stFill || stLn) {
+      let tRole = "plain";
+      if (fillSolid) tRole = fillCol ? figRole(fillCol, "plain") : "plain";
+      else if (SCHEME_SLOT[stFill]) tRole = SCHEME_SLOT[stFill];
+      let sRole = "ink";
+      if (lnSolid && lnCol) sRole = figRole(lnCol, "ink");
+      else if (!lnSolid && tRole !== "plain") sRole = tRole;
+      const fam = /ellipse|flowChartConnector|donut|chord|pie|^arc$/.test(prst) ? "ellipse"
+        : (/diamond|flowChartDecision/.test(prst) ? "diamond" : "box");
+      nodes.push({ x: X, y: Y, w: W, h: H, shape: fam, sRole: sRole, tRole: tRole,
+        label: t.length > 56 ? t.slice(0, 53) + "…" : t });
+      continue;
+    }
     if (!t || t.length > 24 || t.split(" ").length > 3) continue;
-    const g = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
-                       parseInt(e[1], 10), parseInt(e[2], 10));
     const c = b.match(/<a:solidFill><a:srgbClr val="([0-9A-Fa-f]{6})"/);
     const numeric = /^\d+(\.\d+)?$/.test(t);
-    texts.push({ x: (g[0] + g[2] / 2) * EMU_PX, y: (g[1] + g[3] / 2) * EMU_PX, t: t,
+    texts.push({ x: X + W / 2, y: Y + H / 2, t: t,
       cls: (numeric ? "measure" : "id") + " f-" +
            figRole(c ? c[1] : "", numeric ? "muted" : "ink"), anchor: "middle" });
   }
-  const cls = classifyLines(raw);
-  const routes = cls.filter((c) => c.role === "route").length;
-  const ticks = cls.filter((c) => c.role === "tick").length;
-  const events = cls.filter((c) => c.role === "event").length;
-  // a diagram is a route plus either a measure ruler or an event extent;
-  // decks in this corpus do one or the other, rarely both
-  if (routes === 0 || (ticks < 3 && events === 0)) return null;
+  return { lines: lines, nodes: nodes, paths: paths, texts: texts };
+}
 
+// -------------------------------------------------- diagram clustering
+// One slide often carries SEVERAL diagrams (an input row and a result row,
+// or two cases side by side). Graphic primitives cluster by union-find over
+// their bounding boxes: boxes merge when the clear air between them is under
+// CLUST_GX horizontally AND CLUST_GY vertically — stacked bands of one
+// diagram stay together, genuinely separate drawings split. Loose labels
+// then join the nearest cluster within TEXT_REACH (labels never bridge two
+// clusters into one); a label near nothing is debris and is dropped.
+function clusterParsed(p: Parsed): Cluster[] {
+  const boxes: number[][] = [];
+  const kinds: string[] = [];
+  const refs: number[] = [];
+  for (let i = 0; i < p.lines.length; i++) {
+    const l = p.lines[i];
+    boxes.push([Math.min(l.x1, l.x2), Math.min(l.y1, l.y2),
+                Math.max(l.x1, l.x2), Math.max(l.y1, l.y2)]);
+    kinds.push("l"); refs.push(i);
+  }
+  for (let i = 0; i < p.nodes.length; i++) {
+    const n = p.nodes[i];
+    boxes.push([n.x, n.y, n.x + n.w, n.y + n.h]);
+    kinds.push("n"); refs.push(i);
+  }
+  for (let i = 0; i < p.paths.length; i++) {
+    const q = p.paths[i];
+    boxes.push([q.x0, q.y0, q.x1, q.y1]);
+    kinds.push("p"); refs.push(i);
+  }
+  if (boxes.length === 0) return [];
+  const parent: number[] = [];
+  for (let i = 0; i < boxes.length; i++) parent.push(i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    return i;
+  };
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      const gx = Math.max(a[0], b[0]) - Math.min(a[2], b[2]);
+      const gy = Math.max(a[1], b[1]) - Math.min(a[3], b[3]);
+      if (gx < CLUST_GX && gy < CLUST_GY) parent[find(i)] = find(j);
+    }
+  }
+  const byRoot: { [r: string]: Cluster } = {};
+  const order: string[] = [];
+  for (let i = 0; i < boxes.length; i++) {
+    const r = String(find(i));
+    if (!byRoot[r]) {
+      byRoot[r] = { lines: [], nodes: [], paths: [], texts: [],
+                    x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 };
+      order.push(r);
+    }
+    const c = byRoot[r];
+    if (kinds[i] === "l") c.lines.push(p.lines[refs[i]]);
+    else if (kinds[i] === "n") c.nodes.push(p.nodes[refs[i]]);
+    else c.paths.push(p.paths[refs[i]]);
+    c.x0 = Math.min(c.x0, boxes[i][0]); c.y0 = Math.min(c.y0, boxes[i][1]);
+    c.x1 = Math.max(c.x1, boxes[i][2]); c.y1 = Math.max(c.y1, boxes[i][3]);
+  }
+  const clusters: Cluster[] = [];
+  for (const r of order) clusters.push(byRoot[r]);
+  for (const t of p.texts) {
+    let best: Cluster | null = null;
+    let bd = TEXT_REACH;
+    for (const c of clusters) {
+      const dx = Math.max(c.x0 - t.x, t.x - c.x1, 0);
+      const dy = Math.max(c.y0 - t.y, t.y - c.y1, 0);
+      const d = Math.max(dx, dy);
+      if (d < bd) { best = c; bd = d; }
+    }
+    if (best) best.texts.push(t);
+  }
+  clusters.sort((a, b) => (a.y0 - b.y0) || (a.x0 - b.x0));
+  return clusters;
+}
+
+// which lane draws a cluster: "ruler" is the measured-route language (the
+// v1.0 pipeline), "graph" is the node/edge/freeform language, "" is silence
+function clusterMode(c: Cluster): string {
+  const cls = classifyLines(c.lines);
+  let routes = 0, ticks = 0, events = 0;
+  for (const x of cls) {
+    if (x.role === "route") routes++;
+    else if (x.role === "tick") ticks++;
+    else if (x.role === "event") events++;
+  }
+  // a route plus either a measure ruler or an event extent; decks in this
+  // corpus do one or the other, rarely both
+  if (routes > 0 && (ticks >= 3 || events > 0)) return "ruler";
+  if (c.nodes.length >= 2 && c.lines.length + c.paths.length >= 1) return "graph";
+  if (c.paths.length >= 2) return "graph";
+  return "";
+}
+
+function figName(no: number, idx: number, total: number): string {
+  return total > 1 ? "slide" + no + "_fig" + idx + ".svg" : "slide" + no + ".svg";
+}
+
+function wrapLabel(s: string): string[] {
+  if (s.length <= 18) return [s];
+  let best = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s.charAt(i) !== " ") continue;
+    if (best < 0 || Math.abs(i - s.length / 2) < Math.abs(best - s.length / 2)) best = i;
+  }
+  if (best < 0) return [s];
+  return [s.slice(0, best), s.slice(best + 1)];
+}
+
+// a node renders in one of three standardized families — box (one corner
+// radius for the whole corpus), ellipse, diamond — with a palette-tinted
+// fill, a palette stroke, and its label centred and wrapped to two lines
+function emitNode(n: FNode): string {
+  const cls = "node t-" + n.tRole + " s-" + n.sRole;
+  const cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+  let shape: string;
+  if (n.shape === "ellipse") {
+    shape = '<ellipse class="' + cls + '" cx="' + fnum(cx) + '" cy="' + fnum(cy) +
+      '" rx="' + fnum(n.w / 2) + '" ry="' + fnum(n.h / 2) + '"/>';
+  } else if (n.shape === "diamond") {
+    shape = '<polygon class="' + cls + '" points="' +
+      fnum(cx) + "," + fnum(n.y) + " " + fnum(n.x + n.w) + "," + fnum(cy) + " " +
+      fnum(cx) + "," + fnum(n.y + n.h) + " " + fnum(n.x) + "," + fnum(cy) + '"/>';
+  } else {
+    shape = '<rect class="' + cls + '" x="' + fnum(n.x) + '" y="' + fnum(n.y) +
+      '" width="' + fnum(n.w) + '" height="' + fnum(n.h) + '" rx="' + String(NODE_RX) + '"/>';
+  }
+  if (!n.label) return shape;
+  const rows = wrapLabel(n.label);
+  let txt = "";
+  for (let i = 0; i < rows.length; i++) {
+    const y = cy + (i - (rows.length - 1) / 2) * 15;
+    txt += '<text class="nlabel" x="' + fnum(cx) + '" y="' + fnum(y) +
+      '" text-anchor="middle" dominant-baseline="central">' + esc(rows[i]) + "</text>";
+  }
+  return shape + txt;
+}
+
+function emitPath(q: FPath): string {
+  const dash = q.dash ? " " + q.dash : "";
+  if (q.fillRole) {
+    return '<path class="freefill t-' + q.fillRole + ' s-' + q.role + dash + '" d="' + q.d + '"/>';
+  }
+  return '<path class="ln free s-' + q.role + dash + '" d="' + q.d + '"/>';
+}
+
+// ruler lane: the v1.0 measured-route pipeline over one cluster, with any
+// nodes/freeforms in the same cluster drawn behind-the-scenes intact. Band
+// compression is skipped when they are present — compressBands cannot see
+// them, and moving the ruler out from under a node it shares space with
+// would misplace exactly the thing being kept.
+function renderRuler(c: Cluster, no: number, idx: number, total: number): SlideFigure {
+  const cls = classifyLines(c.lines);
   const lines: FLine[] = [];
-  for (const c of cls) {
-    const r = c.r;
-    let klass = c.role, extra = "";
-    if (c.role === "event") { klass = "event flat"; extra = " s-" + figRole(r.col, "cool"); }
+  for (const k of cls) {
+    const r = k.r;
+    let klass = k.role, extra = "";
+    if (k.role === "event") { klass = "event flat"; extra = " s-" + figRole(r.col, "cool"); }
     lines.push({ x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2, cls: klass, extra: extra });
   }
-  const norm = normaliseRulers(lines, texts);
-  const body = emitVector(norm.lines, norm.texts, norm.splits, norm.rulers);
+  const plain = c.nodes.length === 0 && c.paths.length === 0;
+  const norm = normaliseRulers(lines, c.texts, plain);
+  let body = emitVector(norm.lines, norm.texts, norm.splits, norm.rulers);
   const bb = bbox(norm.lines, norm.texts);
+  for (const q of c.paths) {
+    body = emitPath(q) + body;
+    bb[0] = Math.min(bb[0], q.x0); bb[1] = Math.min(bb[1], q.y0);
+    bb[2] = Math.max(bb[2], q.x1); bb[3] = Math.max(bb[3], q.y1);
+  }
+  for (const n of c.nodes) {
+    body += emitNode(n);
+    bb[0] = Math.min(bb[0], n.x); bb[1] = Math.min(bb[1], n.y);
+    bb[2] = Math.max(bb[2], n.x + n.w); bb[3] = Math.max(bb[3], n.y + n.h);
+  }
   const w = bb[2] - bb[0] + FIG_PAD * 2, h = bb[3] - bb[1] + FIG_PAD * 2;
   const shift = 'transform="translate(' + fnum(FIG_PAD - bb[0]) + "," + fnum(FIG_PAD - bb[1]) + ')"';
   const ms = norm.texts.filter((t) => t.cls.indexOf("measure") === 0).map((t) => t.t);
-  const title = "Slide " + no + " route diagram";
+  const title = "Slide " + no + " route diagram" +
+    (total > 1 ? " (" + idx + " of " + total + ")" : "");
   const desc = "Measured route diagram drawn from the slide's own shapes" +
     (ms.length ? ", measures " + ms[0] + " to " + ms[ms.length - 1] : "") + ".";
-  return { slide: no, name: "slide" + no + ".svg",
+  return { slide: no, name: figName(no, idx, total),
     svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + body + "</g>"), alt: desc };
+}
+
+// graph lane: nodes, connector edges (slate by default, palette-mapped when
+// the source coloured them, arrowheads carried over, dashes normalised) and
+// freeform paths, in z-order edges → freeforms → nodes → labels
+function renderGraph(c: Cluster, no: number, idx: number, total: number): SlideFigure {
+  const p: string[] = [];
+  let x0 = c.x0, y0 = c.y0, x1 = c.x1, y1 = c.y1;
+  for (const l of c.lines) {
+    const extra = l.col ? " s-" + figRole(l.col, "ink") : "";
+    const dash = l.dash ? " " + l.dash : "";
+    p.push('<line class="ln edge' + extra + dash + '" x1="' + fnum(l.x1) + '" y1="' + fnum(l.y1) +
+      '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"' +
+      (l.arrow ? ' marker-end="url(#ae)"' : "") + "/>");
+  }
+  for (const q of c.paths) p.push(emitPath(q));
+  for (const n of c.nodes) p.push(emitNode(n));
+  for (const t of c.texts) {
+    p.push('<text class="' + t.cls + '" x="' + fnum(t.x) + '" y="' + fnum(t.y) +
+      '" text-anchor="' + t.anchor + '" dominant-baseline="central">' + esc(t.t) + "</text>");
+    const wdt = t.t.length * 4 + 6;
+    x0 = Math.min(x0, t.x - wdt); x1 = Math.max(x1, t.x + wdt);
+    y0 = Math.min(y0, t.y - 9); y1 = Math.max(y1, t.y + 9);
+  }
+  const w = x1 - x0 + FIG_PAD * 2, h = y1 - y0 + FIG_PAD * 2;
+  const shift = 'transform="translate(' + fnum(FIG_PAD - x0) + "," + fnum(FIG_PAD - y0) + ')"';
+  const labels: string[] = [];
+  for (const n of c.nodes) if (n.label) labels.push(n.label);
+  const bits: string[] = [];
+  if (c.nodes.length) {
+    bits.push(c.nodes.length + " node" + (c.nodes.length === 1 ? "" : "s") +
+      (labels.length ? " (" + labels.slice(0, 4).join(", ") + ")" : ""));
+  }
+  if (c.lines.length) bits.push(c.lines.length + " connector" + (c.lines.length === 1 ? "" : "s"));
+  if (c.paths.length) bits.push(c.paths.length + " freeform path" + (c.paths.length === 1 ? "" : "s"));
+  const title = "Slide " + no + " diagram" +
+    (total > 1 ? " (" + idx + " of " + total + ")" : "");
+  const desc = "Diagram drawn from the slide's own shapes: " + bits.join(", ") + ".";
+  return { slide: no, name: figName(no, idx, total),
+    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + p.join("") + "</g>"), alt: desc };
 }
 
 function bbox(lines: FLine[], texts: FText[]): number[] {
@@ -396,7 +761,7 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
 // was dragged (typically ~0.1in off its own tick) and adjoining extents
 // overlap or gap by a few px at the very measure the test case is about.
 // A ruler is therefore recognised as ONE component and re-laid out.
-function normaliseRulers(lines: FLine[], texts: FText[]): {
+function normaliseRulers(lines: FLine[], texts: FText[], compress: boolean): {
   lines: FLine[]; texts: FText[]; splits: number[][]; rulers: FRuler[];
 } {
   const band = 9.0;
@@ -547,6 +912,7 @@ function normaliseRulers(lines: FLine[], texts: FText[]): {
     }
     outL.push(l);
   }
+  if (!compress) return { lines: outL, texts: outT, splits: splits, rulers: rulers };
   return compressBands(outL, outT, splits, rulers);
 }
 
@@ -805,10 +1171,24 @@ function buildRedraw(xml: string, no: number): SlideFigure | null {
     svg: svgWrap(no, FIG_W, bandH * rows.length + FIG_PAD, title, desc, body.join("")), alt: desc };
 }
 
-function buildFigure(xml: string, no: number): SlideFigure | null {
-  const v = buildVector(xml, no);
-  if (v) return v;
-  return buildRedraw(xml, no);
+// vector clusters first (each qualifying cluster is its own figure); a slide
+// with no vector diagram at all falls through to the table-driven redraw
+function buildFigures(xml: string, no: number): SlideFigure[] {
+  const clusters = clusterParsed(parseSlide(xml));
+  const qual: { c: Cluster; mode: string }[] = [];
+  for (const c of clusters) {
+    const mode = clusterMode(c);
+    if (mode) qual.push({ c: c, mode: mode });
+  }
+  const out: SlideFigure[] = [];
+  for (let i = 0; i < qual.length; i++) {
+    out.push(qual[i].mode === "ruler"
+      ? renderRuler(qual[i].c, no, i + 1, qual.length)
+      : renderGraph(qual[i].c, no, i + 1, qual.length));
+  }
+  if (out.length) return out;
+  const r = buildRedraw(xml, no);
+  return r ? [r] : [];
 }
 
 // ------------------------------------------------ slide ordering

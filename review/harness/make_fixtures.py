@@ -610,6 +610,40 @@ s_f4.shapes.title.text = 'Conflict prevention notes'
 s_f4.shapes.add_textbox(Emu(IN), Emu(2 * IN), Emu(5 * IN), Emu(IN)).text_frame.text = (
     'Verify the lock is acquired before editing the route')
 
+# --- slide 5 (v1.1 / DF-2): TWO separate rulers -> TWO figures. The vertical
+# clear air between them (~2.8in) is far past the cluster gap, so each ruler
+# clusters — and renders — on its own, named slide5_fig1/slide5_fig2.
+s_f5 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+for base_y, m0 in ((1.2, 0), (4.5, 5)):
+    _line(s_f5, 1.0 * IN, base_y * IN, 3.0 * IN, base_y * IN)
+    for k in range(5):
+        _line(s_f5, (1.0 + k * 0.5) * IN, (base_y - 0.06) * IN,
+              (1.0 + k * 0.5) * IN, (base_y + 0.06) * IN)
+        _label(s_f5, (0.9 + k * 0.5) * IN, (base_y - 0.45) * IN, str(m0 + k))
+    _line(s_f5, 1.0 * IN, base_y * IN, 2.0 * IN, base_y * IN,
+          rgb='002060', w=int(0.05 * IN))
+    _line(s_f5, 2.02 * IN, base_y * IN, 3.0 * IN, base_y * IN,
+          rgb='FFC000', w=int(0.05 * IN))
+
+# --- slide 6 (v1.1 / DF-2): node graph — two visible shapes joined by a
+# connector, no ruler at all. The graph lane must render standardized nodes
+# (box + ellipse families, palette-tinted fills from the source colours) and
+# a slate edge; the prose-slide silence rule must survive it (slide 4 still
+# yields nothing, because its textboxes have no fill or outline).
+from pptx.enum.shapes import MSO_SHAPE as _SHP
+s_f6 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+n1 = s_f6.shapes.add_shape(_SHP.ROUNDED_RECTANGLE, Emu(int(0.8 * IN)), Emu(int(1.5 * IN)),
+                           Emu(int(1.6 * IN)), Emu(int(0.8 * IN)))
+n1.text_frame.text = 'Create route'
+n1.fill.solid()
+n1.fill.fore_color.rgb = _RGB.from_string('1F4E79')   # blue -> cool
+n2 = s_f6.shapes.add_shape(_SHP.OVAL, Emu(int(3.4 * IN)), Emu(int(1.5 * IN)),
+                           Emu(int(1.5 * IN)), Emu(int(0.8 * IN)))
+n2.text_frame.text = 'Calibrate'
+n2.fill.solid()
+n2.fill.fore_color.rgb = _RGB.from_string('FFC000')   # amber -> warm
+_line(s_f6, 2.4 * IN, 1.9 * IN, 3.4 * IN, 1.9 * IN)
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})

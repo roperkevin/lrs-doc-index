@@ -477,12 +477,15 @@ function upsertDocsBlock(content, block) {
 }
 
 /**
- * placeFigure — put a slide's rendered SVG directly after its heading
+ * placeFigure — put a slide's rendered SVG(s) directly after its heading
  * (v1.23), and drop the "[figure: ...]" caption ZipTextExtract left in the
- * body, since the figure now carries those labels. The caption is the
+ * body, since the figures now carry those labels. The caption is the
  * fallback: if no figure was produced for a slide it stays exactly as it was.
+ * SlideFigures v1.1 can return several figures for one slide (one per
+ * diagram cluster), so this takes the slide's figures as a list and inserts
+ * them together, in the renderer's top-to-bottom order.
  */
-function placeFigure(text, slide, href, alt) {
+function placeFigure(text, slide, items) {
   const lines = String(text).split("\n");
   const head = new RegExp(`^#{2,3} Slide ${slide}\\b`);
   let at = -1;
@@ -500,8 +503,9 @@ function placeFigure(text, slide, href, alt) {
     kept.push(lines[i]);
   }
   while (kept.length && kept[0].trim() === "") kept.shift();
-  const img = `![${String(alt || "Slide diagram").replace(/[\[\]]/g, "")}](${href})`;
-  return lines.slice(0, at + 1).concat(["", img], kept.length ? [""] : [], kept,
+  const imgs = items.map((it) =>
+    `![${String(it.alt || "Slide diagram").replace(/[\[\]]/g, "")}](${it.href})`);
+  return lines.slice(0, at + 1).concat([""], imgs, kept.length ? [""] : [], kept,
                                        lines.slice(end)).join("\n");
 }
 
@@ -662,10 +666,15 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext,
         setStep("figures");
         const fg = op({ op: "figures", zipFile: localPath });
         const figs = (fg && fg.figures) || [];
+        const bySlide = new Map();
         for (const f of figs) {
           const name = `doc${srcItemId}_${f.name}`;
           writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", name), f.svg);
-          docText = placeFigure(docText, f.slide, `../media/${name}`, f.alt);
+          if (!bySlide.has(f.slide)) bySlide.set(f.slide, []);
+          bySlide.get(f.slide).push({ href: `../media/${name}`, alt: f.alt });
+        }
+        for (const [slide, items] of bySlide) {
+          docText = placeFigure(docText, slide, items);
         }
         figureCount = figs.length;
         if (figs.length) setStep(`figures-${figs.length}`);

@@ -56,7 +56,11 @@ if out.returncode != 0:
     print('FAIL SlideFigures threw:\n' + out.stderr[:2000])
     sys.exit(1)
 res = json.loads(out.stdout)
-figs = {f['slide']: f for f in res['figures']}
+by_slide = {}
+for f in res['figures']:
+    by_slide.setdefault(f['slide'], []).append(f)
+figs = {n: fl[0] for n, fl in by_slide.items()}
+allfigs = [(f['name'], f) for f in res['figures']]
 
 # ---- 1 / 2: which slides produce figures --------------------------------
 check(1 in figs, 'vector slide (real connectors) produces a figure')
@@ -65,8 +69,39 @@ check(3 in figs, 'header-row-table slide produces a redrawn figure')
 check(4 not in figs, 'prose-only slide produces NO figure')
 check(res['count'] == len(res['figures']), 'count matches the figure list')
 
+# ---- v1.1 (DF-2): one figure per DIAGRAM, not per slide ------------------
+f5 = by_slide.get(5, [])
+check(len(f5) == 2, f'two separated rulers -> TWO figures ({len(f5)})')
+check([f['name'] for f in f5] == ['slide5_fig1.svg', 'slide5_fig2.svg'],
+      f'sibling figures are named slideN_figK ({[f["name"] for f in f5]})')
+check(figs[1]['name'] == 'slide1.svg',
+      'a slide\'s only figure keeps the v1.0 slideN.svg name')
+if len(f5) == 2:
+    check('0 to 4' in f5[0]['alt'] and '5 to 9' in f5[1]['alt'],
+          'sibling figures come out in top-to-bottom order')
+    check('(1 of 2)' in f5[0]['svg'] and '(2 of 2)' in f5[1]['svg'],
+          'sibling figure titles say which of how many')
+    for f in f5:
+        vsvg = f['svg']
+        check('class="ln event flat' in vsvg and 'class="split"' in vsvg,
+              f'{f["name"]}: each sibling ruler is fully normalised')
+
+# ---- v1.1 (DF-2): the graph lane (nodes + edges, no ruler) ---------------
+g6 = figs.get(6, {})
+g = g6.get('svg', '')
+check(bool(g), 'node/connector slide produces a graph figure')
+check('<rect class="node' in g, 'graph: box shape renders as a standardized node')
+check('<ellipse class="node' in g, 'graph: oval shape renders as an ellipse node')
+check('t-cool' in g and 't-warm' in g,
+      'graph: source fills map to palette tints by hue family')
+check('class="ln edge' in g, 'graph: connector renders as an edge')
+check('Create route' in g and 'Calibrate' in g,
+      'graph: node labels carried into the figure')
+check('node' in g6.get('alt', '').lower() and 'connector' in g6.get('alt', '').lower(),
+      'graph: alt text describes nodes and connectors')
+
 # ---- 7: well-formed, and the viewBox holds the content -------------------
-for n, f in figs.items():
+for n, f in allfigs:
     try:
         root = ET.fromstring(f['svg'])
         ok = root.tag.endswith('svg')
@@ -84,13 +119,13 @@ for n, f in figs.items():
               f'slide {n}: drawn content sits inside the viewBox ({w:.0f}x{h:.0f})')
 
 # ---- 5: accessibility ----------------------------------------------------
-for n, f in figs.items():
+for n, f in allfigs:
     check('<title>' in f['svg'] and '<desc>' in f['svg'],
           f'slide {n}: carries <title> and <desc>')
     check(bool(f['alt']) and len(f['alt']) > 20, f'slide {n}: alt text is descriptive')
 
 # ---- 6: nothing rasterised ----------------------------------------------
-for n, f in figs.items():
+for n, f in allfigs:
     check('data:image' not in f['svg'] and '<image' not in f['svg'],
           f'slide {n}: no raster embedded')
     check(len(f['svg']) < 60 * 1024, f'slide {n}: figure under 60 KB ({len(f["svg"])}B)')
@@ -124,7 +159,7 @@ if len(ev) >= 2:
           f'vector figure: adjoining extents share ONE exact boundary {pts}')
 
 # ---- 4: palette only, no source colour leaking through -------------------
-for n, f in figs.items():
+for n, f in allfigs:
     # the palette lives in the stylesheet and the arrow marker in <defs>;
     # a literal colour anywhere ELSE means a source colour got copied through
     body = f['svg'][f['svg'].index('</style>'):]
@@ -132,7 +167,8 @@ for n, f in figs.items():
     leaked_body = re.findall(r'(?:stroke|fill)="#[0-9A-Fa-f]{6}"', body)
     check(not leaked_body,
           f'slide {n}: no source colour on an element ({leaked_body[:3]})')
-    check('s-cool' in f['svg'] or 's-warm' in f['svg'] or 'class="ln route"' in f['svg'],
+    check('s-cool' in f['svg'] or 's-warm' in f['svg'] or 'class="ln route"' in f['svg']
+          or 'class="node' in f['svg'],
           f'slide {n}: uses palette role classes')
 
 # ---- redraw path: driven by the slide's own numbers ----------------------
