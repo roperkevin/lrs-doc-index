@@ -1,5 +1,18 @@
 # Local sweep — release notes
 
+## svg2pptx gate sync (2026-09-03, with SlideFigures v1.7 / DF-8)
+
+The converter itself is unchanged — colours, widths, dashes and caps
+resolve from each figure's own `<style>` block, so the DF-8 restyle
+(route as a 3px 8/5 dash drawn over 6.5px extents, 4.4-unit
+arrowheads) flows through it by design. `check_svg2pptx.py`'s fixture
+copy of figStyle is synced to the v1.7 emission, its body reordered to
+the new z-order (extents → ticks → route), the event-width assertion
+moved to 6.5px, and a new assertion pins the route's dash rhythm and
+butt cap carrying onto the shape (`prstDash val="dash"`, `cap="flat"`).
+All 16 `check_figures.py` fixture figures (incl. the new
+labels-without-ticks slide) still convert; gate PASSED.
+
 ## svg2pptx v1.0 (2026-09-03) — companion tool
 
 **Figures back into PowerPoint, as editable shapes.** Test plan

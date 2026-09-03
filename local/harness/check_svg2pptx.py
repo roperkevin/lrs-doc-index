@@ -47,9 +47,9 @@ STYLE = (
     '<style>'
     '.plate{fill:#FFFFFF;stroke:#D7DFDF;stroke-width:1}'
     '.ln{fill:none;stroke-linecap:round;stroke-linejoin:round}'
-    '.route{stroke:#16302F;stroke-width:3.6}'
+    '.route{stroke:#16302F;stroke-width:3;stroke-dasharray:8 5;stroke-linecap:butt}'
     '.ctx{stroke:#B9C6C6;stroke-width:2.4}'
-    '.event{stroke-width:5}.flat{stroke-linecap:butt}'
+    '.event{stroke-width:6.5}.flat{stroke-linecap:butt}'
     '.tick{stroke:#6E8285;stroke-width:1.15}'
     '.maj{stroke:#4E6265;stroke-width:1.4}'
     '.leader{stroke:#6E8285;stroke-width:1}'
@@ -77,11 +77,11 @@ STYLE = (
     '.measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}'
     '.id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}'
     '</style>'
-    '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.2" '
-    'markerHeight="5.2" orient="auto-start-reverse">'
+    '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" '
+    'markerHeight="4.4" orient="auto-start-reverse">'
     '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F"/></marker>'
-    '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.2" '
-    'markerHeight="5.2" orient="auto-start-reverse">'
+    '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" '
+    'markerHeight="4.4" orient="auto-start-reverse">'
     '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265"/></marker></defs>'
 )
 
@@ -93,12 +93,12 @@ FIXTURE = (
     + STYLE +
     '<rect class="plate" x="1" y="1" width="758" height="318" rx="6"/>'
     '<g transform="translate(20,40)">'
-    '<line class="ln route" x1="40" y1="60" x2="640" y2="60"/>'
-    '<line class="ln route" x1="632" y1="60" x2="640" y2="60" marker-end="url(#ar)"/>'
-    '<line class="ln tick maj" x1="60" y1="52.5" x2="60" y2="67.5"/>'
-    '<line class="ln tick" x1="120" y1="55.5" x2="120" y2="64.5"/>'
     '<line class="ln event flat s-cool" x1="60" y1="60" x2="300" y2="60"/>'
     '<line class="ln event flat s-warm" x1="300" y1="60" x2="540" y2="60"/>'
+    '<line class="ln tick maj" x1="60" y1="52.5" x2="60" y2="67.5"/>'
+    '<line class="ln tick" x1="120" y1="55.5" x2="120" y2="64.5"/>'
+    '<line class="ln route" x1="40" y1="60" x2="640" y2="60"/>'
+    '<line class="ln route" x1="632" y1="60" x2="640" y2="60" marker-end="url(#ar)"/>'
     '<line class="split" x1="300" y1="49.5" x2="300" y2="70.5"/>'
     '<circle class="splitdot" cx="300" cy="60" r="3.2"/>'
     '<text class="measure" x="60" y="44.5" text-anchor="middle" '
@@ -193,11 +193,14 @@ m = re.search(r'<a:ln w="(\d+)" cap="flat">'
               r'<a:solidFill><a:srgbClr val="1B6E8C"/>', s1)
 check(m is not None, 'event extent: butt cap carried through')
 if m:
-    check(abs(int(m.group(1)) - round(5 * 9525)) <= 10,
-          f'event extent: 5px stroke -> EMU width ({m.group(1)})')
+    check(abs(int(m.group(1)) - round(6.5 * 9525)) <= 10,
+          f'event extent: 6.5px stroke -> EMU width ({m.group(1)})')
 check(re.search(r'val="16302F"><a:alpha val="55000"/>', s1) is not None,
       "split hairline: opacity .55 -> 55% stroke alpha")
 check('<a:prstDash val="sysDash"/>' in s1, 'split dash (3 2.5) -> sysDash')
+check(re.search(r'<a:ln w="\d+" cap="flat"><a:solidFill><a:srgbClr val="16302F"/>'
+                r'</a:solidFill><a:prstDash val="dash"/>', s1) is not None,
+      'route: dash rhythm + butt cap carried onto the shape (v1.7 style)')
 check('<a:prstDash val="dash"/>' in s1, 'dashed (7 4.5) -> dash')
 check('<a:prstDash val="sysDot"/>' in s1, 'dotted (1.6 3.6) -> sysDot')
 check(re.search(r'rot="540000"[^>]*>', s1) is not None,

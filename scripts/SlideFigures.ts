@@ -1,17 +1,42 @@
 /**
- * SlideFigures v1.6 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.7 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
  * (2026-09-03) splits the redraw lane's combined figure and anchors every
  * figure to its slide table; DF-5 (2026-09-03) fixes label collisions and
  * arrowhead layering; DF-6 (2026-09-03) snaps arrowheads to line tips;
- * DF-7 (2026-09-03) redraws spanning events as route chains.
+ * DF-7 (2026-09-03) redraws spanning events as route chains; DF-8
+ * (2026-09-03) puts the route on top as a dash and hashes labelled anchors.
  * Companion to ZipTextExtract, same input (the
  * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
  * several):
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *
+ * v1.7 (DF-8):
+ *   - THE ROUTE RIDES ON TOP, AS A DASH. A solid route drawn first
+ *     disappeared entirely under any event bar covering it — on a fully
+ *     covered ruler the route existed only as its arrowhead. The route is
+ *     now a dashed line (8 on / 5 off, butt caps, 3px) drawn AFTER the
+ *     extents in every lane, so both always read: the extent as the
+ *     colour field, the route as the dash running through it. Event
+ *     extents widen to 6.5px so their colour still shows around the dash;
+ *     ticks draw between the two (over the bar, under the route).
+ *   - SMALLER ARROWHEADS. The 5.2-unit head (~19px at the old route
+ *     weight) outweighed the slimmer dashed route; heads drop to 4.4
+ *     marker units (~13px) and ARROW_EXT to 14, still sized so the whole
+ *     head rides its own overshoot stub. Every marker-end now sits on a
+ *     short solid carrier — a marker on the dashed path itself could land
+ *     on a dash gap and float detached from its line.
+ *   - HASH MARKS FOR LABELLED ANCHORS. A line whose band carries measure
+ *     labels but NO ticks (the decks draw these; so does the spanning
+ *     chain, whose tables state only the anchors) left its numbers
+ *     floating in space. Such labels now get a major tick at each
+ *     labelled position: in the vector lane synthesized for tickless
+ *     routes only (half-ticked lines keep the author's marks), in the
+ *     spanning lane at each stated anchor — except the split's, which
+ *     keeps its dot-and-hairline marker rather than doubling up.
  *
  * v1.6 (DF-7):
  *   - SPANNING EVENTS REDRAW AS ROUTE CHAINS. A "line network" slide
@@ -210,9 +235,9 @@ const NODE_RX = 7;     // one corner radius for every box node in the corpus
 const ANCHOR_PAD = 16; // an edge endpoint this close to a node belongs to it
 const TRACE_MAX_PX = 2600000;  // decode budget for pasted pictures
 const TRACE_MAX_BARS = 48;     // busier than this is a screenshot, not a diagram
-const ARROW_EXT = 18;          // route overshoot past the final tick — sized
-                               // to the arrowhead (5.2 x 3.6px stroke, refX
-                               // 6/8 → its back sits ~14px behind the line
+const ARROW_EXT = 14;          // route overshoot past the final tick — sized
+                               // to the arrowhead (4.4 x 3px stroke, refX
+                               // 6/8 → its back sits ~10px behind the line
                                // end) so the whole head rides its own stub,
                                // never over a tick or an extent bar
 const SPLIT_ARM = 10.5;        // split hairline half-length: past the major
@@ -350,9 +375,11 @@ function figStyle(): string {
   return "<style>" +
     ".plate{fill:#FFFFFF;stroke:#D7DFDF;stroke-width:1}" +
     ".ln{fill:none;stroke-linecap:round;stroke-linejoin:round}" +
-    ".route{stroke:#16302F;stroke-width:3.6}" +
+    // the route is a DASH over the extents, not a bar under them (DF-8):
+    // drawn last in every lane, its gaps let the extent colour read through
+    ".route{stroke:#16302F;stroke-width:3;stroke-dasharray:8 5;stroke-linecap:butt}" +
     ".ctx{stroke:#B9C6C6;stroke-width:2.4}" +
-    ".event{stroke-width:5}.flat{stroke-linecap:butt}" +
+    ".event{stroke-width:6.5}.flat{stroke-linecap:butt}" +
     ".tick{stroke:#6E8285;stroke-width:1.15}" +
     ".maj{stroke:#4E6265;stroke-width:1.4}" +
     ".leader{stroke:#6E8285;stroke-width:1}" +
@@ -381,15 +408,16 @@ function figStyle(): string {
     ".id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}" +
     "</style>" +
     // SOLID heads: a notched (stealth) head is a see-through cutout over the
-    // line's final pixels — the line shows inside the arrow. refX 6 puts the
-    // line end ~4.7px behind the tip at route weight, where the triangle is
-    // already wider than the line's round cap — so the cap can't poke out
-    // sideways near the point.
-    '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.2" ' +
-    'markerHeight="5.2" orient="auto-start-reverse">' +
+    // line's final pixels — the line shows inside the arrow. refX 6 keeps the
+    // line end behind the tip where the triangle is already wider than the
+    // line, so the cap can't poke out sideways near the point. 4.4 marker
+    // units at route weight is a ~13px head (DF-8 — the 5.2 head outweighed
+    // the slimmer dashed route).
+    '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" ' +
+    'markerHeight="4.4" orient="auto-start-reverse">' +
     '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F"/></marker>' +
-    '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.2" ' +
-    'markerHeight="5.2" orient="auto-start-reverse">' +
+    '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" ' +
+    'markerHeight="4.4" orient="auto-start-reverse">' +
     '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265"/></marker></defs>';
 }
 
@@ -1242,10 +1270,12 @@ function bbox(lines: FLine[], texts: FText[]): number[] {
 
 function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: FRuler[]): string {
   const p: string[] = [];
-  // z-order matters: an extent drawn BEFORE the route it sits on is hidden by
-  // it. Routes first, then ticks and leaders, then extents on top.
+  // z-order matters: a route drawn BEFORE the extents laid over it vanished
+  // under any bar that covered it (DF-8). Extents go to the BACK, ticks and
+  // leaders over them, and the dashed route rides on top of everything —
+  // its gaps let the extent colour read through, so neither buries the other.
   const order = (l: FLine): number =>
-    l.cls === "route" ? 0 : (l.cls.indexOf("event") === 0 ? 2 : 1);
+    l.cls === "route" ? 2 : (l.cls.indexOf("event") === 0 ? 0 : 1);
   // a route carries its direction arrow only where its band actually ENDS:
   // when another route/event line continues past this line's endpoint (route
   // segments laid end to end, or a traced extent covering the route beyond
@@ -1454,6 +1484,67 @@ function normaliseRulers(lines: FLine[], texts: FText[], compress: boolean): {
     }
     outL.push(l);
   }
+  // DF-8: a route whose band carries measure labels but NO ticks gets a hash
+  // mark at each labelled position. A label states an anchor on the line;
+  // decks that skip the tick stubs leave the number floating in space, and a
+  // labelled anchor without a mark is the one gap in the framework's "every
+  // measure sits on its own tick" rule. Only routes that never became rulers
+  // qualify (a ruler has ticks by definition), and only when the band has no
+  // ticks at all — half-ticked lines keep the author's marks.
+  const synth: FLine[] = [];
+  for (let pass = 0; pass < 2; pass++) {
+    const horiz = pass === 0;
+    // collinear route lines merge into ONE band first — decks lay a route as
+    // segments end to end, and a label near the band belongs to the whole
+    // route, not to whichever segment its position happens to touch
+    const rbs: number[][] = [];
+    for (const l of outL) {
+      if (l.cls !== "route") continue;
+      if ((horiz ? Math.abs(l.y1 - l.y2) : Math.abs(l.x1 - l.x2)) >= 2) continue;
+      const c0 = horiz ? (l.y1 + l.y2) / 2 : (l.x1 + l.x2) / 2;
+      const a0 = horiz ? Math.min(l.x1, l.x2) : Math.min(l.y1, l.y2);
+      const a1 = horiz ? Math.max(l.x1, l.x2) : Math.max(l.y1, l.y2);
+      let g: number[] | null = null;
+      for (const b of rbs) if (Math.abs(b[0] - c0) < band) g = b;
+      if (!g) rbs.push([c0, a0, a1]);
+      else { g[1] = Math.min(g[1], a0); g[2] = Math.max(g[2], a1); }
+    }
+    for (const g of rbs) {
+      let skip = false;
+      for (const r of rulers) {
+        if (horiz && Math.abs(r.y - g[0]) < 2 && r.x0 < g[2] && g[1] < r.x1) skip = true;
+      }
+      for (const o of outL) {
+        if (skip || o.cls.indexOf("tick") !== 0) continue;
+        const ta = horiz ? (o.x1 + o.x2) / 2 : (o.y1 + o.y2) / 2;
+        const tc = horiz ? (o.y1 + o.y2) / 2 : (o.x1 + o.x2) / 2;
+        if (ta >= g[1] - 6 && ta <= g[2] + 6 && Math.abs(tc - g[0]) <= band * 2.5) skip = true;
+      }
+      if (skip) continue;
+      const anchors: number[] = [];
+      for (const t of outT) {
+        if (t.cls.indexOf("measure") !== 0) continue;
+        const ta = horiz ? t.x : t.y, tc = horiz ? t.y : t.x;
+        // ±26 along the line: decks drag an end label past the route's own
+        // end (observed +19px); the tick clamps back onto the line
+        if (ta < g[1] - 26 || ta > g[2] + 26 || Math.abs(tc - g[0]) < 4 || Math.abs(tc - g[0]) > 34) continue;
+        const at2 = Math.max(g[1], Math.min(g[2], ta));
+        // a dragged end label re-centres over the tick it just gained
+        if (Math.abs(ta - at2) > 0.5) { if (horiz) t.x = at2; else t.y = at2; }
+        let dup = false;
+        for (const x of anchors) if (Math.abs(x - at2) < 3) dup = true;
+        if (!dup) anchors.push(at2);
+      }
+      if (anchors.length < 2) continue;
+      for (const at2 of anchors) {
+        const arm = TICK_MAJOR / 2;
+        synth.push(horiz
+          ? { x1: at2, y1: g[0] - arm, x2: at2, y2: g[0] + arm, cls: "tick maj", extra: "" }
+          : { x1: g[0] - arm, y1: at2, x2: g[0] + arm, y2: at2, cls: "tick maj", extra: "" });
+      }
+    }
+  }
+  for (const l of synth) outL.push(l);
   if (!compress) return { lines: outL, texts: outT, splits: splits, rulers: rulers };
   return compressBands(outL, outT, splits, rulers);
 }
@@ -1647,23 +1738,32 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
   for (let ri = 0; ri < rows.length; ri++) {
     const row = rows[ri];
     const body: string[] = [];
-    // route segments first (each route is its own line; the last overshoots
-    // for its arrowhead like every ruler)
-    for (let i = 0; i < chain.length; i++) {
-      const a = ox + i * segW, b = ox + (i + 1) * segW;
-      body.push('<line class="ln route" x1="' + fnum(a) + '" y1="' + fnum(ry) +
-        '" x2="' + fnum(i === chain.length - 1 ? b + ARROW_EXT : b) +
-        '" y2="' + fnum(ry) + '"/>');
-    }
-    body.push('<line class="ln tick maj" x1="' + fnum(ox) + '" y1="' + fnum(ry - TICK_MAJOR / 2) +
-      '" x2="' + fnum(ox) + '" y2="' + fnum(ry + TICK_MAJOR / 2) + '"/>');
-    // extents over the routes
+    // extents at the BACK (DF-8 — the route now draws over them)
     for (const e of row.ext) {
       body.push('<line class="ln event flat s-' + roles[e[2]] + '" x1="' + fnum(e[0]) +
         '" y1="' + fnum(ry) + '" x2="' + fnum(e[1]) + '" y2="' + fnum(ry) + '"/>');
       body.push('<text class="id f-' + roles[e[2]] + '" x="' + fnum((e[0] + e[1]) / 2) +
         '" y="' + fnum(ry - ID_OFF) + '" text-anchor="middle" dominant-baseline="central">' +
         esc(p.eventId) + "</text>");
+    }
+    // the stated measures (start / split / end), each ABOVE its own anchor —
+    // and a hash mark AT each anchor (DF-8): a labelled anchor without a
+    // mark left the number floating in space. The split's anchor keeps its
+    // dot-and-hairline marker instead of doubling up with a tick.
+    const meas: number[][] = [[ox, p.m0], [x1, p.m1]];
+    if (!isNaN(row.sp)) meas.push([sx, p.split]);
+    for (const mv of meas) {
+      if (!isNaN(row.sp) && Math.abs(mv[0] - row.sp) < 2) continue;
+      body.push('<line class="ln tick maj" x1="' + fnum(mv[0]) + '" y1="' + fnum(ry - TICK_MAJOR / 2) +
+        '" x2="' + fnum(mv[0]) + '" y2="' + fnum(ry + TICK_MAJOR / 2) + '"/>');
+    }
+    // route segments over the extents (each route is its own dashed line;
+    // the last overshoots for its arrowhead like every ruler)
+    for (let i = 0; i < chain.length; i++) {
+      const a = ox + i * segW, b = ox + (i + 1) * segW;
+      body.push('<line class="ln route" x1="' + fnum(a) + '" y1="' + fnum(ry) +
+        '" x2="' + fnum(i === chain.length - 1 ? b + ARROW_EXT : b) +
+        '" y2="' + fnum(ry) + '"/>');
     }
     // arrowheads LAST — every route ends in its own arrow, on top of the
     // extent running through the joint (the slide's own vocabulary)
@@ -1677,9 +1777,6 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
         '" x2="' + fnum(row.sp) + '" y2="' + fnum(ry + SPLIT_ARM) + '"/>');
       body.push('<circle class="splitdot" cx="' + fnum(row.sp) + '" cy="' + fnum(ry) + '" r="' + fnum(DOT_R) + '"/>');
     }
-    // the stated measures, above their anchors (start / split / end)
-    const meas: number[][] = [[ox, p.m0], [x1, p.m1]];
-    if (!isNaN(row.sp)) meas.push([sx, p.split]);
     for (const mv of meas) {
       body.push('<text class="measure" x="' + fnum(mv[0]) +
         '" y="' + fnum(ry - MEAS_OFF) +
@@ -1846,17 +1943,24 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       body.push('<path class="ln route ctx" d="' + d + '"/>');
     }
     let d = pts.map((p, i) => (i ? "L " : "M ") + fnum(p[0]) + " " + fnum(p[1])).join(" ");
+    let headSvg = "";
     if (!topo.closed && pts.length >= 2) {
       // overshoot past the final tick so the arrowhead sits clear of it and
-      // of an extent reaching the route's end (the number-line convention)
+      // of an extent reaching the route's end (the number-line convention).
+      // The head rides an 8px carrier retracing the overshoot's final pixels
+      // (DF-8): the route itself is dashed, and a marker on the path could
+      // land on a dash gap and float detached from its line — the carrier is
+      // shorter than the dash's on-run, so it is always solid under the head.
       const pa = pts[pts.length - 2], pb = pts[pts.length - 1];
       const seg = Math.sqrt((pb[0] - pa[0]) * (pb[0] - pa[0]) +
                             (pb[1] - pa[1]) * (pb[1] - pa[1])) || 1;
-      d += " L " + fnum(pb[0] + (pb[0] - pa[0]) / seg * ARROW_EXT) + " " +
-        fnum(pb[1] + (pb[1] - pa[1]) / seg * ARROW_EXT);
+      const ux = (pb[0] - pa[0]) / seg, uy = (pb[1] - pa[1]) / seg;
+      const tx = pb[0] + ux * ARROW_EXT, ty = pb[1] + uy * ARROW_EXT;
+      d += " L " + fnum(tx) + " " + fnum(ty);
+      headSvg = '<line class="ln route" x1="' + fnum(tx - ux * 8) + '" y1="' +
+        fnum(ty - uy * 8) + '" x2="' + fnum(tx) + '" y2="' + fnum(ty) +
+        '" marker-end="url(#ar)"/>';
     }
-    body.push('<path class="ln route" d="' + d + '"' +
-      (topo.closed ? "" : ' marker-end="url(#ar)"') + "/>");
     for (const e of row.ext) {
       const a = atMeasure(pts, cum, total, m0, m1, e[0]);
       const b = atMeasure(pts, cum, total, m0, m1, e[1]);
@@ -1915,6 +2019,11 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       }
       mm += minor;
     }
+    // the dashed route draws OVER the extents and ticks (DF-8) — it used to
+    // draw first and vanish under any bar covering it; now its dash gaps let
+    // the extent colour read through instead
+    body.push('<path class="ln route" d="' + d + '"/>');
+    if (headSvg) body.push(headSvg);
     if (!isNaN(row.sp) && row.sp > m0 && row.sp < m1) {
       const q = atMeasure(pts, cum, total, m0, m1, row.sp);
       const nx = -q[3], ny = q[2];

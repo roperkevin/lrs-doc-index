@@ -789,6 +789,19 @@ for r, row in enumerate([('Event ID', 'E6', 'E6', 'E6'),
     for c, v in enumerate(row):
         t_f11o.cell(r, c).text = v
 
+# --- slide 12 (v1.7 / DF-8): a route with measure labels but NO ticks — the
+# decks draw these (a line, an extent over part of it, the end measures
+# floating above, not a tick stub anywhere). The labels state anchors, so
+# v1.7 must synthesize a hash mark at each labelled position; the right
+# label is dragged past the route's own end (the decks do that too) and
+# must clamp back onto the line, re-centred over its tick.
+s_f12 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+_line(s_f12, 1.0 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN)
+_line(s_f12, 1.0 * IN, 2.0 * IN, 2.6 * IN, 2.0 * IN, rgb='002060', w=int(0.05 * IN))
+_label(s_f12, 0.9 * IN, 1.72 * IN, '0')
+_label(s_f12, 4.02 * IN, 1.72 * IN, '30')
+_label(s_f12, 0.3 * IN, 1.95 * IN, 'R12', 12)
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
