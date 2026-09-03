@@ -57,6 +57,7 @@ import {
   pruneRunLogs, exportListSnapshots,
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
+import { writeIndexPages } from "./lib/indexpages.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
   upsertDocsBlock, bodySeamEnd, yamlList,
@@ -120,7 +121,7 @@ const IMAGE_EXT = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"];
  * spending an AI call). withMedia=false skips media extraction:
  * the images are already on disk from the original index.
  */
-function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext, srcItemId, modified, withMedia }) {
+function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, localPath, ext, srcItemId, modified, withMedia }) {
   let docText = "", relsText = "", lane = "none";
   let figureCount = 0, figureError = "";
   let srcAuthor = "", srcEditor = "", srcEdited = "";
@@ -213,6 +214,23 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext,
     }
     docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
     lane = "plaintext";
+    // OCR lane (v1.36, opt-in via sweep.tesseractPath): a text-less
+    // PDF is usually a scan — render pages with pdftoppm and OCR them
+    // with Tesseract. lane "ocr" marks the ATTEMPT either way, so a
+    // scan OCR can't read is stamped once, never rechurned; rows
+    // Skipped at lane "plaintext" re-enter once OCR exists (the PDF
+    // rescue pattern). An OCR crash degrades to the Skip lane — an
+    // enhancement must not put a doc in the Error lane.
+    if (docText === "" && ocrTools) {
+      setStep("ocr");
+      try {
+        docText = ocrPdf(ocrTools, localPath, sw);
+      } catch (e) {
+        process.stderr.write(`OCR ${path.basename(localPath)}: ${e.message}\n`);
+        docText = "";
+      }
+      lane = "ocr";
+    }
   }
   // pdf(no tool)/msg/image/other/oversize (and empty html): DocText
   // stays empty → Skip lane.
@@ -512,6 +530,7 @@ async function main() {
       "(install Poppler or set sweep.pdftotextPath to index them)\n"
     );
   }
+  const ocrTools = detectOcrTools(sw);
 
   const graph = new GraphClient(cfg.graph);
   const spo = new SpoClient(cfg.spo);
@@ -765,7 +784,7 @@ async function main() {
           continue;
         }
         const { docText, figureCount, figureError } = extractDocText({
-          sw, cfg, op, writer, pdfTool, setStep: () => {},
+          sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath, ext, srcItemId, modified, withMedia: false,
         });
         rfsum.figures += figureCount || 0;
@@ -798,7 +817,15 @@ async function main() {
     const pdfRescue =
       ext === "pdf" && !!pdfTool && inScope &&
       existing?.IndexStatus === "Skipped" &&
-      existing?.ExtractionLane !== "plaintext";
+      existing?.ExtractionLane !== "plaintext" &&
+      existing?.ExtractionLane !== "ocr"; // "ocr" = extraction attempted too
+    // OCR rescue (v1.36): rows stamped Skipped after a text-less
+    // pdftotext attempt (lane "plaintext") re-enter once OCR tools
+    // exist; the attempt restamps lane "ocr", so this fires once.
+    const ocrRescue =
+      ext === "pdf" && !!ocrTools && !!pdfTool && inScope &&
+      existing?.IndexStatus === "Skipped" &&
+      existing?.ExtractionLane === "plaintext";
     const scopeRescue =
       inScope &&
       existing?.IndexStatus === "Skipped" &&
@@ -806,6 +833,7 @@ async function main() {
     const needsIndex =
       !existing ||
       pdfRescue ||
+      ocrRescue ||
       scopeRescue ||
       existing.IndexStatus === "Error" ||
       existing.IndexStatus === "Archived" || // deleted doc restored → re-index
@@ -830,7 +858,7 @@ async function main() {
       }
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, linkResolver,
+        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -987,6 +1015,9 @@ async function main() {
       } catch { /* best effort */ }
     }
     writeStatusPage(cfg, { summary, logFile, errorLane, streaks, runLogDir: logDir });
+    // browse pages (v1.35): the catalog as humans see it — root +
+    // per-kind _Index.md, rebuilt from the rows this run already holds
+    writeIndexPages(cfg, docIndexRows, sw.kindFolders);
     if (!sw.smokeFile) {
       // dead-man stamp + chronic-error alert (v1.32): the run
       // completed, so stamp the heartbeat; docs stuck 3+ nights get a
@@ -1020,7 +1051,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, linkResolver, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -1057,7 +1088,7 @@ async function indexDoc(ctx) {
   // Switch_ext lane dispatch (shared with the --reformat pass)
   const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
           figureCount, figureError } = extractDocText({
-    sw, cfg, op, writer, pdfTool, setStep,
+    sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
   summary.figures = (summary.figures || 0) + (figureCount || 0);
@@ -1397,6 +1428,54 @@ function detectPdfTool(sw) {
   const p = sw.pdftotextPath || "pdftotext";
   const r = spawnSync(p, ["-v"], { encoding: "utf8" });
   return r.error ? null : p;
+}
+
+/** OCR tools (v1.36) — OPT-IN by explicit config: OCR runs only when
+ *  sweep.tesseractPath is set (no PATH auto-detection, so machines
+ *  that happen to have Tesseract don't silently change lanes).
+ *  pdftoppm defaults to Poppler's, next to pdftotext on PATH. A
+ *  configured-but-unrunnable tool warns loudly and disables OCR. */
+function detectOcrTools(sw) {
+  if (!sw.tesseractPath) return null;
+  const tess = sw.tesseractPath;
+  const ppm = sw.pdftoppmPath || "pdftoppm";
+  for (const [name, cmd, arg] of [["tesseract", tess, "--version"], ["pdftoppm", ppm, "-v"]]) {
+    if (spawnSync(cmd, [arg], { encoding: "utf8" }).error) {
+      process.stderr.write(
+        `note: sweep.tesseractPath is set but ${name} ("${cmd}") is not runnable — OCR lane disabled\n`
+      );
+      return null;
+    }
+  }
+  return { tess, ppm };
+}
+
+/** Render the PDF's pages (200dpi PNG, first sweep.ocrMaxPages = 20)
+ *  and OCR each; pages Tesseract can't read contribute nothing. */
+function ocrPdf(tools, pdfPath, sw) {
+  const maxPages = sw.ocrMaxPages === undefined ? 20 : Number(sw.ocrMaxPages);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-ocr-"));
+  try {
+    const root = path.join(dir, "page");
+    const r = spawnSync(tools.ppm, ["-png", "-r", "200", "-l", String(maxPages), pdfPath, root], {
+      encoding: "utf8",
+    });
+    if (r.error) throw new Error(`pdftoppm: ${r.error.message}`);
+    if (r.status !== 0) {
+      throw new Error(`pdftoppm exit ${r.status}: ${cut(String(r.stderr || ""), 200)}`);
+    }
+    const pages = fs.readdirSync(dir).filter((f) => f.endsWith(".png")).sort();
+    const out = [];
+    for (const p of pages) {
+      const t = spawnSync(tools.tess, [path.join(dir, p), "stdout"], {
+        encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
+      });
+      if (t.status === 0 && String(t.stdout).trim() !== "") out.push(t.stdout.trim());
+    }
+    return out.join("\n\n").trim();
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
+  }
 }
 
 // fatal-path visibility: a scheduled run that dies (auth expiry,

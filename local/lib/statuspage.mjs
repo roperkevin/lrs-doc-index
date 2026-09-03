@@ -1,11 +1,45 @@
 /**
- * statuspage.mjs v1.0 — the "_Sweep Status.md" pipeline-health page,
- * moved verbatim out of sweep.mjs v1.30 (module split, no behavior
- * change; covered by check_local_sweep.py's status-page assertions).
+ * statuspage.mjs — the "_Sweep Status.md" pipeline-health page, moved
+ * verbatim out of sweep.mjs v1.30 (module split; covered by
+ * check_local_sweep.py's status-page assertions). v1.34 adds the
+ * recent-runs trend table read from the per-run JSON logs.
  */
 
 import fs from "node:fs";
 import path from "node:path";
+
+/**
+ * Recent-run trend rows (v1.34): the newest `keep` full-sweep run
+ * logs in workDir, oldest first. Only full-mode summaries qualify
+ * (rerank/reformat logs lack library_items_seen). Best-effort — an
+ * unreadable log is skipped.
+ */
+function recentRuns(runLogDir, keep = 14) {
+  let names;
+  try {
+    names = fs.readdirSync(runLogDir)
+      .filter((f) => /^sweep-.*\.json$/.test(f)).sort().slice(-3 * keep);
+  } catch {
+    return [];
+  }
+  const rows = [];
+  for (const f of names) {
+    try {
+      const s = JSON.parse(fs.readFileSync(path.join(runLogDir, f), "utf8")).summary;
+      if (!s || s.library_items_seen === undefined) continue;
+      // stamp "sweep-YYYY-MM-DDTHHMM.json" -> "YYYY-MM-DD HHMM"
+      const m = /^sweep-(\d{4}-\d{2}-\d{2})T(\d{2})(\d{2})/.exec(f);
+      rows.push({
+        when: m ? `${m[1]} ${m[2]}:${m[3]}` : f,
+        processed: s.processed ?? 0,
+        errors: s.errors ?? 0,
+        figures: s.figures ?? 0,
+        smoke: s.smoke ? "smoke" : "",
+      });
+    } catch { /* skip unreadable */ }
+  }
+  return rows.slice(-keep);
+}
 
 /**
  * "_Sweep Status.md" in the sidecar library root: pipeline health
@@ -13,7 +47,7 @@ import path from "node:path";
  * Live runs only (a dry run is a rehearsal); also written on a fatal
  * abort so a dead scheduled run is visible in SharePoint.
  */
-export function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fatal }) {
+export function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fatal, runLogDir }) {
   const dir = cfg?.paths?.sidecarLibrary;
   if (!dir) return;
   const esc = (s) => String(s).replaceAll("|", "\\|").replaceAll("\n", " ").slice(0, 140);
@@ -60,6 +94,21 @@ export function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fat
          ...lane.map((d) => `| ${esc(d.name)} | ${d.streak} | ${esc(d.err)} |`)]
       : ["(empty)"]),
     "",
+    ...(() => {
+      // trend table (v1.34): drift — creeping errors, dying figure
+      // counts, shrinking throughput — visible where the team looks
+      const runs = runLogDir ? recentRuns(runLogDir) : [];
+      if (!runs.length) return [];
+      return [
+        `## Recent runs (${runs.length})`,
+        "",
+        "| Run | Processed | Errors | Figures | |",
+        "|---|---|---|---|---|",
+        ...runs.map((r) =>
+          `| ${r.when} | ${r.processed} | ${r.errors} | ${r.figures} | ${r.smoke} |`),
+        "",
+      ];
+    })(),
   ].join("\n");
   try {
     fs.writeFileSync(path.join(dir, "_Sweep Status.md"), md);

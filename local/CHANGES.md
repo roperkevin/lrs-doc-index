@@ -1,5 +1,42 @@
 # Local sweep — release notes
 
+## v1.36 (2026-09-03)
+
+**OCR lane for image-only PDFs** (the fallback the README always
+described as "designed if ever needed"; opt-in: set
+`sweep.tesseractPath`, optionally `sweep.pdftoppmPath` — no PATH
+auto-detection, so machines that happen to have Tesseract don't
+silently change lanes). A PDF whose pdftotext pass yields no text is
+usually a scan; with OCR configured the sweep renders its pages
+(pdftoppm, 200dpi, first `ocrMaxPages` = 20) and reads them with
+Tesseract. Lane `"ocr"` marks the ATTEMPT either way — a scan OCR
+can't read stamps Skipped once and never rechurns (the pdfRescue
+predicate now excludes it too) — and rows previously Skipped at lane
+`"plaintext"` re-enter automatically once OCR exists, the PDF-rescue
+pattern. An OCR crash degrades to the Skip lane, never Error. Gate
+legs: stubbed pdftoppm+tesseract rescue and index scan.pdf at lane
+"ocr" with the OCR text in TextPreview; a second run does not rechurn.
+
+## v1.35 (2026-09-03)
+
+**Corpus browse pages** (`local/lib/indexpages.mjs`). Every live run
+rebuilds `_Index.md` at the sidecar-library root (the catalog grouped
+by kind, newest first: sidecar link · products · release · one-line
+summary) plus one `_Index.md` per kind folder — the Q&A agent answers
+questions, these answer "what's in here?". Built from the rows the
+run already holds; underscore names like `_Sweep Status.md`;
+`sweep.indexPages: false` disables. Gate legs: root catalog groups by
+kind and links sidecars; per-kind index uses folder-local links.
+
+## v1.34 (2026-09-03)
+
+**Status-page trend table.** `_Sweep Status.md` now ends with
+"Recent runs" — the last 14 full-sweep summaries (run stamp,
+processed, errors, figures; smoke runs tagged) read from the per-run
+JSON logs — so creeping errors, dying figure counts, or shrinking
+throughput are visible where the team already looks. Gate leg asserts
+the table renders from the run logs.
+
 ## v1.33 (2026-09-03)
 
 **Graph download fallback for unsynced sources** (review r7, risk R4;

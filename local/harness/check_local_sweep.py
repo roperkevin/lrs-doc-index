@@ -846,8 +846,22 @@ def main():
     # sidecars on disk
     md_files = {f: os.path.join(r, f)
                 for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
-                if f.endswith(".md") and not f.startswith("_Sweep")}
+                if f.endswith(".md") and not f.startswith("_")}
     check("five sidecars written (incl. rescued pdf + html)", len(md_files) == 5, str(sorted(md_files)))
+
+    # browse index pages (v1.35): root catalog + per-kind indexes,
+    # rebuilt by every live run from the run's own rows
+    root_idx_path = os.path.join(sidecar_dir, "_Index.md")
+    root_idx = open(root_idx_path).read() if os.path.exists(root_idx_path) else ""
+    check("root browse index lists the corpus by kind",
+          "# LRS Doc Index — catalog" in root_idx
+          and "## Test Plans (1)" in root_idx
+          and "__doc" in root_idx, root_idx[:400])
+    kind_idx_path = os.path.join(sidecar_dir, "Test Plans", "_Index.md")
+    kind_idx = open(kind_idx_path).read() if os.path.exists(kind_idx_path) else ""
+    check("per-kind browse index links its sidecars",
+          "# Test Plans — index" in kind_idx and "__doc" in kind_idx
+          and "(<Test Plans/" not in kind_idx, kind_idx[:400])
 
     # body-text similarity: spec.pdf and notes.txt share body words but
     # NO keyword/edge — only the BodySim candidate source can join them
@@ -1072,6 +1086,12 @@ def main():
           "Nights stuck" in status2
           and "| corrupt.pptx | 2 |" in status2
           and "| missing.txt | 2 |" in status2, status2[:600])
+    # (same-minute gate runs share one log stamp, so only the newest
+    # run of this minute survives as a row — assert shape, not count)
+    check("status page carries the recent-runs trend table (v1.34)",
+          "## Recent runs (" in status2
+          and re.search(r"\| 2026-\d\d-\d\d \d\d:\d\d \| \d+ \| \d+ \| \d+ \|", status2) is not None,
+          status2[-500:])
 
     run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]
     check("run logs pruned to 30", len(run_logs) == 30, str(len(run_logs)))
@@ -1389,6 +1409,45 @@ def main():
     check("fallback downloaded the right item",
           state.content_downloads == ["16"], str(state.content_downloads))
     cfg["sweep"]["graphDownloadFallback"] = False
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    # ---- leg 3h: OCR lane for image-only PDFs (v1.36, opt-in) ------
+    # scan.pdf sat Skipped at lane "plaintext" (pdftotext found no
+    # text). With tesseract configured the OCR rescue re-enters it,
+    # pdftoppm renders pages, tesseract reads them, and the doc
+    # indexes at lane "ocr" — which also blocks any re-rescue loop.
+    print("== ocr lane leg")
+    ppm_stub = os.path.join(tmp, "pdftoppm")
+    with open(ppm_stub, "w") as f:
+        f.write('#!/bin/sh\nif [ "$1" = "-v" ]; then exit 0; fi\n'
+                'touch "$7-1.png"\n')  # -png -r 200 -l N <pdf> <root>: root is $7
+    tess_stub = os.path.join(tmp, "tesseract")
+    with open(tess_stub, "w") as f:
+        f.write('#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\n'
+                'echo "Scanned OCR text about calibration measures."\n')
+    for s in (ppm_stub, tess_stub):
+        os.chmod(s, 0o755)
+    cfg["sweep"]["tesseractPath"] = tess_stub
+    cfg["sweep"]["pdftoppmPath"] = ppm_stub
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "scan.pdf"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "scan.pdf"][0]
+    check("image-only pdf rescued and indexed through OCR",
+          proc.returncode == 0 and out.get("processed") == 1
+          and row.get("IndexStatus") == "Indexed"
+          and row.get("ExtractionLane") == "ocr"
+          and "Scanned OCR text" in str(row.get("TextPreview", "")),
+          str(out) + " " + str(row)[:250])
+    # second run: lane "ocr" marks the attempt — no rescue loop
+    proc = run_sweep(cfg_path, ["--live", "--only", "scan.pdf"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("OCR-stamped doc does not rechurn", out.get("processed") == 0, str(out))
+    del cfg["sweep"]["tesseractPath"]
+    del cfg["sweep"]["pdftoppmPath"]
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
