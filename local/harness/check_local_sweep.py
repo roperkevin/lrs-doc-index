@@ -1487,6 +1487,26 @@ def main():
     check("fatal run surfaced on the status page",
           "RUN FAILED" in status and "AUTH EXPIRED" in status, status[:300])
 
+    # ---- leg 8: config validation — friendly failure, not a TypeError ----
+    # a config missing whole sections (fresh machine, typo'd key) must
+    # name every missing key in one message, before any network call
+    print("== config validation leg")
+    bad_cfg = os.path.join(tmp, "bad-config.json")
+    with open(bad_cfg, "w") as f:
+        json.dump({"paths": {"workDir": work_dir}}, f)
+    proc = run_sweep(bad_cfg, ["--dry-run"])
+    check("bad config fails fast", proc.returncode != 0)
+    check("bad config names the missing keys",
+          "missing required key(s)" in proc.stderr
+          and "sharePoint.hostname" in proc.stderr
+          and "paths.sourceLibrary" in proc.stderr, proc.stderr[-400:])
+    check("bad config error is not a bare TypeError",
+          "TypeError" not in proc.stderr, proc.stderr[-400:])
+    proc = run_curate(bad_cfg, ["--dry-run"])
+    check("curate rejects a bad config the same way",
+          proc.returncode != 0 and "missing required key(s)" in proc.stderr,
+          proc.stderr[-400:])
+
     server.shutdown()
     report()
 

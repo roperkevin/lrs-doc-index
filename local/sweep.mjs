@@ -48,6 +48,7 @@ import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
 import { classifyDoc } from "./llm.mjs";
+import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.mjs";
 
 // ---- flow v2.8 Config defaults (override via config.sweep) ----------
 
@@ -1055,7 +1056,9 @@ function loadConfig(argv) {
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat]");
+  assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
+  validateConfig(cfg, SWEEP_REQUIRED, args.config);
   cfg.sweep = { ...FLOW_DEFAULTS, ...(cfg.sweep || {}) };
   if (args.flags.live) cfg.sweep.dryRun = false;
   if (args.flags.dry) cfg.sweep.dryRun = true;

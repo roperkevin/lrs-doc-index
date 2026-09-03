@@ -1,5 +1,36 @@
 # Local sweep — release notes
 
+## v1.30 (2026-09-03)
+
+**Hardening pass** (codebase review r7, findings C1–C4): four small
+failure-mode fixes, no behavior change on healthy runs.
+
+- **Fetch timeouts everywhere.** Every Graph/SPO/Dataverse/Anthropic/
+  token `fetch` now carries an `AbortSignal.timeout` (Graph/SPO 120s,
+  token mints 60s, generation calls 300s — AI Builder's own gateway
+  408s slower ones). A hung socket previously stalled the whole
+  scheduled run past its next fire with nothing in the log; now it
+  surfaces as a network error and rides the existing retry/backoff.
+  Override per section with `timeoutMs` (`graph`, `spo`,
+  `llm`, `llm.dataverse`).
+- **Config validation** (`local/lib/config.mjs`). A config missing
+  whole sections used to die with a bare TypeError deep in loadConfig;
+  sweep and curate now check the required keys up front and name every
+  missing one in a single message pointing at config.sample.json.
+- **Node version guard.** Type stripping needs Node ≥ 22.6; an older
+  Node now fails with plain instructions instead of the
+  `--experimental-strip-types` flag error.
+- **curate.mjs inherit fix.** The Dataverse auth inheritance dropped
+  the Graph `clientId` only in `device` mode; `interactive` (the mode
+  Conditional Access forced, local/CHANGES.md v1.24) now drops it too,
+  matching sweep.mjs — with a `graph.clientId` override configured,
+  curate would otherwise have signed into Dataverse with the Graph
+  public client.
+
+Gate: `check_local_sweep.py` grew a config-validation leg (bad config
+fails fast, names `sharePoint.hostname` + `paths.sourceLibrary` in one
+message, no TypeError; curate rejects the same way) — 162/162.
+
 ## svg2pptx v1.3 (2026-09-03)
 
 **The slide carries the test case, not just its drawing.** Review

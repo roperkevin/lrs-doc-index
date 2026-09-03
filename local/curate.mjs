@@ -52,6 +52,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { GraphClient } from "./graph.mjs";
 import { aiBuilderPredict, braceSlice, dataverseToken } from "./llm.mjs";
+import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 
 const num = (v) => {
   const n = Number(v);
@@ -73,15 +74,19 @@ function loadConfig(argv) {
   if (!args.config) {
     throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--models|--drain]");
   }
+  assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
+  validateConfig(cfg, CURATE_REQUIRED, args.config);
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   const authDir = path.join(cfg.paths?.workDir || ".", "auth");
   cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
-  // aibuilder auth inherits Graph settings, exactly as sweep.mjs does
+  // aibuilder auth inherits Graph settings, exactly as sweep.mjs does —
+  // delegated modes (device AND interactive, matching sweep.mjs) drop the
+  // Graph clientId so Dataverse keeps its own public client
   const inherit = { ...cfg.graph };
   const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
-  if (inheritMode === "device") delete inherit.clientId;
+  if (inheritMode === "device" || inheritMode === "interactive") delete inherit.clientId;
   delete inherit.baseUrl;
   cfg.llm.dataverse = {
     ...inherit,

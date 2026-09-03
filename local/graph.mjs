@@ -35,6 +35,14 @@
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Every fetch below carries a timeout: one hung socket must never
+// stall a scheduled run past its next fire (the retry loops treat a
+// timeout like any other network error). Override via config
+// timeoutMs on the respective section.
+const GRAPH_TIMEOUT_MS = 120000;
+const timeout = (cfg) =>
+  AbortSignal.timeout(cfg.timeoutMs === undefined ? GRAPH_TIMEOUT_MS : Number(cfg.timeoutMs));
+
 function resolveSecret(v, what) {
   if (v && typeof v === "object" && v.$env) {
     const s = process.env[String(v.$env)];
@@ -82,7 +90,7 @@ export class GraphClient {
       client_secret: resolveSecret(this.cfg.clientSecret, "graph.clientSecret"),
       scope: "https://graph.microsoft.com/.default",
     });
-    const res = await fetch(this.tokenUrl, { method: "POST", body });
+    const res = await fetch(this.tokenUrl, { method: "POST", body, signal: timeout(this.cfg) });
     if (!res.ok) {
       throw new Error(`Graph token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
     }
@@ -109,6 +117,7 @@ export class GraphClient {
             "content-type": "application/json",
           },
           body: body === undefined ? undefined : JSON.stringify(body),
+          signal: timeout(this.cfg),
         });
       } catch (e) {
         lastErr = new Error(`Graph ${method} ${url}: ${e.message}`);
@@ -199,6 +208,7 @@ export class GraphClient {
           "content-type": "text/markdown",
         },
         body: content,
+        signal: timeout(this.cfg),
       });
       if (res.status !== 401) break;
       this._token = null;
@@ -275,7 +285,7 @@ export class SpoClient {
       client_secret: resolveSecret(this.cfg.clientSecret, "spo.clientSecret"),
       scope: `${this.origin}/.default`,
     });
-    const res = await fetch(this.tokenUrl, { method: "POST", body });
+    const res = await fetch(this.tokenUrl, { method: "POST", body, signal: timeout(this.cfg) });
     if (!res.ok) {
       throw new Error(`SPO token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
     }
@@ -311,6 +321,7 @@ export class SpoClient {
           authorization: "Bearer " + (await this.token()),
         },
         body: JSON.stringify({ formValues, bNewDocumentUpdate: false }),
+        signal: timeout(this.cfg),
       });
       if (res.status !== 401) break;
       if (this.delegated) this.delegated.invalidate();

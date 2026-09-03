@@ -103,7 +103,13 @@ export class DelegatedAuth {
   }
 
   async _post(url, params) {
-    const res = await fetch(url, { method: "POST", body: new URLSearchParams(params) });
+    // 60s guard: a hung token endpoint must fail the run loudly, not
+    // stall it (device-code POLLING has its own expires_in deadline)
+    const res = await fetch(url, {
+      method: "POST",
+      body: new URLSearchParams(params),
+      signal: AbortSignal.timeout(60000),
+    });
     let json = {};
     try {
       json = await res.json();
