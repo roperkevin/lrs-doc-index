@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * svg2pptx v1.1 — SlideFigures SVG figures → editable PowerPoint shapes
+ * svg2pptx v1.2 — SlideFigures SVG figures → editable PowerPoint shapes
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the sweep machine already
  * has Node). Takes the figure SVGs the local sweep writes into the
@@ -11,6 +11,7 @@
  * plan review deck and reworked there, not pasted as a dead picture.
  *
  *   node local/svg2pptx.mjs <file.svg | dir> [more...] [-o out.pptx]
+ *                           [--doc-title "..."]
  *
  * A directory argument takes every *.svg in it (natural sort, no
  * recursion). Default output: figures.pptx. Each SVG becomes one slide;
@@ -18,6 +19,20 @@
  * double-click in to edit a shape), scaled down only when it would not
  * fit the 16:9 slide, and the SVG's <title>/<desc> ride along as the
  * group's name and alt text.
+ *
+ * v1.2: figures land on a CLEAN slide — the SVG's plate (the white
+ * card + border that frames a figure inside a markdown sidecar) is
+ * dropped, since the slide itself is the background now — and every
+ * slide carries a title band: the figure's own <title> ("Slide 5 —
+ * route diagram (1 of 2)") as the slide title, with the SOURCE
+ * DOCUMENT's title above it. The document title comes from the corpus'
+ * own naming: a media figure `doc{N}_slideK.svg` belongs to the
+ * sidecar `{title-slug}__doc{N}.md` in a sibling kind folder, so the
+ * converter looks that sidecar up (next to the SVG, one level up, and
+ * in the parent's kind subfolders) and takes its H1 — falling back to
+ * the sidecar's title slug, then to `doc {N}`; `--doc-title "..."`
+ * overrides the lookup for every input (use it when converting SVGs
+ * that never went through the sweep's naming).
  *
  * The converter understands the CLOSED vocabulary SlideFigures emits —
  * line/rect/ellipse/circle/polygon/path/text plus the two arrow markers
@@ -45,7 +60,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
-import { basename, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 const EMU_PX = 9525;                 // 96 dpi
 const SLIDE_W = 12192000;            // 13.33 in (16:9)
@@ -58,11 +73,13 @@ const CHAR_W = 0.62;                 // text-box width estimate, em per char
 function collectInputs(argv) {
   const files = [];
   let out = "figures.pptx";
+  let docTitle = "";
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-o" || a === "--out") { out = argv[++i]; continue; }
+    if (a === "--doc-title") { docTitle = argv[++i] || ""; continue; }
     if (a === "-h" || a === "--help") {
-      console.log("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx]");
+      console.log("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"]");
       process.exit(0);
     }
     let st;
@@ -74,7 +91,52 @@ function collectInputs(argv) {
       files.push(a);
     }
   }
-  return { files, out };
+  return { files, out, docTitle };
+}
+
+// ------------------------------------------------- document title lookup
+// A media figure doc{N}_slideK.svg belongs to the sidecar
+// {title-slug}__doc{N}.md — media/ and the kind subfolders are siblings
+// under the library root, so the sidecar sits next to the SVG, one level
+// up, or in one of the parent's kind subfolders. Its H1 is the document
+// title the sweep minted (fallbacks: a `title:` metadata line, the
+// sidecar's own slug humanised, then plain `doc {N}`).
+function docTitleFor(file, cache) {
+  const m = basename(file).match(/^doc(\d+)_/);
+  if (!m) return "";
+  const id = m[1];
+  if (cache[id] !== undefined) return cache[id];
+  const dir = dirname(resolve(file));
+  const parent = dirname(dir);
+  const hits = [];
+  const scan = (d) => {
+    try {
+      for (const f of readdirSync(d)) if (f.endsWith(`__doc${id}.md`)) hits.push(join(d, f));
+    } catch { /* unreadable dir: keep looking elsewhere */ }
+  };
+  scan(dir);
+  scan(parent);
+  try {
+    for (const f of readdirSync(parent)) {
+      const p = join(parent, f);
+      if (p === dir) continue;
+      try { if (statSync(p).isDirectory()) scan(p); } catch { /* ignore */ }
+    }
+  } catch { /* ignore */ }
+  let title = `doc ${id}`;
+  if (hits.length) {
+    const slug = basename(hits[0]).replace(new RegExp(`__doc${id}\\.md$`), "");
+    title = slug.replace(/[-_]+/g, " ").trim() || title;
+    try {
+      const md = readFileSync(hits[0], "utf8");
+      const h1 = md.match(/^# (.+)$/m);
+      const yt = md.match(/^title:\s*["']?(.+?)["']?\s*$/m);
+      if (h1) title = h1[1].trim();
+      else if (yt) title = yt[1].trim();
+    } catch { /* unreadable sidecar: the slug already serves */ }
+  }
+  cache[id] = title;
+  return title;
 }
 
 // slide10 sorts after slide9, not after slide1
@@ -223,6 +285,9 @@ function parseFigure(file) {
                    x2: num(a.x2) + ox, y2: num(a.y2) + oy, cls,
                    arrow: /marker-end/.test(m[2]) });
     } else if (kind === "rect") {
+      // the plate is the card that frames a figure inside a markdown
+      // sidecar; on a slide the slide IS the background, so it is dropped
+      if (/(^| )plate( |$)/.test(cls)) continue;
       items.push({ k: "rect", x: num(a.x) + ox, y: num(a.y) + oy,
                    w: num(a.width), h: num(a.height), rx: num(a.rx), rot, cls });
     } else if (kind === "ellipse") {
@@ -488,14 +553,32 @@ function emitTextBox(it, st, E, id) {
 }
 
 // ------------------------------------------------------ slide + package
+const HEADER_BOT = 1120140;   // 1.18 in — title band above the figure area
+const TITLE_INK = "16302F";   // slide title: palette ink
+const TITLE_MUTED = "6E8285"; // document title: palette muted
+
+// a full-width, left-aligned band line (the doc-title eyebrow and the
+// slide title); plain text boxes, not placeholders — the master is blank
+function bandBox(id, name, y, h, text, szPx, hex, bold) {
+  const spPr = xfrmXml(MARGIN, y, SLIDE_W - 2 * MARGIN, h) +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln>';
+  const tx = '<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>' +
+    `<a:p><a:pPr algn="l"/>${runXml(xesc(text), szPx, hex, bold, "Segoe UI")}</a:p></p:txBody>`;
+  return spXml(id, name, spPr, tx);
+}
+
 function slideXml(fig) {
   const wEmu = fig.w * EMU_PX, hEmu = fig.h * EMU_PX;
-  const s = Math.min(1, (SLIDE_W - 2 * MARGIN) / wEmu, (SLIDE_H - 2 * MARGIN) / hEmu);
+  const areaY = HEADER_BOT, areaH = SLIDE_H - HEADER_BOT - MARGIN;
+  const s = Math.min(1, (SLIDE_W - 2 * MARGIN) / wEmu, areaH / hEmu);
   const gw = Math.round(wEmu * s), gh = Math.round(hEmu * s);
-  const gx = Math.round((SLIDE_W - gw) / 2), gy = Math.round((SLIDE_H - gh) / 2);
-  const { xml, skipped } = emitFigure(fig, s, 3);
+  const gx = Math.round((SLIDE_W - gw) / 2), gy = Math.round(areaY + (areaH - gh) / 2);
+  const { xml, skipped } = emitFigure(fig, s, 5);
+  const header =
+    (fig.docTitle ? bandBox(2, "document title", 289560, 219456, fig.docTitle, 14, TITLE_MUTED, false) : "") +
+    bandBox(3, "slide title", 553720, 402336, fig.title || fig.name, 24, TITLE_INK, true);
   const alt = [fig.title, fig.desc].filter(Boolean).join(" — ");
-  const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="2" name="${xesc(fig.title || fig.name)}"` +
+  const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="4" name="${xesc(fig.title || fig.name)}"` +
     (alt ? ` descr="${xesc(alt)}"` : "") + "/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
     `<p:grpSpPr><a:xfrm><a:off x="${gx}" y="${gy}"/><a:ext cx="${gw}" cy="${gh}"/>` +
     `<a:chOff x="0" y="0"/><a:chExt cx="${gw}" cy="${gh}"/></a:xfrm></p:grpSpPr>${xml}</p:grpSp>`;
@@ -504,7 +587,7 @@ function slideXml(fig) {
     ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
     ' xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">' +
     '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
-    "<p:grpSpPr/>" + grp + "</p:spTree></p:cSld>" +
+    "<p:grpSpPr/>" + header + grp + "</p:spTree></p:cSld>" +
     "<p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>";
   return { sld, skipped };
 }
@@ -692,16 +775,18 @@ function zip(files) {
 }
 
 // ------------------------------------------------------------------ main
-const { files, out } = collectInputs(process.argv.slice(2));
+const { files, out, docTitle } = collectInputs(process.argv.slice(2));
 if (files.length === 0) {
-  console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx]");
+  console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"]");
   process.exit(2);
 }
 const figures = [];
+const titleCache = {};
 for (const f of files) {
   try {
     const fig = parseFigure(f);
     if (fig.unknown.length) console.error(`note: ${f}: skipped unknown element(s): ${fig.unknown.join(", ")}`);
+    fig.docTitle = docTitle || docTitleFor(f, titleCache);
     figures.push(fig);
   } catch (e) {
     console.error(`skip: ${e.message}`);
