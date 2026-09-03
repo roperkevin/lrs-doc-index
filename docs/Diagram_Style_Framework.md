@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.3)
+# Diagram style framework (SlideFigures v1.4)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -61,6 +61,15 @@ neither, which is what keeps prose slides silent. A cluster qualifies as a
 graph figure with 2+ nodes joined by at least one connector or path, or 2+
 freeform paths; theme accent fills map to palette slots by accent index
 (accent1→cool … accent6→muted), as deterministic as the hue rule.
+
+**Title boxes are not nodes (v1.4).** The decks frame their case text in
+an outlined box above the drawing; visible or not, a shape holding long
+prose (>56 chars) or a long numbered case line ("9. Merge Option
+disabled, coincident events that …") is the slide's title, not a diagram
+node, and is dropped from the figure. Its text already reaches the
+sidecar body — and, via the sweep's case headings, the section heading —
+through the extractor, so drawing it would duplicate the heading into
+the picture.
 
 ## Layout normalisation in the graph lane (v1.2)
 
@@ -194,17 +203,38 @@ place every part by hand.
 - **Butt caps** — round caps overshoot by half the stroke width, so a 10→16
   bar reads as 9.9→16.1. Wrong in a document that is precise about measures.
   Round caps stay on the route itself.
-- **Split marker** — a dot and hairline where two extents meet.
+- **Split marker** — a dot and hairline where two extents meet. The hairline's
+  arms reach past the major ticks but stop clear of the measure text band
+  (v1.4), so a measure that lands on the split stays readable.
 - **Entity labels** — route id as a row label at the left of its line; event id
   centred beneath its own bar. Centring the route id *over* the ruler puts it
   on the middle measure, where it reads as labelling that number.
+- **Labels never share a side (v1.4)** — on a redrawn route collinear with its
+  own centroid (straight, branch, gap, vertical), "inward" and "outward"
+  degenerate to the same tie, and measures and event ids used to print over
+  each other. The tie now breaks like the vector lane: measures above the line
+  (right of a vertical one), event ids below (left). The redraw's route id
+  sits level with the route's **entry point**, not at the figure's mid-height
+  (a branch route runs at 0.28 of the height), and an event id anchors on its
+  extent's longest straight run rather than its arc-length midpoint, which can
+  land on a corner where any perpendicular offset sits on the adjoining edge.
+- **Degenerate splits (v1.4)** — a stated split measure equal to a route end
+  makes one side zero-length: that extent is dropped rather than drawn as an
+  invisible bar with an orphaned label, and a single-extent output keeps the
+  legend off (legends exist to tell 2+ colours apart).
 - **Leaders** — dropped where the label they point at has been placed directly.
 - **Decimals** — one convention per ruler (`4.5` and `5.0`, not `4.5` and `5`).
 - **Vertical rhythm** — dead space between bands collapses to one standard gap.
   Runs on every figure: bands move as units, so nothing inside one changes.
 - **Dense rulers** — labels thin to every 2nd or 3rd tick rather than
   overlapping; every tick is still drawn.
-- **Direction** — an arrowhead on open routes carries route direction.
+- **Direction** — an arrowhead on open routes carries route direction. Since
+  v1.4 a normalised or redrawn route overshoots its final tick by 15px and
+  carries the arrowhead (sharpened to a stealth profile) on the overshoot —
+  the number-line convention — where no tick or extent drawn later can cross
+  or bury it. A route line whose band visibly continues past its end (route
+  segments laid end to end; a traced extent running beyond the surviving
+  route run) suppresses its arrow rather than pointing mid-band.
 - **Accessibility** — `<title>` and `<desc>` in every figure, plus descriptive
   alt text on the markdown image link (which is also what makes the diagram
   searchable, since the Q&A agent grounds on markdown text).

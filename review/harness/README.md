@@ -28,7 +28,9 @@ when a batch is promoted:
    flow v2.8 three-patch round) — the template any future script
    change clones before it may be pasted (or, since the migration,
    before it is promoted over `scripts/`).
-6. **Figure checks** (`check_figures.py`) — SlideFigures v1.2: both
+6. **Figure checks** (`check_figures.py`) — SlideFigures (v1.4 as of
+   DF-5, which adds the label-collision / arrowhead / degenerate-split /
+   title-box assertions — see its run records below): both
    production paths (vector render / topology redraw, over both table
    shapes), silence on a slide with no diagram, the component contract
    (uniform centred ticks, measures on a shared baseline and on their
@@ -637,3 +639,22 @@ second deck is why the colour-coverage rule and the header-row table
 reader exist: it lays four default-coloured route segments end to end
 under one cyan event, and its tables carry headers across the top rather
 than down the side. Both shapes now round-trip.
+
+### Last run (2026-09-03, Node 22.22.2) — v1.4 gate (DF-5)
+
+**PASS** — 13 figures from the now-10-slide fixture. New DF-5 fixture
+slides: 9 (a branch case whose stated split measure EQUALS the route's
+To Measure) and 10 (a ruler under the decks' outlined case-text box).
+New assertions: the degenerate split drops its zero-length extent
+(one event label, no split marker, no legend, alt says "unchanged");
+the branch route id sits level with its line; redraw measures sit
+above the route and event ids below (the collinear tie-break — never
+the same side); normalised and redrawn routes overshoot their final
+tick so the arrowhead sits clear; the case-text box is not drawn as a
+node while its ruler still renders with its arrow; and the traced
+figure carries no mid-band arrow where the extent runs past the
+surviving route run. 9 of the 12 new assertions FAIL against the
+v1.3 script (fixture discriminates; the other 3 hold invariants).
+Standing suites, PAD (27/27) and the local sweep gate (150/150,
+incl. the sweep v1.27 TC-2 short-title/subheader cases) all green
+alongside; the script type-checks at ES2017.

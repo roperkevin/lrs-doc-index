@@ -175,6 +175,15 @@ def make_messy_pptx(fpath, text):
             para("17. Verify the effective date defaults to today"),
             para("18. Verify route information is shown on hover"),
         ]))
+        # a LONG case line (v1.27 TC-2): the heading must take a short title
+        # cut at the phrase break, and the full text must survive as a bold
+        # subheader line — never truncate mid-sentence into the heading
+        z.writestr("ppt/slides/slide6.xml", slide([
+            para("Negative - Merge option disabled"),
+            para("9. Merge Option disabled, coincident events that have "
+                 "exact attributes from measures 0-4 and exist in both versions"),
+            para("current date: 3/29/2022"),
+        ]))
         # notes for slide 3 hold only the slide number
         z.writestr("ppt/slides/_rels/slide3.xml.rels",
                    '<Relationships><Relationship Id="rId1" '
@@ -925,6 +934,17 @@ def main():
           "## Slide 5" in beta_body
           and "17. Verify the effective date defaults to today" in beta_body,
           beta_body)
+
+    # long case lines: short title + full-text subheader (v1.27 TC-2)
+    check("long case line yields a short heading cut at the phrase break",
+          "## Case 9 — Merge Option disabled <!-- slide 6 -->" in beta_body,
+          beta_body)
+    check("full case text survives as a bold subheader line",
+          "**Merge Option disabled, coincident events that have exact "
+          "attributes from measures 0-4 and exist in both versions**" in beta_body,
+          beta_body)
+    check("nothing truncates mid-sentence into a heading",
+          not re.search(r"(?m)^## .*\band <!-- slide", beta_body), beta_body)
 
     # media
     media = os.listdir(os.path.join(sidecar_dir, "media"))

@@ -286,6 +286,47 @@ if len(f5) == 2:
           f'anchor: second ruler -> its own table, not the first '
           f'({f5[1].get("anchor")})')
 
+# ---- v1.4 (DF-5): label collisions, arrowheads, degenerate splits ---------
+f9 = by_slide.get(9, [])
+check(len(f9) == 2, f'degenerate-split slide -> two figures ({len(f9)})')
+if len(f9) == 2:
+    b9out = f9[1]['svg'][f9[1]['svg'].index('</style>'):]
+    check('swatch' not in b9out and 's-warm' not in b9out and 'splitdot' not in b9out,
+          'degenerate split: no zero-length extent, no split marker, no legend')
+    check(b9out.count('>E8<') == 1,
+          f'degenerate split: exactly one event label ({b9out.count(">E8<")})')
+    check('after the split' in f9[1]['alt'] and 'unchanged' in f9[1]['alt'],
+          'degenerate split: alt says the event is unchanged')
+    rt9 = re.search(r'<path class="ln route" d="M [\d.]+ ([\d.]+)', f9[0]['svg'])
+    rid9 = re.search(r'<text class="id f-ink" x="[\d.]+" y="([\d.]+)"', f9[0]['svg'])
+    check(rt9 is not None and rid9 is not None and
+          abs(float(rt9.group(1)) - float(rid9.group(1))) < 0.5,
+          'branch: route id sits level with the route line, not at mid-height')
+r3out = (by_slide.get(3, []) + [{}, {}])[1].get('svg', '')
+rt3 = re.search(r'<path class="ln route" d="M [\d.]+ ([\d.]+)', r3out)
+m3y = [float(y) for y in re.findall(r'<text class="measure" x="[\d.]+" y="([\d.]+)"', r3out)]
+e3y = [float(y) for y in re.findall(r'<text class="id f-(?:cool|warm)" x="[\d.]+" y="([\d.]+)"',
+                                    r3out)]
+check(rt3 is not None and bool(m3y) and bool(e3y) and
+      max(m3y) < float(rt3.group(1)) < min(e3y),
+      'redraw: measures above the route, event ids below — never the same side')
+vr = re.search(r'<line class="ln route[^"]*" x1="[\d.]+" y1="[\d.]+" x2="([\d.]+)"', v1)
+vtx = [float(x) for x in re.findall(r'<line class="ln tick[^"]*" x1="([\d.]+)"', v1)]
+check(vr is not None and bool(vtx) and float(vr.group(1)) >= max(vtx) + 10,
+      'vector ruler: route overshoots the final tick, arrowhead clear of it')
+rt3x = re.search(r'<path class="ln route" d="M ([\d.]+) [\d.]+[^"]* L ([\d.]+) [\d.]+"', r3out)
+t3x = [float(x) for x in re.findall(r'<line class="ln tick[^"]*" x1="([\d.]+)"', r3out)]
+check(rt3x is not None and bool(t3x) and float(rt3x.group(2)) >= max(t3x) + 10,
+      'redraw ruler: route overshoots the final tick, arrowhead clear of it')
+g10 = figs.get(10, {}).get('svg', '')
+check(bool(g10) and 'class="ln route"' in g10,
+      'title-box slide: the ruler beneath the box still renders')
+check('Merge Option' not in g10 and 'class="node' not in g10,
+      'title-box slide: the outlined case-text box is not drawn as a node')
+check('marker-end' in g10, 'title-box slide: the ruler keeps its direction arrow')
+check('marker-end' not in t8svg,
+      'trace: no mid-band arrow where the extent runs past the route run')
+
 print()
 if failures:
     print(f'RESULT: FAIL — {len(failures)} assertion(s) failed')
