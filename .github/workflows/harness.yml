@@ -43,4 +43,5 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python3 make_fixtures.py
       - run: python3 check_format.py
+      - run: python3 check_figures.py
       - run: python3 render_sample.py
