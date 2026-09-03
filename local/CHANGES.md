@@ -1,5 +1,46 @@
 # Local sweep — release notes
 
+## svg2pptx v1.3 (2026-09-03)
+
+**The slide carries the test case, not just its drawing.** Review
+request: a figure alone doesn't state its case — the tables with the
+measures and the document context live in the sidecar. The converter
+already finds the sidecar (that's where document titles come from);
+v1.3 reads the figure's own CASE SECTION out of it — the section whose
+body holds this figure's image link — and brings along:
+
+- **Case heading as the slide title.** `## Case 2 — Loop - Split
+  measure: 20 <!-- slide 5 -->` becomes the slide title (comment
+  stripped, a sibling figure keeps its "(1 of 2)" tag); the generic
+  "Slide N ..." SVG title stays the fallback and still names the group.
+- **The section's tables as native PowerPoint tables** below the
+  figure — real `a:tbl` graphicFrames (header row bold on a muted
+  tint, light grid, columns sized by content), editable like any other
+  table in the deck. This figure's ANCHOR table (the one its image
+  link precedes in the sidecar) comes first; a table anchored to a
+  SIBLING figure stays on that sibling's slide. At most 2 tables and
+  10 body rows each (an ellipsis row marks a cut, cells trimmed to 48
+  chars, markdown links/bold/code stripped to text). Figure and tables
+  centre together as one block; the figure scales into what the
+  tables leave free. Side-by-side when two tables fit, stacked
+  otherwise.
+- **A metadata line in the eyebrow band**, right-aligned opposite the
+  document title: doc kind · surface · products · "edited {date} by
+  {editor}", read from the sidecar's yaml block.
+
+`--no-tables` suppresses the case tables (metadata and titles stay);
+no sidecar means the v1.2 slide, unchanged.
+
+Gate: `check_svg2pptx.py` — the media-layout leg's sidecar now mirrors
+the sweep's real emission (metadata comment + yaml, case heading with
+the slide comment, image links before their anchor tables, a sibling
+figure's table, a 14-row table, a second case section) and asserts the
+case-heading title with the sibling tag, the metadata line, two
+graphicFrames with the anchor first, sibling/other-section exclusion,
+the row cap's ellipsis, `--no-tables`, and python-pptx reading the
+tables back cell-for-cell. PASSED (91 assertions); verified visually
+via LibreOffice Impress renders of the fixture library.
+
 ## svg2pptx gate sync (2026-09-03, with SlideFigures v1.9 / DF-10)
 
 Converter unchanged — the DF-10 calm-band restyle (soft field hues,
