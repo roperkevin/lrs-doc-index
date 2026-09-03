@@ -18,13 +18,16 @@ when a batch is promoted:
    gracefully unless their wraps are deliberately regenerated from git
    history. `scripts/ZipTextExtract.ts` has long since moved on (v2.0
    as of the r2 promotion).
-5. **Batch gates** (`check_batch.py` — v1.9 era, skips as superseded;
+5. **Batch gates** (`check_batch_v2_2.py` — the current one, ZipTextExtract
+   v2.2 / DL-1; `check_batch.py` — v1.9 era, skips as superseded;
    `check_batch_r2.py` — r2 era, skips as superseded;
    `check_batch_r3.py` — r3 era, skips as superseded;
    `check_batch_r4.py` — r4 era, RelatedRank v2.1, re-verifies the
    promotion; `check_batch_r5.py` — r5 era, SidecarPatch v1.5 /
-   the flow v2.7 details frame) — the template any future script
-   batch clones before its patches may be pasted.
+   the flow v2.7 details frame; `check_batch_r6.py` — r6 era, the
+   flow v2.8 three-patch round) — the template any future script
+   change clones before it may be pasted (or, since the migration,
+   before it is promoted over `scripts/`).
 6. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
    downloaded TestPlanGen draft .md and asserts the prompt v1.7
    coverage contract (section order incl. `## Coverage Map`, Trace
@@ -124,6 +127,15 @@ asserts the v2.2 output contract instead of byte-equality:
   `lastEdited` from both pptx and docx fixtures with entities decoded
   (ampersand, smart apostrophe), and `noprops_deck.pptx` (edge_deck
   with `docProps/core.xml` stripped) degrades to empty strings
+- §12, diagram-label collapse (v2.2, DL-1): `diagram_deck.pptx` plants
+  a drawn route diagram — a connector plus ten tiny floating label
+  boxes (tick numbers `10`..`15`, ids `R1`/`E1`/`E1`, `Output`) — beside
+  real content (a prose textbox, a long floating callout, a table).
+  The suite asserts exactly one `[figure: 10–15 · R1 · E1 · Output]`
+  line on that slide (ascending integer run compressed, repeats
+  deduped), no label surviving as a standalone body line, prose/callout/
+  table untouched, and — on the fixture's second slide — that three
+  floating labels stay inline, below the 4-shape cluster threshold
 
 `render_sample.py` then renders `sample_sidecar.md` — a full sidecar with the
 current metadata/header mirrored from the flow template (since v2.7 the
@@ -499,3 +511,80 @@ PASS against the promoted `scripts/`; `check_batch_r5.py` now skips
 as superseded (the r6 promotion moved SidecarPatch past its
 generation), joining r2/r3 and `check_batch.py`; `check_batch_r4.py`
 still PASSES (RelatedRank untouched by r6).
+
+## Batch gate — ZipTextExtract v2.2 (`check_batch_v2_2.py`)
+
+The gate for **DL-1, diagram-label collapse**. Single-script change,
+outside the r2..r6 review-round series — it came from a corpus
+observation, not a review round — but built to the same template,
+including the r5 genuinely-old-artifact convention (the equivalence
+leg's old side is `../patches/ZipTextExtract_v2_1.ts`, so the leg and
+the discriminator survive promotion).
+
+The corpus's test-plan decks draw route diagrams as *shapes*:
+dashed/hatched connector lines annotated by dozens of tiny floating
+text boxes holding tick numbers and route/event ids. Every one of
+those used to flatten into its own one-token body line — a slide's
+worth of real content buried under forty lines reading `10`, `11`,
+`R1`, `E1`. v2.2 splices a **cluster** (>= 4 on one slide) of
+label-shaped non-placeholder `p:sp`/`p:cxnSp` shapes out of the body
+and renders one `[figure: 10–22 · R1 · E1 · Output]` line at the end
+of the slide instead — the same `[figure: ...]` convention the docx
+drawing path has used since v1.2. Ascending integer runs compress to
+`a–b`, repeats dedupe in first-appearance order, and the list caps at
+24 items. Sub-threshold slides keep their labels inline: one or two
+short floating callouts are content, not a diagram.
+
+Detection is deliberately structural rather than textual — which is
+why this lives in the extractor and not in the local sweep's
+`tidyBody` (the v1.20 "presentation polish stays local" rule).
+By the time text reaches `tidyBody`, a line reading `R1` from a
+floating diagram label is indistinguishable from a real content line;
+only the slide XML still knows the difference (placeholder vs.
+floating shape, and how many such shapes cluster on the slide).
+
+**No paste fencing**: since the 2026-08-14 migration the deployed
+local sweep runs `scripts/` directly, so there is nothing to paste.
+On a cloud-flow rollback `../patches/ZipTextExtract_v2_2.ts` replaces
+the pending v2.1 paste (same signature, CF-1 carried forward). Roll
+the existing corpus forward with `sweep.mjs --reformat` — it
+re-extracts and rewrites bodies below the seam with no AI spend
+(`local/CHANGES.md` v1.22).
+
+```
+python3 make_fixtures.py       # builds diagram_deck.pptx too
+python3 check_batch_v2_2.py    # any FAIL = do not promote
+```
+
+### Last run (2026-09-03, Node 22.22.2) — v2.2 gate + promotion
+
+Gate run: **PASS** — `check_format.py` (incl. the new §12 DL-1
+contract) / `check_related.py` / `check_regex.py` fully green over the
+staged script; ZTE v2.1-vs-v2.2 IDENTICAL full output on all thirteen
+pre-v2.2 fixtures (both real fixtures, the edge/noprops decks, all
+five v1.9 batch fixtures, both r2 fixtures, and both r6 code/prose
+decks — the collapse touches no prose, table, heading, note, fence,
+link or docx path) with throw-parity on the three malformed archives;
+the `diagram_deck` discriminator fires both ways (v2.1: six loose
+label lines, no figure line; v2.2: one collapsed figure line, no loose
+label) and the sub-threshold slide stays inline; staged script
+type-checks at ES2017. Promotion: v2.2 promoted to
+`scripts/ZipTextExtract.ts`. Post-promotion the standing suites and
+`render_sample.py` PASS against the promoted `scripts/`, and both
+downstream gates that exercise the extractor are green:
+`pad/harness/check_pad_runner.py` 27/27 (incl. the wrap.py parity leg)
+and `local/harness/check_local_sweep.py` 128/128.
+`check_batch_r6.py` now skips as superseded (the v2.2 promotion moved
+ZipTextExtract past its generation), joining r2/r3/r5 and
+`check_batch.py`. `check_batch_r4.py` also skips — but for an older
+reason, not this change: the RelatedRank v2.2 promotion (2026-08-15)
+moved it past the v2.1/v2.0 head its guard accepts. The r6 run record
+above, and STATUS's harness table, both still listed r4 as passing;
+that stopped being true on 2026-08-15 and is corrected here.
+
+Real-corpus check, the deck that prompted the change
+(`SplittingEventsinPro_Testplan.pptx`, 25 slides): 20 carried drawn
+diagrams, collapsing into 20 figure lines. Body 1098 → 857 lines (241
+of label debris gone; short standalone lines 301 → 40), every
+route/event id preserved, and all 515 table / heading / image-link
+lines byte-identical between v2.1 and v2.2.

@@ -10,7 +10,8 @@ history / gate inputs — do not edit).
 | File | Status |
 |---|---|
 | designer-edits.md | Living log of manual flow-designer edits, newest section last |
-| ZipTextExtract_v2_1.ts | **r6 — gated + promoted; TENANT PASTE PENDING, paste with the v2.8 flow window** (CF-1 code fencing — a sidecar-body format change the PromptVersion v2.0 backfill converges; designer-edits §v2_8) |
+| ZipTextExtract_v2_2.ts | **v2.2 — gated + promoted 2026-09-03** (DL-1 diagram-label collapse). The deployed local sweep runs `scripts/` directly, so there is nothing to paste; on a cloud-flow rollback this artifact replaces the pending v2.1 paste (same signature, carries CF-1 forward). Also the v2.2 gate's new side. |
+| ZipTextExtract_v2_1.ts | **r6 — gated + promoted; superseded in-repo by v2_2 before its paste** (CF-1 carried forward). Also the v2.2 gate's old-side equivalence artifact. Frozen. |
 | RegexExtract_v1_4.ts | **r6 — gated + promoted; TENANT PASTE PENDING** (PD-1 products — additive return fields, safe under any flow; the Products column/yaml only appear with the v2.8 window) |
 | SidecarPatch_v1_6.ts | **r6 — gated + promoted; TENANT PASTE PENDING — safe any time BEFORE the v2.8 window** (strict superset of v1.5; flow v2.8 against v1.5-or-older silently no-ops comment-frame sidecars) |
 | SidecarPatch_v1_5.ts | **r5 — gated + promoted 2026-08-13; superseded in-repo by v1_6 before its confirmed paste** (the v2.7 window's checklist called for it — paste v1.6 instead now). Also the r6 gate's old-side equivalence artifact. Frozen. |

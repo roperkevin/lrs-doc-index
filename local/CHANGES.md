@@ -1,5 +1,57 @@
 # Local sweep — release notes
 
+## v1.22 (2026-09-03)
+
+**Drawn diagrams stop shredding the body** — the corpus's test-plan
+decks draw route diagrams as *shapes*: dashed/hatched connector lines
+annotated by dozens of tiny floating text boxes holding tick numbers
+and route/event ids. Every one of those flattened into its own
+one-token line, so a slide's real content (its tables, its case
+description) sat buried under forty lines reading `10`, `11`, `12`,
+`R1`, `E1`, `Output`. On the deck that prompted the change
+(`SplittingEventsinPro_Testplan.pptx`): 20 of its 25 slides carried a
+drawn diagram, and collapsing them took the body from 1098 lines to
+857 — 241 lines of label debris gone, short standalone lines down from
+301 to 40 — with all 515 table / heading / image-link lines
+byte-identical.
+
+Now a **cluster** of label-shaped floating shapes on one slide
+collapses into a single line:
+
+```
+[figure: 10–22 · R1 · E1 · Output]
+```
+
+reusing the `[figure: ...]` convention the docx drawing path has had
+since v1.2. Ascending integer runs compress to `a–b`, repeats dedupe
+in first-appearance order, and the list caps at 24 items. A slide with
+fewer than four label shapes keeps them inline — one or two short
+floating callouts are content, not a diagram.
+
+`sweep.mjs` itself is **unchanged**; this is **ZipTextExtract v2.2**
+(DL-1). Unlike v1.20's `tidyBody`, it could not live here: by the time
+text reaches `tidyBody` a line reading `R1` from a diagram label is
+indistinguishable from a real content line — only the slide XML still
+knows which shapes are placeholders, which float, and how many cluster
+together. So this one is a genuine extractor change, and it therefore
+also reaches the LLM input, `TextPreview` and the body-similarity
+index, not just the sidecar body. That is the intended direction: the
+label debris was noise in all three, and route/event ids survive the
+collapse (deduped) so relatedness keeps its signal.
+
+Rollout: `sweep.mjs --reformat` re-extracts and rewrites bodies below
+the seam with **no AI spend** (STATUS open action 10). **No
+PromptVersion bump** — the metadata format is untouched, so this must
+not trigger a full reindex.
+
+Gates: new `review/harness/check_batch_v2_2.py` **PASSED** — v2.1 vs
+v2.2 byte-identical on all thirteen pre-existing fixtures (no prose,
+table, heading, note, code fence, link or docx path moves) with
+throw-parity on the malformed archives, and a `diagram_deck` fixture
+that discriminates both ways. Standing suites green (`check_format`
+carries the contract as §12); **PAD 27/27**; **local sweep gate
+PASSED 128/128**.
+
 ## v1.21 (2026-08-15)
 
 **Both link sections cut down** — five related entries plus a
