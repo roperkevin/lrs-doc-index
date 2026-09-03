@@ -1,0 +1,99 @@
+/**
+ * util.mjs v1.0 — small shared helpers for the local jobs, moved
+ * verbatim out of sweep.mjs v1.30 (module split, no behavior change;
+ * covered end-to-end by check_local_sweep.py).
+ */
+
+import fs from "node:fs";
+import path from "node:path";
+
+export const lower = (s) => String(s ?? "").toLowerCase();
+export const cut = (s, n) => (String(s).length > n ? String(s).slice(0, n) : String(s));
+export const folderOf = (k) => {
+  const i = String(k).lastIndexOf("/");
+  return i >= 0 ? String(k).slice(0, i) : "";
+};
+
+export function yamlEscape(s) {
+  return String(s ?? "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll('"', '\\"')
+    .replaceAll("\r", " ")
+    .replaceAll("\n", " ");
+}
+export const stripQuotes = (s) => String(s ?? "").replaceAll('"', "");
+export const pipeToSlash = (s) => String(s ?? "").replaceAll("|", "/");
+
+export function fmtDate(iso, withTime) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  const day = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+  return withTime ? `${day} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` : day;
+}
+
+export function quoteYamlItem(s) {
+  // Select_kw_yaml: strip backslashes and double quotes, then wrap.
+  return '"' + String(s ?? "").replaceAll("\\", "").replaceAll('"', "") + '"';
+}
+
+/** Zero-dependency HTML → text: scripts/styles/comments dropped,
+ *  tags stripped, common entities decoded, whitespace collapsed. */
+export function htmlToText(html) {
+  return String(html)
+    .replace(/<script[\s\S]*?<\/script\s*>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style\s*>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (m, d) => {
+      const n = Number(d);
+      return n > 31 && n < 65536 ? String.fromCharCode(n) : " ";
+    })
+    .replace(/&amp;/gi, "&")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+}
+
+export const num = (v) => {
+  const n = typeof v === "number" ? v : parseInt(String(v), 10);
+  return isNaN(n) ? undefined : n;
+};
+export const hyperlink = (v) => (v && typeof v === "object" ? v.Url || "" : v || "");
+
+// TextFileUrl / sidecar folder → local synced path
+export function urlToLocal(url, sw, cfg) {
+  let rel = url.replace(sw.siteUrl, "");
+  try {
+    rel = decodeURIComponent(rel);
+  } catch { /* keep raw */ }
+  if (!rel.startsWith(sw.textsFolder + "/")) return null;
+  const inside = rel.slice(sw.textsFolder.length + 1);
+  return path.join(cfg.paths.sidecarLibrary, ...inside.split("/"));
+}
+
+export function folderToLocal(folder, sw, cfg) {
+  if (folder === sw.textsFolder) return cfg.paths.sidecarLibrary;
+  if (!folder.startsWith(sw.textsFolder + "/")) return null;
+  return path.join(cfg.paths.sidecarLibrary, ...folder.slice(sw.textsFolder.length + 1).split("/"));
+}
+
+/** Keep the newest N per-run JSON logs of one prefix; the stamp
+ *  format sorts lexically so a name sort is a time sort. Best-effort. */
+export function pruneRunLogs(logDir, keep = 30, prefix = "sweep-") {
+  let names;
+  try {
+    names = fs.readdirSync(logDir).filter((f) => f.startsWith(prefix) && f.endsWith(".json")).sort();
+  } catch {
+    return;
+  }
+  for (const f of names.slice(0, Math.max(0, names.length - keep))) {
+    try { fs.unlinkSync(path.join(logDir, f)); } catch { /* best effort */ }
+  }
+}

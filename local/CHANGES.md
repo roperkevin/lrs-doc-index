@@ -1,5 +1,28 @@
 # Local sweep — release notes
 
+## v1.31 (2026-09-03)
+
+**Module split — no behavior change.** sweep.mjs had grown to ~2,400
+lines carrying five separable concerns; the pure helpers now live in
+`local/lib/` and sweep.mjs (~1,360 lines) keeps only orchestration
+(loadConfig/Writer/normalizeRows/sidecarHeader/extractDocText/main/
+indexDoc/rankRelated):
+
+- `lib/util.mjs` — string/date helpers, htmlToText, row normalizers,
+  urlToLocal/folderToLocal, pruneRunLogs
+- `lib/doclinks.mjs` — loadDocLinks, DocPageIndex, ToolLinkResolver,
+  docsBlock/upsertDocsBlock, bodySeamEnd, yamlList
+- `lib/presentation.mjs` — placeFigure, tidyBody, caseHeadings,
+  compactWhy
+- `lib/bodyindex.mjs` — the BM25 BodyIndex
+- `lib/statuspage.mjs` — writeStatusPage
+- `lib/config.mjs` — Node guard + config validation (v1.30)
+
+Code moved verbatim (script-assisted extraction); the one intentional
+delta is `lib/doclinks.mjs` resolving the default esri_doc_links.json
+path from its parent directory. Gate: `check_local_sweep.py` 162/162
+unchanged before/after.
+
 ## v1.30 (2026-09-03)
 
 **Hardening pass** (codebase review r7, findings C1–C4): four small
