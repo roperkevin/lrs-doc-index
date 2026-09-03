@@ -498,7 +498,53 @@ LISTS = {
     "docKeywords": "list-dockw",
     "docLinks": "list-doclinks",
     "sourceLibrary": "list-library",
+    "issueRefs": "list-issuerefs",
 }
+
+GANTT = os.path.join(REPO, "local", "gantt.mjs")
+
+
+def make_gantt_xlsx(fpath):
+    """Two iteration sheets the way the team's schedules are shaped:
+    a header row (issue/title/PE/Dev/status/done), one row per story.
+    Sheet 2 re-states issue 123 with a changed status — the upsert's
+    last-write-wins path."""
+    def cell(ref, text):
+        return f'<c r="{ref}" t="str"><v>{text}</v></c>' if text else ""
+
+    def sheet(rows):
+        body = "".join(
+            f'<row r="{i + 1}">' + "".join(
+                cell(chr(65 + c) + str(i + 1), v) for c, v in enumerate(row) if v
+            ) + "</row>"
+            for i, row in enumerate(rows)
+        )
+        return f"<worksheet><sheetData>{body}</sheetData></worksheet>"
+
+    head = ["Issue #", "Title", "PE", "Dev", "TP Status", "Done?"]
+    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "xl/workbook.xml",
+            '<workbook><sheets>'
+            '<sheet name="Iteration 2" sheetId="1" r:id="rId1"/>'
+            '<sheet name="Iteration 3" sheetId="2" r:id="rId2"/>'
+            "</sheets></workbook>")
+        z.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<Relationships>'
+            '<Relationship Id="rId1" Type="t" Target="worksheets/sheet1.xml"/>'
+            '<Relationship Id="rId2" Type="t" Target="worksheets/sheet2.xml"/>'
+            "</Relationships>")
+        z.writestr("xl/worksheets/sheet1.xml", sheet([
+            head,
+            ["#123", "Lock acquisition rework", "Claire Wang", "Dev One", "Completed", "Yes"],
+            ["456", "Beta Story", "", "", "In Progress", ""],
+            ["", "A milestone row with no issue", "", "", "", ""],
+        ]))
+        z.writestr("xl/worksheets/sheet2.xml", sheet([
+            head,
+            ["123", "Lock acquisition rework", "Claire Wang", "Dev One", "Testing", "Yes"],
+        ]))
 
 
 def run_curate(cfg_path, extra):
@@ -1711,6 +1757,86 @@ def main():
           and len(state.alerts) == 2
           and "NO successful run" in state.alerts[1].get("text", ""),
           str(out) + f" alerts={len(state.alerts)}")
+
+    # ---- leg 10: gantt.mjs — Flow #2 (Gantt → Issue Refs + edges) ---
+    # An indexed Schedule workbook: issue rows upsert Issue Refs
+    # (IssueKey dedup, last sheet wins), the schedule links to every
+    # doc carrying its issues (gantt edges), and an issue TITLE that
+    # names exactly one indexed doc joins that doc to the cluster
+    # (titlematch edge) — issue 456's "Beta Story" title names the
+    # Beta doc, which never cites 456.
+    print("== gantt leg")
+    make_gantt_xlsx(os.path.join(widened_dir, "schedule.xlsx"))
+    sched_seed = state.seed(LISTS["docIndex"], {
+        "Title": "Iteration Schedule", "FileName": "schedule.xlsx",
+        "DocKey": "shared documents/schedule.xlsx", "DocKind": "Schedule",
+        "IndexStatus": "Indexed", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-20T10:00:00Z"})
+    gantt_cfg = {
+        "sharePoint": dict(cfg["sharePoint"], libraryRootSegment="Shared Documents"),
+        "paths": {"sourceLibrary": widened_dir, "sidecarLibrary": sidecar_dir,
+                  "workDir": work_dir},
+        "graph": {"tenantId": "mock", "clientId": "mock", "clientSecret": "mock-secret",
+                  "baseUrl": base + "/v1.0", "tokenUrl": base + "/token",
+                  "maxRetries": 0},
+    }
+    gantt_cfg_path = os.path.join(tmp, "gantt-config.json")
+    with open(gantt_cfg_path, "w") as f:
+        json.dump(gantt_cfg, f)
+
+    def run_gantt(extra):
+        return subprocess.run(
+            ["node", "--experimental-strip-types", GANTT, "--config", gantt_cfg_path] + extra,
+            capture_output=True, text=True, cwd=REPO, env=dict(os.environ))
+
+    links_before = len(state.lists.get(LISTS["docLinks"], {}))
+    proc = run_gantt(["--dry-run"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("gantt dry run plans issues + edges without writing",
+          proc.returncode == 0 and out.get("issues_created") == 2
+          and out.get("gantt_edges") == 2 and out.get("titlematch_edges") == 1
+          and not state.lists.get(LISTS["issueRefs"])
+          and len(state.lists.get(LISTS["docLinks"], {})) == links_before,
+          str(out) + " " + proc.stderr[-300:])
+    proc = run_gantt(["--live"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    refs = list(state.lists.get(LISTS["issueRefs"], {}).values())
+    ref123 = next((r for r in refs if r.get("IssueKey", "").endswith("#123")), {})
+    ref456 = next((r for r in refs if r.get("IssueKey", "").endswith("#456")), {})
+    check("gantt live run minted both Issue Refs rows",
+          proc.returncode == 0 and len(refs) == 2
+          and ref123.get("IssueTitle") == "Lock acquisition rework"
+          and ref123.get("IterationLabel") == "Iteration 3"
+          and ref123.get("StatusSummary") == "TP Status=Testing"
+          and ref123.get("DoneFlag") is True
+          and ref123.get("PE") == "Claire Wang"
+          and ref123.get("SourceDocumentLookupId") == int(sched_seed)
+          and ref456.get("IssueTitle") == "Beta Story",
+          str(refs)[:500])
+    links = list(state.lists.get(LISTS["docLinks"], {}).values())
+    gantt_links = [l for l in links if l.get("LinkType") == "gantt"]
+    tm_links = [l for l in links if l.get("LinkType") == "titlematch"]
+    alpha_id, beta_id2 = int(by_name["Alpha Plan.pptx"][0]), int(by_name["Beta Story.pptx"][0])
+    check("gantt edges: schedule ↔ both carriers of #123",
+          len(gantt_links) == 2
+          and {frozenset((l.get("DocALookupId"), l.get("DocBLookupId")))
+               for l in gantt_links}
+          == {frozenset((int(sched_seed), alpha_id)), frozenset((int(sched_seed), beta_id2))}
+          and all("#123" in l.get("SharedValues", "") for l in gantt_links),
+          str(gantt_links)[:400])
+    check("titlematch edge: Beta joins issue 456's cluster via its title",
+          len(tm_links) == 1
+          and frozenset((tm_links[0].get("DocALookupId"), tm_links[0].get("DocBLookupId")))
+          == frozenset((int(sched_seed), beta_id2))
+          and "#456" in tm_links[0].get("SharedValues", ""),
+          str(tm_links)[:400])
+    proc = run_gantt(["--live"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("second gantt run is a no-op (IssueKey + LinkKey dedup)",
+          proc.returncode == 0 and out.get("issues_created") == 0
+          and out.get("issues_updated") == 0 and out.get("gantt_edges") == 0
+          and out.get("titlematch_edges") == 0
+          and len(state.lists.get(LISTS["issueRefs"], {})) == 2, str(out))
 
     server.shutdown()
     report()

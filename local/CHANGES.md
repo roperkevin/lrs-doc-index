@@ -1,5 +1,35 @@
 # Local sweep — release notes
 
+## gantt v1.0 (2026-09-03) — companion job
+
+**Flow #2, finally** (`local/gantt.mjs` — the follow-on the README
+carried since v1.9). A local on-demand job, not a cloud flow: for
+every indexed **Schedule** workbook it parses each sheet as an
+iteration table (header found by column names — issue/#, title, PE,
+Dev, Done, "…status"/TP/Test folding into StatusSummary), then:
+
+- **Issue Refs rows** upsert by IssueKey `{repo}#{n}` (the schema's
+  dedup key): IssueTitle as the Gantt row wrote it, PE / Dev /
+  IterationLabel (sheet name) / StatusSummary / DoneFlag,
+  SourceDocument → the schedule's Doc Index row; last sheet/schedule
+  wins, unchanged rows untouched.
+- **`gantt` edges**: schedule ↔ every doc carrying one of its issues
+  (Doc IDs), sorted-pair LinkKey dedup, Strength = carrier count.
+- **`titlematch` edges**: an issue title naming exactly ONE indexed
+  doc (all title tokens present, plural/prefix-tolerant,
+  ambiguity-guarded) joins that doc to the issue's carriers and the
+  schedule — docs that never cite the number enter the cluster.
+  Skipped when the doc already carries the id.
+
+RelatedRank has weighted both edge types since v2.6 — they simply
+light up. Dry-run default; `--live`, `--only <schedule>`;
+`gantt-*.json` run logs (newest 10). Config: add
+`sharePoint.lists.issueRefs` (verify the tenant GUID first — no flow
+ever referenced that list). Gate: five legs — dry plan, Issue Refs
+fields incl. the last-sheet-wins update, both gantt edges, the Beta
+titlematch edge, and a no-op second run. `check_local_sweep.py`
+185/185.
+
 ## v1.36 (2026-09-03)
 
 **OCR lane for image-only PDFs** (the fallback the README always
