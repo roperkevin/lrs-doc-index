@@ -399,6 +399,17 @@ def make_handler(state, lib_guid, src_files):
                 return self._json({"id": "digest"})
             return self._json({"error": "unhandled PUT " + p}, 500)
 
+        def do_DELETE(self):
+            m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)$",
+                         urlparse(self.path).path)
+            if m and m.group(2) in state.lists.get(m.group(1), {}):
+                del state.lists[m.group(1)][m.group(2)]
+                self.send_response(204)
+                self.send_header("content-length", "0")
+                self.end_headers()
+                return
+            return self._json({"error": "unhandled DELETE " + self.path}, 500)
+
         def do_PATCH(self):
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)/fields$", urlparse(self.path).path)
             if m:
@@ -1301,6 +1312,42 @@ def main():
     del cfg["curation"]["vocabChunk"]
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
+
+    # ---- leg 3d2: --repoint (the librarian junction backfill) ------
+    # 'gantt charts' -> 'gantt chart' merged above; seed the historical
+    # state the setup doc describes: doc 300 carries BOTH alias and
+    # canonical junctions (alias row must be deleted), doc 301 only the
+    # alias (row must be re-pointed, KWKey + Title recomposed).
+    print("== repoint leg")
+    dup = state.seed(LISTS["docKeywords"], {
+        "Title": "OldDoc.pptx | gantt charts", "KWKey": f"300|{CUR['gantts']}",
+        "DocumentLookupId": 300, "KeywordLookupId": int(CUR["gantts"])})
+    state.seed(LISTS["docKeywords"], {
+        "Title": "OldDoc.pptx | gantt chart", "KWKey": f"300|{CUR['gantt']}",
+        "DocumentLookupId": 300, "KeywordLookupId": int(CUR["gantt"])})
+    moved = state.seed(LISTS["docKeywords"], {
+        "Title": "OtherDoc.pptx | gantt charts", "KWKey": f"301|{CUR['gantts']}",
+        "DocumentLookupId": 301, "KeywordLookupId": int(CUR["gantts"])})
+    dk = state.lists[LISTS["docKeywords"]]
+    dk_count = len(dk)
+    proc = run_curate(cfg_path, ["--dry-run", "--repoint"])
+    check("repoint dry run plans without writing",
+          proc.returncode == 0 and "repointed=1 deleted=1" in proc.stdout
+          and len(dk) == dk_count and dup in dk, proc.stdout[-300:])
+    proc = run_curate(cfg_path, ["--live", "--repoint"])
+    check("repoint deletes the duplicate alias junction",
+          proc.returncode == 0 and dup not in dk, proc.stdout[-300:])
+    check("repoint re-points the lone alias junction",
+          dk[moved].get("KeywordLookupId") == int(CUR["gantt"])
+          and dk[moved].get("KWKey") == f"301|{CUR['gantt']}"
+          and dk[moved].get("Title") == "OtherDoc.pptx | gantt chart",
+          str(dk[moved]))
+    check("repoint suggests the rerank pass",
+          "--rerank" in proc.stdout or "rerank" in proc.stdout, proc.stdout[-300:])
+    proc = run_curate(cfg_path, ["--live", "--repoint"])
+    check("second repoint pass is a no-op",
+          proc.returncode == 0 and "repointed=0 deleted=0" in proc.stdout,
+          proc.stdout[-300:])
 
     # ---- leg 3e: full-corpus re-rank (no AI, no extraction) --------
     print("== rerank leg")
