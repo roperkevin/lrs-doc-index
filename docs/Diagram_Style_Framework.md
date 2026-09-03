@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.1)
+# Diagram style framework (SlideFigures v1.2)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -41,6 +41,60 @@ neither, which is what keeps prose slides silent. A cluster qualifies as a
 graph figure with 2+ nodes joined by at least one connector or path, or 2+
 freeform paths; theme accent fills map to palette slots by accent index
 (accent1→cool … accent6→muted), as deterministic as the hue rule.
+
+## Layout normalisation in the graph lane (v1.2)
+
+Hand-placement is not layout — the rule the rulers have always applied now
+covers nodes and their connectors:
+
+- **Grid snap.** Near-equal node sizes (±20% buckets) equalise to the group
+  median, resized about the centre; then rows and columns whose centres
+  jitter within tolerance (0.45 × the median node extent) snap to one
+  shared centre. Sizes first — equalising is centre-preserving, so it
+  cannot undo a snap.
+- **Connector routing.** An edge endpoint on (or dragged near — within
+  16 px of) a node re-anchors to the node's boundary at the exact point
+  where the ray toward the other end exits the shape; rect, ellipse and
+  diamond each have a closed form. An edge whose source was a *bent*
+  connector routes orthogonally between the facing node sides with elbows
+  at the midline.
+
+## Legends (v1.2)
+
+Colour carries meaning in these decks, so a figure whose extents use two or
+more palette colours states what each one is: a butt-capped swatch in the
+extent's own colour plus a label — the id the slide put on that bar when
+one exists, a letter otherwise. The redraw lane, which knows the numbers,
+states each extent's measure range (`E7 0–20` / `E7 20–40`). Swatches use
+their own `swatch` class, never `event`, so nothing that measures event
+extents ever counts a legend.
+
+## Rotation (v1.2)
+
+`xfrm rot` is honoured. Line endpoints and freeform points rotate exactly
+about the shape centre. Nodes normalise where they can: a near-quarter turn
+becomes an axis-aligned w/h swap and a near-half turn is dropped (symmetric
+shapes show no difference) — in both cases the label stays horizontal.
+Only a genuinely oblique angle survives to a real `rotate()`, applied to
+the shape outline alone, because rotated text is unreadable.
+
+## Raster tracing tier (v1.2)
+
+A slide whose only content is a pasted **PNG** — no vector drawing, no
+tables for the redraw — gets a last-resort tracing tier. The picture is
+decoded in-script (its zlib stream is two header bytes plus the same
+RFC 1951 deflate the zip layer already inflates) and its axis-aligned
+strokes are vectorised: colour-aware run extraction separates a route from
+the extent drawn over it, stroke-shaped runs stack into bars, same-colour
+bars whose gap is covered by an overlay merge back into one stroke. The
+result is the same `FRaw` lines the vector path produces, run through the
+identical classify/normalise pipeline — a traced figure is
+indistinguishable in style from a drawn one. It renders only when the
+trace passes a gate *stricter* than the vector one (a route **and** 3+
+ticks); anything busier — screenshots, photos, more than 48 strokes —
+stays silent, and the alt text says the figure is traced and approximate.
+Order of preference is unchanged: real vectors, then the slide's own
+stated data, then tracing.
 
 ## Why figures exist
 
@@ -137,11 +191,14 @@ place every part by hand.
 
 ## Known limits
 
-- Shape rotation is not read from vector slides; `arcTo` segments in
-  freeform paths are not emitted (their endpoint is implicit, so a wrong
-  guess would draw a wrong curve — omission is the honest failure). The
-  redraw path covers the shapes this corpus actually uses (straight,
-  vertical, loop, lollipop, branch, alpha, infinity, gap).
+- `arcTo` segments in freeform paths are not emitted (their endpoint is
+  implicit, so a wrong guess would draw a wrong curve — omission is the
+  honest failure). The redraw path covers the shapes this corpus actually
+  uses (straight, vertical, loop, lollipop, branch, alpha, infinity, gap).
+- The tracing tier reads PNGs only (JPEG needs a DCT decoder no pasted
+  script should carry), traces axis-aligned strokes only, and cannot OCR —
+  measures printed inside the picture are pixels, so a traced ruler may
+  carry ticks but no numbers.
 - Band compression is skipped in a ruler figure that also contains nodes or
   freeform paths — compressBands cannot see them, and moving the ruler out
   from under a node it shares space with would misplace exactly the thing

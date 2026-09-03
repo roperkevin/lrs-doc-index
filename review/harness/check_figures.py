@@ -100,6 +100,55 @@ check('Create route' in g and 'Calibrate' in g,
 check('node' in g6.get('alt', '').lower() and 'connector' in g6.get('alt', '').lower(),
       'graph: alt text describes nodes and connectors')
 
+# ---- v1.2 (DF-3): connector routing, grid snap, rotation -----------------
+g7 = figs.get(7, {}).get('svg', '')
+check(bool(g7), 'routing slide produces a graph figure')
+rects7 = re.findall(r'<rect class="node[^"]*" x="(-?[\d.]+)" y="(-?[\d.]+)" '
+                    r'width="([\d.]+)" height="([\d.]+)"', g7)
+row7 = [r for r in rects7 if float(r[3]) < float(r[2])]       # the three row boxes
+tall7 = [r for r in rects7 if float(r[3]) > 2 * float(r[2])]  # the rotated one
+check(len(row7) == 3 and len(tall7) == 1,
+      f'slide 7: three row boxes and one rotated box ({len(row7)}/{len(tall7)})')
+if len(row7) == 3:
+    check(len({r[1] for r in row7}) == 1, 'grid snap: jittered boxes share ONE row baseline')
+    check(len({r[2] for r in row7}) == 1, 'grid snap: near-equal boxes share ONE width')
+    check(len({r[3] for r in row7}) == 1, 'grid snap: near-equal boxes share ONE height')
+    xs7 = sorted(row7, key=lambda r: float(r[0]))
+    e7 = re.findall(r'<line class="ln edge[^"]*" x1="(-?[\d.]+)" y1="(-?[\d.]+)" '
+                    r'x2="(-?[\d.]+)" y2="(-?[\d.]+)"', g7)
+    b1r = float(xs7[0][0]) + float(xs7[0][2])
+    b2l = float(xs7[1][0])
+    cy7 = float(xs7[0][1]) + float(xs7[0][3]) / 2
+    hit = [l for l in e7 if abs(float(l[0]) - b1r) < 0.6 and abs(float(l[2]) - b2l) < 0.6
+           and abs(float(l[1]) - cy7) < 0.6 and abs(float(l[3]) - cy7) < 0.6]
+    check(len(hit) == 1,
+          'routing: a dragged connector re-anchors to both node boundaries at row centre')
+check('<path class="ln edge' in g7, 'routing: elbow connector routes orthogonally as a path')
+if len(tall7) == 1:
+    check(abs(float(tall7[0][3]) / float(tall7[0][2]) - 2.4) < 0.05,
+          'rotation: quarter-turned box normalises to an axis-aligned w/h swap')
+check('Publish' in g7, 'rotation: the rotated node keeps its horizontal label')
+
+# ---- v1.2 (DF-3): legend synthesis ---------------------------------------
+v1 = figs.get(1, {}).get('svg', '')
+check('class="ln swatch flat s-cool' in v1 and 'class="ln swatch flat s-warm' in v1,
+      'legend: two event colours get two swatches')
+check(re.search(r'class="legend"[^>]*>E9<', v1) is not None,
+      'legend: a swatch is labelled with the id the slide put on its bar')
+r2svg = figs.get(2, {}).get('svg', '')
+check('E7 0–20' in r2svg and 'E7 20–40' in r2svg,
+      "legend: redraw lane states each extent's measure range")
+
+# ---- v1.2 (DF-3): raster tracing tier ------------------------------------
+t8 = figs.get(8, {})
+t8svg = t8.get('svg', '')
+check(bool(t8svg), 'picture-only slide produces a traced figure')
+check('traced' in t8.get('alt', ''), 'trace: alt says the figure is traced and approximate')
+check('class="ln route"' in t8svg, 'trace: the route line was vectorised')
+tticks = re.findall(r'<line class="ln tick', t8svg)
+check(len(tticks) >= 4, f'trace: tick stubs vectorised ({len(tticks)})')
+check('s-warm' in t8svg, 'trace: the amber extent maps to the warm palette slot')
+
 # ---- 7: well-formed, and the viewBox holds the content -------------------
 for n, f in allfigs:
     try:
@@ -112,9 +161,22 @@ for n, f in allfigs:
     check(bool(vb), f'slide {n}: has a viewBox')
     if vb:
         x0, y0, w, h = [float(v) for v in vb.group(1).split()]
-        xs = [float(v) for v in re.findall(r'[xc][12]?="(-?[\d.]+)"', f['svg'])]
-        ys = [float(v) for v in re.findall(r'[yc][12]?="(-?[\d.]+)"', f['svg'])]
-        inside = (not xs or (min(xs) >= x0 - 60 and max(xs) <= x0 + w + 60))
+        # coordinates inside the shift group live in slide space; apply the
+        # translate so containment is checked in viewBox space (the ±60 slack
+        # covers text extents, which anchor inside the box but render wider)
+        xpat, ypat = r' (?:c?x|x[12])="(-?[\d.]+)"', r' (?:c?y|y[12])="(-?[\d.]+)"'
+        tr = re.search(r'<g transform="translate\((-?[\d.]+),(-?[\d.]+)\)"', f['svg'])
+        gpos = f['svg'].find('<g transform="translate(')
+        pre = f['svg'] if gpos < 0 else f['svg'][:gpos]
+        post = '' if gpos < 0 else f['svg'][gpos:]
+        dx = float(tr.group(1)) if tr else 0.0
+        dy = float(tr.group(2)) if tr else 0.0
+        xs = [float(v) for v in re.findall(xpat, pre)] + \
+             [float(v) + dx for v in re.findall(xpat, post)]
+        ys = [float(v) for v in re.findall(ypat, pre)] + \
+             [float(v) + dy for v in re.findall(ypat, post)]
+        inside = (not xs or (min(xs) >= x0 - 60 and max(xs) <= x0 + w + 60)) and \
+                 (not ys or (min(ys) >= y0 - 60 and max(ys) <= y0 + h + 60))
         check(inside and w > 0 and h > 0,
               f'slide {n}: drawn content sits inside the viewBox ({w:.0f}x{h:.0f})')
 

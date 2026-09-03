@@ -644,6 +644,72 @@ n2.fill.solid()
 n2.fill.fore_color.rgb = _RGB.from_string('FFC000')   # amber -> warm
 _line(s_f6, 2.4 * IN, 1.9 * IN, 3.4 * IN, 1.9 * IN)
 
+# --- slide 7 (v1.2 / DF-3): routing + grid snap + rotation. Three boxes with
+# hand-jittered rows and near-equal sizes (must snap to one row baseline and
+# one width), straight connectors whose dragged endpoints must re-anchor to
+# the node boundaries, an ELBOW connector that must route orthogonally, and
+# a quarter-turned box that must normalise to an axis-aligned w/h swap.
+s_f7 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+_b_geom = [(0.5, 1.50, 1.5, 0.70, '1F4E79', 'Extract'),
+           (2.7, 1.56, 1.6, 0.75, '2E7D32', 'Transform'),
+           (4.9, 1.47, 1.55, 0.72, '7030A0', 'Load')]
+for bx, by, bw, bh, rgb, label in _b_geom:
+    nb = s_f7.shapes.add_shape(_SHP.ROUNDED_RECTANGLE, Emu(int(bx * IN)), Emu(int(by * IN)),
+                               Emu(int(bw * IN)), Emu(int(bh * IN)))
+    nb.text_frame.text = label
+    nb.fill.solid()
+    nb.fill.fore_color.rgb = _RGB.from_string(rgb)
+_line(s_f7, 2.05 * IN, 1.86 * IN, 2.66 * IN, 1.90 * IN)   # dragged near the edges
+_line(s_f7, 4.35 * IN, 1.90 * IN, 4.95 * IN, 1.90 * IN)
+nrot = s_f7.shapes.add_shape(_SHP.ROUNDED_RECTANGLE, Emu(int(5.0 * IN)), Emu(int(3.0 * IN)),
+                             Emu(int(1.2 * IN)), Emu(int(0.5 * IN)))
+nrot.text_frame.text = 'Publish'
+nrot.fill.solid()
+nrot.fill.fore_color.rgb = _RGB.from_string('C00000')
+nrot.rotation = 90.0
+elbow = s_f7.shapes.add_connector(_CONN.ELBOW, Emu(int(5.67 * IN)), Emu(int(2.25 * IN)),
+                                  Emu(int(5.6 * IN)), Emu(int(2.6 * IN)))
+
+# --- slide 8 (v1.2 / DF-3): raster tracing tier. The slide's only content is
+# a pasted PNG of a route diagram — navy route, black tick stubs, an amber
+# extent drawn OVER the right half of the route — with no drawing and no
+# tables, so vector and redraw both pass and the tracer must decode the PNG,
+# vectorise the strokes, and re-render them through the ruler pipeline.
+import struct as _struct
+import zlib as _zlib
+
+def _png_write(path, w, h, rects):
+    """Minimal truecolour PNG: white ground plus filled rects (x0,x1,y0,y1,rgb)."""
+    img = [[(255, 255, 255)] * w for _ in range(h)]
+    for x0, x1, y0, y1, rgb in rects:
+        for y in range(y0, y1):
+            row = img[y]
+            for x in range(x0, x1):
+                row[x] = rgb
+    raw = bytearray()
+    for y in range(h):
+        raw.append(0)
+        for r, g, b in img[y]:
+            raw += bytes((r, g, b))
+    def chunk(t, d):
+        return _struct.pack('>I', len(d)) + t + d + \
+            _struct.pack('>I', _zlib.crc32(t + d) & 0xffffffff)
+    ihdr = _struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)
+    with open(path, 'wb') as fh:
+        fh.write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', ihdr)
+                 + chunk(b'IDAT', _zlib.compress(bytes(raw))) + chunk(b'IEND', b''))
+
+NAVY, AMBER, BLACK = (0, 32, 96), (255, 192, 0), (0, 0, 0)
+_trace_rects = [(60, 738, 148, 153, NAVY)]                 # the route
+for tx in (60, 152, 244, 336, 428):                        # tick stubs (left half)
+    _trace_rects.append((tx, tx + 3, 138, 163, BLACK))
+_trace_rects.append((430, 738, 142, 159, AMBER))           # extent over the right half
+_png_write('trace_route.png', 800, 300, _trace_rects)
+
+s_f8 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f8.shapes.add_picture('trace_route.png', Emu(int(0.7 * IN)), Emu(int(1.5 * IN)),
+                        Emu(int(6.4 * IN)), Emu(int(2.4 * IN)))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
