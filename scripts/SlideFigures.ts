@@ -1,12 +1,14 @@
 /**
- * SlideFigures v1.2 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.3 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
- * normalisation, legends, rotation and the raster tracing tier. Companion
- * to ZipTextExtract, same input (the file's bytes as base64). Returns one
- * SVG per DIAGRAM (a slide can carry several):
+ * normalisation, legends, rotation and the raster tracing tier; DF-4
+ * (2026-09-03) splits the redraw lane's combined figure and anchors every
+ * figure to its slide table. Companion to ZipTextExtract, same input (the
+ * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
+ * several):
  *
- *   { figures: [{ slide, name, svg, alt }], count, skipped }
+ *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
  *
  * v1.1 (DF-2):
  *   - MULTI-FIGURE SLIDES. Primitives are spatially clustered (union-find
@@ -26,6 +28,25 @@
  *     normalised to two canonical dashes, and head/tail arrowheads carried
  *     onto connector edges. A cluster of 2+ nodes joined by a connector —
  *     or 2+ freeform paths — is a diagram even without a ruler.
+ *
+ * v1.3 (DF-4):
+ *   - ONE SVG PER DIAGRAM in the redraw lane too. The redraw used to stack
+ *     the case's input state and its "Output" state into a single figure —
+ *     the one place a figure still combined two diagrams. Each state is now
+ *     its own figure (slideN_fig1 = before the split, slideN_fig2 = after),
+ *     named and titled like any other multi-figure slide. The legend, which
+ *     names the two split extents, belongs to the output figure.
+ *   - TABLE ANCHORS. Every figure carries `anchor`: the first row of the
+ *     slide table it sits with, as cell texts ([] when the slide gives it no
+ *     table). The sweep uses it to place the figure directly before that
+ *     table in the extracted markdown — the slide's own layout, where a
+ *     diagram sits with the table stating its numbers, instead of every
+ *     figure stacking under the heading. Drawn/traced figures anchor by
+ *     GEOMETRY (the table sharing the cluster's vertical band, else the
+ *     nearest one below; each table anchors at most one figure); redrawn
+ *     figures anchor by MEANING (the input figure to the table its measures
+ *     were read from, the output figure to the result table — the other
+ *     measure-bearing table of 3+ columns).
  *
  * v1.2 (DF-3):
  *   - CONNECTOR ROUTING. In the graph lane an edge whose endpoint lands on
@@ -95,11 +116,13 @@
  * figure is produced.
  *
  * Consumed by the local sweep, which writes each `svg` to the media folder
- * as `{prefix}{name}` and replaces that slide's "[figure: ...]" caption in
- * the extracted markdown with an image link. On a cloud-flow rollback the
- * sweep simply does not call this, and v2.2's caption stands.
+ * as `{prefix}{name}`, drops that slide's "[figure: ...]" caption from the
+ * extracted markdown, and inserts each image link directly before its
+ * `anchor` table in the slide's section (directly after the slide heading
+ * when the figure has no anchor). On a cloud-flow rollback the sweep simply
+ * does not call this, and v2.2's caption stands.
  */
-interface SlideFigure { slide: number; name: string; svg: string; alt: string; }
+interface SlideFigure { slide: number; name: string; svg: string; alt: string; anchor: string[]; }
 interface FiguresResult { figures: SlideFigure[]; count: number; skipped: string; }
 
 const FIG_MAX_COUNT = 40;
@@ -164,6 +187,7 @@ interface FNode { x: number; y: number; w: number; h: number; shape: string; sRo
 interface FPath { d: string; x0: number; y0: number; x1: number; y1: number; role: string; dash: string; closed: boolean; fillRole: string; }
 interface Parsed { lines: FRaw[]; nodes: FNode[]; paths: FPath[]; texts: FText[]; }
 interface Cluster { lines: FRaw[]; nodes: FNode[]; paths: FPath[]; texts: FText[]; x0: number; y0: number; x1: number; y1: number; }
+interface FTable { x: number; y: number; w: number; h: number; rows: string[][]; }
 
 function fnum(v: number): string {
   const r = Math.round(v * 10) / 10;
@@ -766,6 +790,105 @@ function figName(no: number, idx: number, total: number): string {
   return total > 1 ? "slide" + no + "_fig" + idx + ".svg" : "slide" + no + ".svg";
 }
 
+// ------------------------------------------------------- table anchoring
+// cell text as the extracted markdown renders it: tags flattened to the run
+// texts, whitespace collapsed, entities decoded (the strip pipeline decodes
+// them too, and the anchor must match the row the reader sees)
+function cellText(s: string): string {
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (mm: string, h: string) => {
+      const cp = parseInt(h, 16);
+      return isFinite(cp) && cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : "";
+    })
+    .replace(/&#(\d+);/g, (mm: string, d: string) => {
+      const cp = parseInt(d, 10);
+      return isFinite(cp) && cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : "";
+    })
+    .replace(/&quot;/g, '"').replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ").trim();
+}
+
+// graphicFrame tables, with their placement. The anchor pass needs to know
+// where each table sits; the redraw lane reads its numbers from the rows.
+// Cells mirror the markdown rendering (merged-away hMerge cells dropped,
+// gridSpan padded), so a first row here IS the table's first markdown row.
+function slideTables(xml: string): FTable[] {
+  const gs = figGroups(xml);
+  const out: FTable[] = [];
+  const fre = /<p:graphicFrame>([\s\S]*?)<\/p:graphicFrame>/g;
+  let m: RegExpExecArray | null;
+  while ((m = fre.exec(xml)) !== null) {
+    const b = m[1];
+    const tb = b.match(/<a:tbl>[\s\S]*?<\/a:tbl>/);
+    if (!tb) continue;
+    const rows: string[][] = [];
+    const rre = /<a:tr\b[\s\S]*?<\/a:tr>/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = rre.exec(tb[0])) !== null) {
+      const cells = rm[0].split(/<a:tc\b/);
+      const row: string[] = [];
+      for (let j = 1; j < cells.length; j++) {
+        const raw = cells[j];
+        const opener = (raw.match(/^[^>]*/) || [""])[0];
+        if (/\bhMerge="(1|true)"/.test(opener)) continue;
+        let span = 1;
+        const gsp = opener.match(/gridSpan="(\d+)"/);
+        if (gsp) span = parseInt(gsp[1], 10);
+        const bits: string[] = [];
+        const tre = /<a:t>([^<]*)<\/a:t>/g;
+        let tm: RegExpExecArray | null;
+        while ((tm = tre.exec(raw)) !== null) bits.push(tm[1]);
+        row.push(cellText(bits.join(" ")));
+        for (let s = 1; s < span; s++) row.push("");
+      }
+      if (row.length > 0) rows.push(row);
+    }
+    if (rows.length === 0) continue;
+    const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+    const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+    let x = NaN, y = NaN, w = NaN, h = NaN;
+    if (o && e) {
+      const t = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
+                         parseInt(e[1], 10), parseInt(e[2], 10));
+      x = t[0] * EMU_PX; y = t[1] * EMU_PX; w = t[2] * EMU_PX; h = t[3] * EMU_PX;
+    }
+    out.push({ x: x, y: y, w: w, h: h, rows: rows });
+  }
+  return out;
+}
+
+// which table a drawn/traced figure sits with, by geometry: the table
+// sharing the cluster's vertical band (largest overlap wins), else the
+// nearest table that starts below the cluster's middle — the two ways these
+// decks pair a diagram with the table stating its numbers. A table anchors
+// at most one figure, and a table wholly above the cluster never anchors it
+// (that table belongs to whatever sits above).
+function assignAnchors(figs: SlideFigure[], spans: number[][], tables: FTable[]): void {
+  const used: boolean[] = [];
+  for (let i = 0; i < figs.length && i < spans.length; i++) {
+    const y0 = spans[i][0], y1 = spans[i][1];
+    let ovIdx = -1, ovBest = 0, gapIdx = -1, gapBest = 1e9;
+    for (let t = 0; t < tables.length; t++) {
+      if (used[t]) continue;
+      const tb = tables[t];
+      if (!isFinite(tb.y) || !isFinite(tb.h) || tb.rows[0].length === 0) continue;
+      const ov = Math.min(y1, tb.y + tb.h) - Math.max(y0, tb.y);
+      if (ov > 0) {
+        if (ov > ovBest) { ovBest = ov; ovIdx = t; }
+      } else if (tb.y >= (y0 + y1) / 2) {
+        const gap = tb.y - y1;
+        if (gap < gapBest) { gapBest = gap; gapIdx = t; }
+      }
+    }
+    const best = ovIdx >= 0 ? ovIdx : gapIdx;
+    if (best >= 0) {
+      used[best] = true;
+      figs[i].anchor = tables[best].rows[0].slice();
+    }
+  }
+}
+
 function wrapLabel(s: string): string[] {
   if (s.length <= 18) return [s];
   let best = -1;
@@ -915,7 +1038,8 @@ function renderRuler(c: Cluster, no: number, idx: number, total: number,
     : "Measured route diagram drawn from the slide's own shapes" +
       (ms.length ? ", measures " + ms[0] + " to " + ms[ms.length - 1] : "")) + ".";
   return { slide: no, name: figName(no, idx, total),
-    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + body + "</g>"), alt: desc };
+    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + body + "</g>"), alt: desc,
+    anchor: [] };
 }
 
 // graph lane: nodes, connector edges (slate by default, palette-mapped when
@@ -1003,7 +1127,8 @@ function renderGraph(c: Cluster, no: number, idx: number, total: number): SlideF
     (total > 1 ? " (" + idx + " of " + total + ")" : "");
   const desc = "Diagram drawn from the slide's own shapes: " + bits.join(", ") + ".";
   return { slide: no, name: figName(no, idx, total),
-    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + p.join("") + "</g>"), alt: desc };
+    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + p.join("") + "</g>"), alt: desc,
+    anchor: [] };
 }
 
 function bbox(lines: FLine[], texts: FText[]): number[] {
@@ -1305,7 +1430,7 @@ function niceStep(span: number): number {
   return Math.max(1, Math.round(span / 8));
 }
 
-function buildRedraw(xml: string, no: number): SlideFigure | null {
+function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
   const cells: string[] = [];
   const tre = /<a:t>([^<]*)<\/a:t>/g;
   let m: RegExpExecArray | null;
@@ -1318,27 +1443,12 @@ function buildRedraw(xml: string, no: number): SlideFigure | null {
   // Two table shapes in this corpus: two-column key/value ("Measure | 10")
   // and header-row ("RouteID | From Measure | To Measure" over data rows).
   // Reading the next cell works for the first and returns the NEXT HEADER for
-  // the second, so parse the grid and read down the column.
-  const after = (label: string): string => {
-    const tre2 = /<a:tbl>([\s\S]*?)<\/a:tbl>/g;
-    let tm2: RegExpExecArray | null;
-    while ((tm2 = tre2.exec(xml)) !== null) {
-      const rows: string[][] = [];
-      const rre = /<a:tr\b[\s\S]*?<\/a:tr>/g;
-      let rm: RegExpExecArray | null;
-      while ((rm = rre.exec(tm2[1])) !== null) {
-        const row: string[] = [];
-        const cre2 = /<a:tc\b[\s\S]*?<\/a:tc>/g;
-        let cm: RegExpExecArray | null;
-        while ((cm = cre2.exec(rm[0])) !== null) {
-          const bits: string[] = [];
-          const t2 = /<a:t>([^<]*)<\/a:t>/g;
-          let x2: RegExpExecArray | null;
-          while ((x2 = t2.exec(cm[0])) !== null) bits.push(x2[1]);
-          row.push(bits.join(" ").replace(/\s+/g, " ").trim());
-        }
-        if (row.length) rows.push(row);
-      }
+  // the second, so read the parsed grid down the column. Also returns WHICH
+  // table answered — the input figure anchors to the table its measures were
+  // read from.
+  const lookup = (label: string): { v: string; gi: number } => {
+    for (let gi = 0; gi < tables.length; gi++) {
+      const rows = tables[gi].rows;
       for (let r = 0; r < rows.length; r++) {
         for (let c = 0; c < rows[r].length; c++) {
           if (rows[r][c].toLowerCase() !== label) continue;
@@ -1348,41 +1458,70 @@ function buildRedraw(xml: string, no: number): SlideFigure | null {
           // the NEXT KEY, which is how "Measure" once resolved to "To Measure".
           const headerRow = rows[r].length > 2;
           if (headerRow && r + 1 < rows.length && c < rows[r + 1].length && rows[r + 1][c]) {
-            return rows[r + 1][c];
+            return { v: rows[r + 1][c], gi: gi };
           }
           if (!headerRow && c + 1 < rows[r].length && rows[r][c + 1]) {
-            return rows[r][c + 1];
+            return { v: rows[r][c + 1], gi: gi };
           }
         }
       }
     }
-    return "";
+    return { v: "", gi: -1 };
   };
-  const m0s = after("measure") || after("from measure");
+  const after = (label: string): string => lookup(label).v;
+  let mHit = lookup("measure");
+  if (!mHit.v) mHit = lookup("from measure");
+  const m0s = mHit.v;
   const m1s = after("to measure");
-  if (!m0s || !m1s) return null;
+  if (!m0s || !m1s) return [];
   const m0 = parseFloat(m0s), m1 = parseFloat(m1s);
-  if (isNaN(m0) || isNaN(m1) || m1 <= m0) return null;
+  if (isNaN(m0) || isNaN(m1) || m1 <= m0) return [];
   const sp = txt.match(/[Ss]plit measure\s*:?\s*([\d.]+)/);
   const split = sp ? parseFloat(sp[1]) : (m0 + m1) / 2;
   const routeId = after("route id") || after("from rid") || "R1";
   const eventId = after("event id") || "E1";
-  if (!/^[A-Za-z0-9]{1,10}$/.test(routeId) || !/^[A-Za-z0-9_]{1,10}$/.test(eventId)) return null;
+  if (!/^[A-Za-z0-9]{1,10}$/.test(routeId) || !/^[A-Za-z0-9_]{1,10}$/.test(eventId)) return [];
   const dec = (m0 % 1 || m1 % 1 || split % 1) ? 1 : 0;
+  // the output figure anchors to the RESULT table: the other measure-bearing
+  // table of 3+ columns (event id over one column per event after the split),
+  // searched from the slide's end where these decks put it. The route-list
+  // table never qualifies — it carries dates, not measures.
+  const inputGi = mHit.gi;
+  let outputGi = -1;
+  for (let gi = tables.length - 1; gi >= 0; gi--) {
+    if (gi === inputGi) continue;
+    const rows = tables[gi].rows;
+    if (rows.length === 0 || rows[0].length < 3) continue;
+    let hasMeasure = false;
+    for (const r of rows) {
+      const k = (r[0] || "").toLowerCase();
+      if (k === "measure" || k === "from measure") { hasMeasure = true; break; }
+    }
+    if (hasMeasure) { outputGi = gi; break; }
+  }
 
   const topo = topology(kind);
   const innerW = FIG_W - FIG_PAD * 2 - 46;
   const innerH = Math.min(360, Math.max(115, innerW / topo.aspect));
-  const bandH = innerH + FIG_PAD * 2 + 26;
-  const body: string[] = [];
-  const rows: { cap: string; ext: number[][]; sp: number }[] = [
-    { cap: "", ext: [[m0, m1, 0]], sp: NaN },
-    { cap: "Output", ext: [[m0, split, 0], [split, m1, 1]], sp: split },
+  const shape = kind ? kind.toLowerCase() : "straight";
+  // one figure per state — the input diagram and the output diagram are two
+  // diagrams on the slide, so they are two figures (DF-4), not stacked bands
+  const rows: { ext: number[][]; sp: number; gi: number; alt: string }[] = [
+    { ext: [[m0, m1, 0]], sp: NaN, gi: inputGi,
+      alt: "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
+        ", event " + eventId + " from measure " + fnum(m0) + " to " + fnum(m1) +
+        ", before the split at measure " + fnum(split) + "." },
+    { ext: [[m0, split, 0], [split, m1, 1]], sp: split, gi: outputGi,
+      alt: "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
+        " after the split at measure " + fnum(split) + ": event " + eventId + " as " +
+        fnum(m0) + "–" + fnum(split) + " and " + fnum(split) + "–" + fnum(m1) + "." },
   ];
   const roles = ["cool", "warm"];
+  const figsOut: SlideFigure[] = [];
   for (let ri = 0; ri < rows.length; ri++) {
     const row = rows[ri];
-    const oy = FIG_PAD + ri * bandH;
+    const body: string[] = [];
+    const oy = FIG_PAD + 22; // headroom for outward ticks and their measures
     const ox = FIG_PAD + 46;
     const pts = topo.pts.map((p) => [ox + p[0] * innerW, oy + p[1] * innerH]);
     const cum = [0];
@@ -1394,8 +1533,6 @@ function buildRedraw(xml: string, no: number): SlideFigure | null {
     let cx = 0, cy = 0;
     for (const p of pts) { cx += p[0]; cy += p[1]; }
     cx /= pts.length; cy /= pts.length;
-    if (row.cap) body.push('<text class="note" x="' + fnum(FIG_PAD) + '" y="' + fnum(oy - 16) + '">' +
-      esc(row.cap) + "</text>");
     for (const ex of topo.extras) {
       const d = ex.map((p, i) => (i ? "L " : "M ") + fnum(ox + p[0] * innerW) + " " +
         fnum(oy + p[1] * innerH)).join(" ");
@@ -1450,22 +1587,24 @@ function buildRedraw(xml: string, no: number): SlideFigure | null {
     }
     body.push('<text class="id f-ink" x="' + fnum(FIG_PAD + 36) + '" y="' + fnum(oy + innerH / 2) +
       '" text-anchor="end" dominant-baseline="central">' + esc(routeId) + "</text>");
+    let hgt = oy + innerH + 22 + FIG_PAD;
+    if (ri === 1) {
+      // the redraw lane KNOWS the numbers, so the output figure's legend
+      // states each extent's measure range rather than a letter
+      const leg = emitLegend([
+        { role: roles[0], t: eventId + " " + fnum(m0) + "–" + fnum(split) },
+        { role: roles[1], t: eventId + " " + fnum(split) + "–" + fnum(m1) },
+      ], FIG_PAD, oy + innerH + 34);
+      body.push(leg.svg);
+      hgt = oy + innerH + 42 + FIG_PAD;
+    }
+    const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " + rows.length + ")";
+    figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length),
+      svg: svgWrap(no, FIG_W, hgt, title, row.alt, body.join("")),
+      alt: row.alt,
+      anchor: row.gi >= 0 ? tables[row.gi].rows[0].slice() : [] });
   }
-  // the redraw lane KNOWS the numbers, so its legend states each extent's
-  // measure range rather than a letter
-  const leg = emitLegend([
-    { role: roles[0], t: eventId + " " + fnum(m0) + "–" + fnum(split) },
-    { role: roles[1], t: eventId + " " + fnum(split) + "–" + fnum(m1) },
-  ], FIG_PAD, bandH * rows.length + 4);
-  body.push(leg.svg);
-  const shape = kind ? kind.toLowerCase() : "straight";
-  const title = "Slide " + no + " route diagram";
-  const desc = "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
-    ", event " + eventId + " from measure " + fnum(m0) + " to " + fnum(m1) +
-    ", split at measure " + fnum(split) + ".";
-  return { slide: no, name: "slide" + no + ".svg",
-    svg: svgWrap(no, FIG_W, bandH * rows.length + FIG_PAD + 24, title, desc, body.join("")),
-    alt: desc };
+  return figsOut;
 }
 
 // ---------------------------------------- raster tracing tier (last resort)
@@ -1738,7 +1877,7 @@ function slidePics(bytes: Uint8Array, entries: ZipEntry[], slideName: string, xm
   return out.slice(0, 2);
 }
 
-function traceFigures(xml: string, no: number, pics: FPic[]): SlideFigure[] {
+function traceFigures(xml: string, no: number, pics: FPic[], tables: FTable[]): SlideFigure[] {
   const parsed = parseSlide(xml);
   const qual: Cluster[] = [];
   for (const pic of pics) {
@@ -1760,16 +1899,22 @@ function traceFigures(xml: string, no: number, pics: FPic[]): SlideFigure[] {
     }
   }
   const out: SlideFigure[] = [];
+  const spans: number[][] = [];
   for (let i = 0; i < qual.length; i++) {
     out.push(renderRuler(qual[i], no, i + 1, qual.length, true));
+    spans.push([qual[i].y0, qual[i].y1]);
   }
+  assignAnchors(out, spans, tables);
   return out;
 }
 
 // vector clusters first (each qualifying cluster is its own figure); a slide
 // with no vector diagram falls through to the table-driven redraw, and a
-// slide with neither — but a pasted PNG — to the tracing tier
+// slide with neither — but a pasted PNG — to the tracing tier. Every lane
+// anchors its figures to the slide's tables (geometry for drawn/traced
+// figures, meaning for redrawn ones — see assignAnchors/buildRedraw).
 function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[] {
+  const tables = slideTables(xml);
   const clusters = clusterParsed(parseSlide(xml));
   const qual: { c: Cluster; mode: string }[] = [];
   for (const c of clusters) {
@@ -1777,15 +1922,20 @@ function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[
     if (mode) qual.push({ c: c, mode: mode });
   }
   const out: SlideFigure[] = [];
+  const spans: number[][] = [];
   for (let i = 0; i < qual.length; i++) {
     out.push(qual[i].mode === "ruler"
       ? renderRuler(qual[i].c, no, i + 1, qual.length)
       : renderGraph(qual[i].c, no, i + 1, qual.length));
+    spans.push([qual[i].c.y0, qual[i].c.y1]);
   }
-  if (out.length) return out;
-  const r = buildRedraw(xml, no);
-  if (r) return [r];
-  return traceFigures(xml, no, pics());
+  if (out.length) {
+    assignAnchors(out, spans, tables);
+    return out;
+  }
+  const r = buildRedraw(xml, no, tables);
+  if (r.length) return r;
+  return traceFigures(xml, no, pics(), tables);
 }
 
 // ------------------------------------------------ slide ordering

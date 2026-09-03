@@ -135,9 +135,9 @@ check('class="ln swatch flat s-cool' in v1 and 'class="ln swatch flat s-warm' in
       'legend: two event colours get two swatches')
 check(re.search(r'class="legend"[^>]*>E9<', v1) is not None,
       'legend: a swatch is labelled with the id the slide put on its bar')
-r2svg = figs.get(2, {}).get('svg', '')
-check('E7 0–20' in r2svg and 'E7 20–40' in r2svg,
-      "legend: redraw lane states each extent's measure range")
+r2out = (by_slide.get(2, []) + [{}, {}])[1].get('svg', '')
+check('E7 0–20' in r2out and 'E7 20–40' in r2out,
+      "legend: redraw lane states each extent's measure range (output figure)")
 
 # ---- v1.2 (DF-3): raster tracing tier ------------------------------------
 t8 = figs.get(8, {})
@@ -244,6 +244,47 @@ check('2' in r3.get('alt', '') and '12' in r3.get('alt', ''),
       'redraw: measures read from a header-row table')
 check('schematic' in r2.get('alt', '').lower(),
       'redraw: alt text says the figure is a schematic, not a tracing')
+
+# ---- v1.3 (DF-4): one figure per diagram in the redraw lane too ----------
+f2 = by_slide.get(2, [])
+check(len(f2) == 2, f'redraw slide -> TWO figures, input and output ({len(f2)})')
+check([f['name'] for f in f2] == ['slide2_fig1.svg', 'slide2_fig2.svg'],
+      f'redraw figures use the sibling naming ({[f["name"] for f in f2]})')
+if len(f2) == 2:
+    fin, fout = f2[0], f2[1]
+    check('before the split' in fin['alt'] and 'after the split' in fout['alt'],
+          'redraw: alts say which state each figure shows')
+    fin_body = fin['svg'][fin['svg'].index('</style>'):]
+    fout_body = fout['svg'][fout['svg'].index('</style>'):]
+    check('s-warm' not in fin_body and 'swatch' not in fin_body
+          and 'splitdot' not in fin_body,
+          'redraw input figure: one extent, no split marker, no legend')
+    check('splitdot' in fout_body and 's-cool' in fout_body and 's-warm' in fout_body,
+          'redraw output figure: split marker and both extent colours')
+    check('(1 of 2)' in fin['svg'] and '(2 of 2)' in fout['svg'],
+          'redraw figure titles say which of how many')
+
+# ---- v1.3 (DF-4): table anchors ------------------------------------------
+check(figs.get(1, {}).get('anchor') == [],
+      'anchor: a slide with no table anchors nothing')
+if len(f2) == 2:
+    check(f2[0].get('anchor') == ['Event ID', 'E7'],
+          f'anchor: redraw input figure -> the key/value table it read '
+          f'({f2[0].get("anchor")})')
+    check(f2[1].get('anchor') == ['Event ID', 'E7', 'E7', 'E7'],
+          f'anchor: redraw output figure -> the result table ({f2[1].get("anchor")})')
+f3 = by_slide.get(3, [])
+check(len(f3) == 2 and
+      f3[0].get('anchor') == ['Route ID', 'Event ID', 'From Measure', 'To Measure'],
+      'anchor: header-row input table anchors the input figure')
+check(len(f3) == 2 and f3[1].get('anchor') == [],
+      'anchor: no second table -> the output figure stays unanchored')
+if len(f5) == 2:
+    check(f5[0].get('anchor') == ['Route ID', 'R5A'],
+          f'anchor: first ruler -> the table under IT ({f5[0].get("anchor")})')
+    check(f5[1].get('anchor') == ['Route ID', 'R5B'],
+          f'anchor: second ruler -> its own table, not the first '
+          f'({f5[1].get("anchor")})')
 
 print()
 if failures:

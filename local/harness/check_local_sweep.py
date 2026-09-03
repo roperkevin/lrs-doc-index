@@ -96,9 +96,11 @@ def make_pptx(fpath, text, with_media=False, with_diagram=False):
 
 def diagram_shapes():
     """A slide drawn the way this corpus draws them: a route line, evenly
-    spaced tick stubs and measure labels. SlideFigures renders this through
-    its vector path, so the sweep must write an .svg and link it — the
-    end-to-end leg a script-level gate cannot cover. Planted into an
+    spaced tick stubs and measure labels, with the table stating the case's
+    numbers sitting under the diagram. SlideFigures renders the drawing
+    through its vector path and anchors the figure to the table (v1.3), so
+    the sweep must write an .svg and link it directly BEFORE that table —
+    the end-to-end leg a script-level gate cannot cover. Planted into an
     EXISTING fixture rather than a new document, so no count-based
     assertion in this gate has to move."""
     IN = 914400
@@ -116,6 +118,16 @@ def diagram_shapes():
                      f'<a:off x="{x - 100000}" y="{2 * IN - 400000}"/>'
                      '<a:ext cx="200000" cy="150000"/></a:xfrm></p:spPr>'
                      f'<p:txBody><a:p><a:r><a:t>{10 + k}</a:t></a:r></a:p></p:txBody></p:sp>')
+    # the diagram's table, half an inch below the route
+    def tc(t):
+        return f'<a:tc><a:txBody><a:p><a:r><a:t>{t}</a:t></a:r></a:p></a:txBody></a:tc>'
+    parts.append('<p:graphicFrame><p:xfrm>'
+                 f'<a:off x="{IN}" y="{int(2.5 * IN)}"/>'
+                 f'<a:ext cx="{2 * IN}" cy="{IN // 2}"/></p:xfrm>'
+                 '<a:graphic><a:graphicData><a:tbl>'
+                 f'<a:tr>{tc("Route ID")}{tc("R9")}</a:tr>'
+                 f'<a:tr>{tc("Measure")}{tc("10")}</a:tr>'
+                 '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>')
     return "".join(parts)
 
 
@@ -854,14 +866,17 @@ def main():
     check("sweep wrote an SVG figure for the diagram deck",
           "doc10_slide1.svg" in svgs, str(svgs))
     check("figure linked from the sidecar body",
-          "](../media/doc10_slide1.svg)" in sc, sc[:400])
-    check("figure link sits directly after the slide heading",
-          re.search(r"## Slide 1[^\n]*\n\n!\[", sc) is not None, sc[:400])
+          "](../media/doc10_slide1.svg)" in sc, sc[:600])
+    check("figure link sits directly before its anchor table (v1.26)",
+          re.search(r"!\[[^\]]*\]\(\.\./media/doc10_slide1\.svg\)\n\n\| Route ID \| R9 \|",
+                    sc) is not None, sc[:600])
+    check("figure link no longer stacks under the slide heading",
+          re.search(r"## Slide 1[^\n]*\n\n!\[", sc) is None, sc[:600])
     check("the figure replaced the [figure: ...] caption",
-          "[figure:" not in sc, sc[:400])
+          "[figure:" not in sc, sc[:600])
     check("alt text describes the diagram",
           re.search(r"!\[[^\]]{20,}\]\(\.\./media/doc10_slide1\.svg\)", sc) is not None,
-          sc[:400])
+          sc[:600])
     check("run summary reports figures written",
           int(out.get("figures", 0)) >= 1, str(out.get("figures")))
     check("run summary reports no figure errors",

@@ -585,7 +585,10 @@ _line(s_f, 2.52 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN, rgb='FFC000', w=int(0.05 * I
 _label(s_f, 0.3 * IN, 1.95 * IN, 'R9', 12)
 _label(s_f, 1.6 * IN, 2.4 * IN, 'E9', 12)
 
-# --- slide 2: no drawing; a key/value table drives the redraw
+# --- slide 2: no drawing; a key/value table drives the redraw. A second,
+# header-row RESULT table (the "after the split" table these decks carry)
+# is what the redraw's OUTPUT figure must anchor to (DF-4); the input
+# figure anchors to the key/value table its measures were read from.
 s_f2 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
 s_f2.shapes.title.text = '2. Loop - Split measure : 20'
 t_f = s_f2.shapes.add_table(5, 2, Emu(IN), Emu(2 * IN), Emu(3 * IN), Emu(2 * IN)).table
@@ -594,6 +597,13 @@ for r, (k, v) in enumerate([('Event ID', 'E7'), ('Route ID', 'R7'),
                             ('From Date', '1/1/2000')]):
     t_f.cell(r, 0).text = k
     t_f.cell(r, 1).text = v
+t_f2o = s_f2.shapes.add_table(3, 4, Emu(int(4.5 * IN)), Emu(2 * IN),
+                              Emu(int(4 * IN)), Emu(int(1.5 * IN))).table
+for r, row in enumerate([('Event ID', 'E7', 'E7', 'E7'),
+                         ('Measure', '0', '0', '20'),
+                         ('To Measure', '40', '20', '40')]):
+    for c, v in enumerate(row):
+        t_f2o.cell(r, c).text = v
 
 # --- slide 3: header-row table (the Merge-deck shape)
 s_f3 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
@@ -624,6 +634,13 @@ for base_y, m0 in ((1.2, 0), (4.5, 5)):
           rgb='002060', w=int(0.05 * IN))
     _line(s_f5, 2.02 * IN, base_y * IN, 3.0 * IN, base_y * IN,
           rgb='FFC000', w=int(0.05 * IN))
+    # a table under each ruler (DF-4): the geometric anchor pass must pair
+    # each figure with ITS table — the nearest one below its own cluster —
+    # never both figures with the first table
+    t_f5 = s_f5.shapes.add_table(1, 2, Emu(int(1.0 * IN)), Emu(int((base_y + 0.35) * IN)),
+                                 Emu(int(2 * IN)), Emu(int(0.4 * IN))).table
+    t_f5.cell(0, 0).text = 'Route ID'
+    t_f5.cell(0, 1).text = 'R5A' if m0 == 0 else 'R5B'
 
 # --- slide 6 (v1.1 / DF-2): node graph — two visible shapes joined by a
 # connector, no ruler at all. The graph lane must render standardized nodes

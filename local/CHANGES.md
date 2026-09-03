@@ -1,5 +1,39 @@
 # Local sweep — release notes
 
+## v1.26 (2026-09-03)
+
+**Figures placed with their tables (DF-4).** `placeFigure` used to
+insert every rendered figure directly after the slide heading, which on
+a test-case slide stacked the input and output diagrams above the very
+tables that state their numbers — a reader could no longer tell which
+figure went with which table. SlideFigures v1.3 now reports, per
+figure, the first row of the slide table the figure sits with
+(`anchor`, as cell texts), and `placeFigure` inserts an anchored figure
+directly BEFORE that table in the slide's section: the first unclaimed
+table row that matches the anchor cells (unescaped, trimmed, trailing
+gridSpan-padding empties dropped) and that opens its table (the line
+directly above it is not a table row — a mid-table echo of the same
+row never matches, and a blank line above is fine because tables
+render with one). A figure with no anchor, or whose table did not
+survive extraction, keeps the v1.23 after-heading placement, and the
+"[figure: ...]" caption is still dropped. Renderer top-to-bottom order
+is preserved throughout.
+
+SlideFigures v1.3 also splits the redraw lane's combined figure: the
+input state and the "Output" state were the one place two diagrams
+still shared an SVG. They are now `slideN_fig1.svg` (before the split,
+anchored to the table its measures were read from) and
+`slideN_fig2.svg` (after the split, with the legend, anchored to the
+result table). Because the redraw figure's name changes from
+`slideN.svg` to the sibling pair, a `--reformat` pass rewrites the
+links and leaves the old single-figure `.svg` files orphaned in the
+media folder — harmless, but worth a cleanup pass when convenient.
+
+Gates: `check_figures.py` (redraw pair, anchors on every lane)
+PASSED; `check_local_sweep.py` 147/147 — the diagram fixture now
+carries the case table and the gate proves the figure link lands
+directly before it, not under the heading.
+
 ## v1.25 (2026-09-03)
 
 **Test-case slide headings (TC-1).** The test-plan decks put one test
