@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * svg2pptx v1.2 — SlideFigures SVG figures → editable PowerPoint shapes
+ * svg2pptx v1.3 — SlideFigures SVG figures → editable PowerPoint shapes
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the sweep machine already
  * has Node). Takes the figure SVGs the local sweep writes into the
@@ -33,6 +33,21 @@
  * the sidecar's title slug, then to `doc {N}`; `--doc-title "..."`
  * overrides the lookup for every input (use it when converting SVGs
  * that never went through the sweep's naming).
+ *
+ * v1.3: the slide carries the figure's TEST CASE, not just its
+ * drawing. From the same sidecar the converter reads the figure's own
+ * case section — the section whose body holds this figure's image
+ * link — and brings along:
+ *   - the CASE HEADING ("Case 2 — Loop - Split measure: 20") as the
+ *     slide title (a sibling figure keeps its "(1 of 2)" tag; the
+ *     generic "Slide N ..." SVG title stays the fallback);
+ *   - the section's TABLES as native, editable PowerPoint tables
+ *     below the figure — this figure's anchor table first, tables
+ *     anchored to a SIBLING figure excluded, at most 2 tables and 10
+ *     body rows each (an ellipsis row marks a cut);
+ *   - a METADATA line (doc kind · surface · products · edited when/by,
+ *     from the sidecar's yaml block) right-aligned in the eyebrow band.
+ * No sidecar (or --no-tables) means the v1.2 slide: figure + titles.
  *
  * The converter understands the CLOSED vocabulary SlideFigures emits —
  * line/rect/ellipse/circle/polygon/path/text plus the two arrow markers
@@ -74,12 +89,14 @@ function collectInputs(argv) {
   const files = [];
   let out = "figures.pptx";
   let docTitle = "";
+  let noTables = false;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-o" || a === "--out") { out = argv[++i]; continue; }
     if (a === "--doc-title") { docTitle = argv[++i] || ""; continue; }
+    if (a === "--no-tables") { noTables = true; continue; }
     if (a === "-h" || a === "--help") {
-      console.log("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"]");
+      console.log("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
       process.exit(0);
     }
     let st;
@@ -91,19 +108,25 @@ function collectInputs(argv) {
       files.push(a);
     }
   }
-  return { files, out, docTitle };
+  return { files, out, docTitle, noTables };
 }
 
-// ------------------------------------------------- document title lookup
+// ---------------------------------------------------- sidecar lookup
 // A media figure doc{N}_slideK.svg belongs to the sidecar
 // {title-slug}__doc{N}.md — media/ and the kind subfolders are siblings
 // under the library root, so the sidecar sits next to the SVG, one level
-// up, or in one of the parent's kind subfolders. Its H1 is the document
-// title the sweep minted (fallbacks: a `title:` metadata line, the
-// sidecar's own slug humanised, then plain `doc {N}`).
-function docTitleFor(file, cache) {
+// up, or in one of the parent's kind subfolders. The sidecar is the
+// figure's whole context: its H1 is the document title, its yaml block
+// carries the document metadata, and the figure's own case section
+// (heading + tables) sits around the figure's image link in the body.
+function yamlVal(md, key) {
+  const m = md.match(new RegExp(`^${key}:\\s*["']?(.*?)["']?\\s*$`, "m"));
+  return m ? m[1].trim() : "";
+}
+
+function sidecarFor(file, cache) {
   const m = basename(file).match(/^doc(\d+)_/);
-  if (!m) return "";
+  if (!m) return null;
   const id = m[1];
   if (cache[id] !== undefined) return cache[id];
   const dir = dirname(resolve(file));
@@ -123,20 +146,95 @@ function docTitleFor(file, cache) {
       try { if (statSync(p).isDirectory()) scan(p); } catch { /* ignore */ }
     }
   } catch { /* ignore */ }
-  let title = `doc ${id}`;
+  let sc = { id, title: `doc ${id}`, meta: "", lines: null };
   if (hits.length) {
     const slug = basename(hits[0]).replace(new RegExp(`__doc${id}\\.md$`), "");
-    title = slug.replace(/[-_]+/g, " ").trim() || title;
+    sc.title = slug.replace(/[-_]+/g, " ").trim() || sc.title;
     try {
       const md = readFileSync(hits[0], "utf8");
       const h1 = md.match(/^# (.+)$/m);
-      const yt = md.match(/^title:\s*["']?(.+?)["']?\s*$/m);
-      if (h1) title = h1[1].trim();
-      else if (yt) title = yt[1].trim();
+      if (h1) sc.title = h1[1].trim();
+      else if (yamlVal(md, "title")) sc.title = yamlVal(md, "title");
+      // the metadata line: what a reviewer needs to place the case —
+      // kind, surface, products, and how fresh the source is
+      const products = (md.match(/^products:\s*\[(.*)\]\s*$/m) || ["", ""])[1]
+        .split(",").map((s) => s.replace(/["']/g, "").trim()).filter(Boolean);
+      const edited = (yamlVal(md, "last_edited").match(/\d{4}-\d{2}-\d{2}/) || [""])[0];
+      const editor = yamlVal(md, "last_edited_by");
+      sc.meta = [
+        yamlVal(md, "doc_kind"), yamlVal(md, "surface"), products.join(" / "),
+        edited ? `edited ${edited}${editor ? " by " + editor : ""}` : "",
+      ].filter(Boolean).join("  ·  ").slice(0, 120);
+      sc.lines = md.split("\n");
     } catch { /* unreadable sidecar: the slug already serves */ }
   }
-  cache[id] = title;
-  return title;
+  cache[id] = sc;
+  return sc;
+}
+
+// -------------------------------------------- the figure's case section
+// The sweep places each figure's image link inside its slide's section,
+// directly before the table it anchors to. Walking out from this
+// figure's own link gives the case heading and the section's tables —
+// with tables anchored to a SIBLING figure left to that sibling's slide.
+const TBL_MAX = 2;        // tables per slide
+const TBL_MAX_ROWS = 10;  // body rows per table (an … row marks a cut)
+const CELL_MAX = 48;      // chars per cell
+
+function mdCell(s) {
+  return s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")   // links -> text
+          .replace(/\*\*([^*]*)\*\*/g, "$1")
+          .replace(/`([^`]*)`/g, "$1")
+          .replace(/\\\|/g, "|").trim();
+}
+
+function caseSection(sc, svgName) {
+  if (!sc || !sc.lines) return null;
+  const lines = sc.lines;
+  let at = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].indexOf("](") >= 0 && lines[i].indexOf(svgName) >= 0) { at = i; break; }
+  }
+  if (at < 0) return null;
+  let s = at, e = lines.length;
+  while (s > 0 && !/^## /.test(lines[s])) s--;
+  for (let i = at + 1; i < lines.length; i++) {
+    if (/^## /.test(lines[i])) { e = i; break; }
+  }
+  const head = /^## /.test(lines[s])
+    ? lines[s].replace(/^## /, "").replace(/<!--[\s\S]*?-->/g, "").trim() : "";
+  const isRow = (ln) => {
+    const t = ln.trim();
+    return t.length > 1 && t[0] === "|" && t[t.length - 1] === "|";
+  };
+  const isSep = (ln) => /^\|[\s\-:|]+\|$/.test(ln.trim());
+  const tables = [];
+  let cur = null, prev = "";
+  for (let i = s + 1; i < e; i++) {
+    const ln = lines[i];
+    if (isRow(ln)) {
+      if (isSep(ln)) continue;
+      if (!cur) { cur = { pre: prev, rows: [] }; tables.push(cur); }
+      cur.rows.push(ln.trim().slice(1, -1).split(/(?<!\\)\|/).map(mdCell));
+    } else {
+      cur = null;
+      if (ln.trim()) prev = ln.trim();
+    }
+  }
+  const mine = [], rest = [];
+  for (const t of tables) {
+    if (t.rows.length < 2) continue;
+    if (t.pre.indexOf(svgName) >= 0) mine.push(t.rows);                 // my anchor
+    else if (/!\[[^\]]*\]\([^)]*\.svg\)/.test(t.pre)) continue;         // a sibling's
+    else rest.push(t.rows);
+  }
+  const picked = mine.concat(rest).slice(0, TBL_MAX).map((rows) => {
+    const out = rows.slice(0, TBL_MAX_ROWS + 1).map((r) =>
+      r.map((c) => (c.length > CELL_MAX ? c.slice(0, CELL_MAX - 1) + "…" : c)));
+    if (rows.length > TBL_MAX_ROWS + 1) out.push(out[0].map((c, i) => (i === 0 ? "…" : "")));
+    return out;
+  });
+  return { head, tables: picked };
 }
 
 // slide10 sorts after slide9, not after slide1
@@ -555,33 +653,121 @@ function emitTextBox(it, st, E, id) {
 // ------------------------------------------------------ slide + package
 const HEADER_BOT = 1120140;   // 1.18 in — title band above the figure area
 const TITLE_INK = "16302F";   // slide title: palette ink
-const TITLE_MUTED = "6E8285"; // document title: palette muted
+const TITLE_MUTED = "6E8285"; // document title + metadata: palette muted
+const GAP = 137160;           // 0.14 in between figure and tables
+const TBL_ROW_H = 265000;     // minimum table row height (~0.28 in)
+const TBL_BORDER = "D7DFDF";  // the plate's old border colour, on cell grid
+const TBL_HEAD_FILL = "EFF2F2";
 
-// a full-width, left-aligned band line (the doc-title eyebrow and the
-// slide title); plain text boxes, not placeholders — the master is blank
-function bandBox(id, name, y, h, text, szPx, hex, bold) {
+// a full-width band line (doc-title eyebrow, slide title, metadata);
+// plain text boxes, not placeholders — the master is blank
+function bandBox(id, name, y, h, text, szPx, hex, bold, algn) {
   const spPr = xfrmXml(MARGIN, y, SLIDE_W - 2 * MARGIN, h) +
     '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln>';
   const tx = '<p:txBody><a:bodyPr wrap="square" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>' +
-    `<a:p><a:pPr algn="l"/>${runXml(xesc(text), szPx, hex, bold, "Segoe UI")}</a:p></p:txBody>`;
+    `<a:p><a:pPr algn="${algn || "l"}"/>${runXml(xesc(text), szPx, hex, bold, "Segoe UI")}</a:p></p:txBody>`;
   return spXml(id, name, spPr, tx);
+}
+
+// ------------------------------------------------- native table emit
+// GFM rows from the sidecar -> a real a:tbl the reviewer can edit:
+// header row bold on a muted tint, light grid, columns sized by content
+function tableFrame(id, x, y, rows, maxW) {
+  const nCols = Math.max(...rows.map((r) => r.length));
+  const widths = [];
+  for (let c = 0; c < nCols; c++) {
+    let ch = 4;
+    for (const r of rows) ch = Math.max(ch, (r[c] || "").length);
+    widths.push(Math.min(30, ch) * 80000 + 240000);
+  }
+  const total = widths.reduce((a, b) => a + b, 0);
+  if (total > maxW) {
+    const f = maxW / total;
+    for (let i = 0; i < nCols; i++) widths[i] = Math.round(widths[i] * f);
+  }
+  const w = widths.reduce((a, b) => a + b, 0);
+  const border = (side) =>
+    `<a:${side} w="9525"><a:solidFill><a:srgbClr val="${TBL_BORDER}"/></a:solidFill></a:${side}>`;
+  const trs = rows.map((r, ri) => {
+    const tcs = [];
+    for (let c = 0; c < nCols; c++) {
+      const run = runXml(xesc(r[c] || ""), 13, TITLE_INK, ri === 0, "Segoe UI");
+      tcs.push("<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>" +
+        `<a:p><a:pPr algn="l"/>${run}</a:p></a:txBody>` +
+        '<a:tcPr marL="72000" marR="72000" marT="27432" marB="27432" anchor="ctr">' +
+        border("lnL") + border("lnR") + border("lnT") + border("lnB") +
+        (ri === 0 ? solidFill(TBL_HEAD_FILL) : solidFill("FFFFFF")) +
+        "</a:tcPr></a:tc>");
+    }
+    return `<a:tr h="${TBL_ROW_H}">${tcs.join("")}</a:tr>`;
+  }).join("");
+  const xml = "<p:graphicFrame><p:nvGraphicFramePr>" +
+    `<p:cNvPr id="${id}" name="case table"/>` +
+    '<p:cNvGraphicFramePr><a:graphicFrameLocks noGrp="1"/></p:cNvGraphicFramePr><p:nvPr/>' +
+    "</p:nvGraphicFramePr>" +
+    `<p:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${w}" cy="${rows.length * TBL_ROW_H}"/></p:xfrm>` +
+    '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/table">' +
+    '<a:tbl><a:tblPr firstRow="1" bandRow="0"/><a:tblGrid>' +
+    widths.map((cw) => `<a:gridCol w="${cw}"/>`).join("") +
+    `</a:tblGrid>${trs}</a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  return { xml, w, h: rows.length * TBL_ROW_H };
 }
 
 function slideXml(fig) {
   const wEmu = fig.w * EMU_PX, hEmu = fig.h * EMU_PX;
-  const areaY = HEADER_BOT, areaH = SLIDE_H - HEADER_BOT - MARGIN;
-  const s = Math.min(1, (SLIDE_W - 2 * MARGIN) / wEmu, areaH / hEmu);
+  const availW = SLIDE_W - 2 * MARGIN;
+  const areaH = SLIDE_H - HEADER_BOT - MARGIN;
+  // measure the case tables first — the figure scales into what remains
+  const tbls = (fig.tables || []).map((rows, i) =>
+    tableFrame(100001 + i, 0, 0, rows,
+               fig.tables.length === 2 ? Math.floor((availW - GAP) / 2) : availW));
+  const side = tbls.length === 2 && tbls[0].w + tbls[1].w + GAP <= availW;
+  const blockH = tbls.length === 0 ? 0
+    : (side ? Math.max(...tbls.map((t) => t.h))
+            : tbls.reduce((a, t) => a + t.h, 0) + GAP * (tbls.length - 1));
+  const figAreaH = Math.max(1200000, areaH - (blockH ? blockH + GAP : 0));
+  const s = Math.min(1, availW / wEmu, figAreaH / hEmu);
   const gw = Math.round(wEmu * s), gh = Math.round(hEmu * s);
-  const gx = Math.round((SLIDE_W - gw) / 2), gy = Math.round(areaY + (areaH - gh) / 2);
+  const gx = Math.round((SLIDE_W - gw) / 2);
+  // figure and tables centre TOGETHER as one block — a short figure must
+  // not leave its tables stranded at the bottom of the slide
+  const contentH = gh + (blockH ? GAP + blockH : 0);
+  const gy = Math.round(HEADER_BOT + Math.max(0, (areaH - contentH) / 2));
+  // re-place the measured tables under the figure, centred as a block
+  let tblXml = "";
+  if (tbls.length) {
+    const ty = gy + gh + GAP;
+    if (side) {
+      let tx = Math.round((SLIDE_W - (tbls[0].w + GAP + tbls[1].w)) / 2);
+      for (let i = 0; i < tbls.length; i++) {
+        tblXml += tableFrame(100001 + i, tx, ty, fig.tables[i],
+                             Math.floor((availW - GAP) / 2)).xml;
+        tx += tbls[i].w + GAP;
+      }
+    } else {
+      let yAt = ty;
+      for (let i = 0; i < tbls.length; i++) {
+        tblXml += tableFrame(100001 + i, Math.round((SLIDE_W - tbls[i].w) / 2), yAt,
+                             fig.tables[i], availW).xml;
+        yAt += tbls[i].h + GAP;
+      }
+    }
+  }
   const { xml, skipped } = emitFigure(fig, s, 5);
+  const part = (fig.title || "").match(/\((\d+ of \d+)\)/);
+  const slideTitle = fig.caseTitle
+    ? fig.caseTitle + (part ? ` (${part[1]})` : "")
+    : (fig.title || fig.name);
   const header =
     (fig.docTitle ? bandBox(2, "document title", 289560, 219456, fig.docTitle, 14, TITLE_MUTED, false) : "") +
-    bandBox(3, "slide title", 553720, 402336, fig.title || fig.name, 24, TITLE_INK, true);
+    (fig.meta ? bandBox(100000, "case metadata", 289560, 219456, fig.meta, 12, TITLE_MUTED, false, "r") : "") +
+    bandBox(3, "slide title", 553720, 402336, slideTitle, 24, TITLE_INK, true);
   const alt = [fig.title, fig.desc].filter(Boolean).join(" — ");
   const grp = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="4" name="${xesc(fig.title || fig.name)}"` +
     (alt ? ` descr="${xesc(alt)}"` : "") + "/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
     `<p:grpSpPr><a:xfrm><a:off x="${gx}" y="${gy}"/><a:ext cx="${gw}" cy="${gh}"/>` +
-    `<a:chOff x="0" y="0"/><a:chExt cx="${gw}" cy="${gh}"/></a:xfrm></p:grpSpPr>${xml}</p:grpSp>`;
+    `<a:chOff x="0" y="0"/><a:chExt cx="${gw}" cy="${gh}"/></a:xfrm></p:grpSpPr>${xml}</p:grpSp>` +
+    tblXml;
   const sld = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     '<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
     ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"' +
@@ -775,18 +961,25 @@ function zip(files) {
 }
 
 // ------------------------------------------------------------------ main
-const { files, out, docTitle } = collectInputs(process.argv.slice(2));
+const { files, out, docTitle, noTables } = collectInputs(process.argv.slice(2));
 if (files.length === 0) {
-  console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"]");
+  console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
   process.exit(2);
 }
 const figures = [];
-const titleCache = {};
+const scCache = {};
 for (const f of files) {
   try {
     const fig = parseFigure(f);
     if (fig.unknown.length) console.error(`note: ${f}: skipped unknown element(s): ${fig.unknown.join(", ")}`);
-    fig.docTitle = docTitle || docTitleFor(f, titleCache);
+    const sc = sidecarFor(f, scCache);
+    fig.docTitle = docTitle || (sc ? sc.title : "");
+    fig.meta = sc ? sc.meta : "";
+    const sec = noTables ? null : caseSection(sc, basename(f));
+    if (sec) {
+      if (sec.head) fig.caseTitle = sec.head;
+      fig.tables = sec.tables;
+    }
     figures.push(fig);
   } catch (e) {
     console.error(`skip: ${e.message}`);

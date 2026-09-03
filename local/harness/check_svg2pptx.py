@@ -1,4 +1,4 @@
-"""Gate for svg2pptx v1.2 — SlideFigures SVG figures -> editable PowerPoint shapes.
+"""Gate for svg2pptx v1.3 — SlideFigures SVG figures -> editable PowerPoint shapes.
 
 Asserts the contract review decks depend on, over a fixture SVG that
 exercises the FULL vocabulary SlideFigures emits (every element kind,
@@ -23,7 +23,14 @@ group, node labels, legend, escaped text):
      the slide is the background — and every slide carries a title band:
      the figure's <title> as the slide title plus the source document's
      title above it, looked up from the corpus naming (doc{N}_*.svg ->
-     sibling {slug}__doc{N}.md sidecar H1) or forced via --doc-title.
+     sibling {slug}__doc{N}.md sidecar H1) or forced via --doc-title;
+  9. v1.3 test-case context from the same sidecar: the figure's case
+     heading becomes the slide title (sibling "(1 of 2)" tag kept), the
+     case section's tables land as native a:tbl graphicFrames below the
+     figure (this figure's anchor table first, a SIBLING figure's anchor
+     table excluded, body rows capped with an ellipsis row), and a
+     metadata line (kind/surface/products/edited, from the yaml block)
+     rides the eyebrow band; --no-tables suppresses the tables.
 
 Pure stdlib except that last python-pptx leg, which degrades to a note
 when the library is absent. Exit nonzero on any failure.
@@ -259,12 +266,36 @@ check(gym is not None and int(gym.group(1)) >= 1120140,
       'figure group sits below the title band')
 
 # doc-title lookup: media naming doc{N}_*.svg -> sibling kind folder's
-# {slug}__doc{N}.md sidecar, H1 wins
+# {slug}__doc{N}.md sidecar, H1 wins. The sidecar mirrors the sweep's
+# real layout (metadata comment + yaml, case heading with the slide
+# comment, image link directly before its anchor table) so the v1.3
+# case-context extraction is exercised against the true format.
 os.makedirs('fixlib/media', exist_ok=True)
 os.makedirs('fixlib/Test Plans', exist_ok=True)
 open('fixlib/media/doc7_slide3.svg', 'w', encoding='utf-8').write(FIXTURE)
+long_tbl = '\n'.join(f'| step {i} | do the thing |' for i in range(1, 15))
 open('fixlib/Test Plans/route-split-cases__doc7.md', 'w', encoding='utf-8').write(
-    '# Route Split Cases\n\nbody\n')
+    '# Route Split Cases\n\n'
+    '<!-- metadata\n```yaml\n'
+    'title: "Route Split Cases"\n'
+    'doc_id: 7\n'
+    'doc_kind: "Test Plan"\n'
+    'surface: "Pro"\n'
+    'last_edited_by: "K. Roper"\n'
+    'last_edited: "2026-08-12T17:03:00Z"\n'
+    'products: ["Roads & Highways"]\n'
+    '```\n-->\n\n'
+    '## Summary\n\nSummary text.\n\n'
+    '## Case 9 — Loop - Split measure: 20 <!-- slide 3 -->\n\n'
+    'Case body.\n\n'
+    '![Slide 3 diagram](../media/doc7_slide3.svg)\n\n'
+    '| Event ID | E7 |\n| --- | --- |\n| Route ID | R7 |\n| Split Measure | 20 |\n\n'
+    '![Sibling diagram](../media/doc7_slide3_fig2.svg)\n\n'
+    '| Sibling Col | zzz |\n| --- | --- |\n| Sibling Row | 1 |\n\n'
+    'Steps:\n\n'
+    '| Step | Action |\n| --- | --- |\n' + long_tbl + '\n\n'
+    '## Case 10 — other <!-- slide 4 -->\n\n'
+    '| Other Case | x |\n| --- | --- |\n| r | 1 |\n')
 out2 = subprocess.run(
     ['node', SCRIPT, 'fixlib/media', '-o', 'fix_doc.pptx'],
     capture_output=True, text=True, encoding='utf-8')
@@ -274,6 +305,31 @@ sd = zd.read('ppt/slides/slide1.xml').decode('utf-8')
 check('<a:t>Route Split Cases</a:t>' in sd,
       'document title: sidecar H1 found via the doc7_ prefix')
 check('name="document title"' in sd, 'document title box named')
+
+# ---- 9 (v1.3): test-case context from the sidecar ------------------------
+check('<a:t>Case 9 — Loop - Split measure: 20 (1 of 2)</a:t>' in sd,
+      'slide title: case heading with the sibling (1 of 2) tag kept')
+check('Test Plan  ·  Pro  ·  Roads &amp; Highways  ·  edited 2026-08-12 by K. Roper'
+      in sd, 'metadata line: kind/surface/products/edited from the yaml block')
+check('name="case metadata"' in sd, 'metadata box named')
+check(sd.count('<p:graphicFrame>') == 2,
+      f'two case tables land as graphicFrames ({sd.count("<p:graphicFrame>")})')
+check('<a:tbl><a:tblPr firstRow="1"' in sd, 'tables are native a:tbl')
+check('<a:t>Split Measure</a:t>' in sd and '<a:t>Action</a:t>' in sd,
+      'anchor + neutral table content carried through')
+check('Sibling Col' not in sd and 'Other Case' not in sd,
+      "a sibling figure's anchor table and other sections' tables excluded")
+check(sd.index('Split Measure') < sd.index('Action'),
+      "this figure's anchor table comes first")
+steps = re.findall(r'<a:t>step \d+</a:t>', sd)
+check(len(steps) == 10 and '<a:t>…</a:t>' in sd,
+      f'long table capped at 10 body rows with an ellipsis row ({len(steps)})')
+outnt = subprocess.run(
+    ['node', SCRIPT, 'fixlib/media', '--no-tables', '-o', 'fix_nt.pptx'],
+    capture_output=True, text=True, encoding='utf-8')
+snt = zipfile.ZipFile('fix_nt.pptx').read('ppt/slides/slide1.xml').decode('utf-8')
+check(outnt.returncode == 0 and '<p:graphicFrame>' not in snt,
+      '--no-tables: no case tables, figure-only slide')
 out3 = subprocess.run(
     ['node', SCRIPT, 'fixlib/media', '--doc-title', 'Override Deck',
      '-o', 'fix_doc2.pptx'],
@@ -296,6 +352,10 @@ try:
     check(grp.name.startswith('Slide 3'), 'python-pptx: group name readable')
     check(len(grp.shapes) >= 20,
           f'python-pptx: group holds the shapes ({len(grp.shapes)})')
+    prsd = Presentation('fix_doc.pptx')
+    frames = [s for s in prsd.slides[0].shapes if getattr(s, 'has_table', False)]
+    check(len(frames) == 2 and frames[0].table.cell(0, 0).text == 'Event ID',
+          'python-pptx: case tables open as real tables, anchor first')
 except ImportError:
     print('note python-pptx not installed - open-leg skipped')
 
