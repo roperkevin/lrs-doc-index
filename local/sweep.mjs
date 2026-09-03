@@ -622,6 +622,7 @@ function compactWhy(why) {
  */
 function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext, srcItemId, modified, withMedia }) {
   let docText = "", relsText = "", lane = "none";
+  let figureCount = 0, figureError = "";
   let srcAuthor = "", srcEditor = "", srcEdited = "";
   const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
   const oversize = size > sw.oversizeBytes && ext !== "xlsx";
@@ -666,9 +667,15 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext,
           writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", name), f.svg);
           docText = placeFigure(docText, f.slide, `../media/${name}`, f.alt);
         }
+        figureCount = figs.length;
         if (figs.length) setStep(`figures-${figs.length}`);
       } catch (e) {
-        // a figure is an enhancement, never a reason to fail an index
+        // a figure is an enhancement, never a reason to fail an index — but
+        // it must not fail SILENTLY either: swallowing this hid a missing
+        // script registration for a whole corpus pass (123 bodies rewritten,
+        // zero figures, no error anywhere).
+        figureError = e.message;
+        process.stderr.write(`FIGURES ${path.basename(localPath)}: ${e.message}\n`);
         setStep("figures-skipped");
       }
     }
@@ -704,7 +711,8 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext,
   }
   // pdf(no tool)/msg/image/other/oversize (and empty html): DocText
   // stays empty → Skip lane.
-  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited };
+  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
+           figureCount, figureError };
 }
 
 /** Zero-dependency HTML → text: scripts/styles/comments dropped,
@@ -1023,7 +1031,7 @@ async function main() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-sweep-"));
   const mains = await loadScripts(
     cfg.scriptsDir || DEFAULT_SCRIPTS_DIR,
-    ["ziptext", "media", "regex", "workbookdump", "related", "sidecarpatch"],
+    ["ziptext", "media", "figures", "regex", "workbookdump", "related", "sidecarpatch"],
     tmpDir
   );
   const op = (o) => runOp(mains, o);
@@ -1213,6 +1221,7 @@ async function main() {
   const rfsum = {
     mode: "reformat", dry_run: dry, eligible: 0, rewritten: 0,
     unchanged: 0, no_sidecar: 0, no_seam: 0, no_text: 0, errors: 0,
+    figures: 0, figure_errors: 0,
   };
   const summary = {
     library_items_seen: files.length,
@@ -1226,6 +1235,8 @@ async function main() {
     dockey_misses: 0,
     out_of_scope: 0,
     archived: 0,
+    figures: 0,
+    figure_errors: 0,
   };
 
   for (const item of files) {
@@ -1281,10 +1292,12 @@ async function main() {
           rfsum.no_seam++;
           continue;
         }
-        const { docText } = extractDocText({
+        const { docText, figureCount, figureError } = extractDocText({
           sw, cfg, op, writer, pdfTool, setStep: () => {},
           localPath, ext, srcItemId, modified, withMedia: false,
         });
+        rfsum.figures += figureCount || 0;
+        if (figureError) rfsum.figure_errors++;
         if (!docText) {
           rfsum.no_text++;
           continue;
@@ -1512,10 +1525,13 @@ async function indexDoc(ctx) {
   }
 
   // Switch_ext lane dispatch (shared with the --reformat pass)
-  const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited } = extractDocText({
+  const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
+          figureCount, figureError } = extractDocText({
     sw, cfg, op, writer, pdfTool, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
+  summary.figures = (summary.figures || 0) + (figureCount || 0);
+  if (figureError) summary.figure_errors = (summary.figure_errors || 0) + 1;
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
