@@ -366,6 +366,51 @@ if len(f11) == 2:
           f'spanning anchors: input -> key/value table, output -> result table '
           f'({f11[0].get("anchor")} / {f11[1].get("anchor")})')
 
+# ---- v1.7 (DF-8): route on top as a dash, smaller heads, hashed anchors ---
+mroute = re.search(r'\.route\{([^}]*)\}', v1)
+check(mroute is not None and 'stroke-dasharray' in mroute.group(1),
+      'route restyled as a dash (stroke-dasharray in .route)')
+check('markerWidth="4.4"' in v1 and 'markerWidth="5.2"' not in v1,
+      'arrowheads smaller (4.4 marker units, was 5.2)')
+b_v = v1[v1.index('</style>'):]
+check(b_v.find('class="ln route') > b_v.rfind('class="ln event'),
+      'vector lane: the route draws AFTER the extents — on top, never buried')
+b_r3 = r3out[r3out.index('</style>'):]
+check(b_r3.find('class="ln route"') > b_r3.rfind('class="ln event'),
+      'redraw lane: route on top of the extents')
+check(re.search(r'<path class="ln route" d="[^"]*" marker-end', r3out) is None
+      and re.search(r'<line class="ln route" [^>]*marker-end="url\(#ar\)"', r3out)
+      is not None,
+      'redraw lane: arrowhead rides a solid carrier, never the dashed path')
+if len(f11) == 2:
+    b_s = f11[0]['svg'][f11[0]['svg'].index('</style>'):]
+    check(b_s.find('class="ln route"') > b_s.rfind('class="ln event'),
+          'spanning lane: route on top of the extent')
+    n_hash = b_s.count('class="ln tick maj"')
+    check(n_hash == 2, f'spanning: a hash mark at each stated anchor ({n_hash})')
+    b_so = f11[1]['svg'][f11[1]['svg'].index('</style>'):]
+    dot_x = re.search(r'<circle class="splitdot" cx="([\d.]+)"', b_so)
+    t_so = re.findall(r'<line class="ln tick maj" x1="([\d.]+)"', b_so)
+    check(len(t_so) == 2 and dot_x is not None and
+          all(abs(float(tx) - float(dot_x.group(1))) > 2 for tx in t_so),
+          'spanning output: the split anchor keeps its marker, no doubled tick')
+f12 = figs.get(12, {})
+s12 = f12.get('svg', '')
+check(bool(s12), 'labels-without-ticks slide produces a figure')
+t12 = re.findall(r'<line class="ln tick maj" x1="([\d.]+)"', s12)
+m12 = re.findall(r'<text class="measure[^"]*" x="([\d.]+)"', s12)
+check(len(t12) == 2,
+      f'hash marks synthesized at the labelled anchors ({len(t12)})')
+check(len(m12) == 2 and bool(t12) and
+      all(min(abs(float(mx) - float(tx)) for tx in t12) < 1 for mx in m12),
+      'each hash sits under its own label (dragged end label re-centred on it)')
+rt12 = re.search(r'<line class="ln route[^"]*" x1="([\d.]+)" y1="[\d.]+" x2="([\d.]+)"',
+                 s12)
+check(rt12 is not None and bool(t12) and
+      max(float(t) for t in t12) <= max(float(rt12.group(1)),
+                                        float(rt12.group(2))) + 0.1,
+      'a clamped hash mark stays ON the route')
+
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
 for n, f in allfigs:

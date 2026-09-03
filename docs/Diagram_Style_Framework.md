@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.6)
+# Diagram style framework (SlideFigures v1.7)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -149,6 +149,43 @@ it is either. The output legend qualifies each range with its routes
 cross-route range is meaningless without them. Segment widths are equal:
 a schematic of the network's order, not a claim about route lengths.
 
+## Route above extents (v1.7)
+
+The route used to draw first, as a solid bar the event extents were laid
+over — so a fully covered route simply vanished: on half the corpus's
+rulers the "route" existed only as its arrowhead. The z-order is now
+**extents at the back, ticks over them, the route on top** in every lane,
+and the route is drawn as a **dash** (8 on / 5 off, butt caps, 3px)
+rather than a solid: its gaps let the extent colour read through, so the
+route and the extent both stay legible over the same pixels — the extent
+as the colour field, the route as the dash running through it. Event
+extents widen to 6.5px so their colour still shows around the dash.
+
+Arrowheads shrink with the slimmer route (4.4 marker units, ~13px at
+route weight — the old ~19px head outweighed the line) and every
+marker-end rides a short **solid carrier** retracing the line's final
+pixels: a marker on the dashed path itself could land on a dash gap and
+float detached from its line.
+
+## Labelled anchors get hash marks (v1.7)
+
+A line whose band carries measure labels but **no ticks** left its
+numbers floating in space — the decks draw these (end measures above a
+bare line), and the spanning chain's anchors-only rule produced them by
+design. A labelled position now gets a major tick:
+
+- **Vector lane** — synthesized only for route bands with *no* ticks at
+  all (half-ticked lines keep the author's marks), from the measure
+  labels within the band; a label dragged past the route's own end (the
+  decks do this) clamps its tick back onto the line and re-centres over
+  it. Bands are the unit, not segments: a route laid end to end as four
+  segments is one band, and an end label belongs to the whole route.
+- **Spanning lane** — each stated anchor (start, split, end) carries a
+  tick under its measure, except the split's, which keeps its
+  dot-and-hairline marker rather than doubling up. The interiors still
+  carry no invented grids: only the anchors are stated, so only the
+  anchors are marked.
+
 ## Why figures exist
 
 These test plans are route/measure diagrams: a route line, a measure ruler,
@@ -204,8 +241,8 @@ colour-led rule gets one of them backwards.
 |---|---|---|
 | measure | 11px, muted, tabular numerals | Ruler numbers |
 | id | 12.5px, 600 | Route and event ids |
-| route | 3.6px stroke | The network line |
-| event | 5.0px stroke, **butt caps** | Extents |
+| route | 3px stroke, 8/5 dash, butt caps | The network line — a dash over the extents (v1.7) |
+| event | 6.5px stroke, **butt caps** | Extents |
 | tick / major | 1.15 / 1.4px | Scale marks |
 | leader | 1.0px | Callouts |
 
@@ -218,7 +255,7 @@ spanning, trace — places the same element the same distance from the line:
 | ID_OFF | 20.5px | Entity-id baseline off the line (the heavier face sits a step further out) |
 | SPLIT_ARM | 10.5px | Split hairline half-length |
 | DOT_R | 3.2px | Split-dot radius |
-| ARROW_EXT | 18px | Route overshoot carrying the arrowhead |
+| ARROW_EXT | 14px | Route overshoot carrying the arrowhead (sized to the 4.4-unit head) |
 | LEGEND_GAP | 24px | Legend baseline below the content |
 
 The gate asserts the cross-lane invariants (one split-dot radius, one
@@ -275,12 +312,15 @@ place every part by hand.
   extent running beyond the surviving route run) suppresses its arrow rather
   than pointing mid-band. v1.5 snaps the head to the line tip: it is a
   **solid** triangle (a notched head is a see-through cutout over the line's
-  final pixels), the 18px overshoot is sized to the head so its back never
-  dips under an extent bar, refX leaves the line's round cap inside the head
-  where the triangle is wider than the cap, and the ruler lane emits heads
-  AFTER the extents on a short carrier retracing the route's own final
-  pixels — nothing ever draws over an arrowhead, and no line ever shows
-  through one.
+  final pixels), the overshoot is sized to the head so its back never
+  dips under an extent bar, and refX keeps the line end inside the head
+  where the triangle is wider than the line. v1.7 shrinks the head to 4.4
+  marker units (~13px at route weight — the old ~19px head outweighed the
+  slimmer dashed route), sizes the overshoot to it (14px), and puts
+  **every** marker-end on a short solid carrier retracing the line's final
+  pixels — the route is dashed now, and a marker on the path itself could
+  land on a dash gap and float detached — so nothing ever draws over an
+  arrowhead, and no head ever floats free of its line.
 - **Accessibility** — `<title>` and `<desc>` in every figure, plus descriptive
   alt text on the markdown image link (which is also what makes the diagram
   searchable, since the Q&A agent grounds on markdown text).
