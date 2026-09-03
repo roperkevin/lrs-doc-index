@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.4)
+# Diagram style framework (SlideFigures v1.5)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -229,12 +229,19 @@ place every part by hand.
 - **Dense rulers** — labels thin to every 2nd or 3rd tick rather than
   overlapping; every tick is still drawn.
 - **Direction** — an arrowhead on open routes carries route direction. Since
-  v1.4 a normalised or redrawn route overshoots its final tick by 15px and
-  carries the arrowhead (sharpened to a stealth profile) on the overshoot —
-  the number-line convention — where no tick or extent drawn later can cross
-  or bury it. A route line whose band visibly continues past its end (route
-  segments laid end to end; a traced extent running beyond the surviving
-  route run) suppresses its arrow rather than pointing mid-band.
+  v1.4 a normalised or redrawn route overshoots its final tick and carries
+  the arrowhead on the overshoot — the number-line convention — where no
+  tick or extent drawn later can cross or bury it; a route line whose band
+  visibly continues past its end (route segments laid end to end; a traced
+  extent running beyond the surviving route run) suppresses its arrow rather
+  than pointing mid-band. v1.5 snaps the head to the line tip: it is a
+  **solid** triangle (a notched head is a see-through cutout over the line's
+  final pixels), the 18px overshoot is sized to the head so its back never
+  dips under an extent bar, refX leaves the line's round cap inside the head
+  where the triangle is wider than the cap, and the ruler lane emits heads
+  AFTER the extents on a short carrier retracing the route's own final
+  pixels — nothing ever draws over an arrowhead, and no line ever shows
+  through one.
 - **Accessibility** — `<title>` and `<desc>` in every figure, plus descriptive
   alt text on the markdown image link (which is also what makes the diagram
   searchable, since the Q&A agent grounds on markdown text).
