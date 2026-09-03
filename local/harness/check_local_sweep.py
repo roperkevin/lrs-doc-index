@@ -132,12 +132,13 @@ def diagram_shapes():
 
 
 def make_messy_pptx(fpath, text):
-    """Five slides: three carrying every mess tidyBody must clean
+    """Six slides: three carrying every mess tidyBody must clean
     (slide-number placeholder lines, padded/nested bullets, a notes part
     holding nothing but the slide number), plus a test-case slide and a
-    numbered checklist slide exercising caseHeadings (v1.25 TC-1): the
-    case slide's heading must be rewritten from its own case line, the
-    checklist slide's must stay "## Slide 5"."""
+    numbered checklist slide exercising caseHeadings (v1.25 TC-1 /
+    v1.29 TC-3): the case slide's heading must carry its case number +
+    classification with the scenario as an H3 and the specifics kept in
+    the body, the checklist slide's must stay "## Slide 5"."""
     def para(t, lvl=None, bullet=False):
         ppr = ""
         if lvl is not None:
@@ -955,21 +956,34 @@ def main():
     check("body still carries the slide content",
           "Scope of testing" in beta_body and "## Slide 2" in beta_body, beta_body)
 
-    # case headings (caseHeadings, v1.25 TC-1)
-    check("case slide heading rewritten from its case line",
-          "## Case 2 — Loop – Split measure: 20 <!-- slide 4 -->" in beta_body,
-          beta_body)
+    # case headings (caseHeadings, v1.25 TC-1 / v1.29 TC-3)
+    check("case heading carries the classification, not the case specifics",
+          "## Case 2: Positive - Non Spanning Line Event <!-- slide 4 -->"
+          in beta_body, beta_body)
+    check("scenario descriptor becomes an H3 under the case heading",
+          re.search(r"(?m)^### Loop$", beta_body) is not None, beta_body)
+    check("full case line survives in the body (measures never lost)",
+          "**Loop – Split measure: 20**" in beta_body, beta_body)
     check("promoted case line removed from the body",
           not re.search(r"(?m)^2\. Loop", beta_body), beta_body)
+    check("promoted classification line removed from the body",
+          not re.search(r"(?m)^Positive - Non spanning line event$", beta_body),
+          beta_body)
+    check("no heading carries a split measure or route id",
+          not re.search(r"(?mi)^#{2,3} .*(split(ting)? measure|\bR\d+L\d+\b)",
+                        beta_body), beta_body)
     check("checklist slide keeps its bare slide heading",
           "## Slide 5" in beta_body
           and "17. Verify the effective date defaults to today" in beta_body,
           beta_body)
 
-    # long case lines: short title + full-text subheader (v1.27 TC-2)
-    check("long case line yields a short heading cut at the phrase break",
-          "## Case 9 — Merge Option disabled <!-- slide 6 -->" in beta_body,
-          beta_body)
+    # long case lines: full-text subheader, no truncation (v1.27 TC-2
+    # under the v1.29 TC-3 heading shape)
+    check("long case line yields the classification heading",
+          "## Case 9: Negative - Merge Option Disabled <!-- slide 6 -->"
+          in beta_body, beta_body)
+    check("redundant scenario H3 suppressed (classification already says it)",
+          "### Merge Option Disabled" not in beta_body, beta_body)
     check("full case text survives as a bold subheader line",
           "**Merge Option disabled, coincident events that have exact "
           "attributes from measures 0-4 and exist in both versions**" in beta_body,
@@ -1278,7 +1292,8 @@ def main():
           "## Slide 2" in after and "- Append Events" in after
           and "### Notes" not in after, after[-400:])
     check("reformat re-derives case headings",
-          "## Case 2 — Loop – Split measure: 20 <!-- slide 4 -->" in after,
+          "## Case 2: Positive - Non Spanning Line Event <!-- slide 4 -->" in after
+          and re.search(r"(?m)^### Loop$", after) is not None,
           after[-600:])
     check("reformat spent no AI calls", state.llm_calls == llm_before_rf,
           f"{state.llm_calls} vs {llm_before_rf}")
