@@ -1571,19 +1571,48 @@ async function main() {
       errorLane.delete(docKey);
     } catch (e) {
       // Catch_index: Error row, LastError "{step}: {detail}", continue.
-      summary.errors++;
+      // One failure class is NOT retryable (v1.28): AI Builder's input
+      // content moderation (InputContentFiltered) is deterministic on the
+      // doc's own text — a deck that quotes model-instruction-like content
+      // trips it every time — so an Error stamp would re-burn one AI call
+      // per night failing identically. It stamps Skipped instead (the
+      // out-of-scope pattern: once, visible on the status page, no nightly
+      // rechurn), at the CURRENT PromptVersion/SourceModified so needsIndex
+      // stays quiet; like any Skipped row it re-enters on the next
+      // promptVersion bump or a source edit.
       const errDetail = cut(`${step}: ${e.message}`, 4000);
-      errorLane.set(docKey, { name, err: errDetail });
-      process.stderr.write(`ERROR ${name}: ${errDetail}\n`);
+      const filtered = step === "llm" && errDetail.indexOf("InputContentFiltered") >= 0;
+      if (filtered) {
+        errorLane.delete(docKey);
+        process.stderr.write(`SKIP (content-filtered) ${name}: ${errDetail}\n`);
+      } else {
+        summary.errors++;
+        errorLane.set(docKey, { name, err: errDetail });
+        process.stderr.write(`ERROR ${name}: ${errDetail}\n`);
+      }
       try {
+        const status = filtered ? "Skipped" : "Error";
         const fields = {
           Title: name, FileName: name, DocKey: docKey,
-          IndexStatus: "Error", IndexedOn: new Date().toISOString(),
-          LastError: errDetail,
+          IndexStatus: status, IndexedOn: new Date().toISOString(),
+          LastError: filtered
+            ? cut("content filter: AI Builder refused the document text — " +
+                  "re-enters on the next PromptVersion bump or source edit. " + errDetail, 4000)
+            : errDetail,
         };
+        if (filtered) {
+          fields.SourceModified = modified;
+          fields.PromptVersion = sw.promptVersion;
+          // a filtered PDF was extracted fine (the LLM refused the text) —
+          // record the lane so the PDF rescue never rechurns it either
+          if (ext === "pdf") fields.ExtractionLane = "plaintext";
+        }
         if (existing) {
           await writer.patchRow("docIndex", existing.ID, fields);
-          Object.assign(existing, { IndexStatus: "Error" });
+          Object.assign(existing, filtered
+            ? { IndexStatus: status, SourceModified: modified,
+                PromptVersion: sw.promptVersion, LastError: fields.LastError }
+            : { IndexStatus: status });
         } else {
           const created = await writer.createRow("docIndex", {
             ...fields,
@@ -1591,7 +1620,7 @@ async function main() {
             FileType: fileTypeSafe, SourceModified: modified,
             PromptVersion: sw.promptVersion,
           });
-          const row = { ID: created.id, DocKey: docKey, IndexStatus: "Error", SourceModified: modified, PromptVersion: sw.promptVersion, Title: name, FileName: name, TextFileUrl: "" };
+          const row = { ID: created.id, DocKey: docKey, IndexStatus: status, SourceModified: modified, PromptVersion: sw.promptVersion, Title: name, FileName: name, TextFileUrl: "", LastError: fields.LastError };
           byDocKey.set(docKey, row);
           docIndexRows.push(row);
         }
