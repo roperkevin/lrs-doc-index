@@ -218,6 +218,12 @@ const ARROW_EXT = 18;          // route overshoot past the final tick — sized
 const SPLIT_ARM = 10.5;        // split hairline half-length: past the major
                                // ticks but clear of the measure text band
                                // (whose centre sits 15.5px off the line)
+const DOT_R = 3.2;             // split-dot radius, every lane
+const MEAS_OFF = TICK_MAJOR / 2 + TICK_GAP;    // measure baseline off the line
+const ID_OFF = MEAS_OFF + 5;   // entity-id baseline off the line (ids are a
+                               // heavier 12.5px face than the 11px measures,
+                               // so they sit a step further out)
+const LEGEND_GAP = 24;         // legend baseline below the figure's content
 
 function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult {
   const bytes = b64ToBytes(zipBase64);
@@ -1109,7 +1115,7 @@ function renderRuler(c: Cluster, no: number, idx: number, total: number,
       entries.push({ role: roles[ri],
         t: label || "extent " + String.fromCharCode(65 + ri) });
     }
-    const ly = bb[3] + 24;
+    const ly = bb[3] + LEGEND_GAP;
     const leg = emitLegend(entries, bb[0], ly);
     body += leg.svg;
     bb[3] = ly + 8;
@@ -1280,7 +1286,7 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
   for (const s of splits) {
     p.push('<line class="split" x1="' + fnum(s[0]) + '" y1="' + fnum(s[1] - SPLIT_ARM) +
       '" x2="' + fnum(s[0]) + '" y2="' + fnum(s[1] + SPLIT_ARM) + '"/>');
-    p.push('<circle class="splitdot" cx="' + fnum(s[0]) + '" cy="' + fnum(s[1]) + '" r="3.2"/>');
+    p.push('<circle class="splitdot" cx="' + fnum(s[0]) + '" cy="' + fnum(s[1]) + '" r="' + fnum(DOT_R) + '"/>');
   }
   for (const t of texts) {
     p.push('<text class="' + t.cls + '" x="' + fnum(t.x) + '" y="' + fnum(t.y) +
@@ -1352,7 +1358,7 @@ function normaliseRulers(lines: FLine[], texts: FText[], compress: boolean): {
     // it and of any extent reaching the ruler's end (the number-line
     // convention); ticks, measures and extents still live on [rx0, rx1]
     outL.push({ x1: rx0, y1: ry, x2: rx1 + ARROW_EXT, y2: ry, cls: "route", extra: "" });
-    const baseY = ry - TICK_MAJOR / 2 - TICK_GAP;
+    const baseY = ry - MEAS_OFF;
     for (let k = 0; k < ticks.length; k++) {
       const major = k % 5 === 0 || k === ticks.length - 1;
       const L = (major ? TICK_MAJOR : TICK_MINOR) / 2;
@@ -1418,7 +1424,7 @@ function normaliseRulers(lines: FLine[], texts: FText[], compress: boolean): {
       for (const bb of bars) if (score(bb) < score(b)) b = bb;
       if (Math.abs(b.y1 - t.y) < band * 6) {
         relocated.push([t.x, t.y]);
-        outT.push({ x: (b.x1 + b.x2) / 2, y: b.y1 + TICK_MAJOR / 2 + TICK_GAP + 5,
+        outT.push({ x: (b.x1 + b.x2) / 2, y: b.y1 + ID_OFF,
           t: t.t, cls: t.cls, anchor: "middle" });
         continue;
       }
@@ -1656,7 +1662,7 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
       body.push('<line class="ln event flat s-' + roles[e[2]] + '" x1="' + fnum(e[0]) +
         '" y1="' + fnum(ry) + '" x2="' + fnum(e[1]) + '" y2="' + fnum(ry) + '"/>');
       body.push('<text class="id f-' + roles[e[2]] + '" x="' + fnum((e[0] + e[1]) / 2) +
-        '" y="' + fnum(ry - 17) + '" text-anchor="middle" dominant-baseline="central">' +
+        '" y="' + fnum(ry - ID_OFF) + '" text-anchor="middle" dominant-baseline="central">' +
         esc(p.eventId) + "</text>");
     }
     // arrowheads LAST — every route ends in its own arrow, on top of the
@@ -1669,20 +1675,20 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
     if (!isNaN(row.sp)) {
       body.push('<line class="split" x1="' + fnum(row.sp) + '" y1="' + fnum(ry - SPLIT_ARM) +
         '" x2="' + fnum(row.sp) + '" y2="' + fnum(ry + SPLIT_ARM) + '"/>');
-      body.push('<circle class="splitdot" cx="' + fnum(row.sp) + '" cy="' + fnum(ry) + '" r="3.4"/>');
+      body.push('<circle class="splitdot" cx="' + fnum(row.sp) + '" cy="' + fnum(ry) + '" r="' + fnum(DOT_R) + '"/>');
     }
     // the stated measures, above their anchors (start / split / end)
     const meas: number[][] = [[ox, p.m0], [x1, p.m1]];
     if (!isNaN(row.sp)) meas.push([sx, p.split]);
     for (const mv of meas) {
       body.push('<text class="measure" x="' + fnum(mv[0]) +
-        '" y="' + fnum(ry - TICK_MAJOR / 2 - TICK_GAP) +
+        '" y="' + fnum(ry - MEAS_OFF) +
         '" text-anchor="middle" dominant-baseline="central">' + fnum(mv[1]) + "</text>");
     }
     // route ids below their segments
     for (let i = 0; i < chain.length; i++) {
       body.push('<text class="id f-ink" x="' + fnum(ox + (i + 0.5) * segW) +
-        '" y="' + fnum(ry + TICK_MAJOR / 2 + TICK_GAP + 6) +
+        '" y="' + fnum(ry + ID_OFF) +
         '" text-anchor="middle" dominant-baseline="central">' + esc(chain[i]) + "</text>");
     }
     let hgt = ry + 36 + FIG_PAD;
@@ -1692,9 +1698,9 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
           sRid + " " + fnum(p.split) },
         { role: roles[1], t: p.eventId + " " + sRid + " " + fnum(p.split) + " → " +
           p.toRid + " " + fnum(p.m1) },
-      ], FIG_PAD, ry + 48);
+      ], FIG_PAD, ry + ID_OFF + LEGEND_GAP);
       body.push(leg.svg);
-      hgt = ry + 56 + FIG_PAD;
+      hgt = ry + ID_OFF + LEGEND_GAP + 8 + FIG_PAD;
     }
     const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " + rows.length + ")";
     figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length),
@@ -1879,8 +1885,8 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       if (Math.abs(dotE) < 1e-6 ? (ny < 0 || (ny === 0 && nx > 0)) : dotE > 0) {
         nx = -nx; ny = -ny;
       }
-      body.push('<text class="id f-' + roles[e[2]] + '" x="' + fnum(c[0] + nx * 17) + '" y="' +
-        fnum(c[1] + ny * 17) + '" text-anchor="middle" dominant-baseline="central">' +
+      body.push('<text class="id f-' + roles[e[2]] + '" x="' + fnum(c[0] + nx * ID_OFF) + '" y="' +
+        fnum(c[1] + ny * ID_OFF) + '" text-anchor="middle" dominant-baseline="central">' +
         esc(eventId) + "</text>");
     }
     const major = niceStep(m1 - m0);
@@ -1902,8 +1908,8 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
         '" y1="' + fnum(q[1] - ny * L) + '" x2="' + fnum(q[0] + nx * L) + '" y2="' +
         fnum(q[1] + ny * L) + '"/>');
       if (isMaj && !(topo.closed && Math.abs(mm - m1) < 1e-9)) {
-        body.push('<text class="measure" x="' + fnum(q[0] + nx * (TICK_MAJOR / 2 + TICK_GAP)) +
-          '" y="' + fnum(q[1] + ny * (TICK_MAJOR / 2 + TICK_GAP)) +
+        body.push('<text class="measure" x="' + fnum(q[0] + nx * MEAS_OFF) +
+          '" y="' + fnum(q[1] + ny * MEAS_OFF) +
           '" text-anchor="middle" dominant-baseline="central">' +
           (dec ? mm.toFixed(dec) : String(Math.round(mm))) + "</text>");
       }
@@ -1915,7 +1921,7 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       body.push('<line class="split" x1="' + fnum(q[0] - nx * SPLIT_ARM) +
         '" y1="' + fnum(q[1] - ny * SPLIT_ARM) + '" x2="' + fnum(q[0] + nx * SPLIT_ARM) +
         '" y2="' + fnum(q[1] + ny * SPLIT_ARM) + '"/>');
-      body.push('<circle class="splitdot" cx="' + fnum(q[0]) + '" cy="' + fnum(q[1]) + '" r="3.4"/>');
+      body.push('<circle class="splitdot" cx="' + fnum(q[0]) + '" cy="' + fnum(q[1]) + '" r="' + fnum(DOT_R) + '"/>');
     }
     // the row label sits level with the route's entry point, not at
     // mid-height — a branch route runs at 0.28 of the height, and a label
@@ -1932,7 +1938,7 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       for (const e of row.ext) {
         entries.push({ role: roles[e[2]], t: eventId + " " + fnum(e[0]) + "–" + fnum(e[1]) });
       }
-      const leg = emitLegend(entries, FIG_PAD, oy + innerH + 34);
+      const leg = emitLegend(entries, FIG_PAD, oy + innerH + 10 + LEGEND_GAP);
       body.push(leg.svg);
       hgt = oy + innerH + 42 + FIG_PAD;
     }

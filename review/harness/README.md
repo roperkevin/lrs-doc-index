@@ -685,3 +685,10 @@ input→key/value table / output→result table. 7 of the 10 new
 assertions FAIL against the v1.5 script, which collapsed the case
 onto a single-route 10→25 grid with the split clamped away. Local
 sweep gate 153/153 and ES2017 type-check green alongside.
+
+Same round: geometry tokenised across the lanes (MEAS_OFF / ID_OFF /
+DOT_R / LEGEND_GAP — the split-dot radius and entity-id offsets had
+drifted per lane: 3.2 vs 3.4, and 17 / 20.5 / 21.5). Two standing
+style-invariant assertions — one split-dot radius, one id offset
+across every lane — both FAIL against the pre-token script
+(3.2/3.4 and 20.5/17/21.5).

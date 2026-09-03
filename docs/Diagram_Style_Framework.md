@@ -209,6 +209,21 @@ colour-led rule gets one of them backwards.
 | tick / major | 1.15 / 1.4px | Scale marks |
 | leader | 1.0px | Callouts |
 
+Geometry is tokenised the same way (v1.6), so every lane — ruler, redraw,
+spanning, trace — places the same element the same distance from the line:
+
+| Token | Value | Applies to |
+|---|---|---|
+| MEAS_OFF | 15.5px | Measure baseline off the line |
+| ID_OFF | 20.5px | Entity-id baseline off the line (the heavier face sits a step further out) |
+| SPLIT_ARM | 10.5px | Split hairline half-length |
+| DOT_R | 3.2px | Split-dot radius |
+| ARROW_EXT | 18px | Route overshoot carrying the arrowhead |
+| LEGEND_GAP | 24px | Legend baseline below the content |
+
+The gate asserts the cross-lane invariants (one split-dot radius, one
+id offset) so the lanes cannot drift apart again.
+
 Font is a system stack only: an SVG loaded through `<img>` cannot fetch a
 webfont.
 

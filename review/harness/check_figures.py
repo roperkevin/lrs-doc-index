@@ -366,6 +366,29 @@ if len(f11) == 2:
           f'spanning anchors: input -> key/value table, output -> result table '
           f'({f11[0].get("anchor")} / {f11[1].get("anchor")})')
 
+# ---- style invariants: one geometry across every lane ---------------------
+rads = set()
+for n, f in allfigs:
+    rads |= set(re.findall(r'<circle class="splitdot"[^/]*r="([\d.]+)"', f['svg']))
+check(len(rads) == 1, f'split dots share ONE radius across lanes {sorted(rads)}')
+
+
+def _idoff(svg, idtxt, line_re):
+    t = re.search(r'<text class="id[^"]*" x="[\d.]+" y="([\d.]+)"[^>]*>' + idtxt + '<', svg)
+    r = re.search(line_re, svg)
+    if not t or not r:
+        return None
+    return round(abs(float(t.group(1)) - float(r.group(1))), 1)
+
+
+off_v = _idoff(v1, 'E9', r'<line class="ln event flat[^"]*" x1="[\d.]+" y1="([\d.]+)"')
+off_r = _idoff(r3out, 'E3', r'<path class="ln route" d="M [\d.]+ ([\d.]+)')
+off_s = _idoff(f11[0]['svg'] if len(f11) == 2 else '', 'R1L6',
+               r'<line class="ln route" x1="[\d.]+" y1="([\d.]+)"')
+check(off_v is not None and off_v == off_r == off_s,
+      f'entity ids sit at ONE shared offset off the line in every lane '
+      f'({off_v}/{off_r}/{off_s})')
+
 print()
 if failures:
     print(f'RESULT: FAIL — {len(failures)} assertion(s) failed')
