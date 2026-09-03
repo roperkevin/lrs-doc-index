@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.7)
+# Diagram style framework (SlideFigures v1.8)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -167,6 +167,33 @@ marker-end rides a short **solid carrier** retracing the line's final
 pixels: a marker on the dashed path itself could land on a dash gap and
 float detached from its line.
 
+**v1.8 cases the dash in white.** Ink directly on the cool teal was mud:
+every route dash (and its arrow carrier) now draws over a white
+**casing** line of the same geometry and rhythm — the map-cartography
+move — so the ink separates crisply from any bar colour beneath, and on
+the white plate the casing simply disappears. The casing shares the
+dash pattern, so the gaps still show the bar untouched. Arrowheads get
+the same separation as a thin white outline on the marker triangle.
+
+## Two-tone palette (v1.8)
+
+One hex per hue had to serve colour **fields** (the 6.5px extent bars)
+and **thin marks and text** alike, and satisfied neither: dark enough
+for a legible 1.8px edge is too dark a field under an ink dash. Each
+hue now has two steps with one meaning:
+
+- **Bars and legend swatches** take the brighter *field* variant, via
+  compound `.event.s-hue` / `.swatch.s-hue` rules — class names and the
+  hue-family mapping are unchanged, so nothing downstream re-learns
+  anything. The set was validated as a categorical palette: adjacent-pair
+  CVD ΔE ≥ 8, normal-vision ΔE ≥ 20, all steps inside the lightness
+  band; every bar is directly labelled, which relieves the amber step's
+  sub-3:1 surface contrast.
+- **Node outlines, graph edges, freeform paths and entity text** keep
+  the deep variant (warm text deepens to `#9C5A12` to clear 4.5:1 on
+  the plate). Structural ink and muted are untouched — the route reads
+  as structure, the extents as content.
+
 ## Labelled anchors get hash marks (v1.7)
 
 A line whose band carries measure labels but **no ticks** left its
@@ -208,16 +235,21 @@ stay whatever the author chose. It also keeps figures small (4–12 KB).
 
 ## Palette
 
-| Role | Hex | Used for |
-|---|---|---|
-| ink | `#16302F` | Route line, entity labels |
-| muted | `#6E8285` | Ruler ticks, measures, leaders |
-| cool | `#1B6E8C` | Event extent A |
-| warm | `#C2701A` | Event extent B |
-| green | `#2E7D5B` | Event extent C |
-| violet | `#7A5AA6` | Event extent D |
-| red | `#B2442F` | Event extent E |
-| plate | `#FFFFFF` | Figure ground, both themes |
+Each hue carries two steps since v1.8: a bright **field** step for the
+extent bars and legend swatches, and a **deep** step for thin marks
+(node outlines, graph edges, freeforms) and text.
+
+| Role | Field (bars/swatches) | Deep (marks/text) | Used for |
+|---|---|---|---|
+| ink | — | `#16302F` | Route dash, entity labels |
+| muted | — | `#6E8285` | Ruler ticks, measures, leaders |
+| cool | `#3A97C4` | `#1B6E8C` | Event extent A |
+| warm | `#DE8A26` | `#C2701A` stroke / `#9C5A12` text | Event extent B |
+| green | `#3FA173` | `#2E7D5B` | Event extent C |
+| violet | `#9678CC` | `#7A5AA6` | Event extent D |
+| red | `#D96A50` | `#B2442F` | Event extent E |
+| casing | `#FFFFFF` | — | White underlay beneath every route dash and arrowhead |
+| plate | `#FFFFFF` | — | Figure ground, both themes |
 
 **Mapping rule.** Source colours are classified by **hue family**, never by
 order of appearance, so the same source colour lands on the same slot in every

@@ -1,5 +1,23 @@
 # Local sweep — release notes
 
+## svg2pptx v1.1 (2026-09-03, with SlideFigures v1.8 / DF-9)
+
+**Compound selectors in the style resolver.** The v1.8 two-tone
+stylesheet gives event bars and legend swatches a brighter hue variant
+via compound rules (`.event.s-cool,.swatch.s-cool{...}`); the v1.0
+parser keyed rules by a single class token and would have mis-keyed a
+compound rule onto the bare class, painting graph edges bright.
+`parseStyle` now splits comma groups and keeps multi-class selectors as
+class SETS; `resolveStyle` applies them after the single-class rules —
+the browser's more-specific-wins order. Everything else unchanged.
+
+Gate: `check_svg2pptx.py` fixture synced to the v1.8 emission
+(routecase underlay, compound bright rules, white-outlined markers)
+with new assertions — the event bar resolves to the bright variant,
+the freeform keeps the deep one, the white casing carries through.
+PASSED; all 16 `check_figures.py` fixture figures convert and open in
+python-pptx.
+
 ## v1.29 (2026-09-03)
 
 **Case headings drop the specifics (TC-3).** The TC-1 headings put the
