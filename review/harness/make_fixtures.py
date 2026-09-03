@@ -896,6 +896,42 @@ s_f15 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
 s_f15.shapes.add_picture('ui_artifact.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
                          Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
 
+# --- slides 16-18 (v2.2 / DF-13): the slide-13 interface screenshot pasted
+# as JPEG, GIF and BMP — the corpus pastes those too, and PNG-only decode
+# silently kept them at captions. Each must decode and wireframe with the
+# PNG's structure (structure, not pixel parity — JPEG carries block noise).
+# Slide 19 is a PROGRESSIVE jpeg (SOF2): refused by design, stays silent.
+from PIL import Image as _PILImage  # python-pptx already depends on Pillow
+_shot = _PILImage.open('ui_screenshot.png')
+_shot.save('ui_screenshot.jpg', 'JPEG', quality=90, subsampling=2)
+_shot.convert('P', palette=_PILImage.ADAPTIVE).save('ui_screenshot.gif', 'GIF')
+_shot.save('ui_screenshot.bmp', 'BMP')
+_shot.save('ui_prog.jpg', 'JPEG', quality=85, progressive=True)
+for _fmt in ('jpg', 'gif', 'bmp'):
+    _s = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+    _s.shapes.add_picture(f'ui_screenshot.{_fmt}', Emu(int(0.8 * IN)),
+                          Emu(int(1.2 * IN)), Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+s_f19 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f19.shapes.add_picture('ui_prog.jpg', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
+# --- slide 20 (v2.2 / DF-13): the PNG the old decoder REFUSED — a UI
+# mockup exported as a 4-bit palette PNG with a TRANSPARENT ground (the
+# corpus's reported "unconverted PNG" shape). pngDecode must take the
+# sub-8-bit palette, composite the transparency onto the white ground,
+# and wireframe it like any other screenshot.
+_p4 = _PILImage.open('ui_screenshot.png').convert('P', palette=_PILImage.ADAPTIVE,
+                                                  colors=16)
+_bg4 = _p4.getpixel((0, 0))
+_pal4 = _p4.getpalette()
+_pal4[_bg4 * 3:_bg4 * 3 + 3] = [255, 0, 0]   # transparent entry: red, so a
+_p4.putpalette(_pal4)                        # decoder that ignores tRNS gets a
+                                             # red ground and fails the gate
+_p4.save('ui_p4t.png', 'PNG', bits=4, transparency=_bg4)
+s_f20 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f20.shapes.add_picture('ui_p4t.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})

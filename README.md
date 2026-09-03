@@ -48,7 +48,7 @@ keeps the old yaml-on-top layout).
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse | v2.2 (deployed — the local sweep runs it directly) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
-| scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures; UI screenshots as standardized wireframes, with real OCR'd text when the sweep's Tesseract lane feeds transcriptions in) | v2.1 (deployed — the local sweep runs it directly) |
+| scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures; UI screenshots — PNG in every variant, baseline JPEG, GIF, BMP — as standardized wireframes, with real OCR'd text when the sweep's Tesseract lane feeds transcriptions in) | v2.2 (deployed — the local sweep runs it directly) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
 | scripts/SidecarPatch.ts | Surgical related-section patching (four metadata frames) | v1.6 (paste pending — safe any time before the v2.8 window) |

@@ -61,3 +61,9 @@ fixlib/
 # v2.1 figure gate generated fixtures (DF-12)
 ui_artifact.png
 ocr_garbage.json
+# v2.2 figure gate generated fixtures (DF-13)
+ui_screenshot.jpg
+ui_screenshot.gif
+ui_screenshot.bmp
+ui_prog.jpg
+ui_p4t.png

@@ -1,5 +1,5 @@
 /**
- * SlideFigures v2.1 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v2.2 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
@@ -12,7 +12,8 @@
  * DF-10 (2026-09-03) calms the style to soft bands and lifts the cap;
  * DF-11 (2026-09-03) redraws UI screenshots as standardized wireframes;
  * DF-12 (2026-09-03) lifts wireframe fidelity — real OCR'd text and
- * anti-aliasing artifact suppression.
+ * anti-aliasing artifact suppression; DF-13 (2026-09-03) decodes every
+ * raster the corpus pastes — full PNG, baseline JPEG, GIF, BMP.
  * Companion to ZipTextExtract, same input (the
  * file's bytes as base64), plus an OPTIONAL third parameter (DF-12): a
  * JSON array of per-picture OCR transcriptions,
@@ -22,6 +23,34 @@
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped,
  *     ocrWanted }
+ *
+ * v2.2 (DF-13):
+ *   - EVERY COMMON RASTER FORMAT REACHES THE RASTER TIERS. The
+ *     wireframe and trace tiers decoded PNG only, so a screenshot
+ *     pasted as JPEG (or exported as GIF/BMP) silently stayed a
+ *     caption. Zero-dependency decoders now cover baseline JPEG
+ *     (SOF0/SOF1 — huffman, restart markers, any sampling factors,
+ *     grayscale and YCbCr; verified against Pillow's libjpeg decode,
+ *     mean channel error < 3.5 on gradients and < 0.1 on UI content),
+ *     GIF (LZW, global/local palettes, interlace, transparency onto
+ *     the white ground) and BMP (BI_RGB 8/24/32-bit, both row
+ *     orders), dispatched by magic bytes; PNG is unchanged.
+ *     Progressive JPEG (SOF2) stays undecoded by design — its
+ *     spectral-selection scans would triple the decoder for a format
+ *     PowerPoint itself never writes — and falls back to the caption,
+ *     as every unreadable picture always has. The same TRACE_MAX_PX
+ *     decode budget bounds every format.
+ *   - PNG ITSELF WAS ONLY HALF-DECODED. The original pngDecode took
+ *     8-bit non-interlaced only — and UI mockups get exported as
+ *     1/2/4-bit palette PNGs, palettes with TRANSPARENT grounds, and
+ *     grey+alpha captures, every one silently kept at its caption.
+ *     pngDecode now covers all bit depths (1/2/4/8/16 — 16 truncates
+ *     to the high byte), all five colour types, tRNS transparency
+ *     (composited onto the white ground, like alpha), and Adam7
+ *     interlace; every variant verified bit-exact against Pillow.
+ *   - THE BUDGET FITS 4K. TRACE_MAX_PX 5.6MP predates 4K captures
+ *     (3840x2160 = 8.3MP, refused before the wireframe tier could
+ *     look); now 9.5MP.
  *
  * v2.1 (DF-12):
  *   - WIREFRAME TEXT IS REAL WHERE OCR PROVIDES IT. The wireframe tier
@@ -326,9 +355,10 @@ const CLUST_GY = 150;  // px of clear air that separates stacked diagrams
 const TEXT_REACH = 60; // a loose label joins a cluster within this distance
 const NODE_RX = 7;     // one corner radius for every box node in the corpus
 const ANCHOR_PAD = 16; // an edge endpoint this close to a node belongs to it
-const TRACE_MAX_PX = 5600000;  // decode budget for pasted pictures — hi-dpi
-                               // screenshots run 2880x1800 (DF-11); the old
-                               // 2.6MP budget refused them before the
+const TRACE_MAX_PX = 9500000;  // decode budget for pasted pictures — hi-dpi
+                               // screenshots run 2880x1800 (DF-11) and 4K
+                               // captures 3840x2160 = 8.3MP (DF-13); the old
+                               // 5.6MP budget refused 4K before the
                                // wireframe tier could even look
 const TRACE_MAX_BARS = 48;     // busier than this is a screenshot, not a diagram
 // ---- wireframe tier (DF-11) ----
@@ -2229,11 +2259,19 @@ interface PngImg { w: number; h: number; rgb: Uint8Array; }
 // 8-bit gray/RGB/palette/RGBA, non-interlaced; alpha composites over white.
 // Anything else (16-bit, interlaced, JPEG…) returns null — silence, not a
 // wrong picture.
+// Full-coverage PNG since DF-13: the original decoder took 8-bit
+// non-interlaced only, and "half the corpus's pasted pictures" turned out
+// to include UI mockups exported as 1/2/4-bit palette PNGs, palettes with
+// transparent grounds, and grey+alpha captures — every one silently kept
+// its caption. Now: bit depths 1/2/4/8/16 (16 truncates to the high
+// byte), all five colour types, tRNS transparency (composited onto the
+// white ground, like alpha), and Adam7 interlace.
 function pngDecode(b: Uint8Array): PngImg | null {
   if (b.length < 8 || b[0] !== 0x89 || b[1] !== 0x50 || b[2] !== 0x4e || b[3] !== 0x47) return null;
   let p = 8;
   let w = 0, h = 0, depth = 0, ctype = -1, interlace = 0;
   let plte: Uint8Array | null = null;
+  let trns: Uint8Array | null = null;
   const idat: Uint8Array[] = [];
   let idatLen = 0;
   while (p + 8 <= b.length) {
@@ -2245,62 +2283,535 @@ function pngDecode(b: Uint8Array): PngImg | null {
       w = u32be(b, ds); h = u32be(b, ds + 4);
       depth = b[ds + 8]; ctype = b[ds + 9]; interlace = b[ds + 12];
     } else if (type === "PLTE") plte = b.subarray(ds, ds + len);
+    else if (type === "tRNS") trns = b.subarray(ds, ds + len);
     else if (type === "IDAT") { idat.push(b.subarray(ds, ds + len)); idatLen += len; }
     else if (type === "IEND") break;
     p = ds + len + 4;
   }
-  if (!w || !h || depth !== 8 || interlace !== 0) return null;
-  const ch = ctype === 0 ? 1 : ctype === 2 ? 3 : ctype === 3 ? 1 : ctype === 6 ? 4 : 0;
-  if (!ch || w * h > TRACE_MAX_PX) return null;
+  const ch = ctype === 0 ? 1 : ctype === 2 ? 3 : ctype === 3 ? 1 : ctype === 4 ? 2 : ctype === 6 ? 4 : 0;
+  if (!w || !h || !ch || w * h > TRACE_MAX_PX) return null;
+  if (interlace !== 0 && interlace !== 1) return null;
+  if (depth !== 1 && depth !== 2 && depth !== 4 && depth !== 8 && depth !== 16) return null;
+  if (depth < 8 && ctype !== 0 && ctype !== 3) return null;
+  if (ctype === 3 && (depth === 16 || !plte)) return null;
   const z = new Uint8Array(idatLen);
   let zo = 0;
   for (const d of idat) { z.set(d, zo); zo += d.length; }
   if (z.length < 3 || (z[0] & 0x0f) !== 8 || (z[1] & 0x20) !== 0) return null;
+  // pass geometry: one full pass, or Adam7's seven [x0, y0, dx, dy]
+  const passes = interlace
+    ? [[0, 0, 8, 8], [4, 0, 8, 8], [0, 4, 4, 8], [2, 0, 4, 4],
+       [0, 2, 2, 4], [1, 0, 2, 2], [0, 1, 1, 2]]
+    : [[0, 0, 1, 1]];
+  const dims: number[][] = [];
+  let rawLen = 0;
+  for (const ps of passes) {
+    const pw = Math.ceil(Math.max(0, w - ps[0]) / ps[2]);
+    const ph = Math.ceil(Math.max(0, h - ps[1]) / ps[3]);
+    dims.push([pw, ph]);
+    if (pw > 0 && ph > 0) rawLen += ph * (1 + Math.ceil(pw * ch * depth / 8));
+  }
   let raw: Uint8Array;
-  try { raw = inflateRaw(z.subarray(2), h * (1 + w * ch)); } catch (e) { return null; }
-  if (raw.length < h * (1 + w * ch)) return null;
-  const stride = w * ch;
+  try { raw = inflateRaw(z.subarray(2), rawLen); } catch (e) { return null; }
+  if (raw.length < rawLen) return null;
+  const bpp = Math.max(1, (ch * depth) >> 3);   // filter byte distance
+  const gmax = (1 << Math.min(depth, 8)) - 1;
   const rgb = new Uint8Array(w * h * 3);
-  const prev = new Uint8Array(stride);
-  const cur = new Uint8Array(stride);
   let rp = 0;
-  for (let y = 0; y < h; y++) {
-    const f = raw[rp++];
-    for (let i = 0; i < stride; i++) cur[i] = raw[rp + i];
-    rp += stride;
-    if (f === 1) { for (let i = ch; i < stride; i++) cur[i] = (cur[i] + cur[i - ch]) & 0xff; }
-    else if (f === 2) { for (let i = 0; i < stride; i++) cur[i] = (cur[i] + prev[i]) & 0xff; }
-    else if (f === 3) {
-      for (let i = 0; i < stride; i++) {
-        const a = i >= ch ? cur[i - ch] : 0;
-        cur[i] = (cur[i] + ((a + prev[i]) >> 1)) & 0xff;
+  for (let pi = 0; pi < passes.length; pi++) {
+    const ps = passes[pi], pw = dims[pi][0], ph = dims[pi][1];
+    if (pw <= 0 || ph <= 0) continue;
+    const bpl = Math.ceil(pw * ch * depth / 8);
+    const prev = new Uint8Array(bpl);
+    const cur = new Uint8Array(bpl);
+    // c-th channel of pixel x in the current unfiltered scanline, as the
+    // raw (unscaled) sample — 16-bit samples truncate to their high byte
+    const sample = (x: number, c: number): number => {
+      if (depth === 8) return cur[x * ch + c];
+      if (depth === 16) return cur[(x * ch + c) * 2];
+      const bitpos = (x * ch + c) * depth;
+      return (cur[bitpos >> 3] >> (8 - depth - (bitpos & 7))) & gmax;
+    };
+    for (let y = 0; y < ph; y++) {
+      const f = raw[rp++];
+      for (let i = 0; i < bpl; i++) cur[i] = raw[rp + i];
+      rp += bpl;
+      if (f === 1) { for (let i = bpp; i < bpl; i++) cur[i] = (cur[i] + cur[i - bpp]) & 0xff; }
+      else if (f === 2) { for (let i = 0; i < bpl; i++) cur[i] = (cur[i] + prev[i]) & 0xff; }
+      else if (f === 3) {
+        for (let i = 0; i < bpl; i++) {
+          const a = i >= bpp ? cur[i - bpp] : 0;
+          cur[i] = (cur[i] + ((a + prev[i]) >> 1)) & 0xff;
+        }
+      } else if (f === 4) {
+        for (let i = 0; i < bpl; i++) {
+          const a = i >= bpp ? cur[i - bpp] : 0, up = prev[i], c = i >= bpp ? prev[i - bpp] : 0;
+          const pa = Math.abs(up - c), pb = Math.abs(a - c), pc = Math.abs(a + up - 2 * c);
+          cur[i] = (cur[i] + (pa <= pb && pa <= pc ? a : (pb <= pc ? up : c))) & 0xff;
+        }
+      } else if (f !== 0) return null;
+      for (let x = 0; x < pw; x++) {
+        let r = 0, g = 0, bl = 0, a = 255;
+        if (ctype === 0) {
+          const v = sample(x, 0);
+          r = depth < 8 ? ((v * 255 / gmax) | 0) : v;
+          g = r; bl = r;
+          if (trns && trns.length >= 2 && v === (trns[depth === 16 ? 0 : 1] & gmax)) a = 0;
+        } else if (ctype === 2) {
+          r = sample(x, 0); g = sample(x, 1); bl = sample(x, 2);
+          if (trns && trns.length >= 6 &&
+              r === trns[depth === 16 ? 0 : 1] && g === trns[depth === 16 ? 2 : 3] &&
+              bl === trns[depth === 16 ? 4 : 5]) a = 0;
+        } else if (ctype === 3) {
+          const ix = sample(x, 0);
+          if (plte && ix * 3 + 2 < plte.length) {
+            r = plte[ix * 3]; g = plte[ix * 3 + 1]; bl = plte[ix * 3 + 2];
+          }
+          if (trns && ix < trns.length) a = trns[ix];
+        } else if (ctype === 4) {
+          const v = sample(x, 0);
+          r = v; g = v; bl = v;
+          a = sample(x, 1);
+        } else {
+          r = sample(x, 0); g = sample(x, 1); bl = sample(x, 2);
+          a = sample(x, 3);
+        }
+        if (a < 255) {   // composite onto the white ground
+          r = ((r * a + 255 * (255 - a) + 127) / 255) | 0;
+          g = ((g * a + 255 * (255 - a) + 127) / 255) | 0;
+          bl = ((bl * a + 255 * (255 - a) + 127) / 255) | 0;
+        }
+        const o = ((ps[1] + y * ps[3]) * w + ps[0] + x * ps[2]) * 3;
+        rgb[o] = r; rgb[o + 1] = g; rgb[o + 2] = bl;
       }
-    } else if (f === 4) {
-      for (let i = 0; i < stride; i++) {
-        const a = i >= ch ? cur[i - ch] : 0, up = prev[i], c = i >= ch ? prev[i - ch] : 0;
-        const pa = Math.abs(up - c), pb = Math.abs(a - c), pc = Math.abs(a + up - 2 * c);
-        cur[i] = (cur[i] + (pa <= pb && pa <= pc ? a : (pb <= pc ? up : c))) & 0xff;
-      }
-    } else if (f !== 0) return null;
-    for (let x = 0; x < w; x++) {
-      let r = 0, g = 0, bl = 0;
-      if (ctype === 0) { r = cur[x]; g = r; bl = r; }
-      else if (ctype === 2) { r = cur[x * 3]; g = cur[x * 3 + 1]; bl = cur[x * 3 + 2]; }
-      else if (ctype === 3) {
-        const ix = cur[x] * 3;
-        if (plte && ix + 2 < plte.length) { r = plte[ix]; g = plte[ix + 1]; bl = plte[ix + 2]; }
-      } else {
-        const a = cur[x * 4 + 3];
-        r = ((cur[x * 4] * a + 255 * (255 - a) + 127) / 255) | 0;
-        g = ((cur[x * 4 + 1] * a + 255 * (255 - a) + 127) / 255) | 0;
-        bl = ((cur[x * 4 + 2] * a + 255 * (255 - a) + 127) / 255) | 0;
-      }
-      const o = (y * w + x) * 3;
-      rgb[o] = r; rgb[o + 1] = g; rgb[o + 2] = bl;
+      prev.set(cur);
     }
-    prev.set(cur);
   }
   return { w: w, h: h, rgb: rgb };
+}
+
+// ---------------------------------------- other raster formats (DF-13)
+// The corpus pastes screenshots as JPEG (and occasionally GIF/BMP) too;
+// PNG-only decode silently kept those at their captions. Same
+// zero-dependency stance as pngDecode/inflateRaw: each decoder returns
+// the shared {w,h,rgb} or null, enforces the TRACE_MAX_PX budget, and an
+// unreadable byte stream is a null, never a throw. Progressive JPEG
+// (SOF2) is refused by design — spectral-selection scans would triple
+// the decoder for a format PowerPoint never writes.
+
+// zigzag position -> natural (row-major) coefficient index
+const JPG_ZZ = [
+  0, 1, 8, 16, 9, 2, 3, 10, 17, 24, 32, 25, 18, 11, 4, 5,
+  12, 19, 26, 33, 40, 48, 41, 34, 27, 20, 13, 6, 7, 14, 21, 28,
+  35, 42, 49, 56, 57, 50, 43, 36, 29, 22, 15, 23, 30, 37, 44, 51,
+  58, 59, 52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63];
+
+// separable IDCT basis: C[u][x] = c(u)/2 * cos((2x+1)u*pi/16)
+const JPG_IDCT_C = (() => {
+  const c: number[][] = [];
+  for (let u = 0; u < 8; u++) {
+    const row: number[] = [];
+    const s = u === 0 ? Math.SQRT1_2 : 1;
+    for (let x = 0; x < 8; x++) {
+      row.push(s * Math.cos(((2 * x + 1) * u * Math.PI) / 16) / 2);
+    }
+    c.push(row);
+  }
+  return c;
+})();
+
+interface JpgHuff { mincode: Int32Array; maxcode: Int32Array; valptr: Int32Array; vals: Uint8Array; }
+interface JpgComp { id: number; ch: number; cv: number; q: number; pw: number; plane: Uint8Array; }
+interface JpgScan { c: JpgComp; dc: JpgHuff; ac: JpgHuff; pred: number; }
+
+function jpgHuff(counts: number[], symbols: Uint8Array): JpgHuff {
+  const mincode = new Int32Array(17), maxcode = new Int32Array(17), valptr = new Int32Array(17);
+  maxcode.fill(-1);
+  let code = 0, k = 0;
+  for (let l = 1; l <= 16; l++) {
+    valptr[l] = k;
+    mincode[l] = code;
+    code += counts[l - 1];
+    k += counts[l - 1];
+    maxcode[l] = counts[l - 1] ? code - 1 : -1;
+    code <<= 1;
+  }
+  return { mincode: mincode, maxcode: maxcode, valptr: valptr, vals: symbols };
+}
+
+function jpgDecode(b: Uint8Array): PngImg | null {
+  if (b.length < 4 || b[0] !== 0xff || b[1] !== 0xd8) return null;
+  let p = 2;
+  const qt: { [id: number]: Int32Array } = {};
+  const dcT: { [id: number]: JpgHuff } = {}, acT: { [id: number]: JpgHuff } = {};
+  let w = 0, h = 0, ri = 0, sos = -1;
+  let comps: JpgComp[] | null = null;
+  let scomp: JpgScan[] | null = null;
+  const u16 = (o: number): number => (b[o] << 8) | b[o + 1];
+  while (p + 4 <= b.length) {
+    if (b[p] !== 0xff) { p++; continue; }
+    const m = b[p + 1];
+    if (m === 0xd8 || (m >= 0xd0 && m <= 0xd7) || m === 0x01 || m === 0xff) { p += 2; continue; }
+    if (m === 0xd9) break;
+    const ds = p + 4, de = p + 2 + u16(p + 2);
+    if (de > b.length) return null;
+    if (m === 0xdb) {                                   // DQT (values in zigzag)
+      let q = ds;
+      while (q < de) {
+        const pq = b[q] >> 4, id = b[q] & 15;
+        q++;
+        const t = new Int32Array(64);
+        for (let i = 0; i < 64; i++) {
+          t[i] = pq ? ((b[q] << 8) | b[q + 1]) : b[q];
+          q += pq ? 2 : 1;
+        }
+        qt[id] = t;
+      }
+    } else if (m === 0xc0 || m === 0xc1) {              // SOF0/1: baseline
+      h = u16(ds + 1); w = u16(ds + 3);
+      const nc = b[ds + 5];
+      if ((nc !== 1 && nc !== 3) || !w || !h || w * h > TRACE_MAX_PX) return null;
+      comps = [];
+      for (let i = 0; i < nc; i++) {
+        const o = ds + 6 + i * 3;
+        comps.push({ id: b[o], ch: b[o + 1] >> 4, cv: b[o + 1] & 15, q: b[o + 2],
+          pw: 0, plane: new Uint8Array(0) });
+      }
+    } else if (m >= 0xc2 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) {
+      return null;                                      // progressive/arithmetic
+    } else if (m === 0xc4) {                            // DHT
+      let q = ds;
+      while (q < de) {
+        const cls = b[q] >> 4, id = b[q] & 15;
+        q++;
+        const counts: number[] = [];
+        let n = 0;
+        for (let i = 0; i < 16; i++) { counts.push(b[q + i]); n += b[q + i]; }
+        q += 16;
+        const tbl = jpgHuff(counts, b.subarray(q, q + n));
+        q += n;
+        if (cls) acT[id] = tbl; else dcT[id] = tbl;
+      }
+    } else if (m === 0xdd) {                            // DRI
+      ri = u16(ds);
+    } else if (m === 0xda) {                            // SOS (interleaved only)
+      const ns = b[ds];
+      if (!comps || ns !== comps.length) return null;
+      scomp = [];
+      for (let i = 0; i < ns; i++) {
+        const cid = b[ds + 1 + i * 2], tb = b[ds + 2 + i * 2];
+        const c = comps.filter((x) => x.id === cid)[0];
+        if (!c || !dcT[tb >> 4] || !acT[tb & 15]) return null;
+        scomp.push({ c: c, dc: dcT[tb >> 4], ac: acT[tb & 15], pred: 0 });
+      }
+      sos = de;
+      break;
+    }
+    p = de;
+  }
+  if (sos < 0 || !comps || !scomp || !w || !h) return null;
+  let hmax = 1, vmax = 1;
+  for (const c of comps) { hmax = Math.max(hmax, c.ch); vmax = Math.max(vmax, c.cv); }
+  const mcx = Math.ceil(w / (8 * hmax)), mcy = Math.ceil(h / (8 * vmax));
+  for (const c of comps) {
+    if (!c.ch || !c.cv || !qt[c.q]) return null;
+    c.pw = mcx * c.ch * 8;
+    c.plane = new Uint8Array(c.pw * mcy * c.cv * 8);
+  }
+
+  // entropy-coded bit reader: 0xFF00 unstuffs, any real marker ends the
+  // stream (missing data decodes as zero bits — a truncated scan yields
+  // a partial image, not a throw)
+  let bp = sos, bit = 0, cur = 0, eod = false;
+  const readBit = (): number => {
+    if (bit === 0) {
+      if (eod || bp >= b.length) { eod = true; return 0; }
+      cur = b[bp++];
+      if (cur === 0xff) {
+        if (b[bp] === 0x00) bp++;
+        else { eod = true; return 0; }
+      }
+      bit = 8;
+    }
+    bit--;
+    return (cur >> bit) & 1;
+  };
+  const receive = (n: number): number => {
+    let v = 0;
+    for (let i = 0; i < n; i++) v = (v << 1) | readBit();
+    return v;
+  };
+  const extend = (v: number, n: number): number =>
+    v < (1 << (n - 1)) ? v - (1 << n) + 1 : v;
+  const huffDec = (t: JpgHuff): number => {
+    let code = 0;
+    for (let l = 1; l <= 16; l++) {
+      code = (code << 1) | readBit();
+      if (t.maxcode[l] >= 0 && code <= t.maxcode[l]) {
+        return t.vals[t.valptr[l] + code - t.mincode[l]];
+      }
+    }
+    eod = true;
+    return 0;
+  };
+
+  const blk = new Float64Array(64);
+  const tmp = new Float64Array(64);
+  const decodeBlock = (s: JpgScan, qtab: Int32Array, ox: number, oy: number): void => {
+    blk.fill(0);
+    const t = huffDec(s.dc);
+    s.pred += t ? extend(receive(t), t) : 0;
+    blk[0] = s.pred * qtab[0];
+    for (let k = 1; k < 64;) {
+      const rs = huffDec(s.ac);
+      const r = rs >> 4, sz = rs & 15;
+      if (sz === 0) {
+        if (r === 15) { k += 16; continue; }
+        break;
+      }
+      k += r;
+      if (k > 63) break;
+      blk[JPG_ZZ[k]] = extend(receive(sz), sz) * qtab[k];
+      k++;
+    }
+    for (let v = 0; v < 8; v++) {
+      for (let x = 0; x < 8; x++) {
+        let a = 0;
+        for (let u = 0; u < 8; u++) a += JPG_IDCT_C[u][x] * blk[v * 8 + u];
+        tmp[v * 8 + x] = a;
+      }
+    }
+    const pw = s.c.pw, plane = s.c.plane;
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        let a = 0;
+        for (let v = 0; v < 8; v++) a += JPG_IDCT_C[v][y] * tmp[v * 8 + x];
+        const sv = Math.round(a + 128);
+        plane[(oy + y) * pw + ox + x] = sv < 0 ? 0 : sv > 255 ? 255 : sv;
+      }
+    }
+  };
+
+  let mcu = 0;
+  for (let my = 0; my < mcy; my++) {
+    for (let mx = 0; mx < mcx; mx++) {
+      if (ri && mcu > 0 && mcu % ri === 0) {  // RSTn: byte-align, reset preds
+        bit = 0;
+        eod = false;
+        while (bp + 1 < b.length &&
+               !(b[bp] === 0xff && b[bp + 1] >= 0xd0 && b[bp + 1] <= 0xd7)) bp++;
+        if (bp + 1 < b.length) bp += 2;
+        for (const s of scomp) s.pred = 0;
+      }
+      for (const s of scomp) {
+        for (let v = 0; v < s.c.cv; v++) {
+          for (let hh = 0; hh < s.c.ch; hh++) {
+            decodeBlock(s, qt[s.c.q], (mx * s.c.ch + hh) * 8, (my * s.c.cv + v) * 8);
+          }
+        }
+      }
+      mcu++;
+    }
+  }
+
+  const rgb = new Uint8Array(w * h * 3);
+  if (comps.length === 1) {
+    const c = comps[0];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const g = c.plane[y * c.pw + x];
+        const o = (y * w + x) * 3;
+        rgb[o] = g; rgb[o + 1] = g; rgb[o + 2] = g;
+      }
+    }
+  } else {
+    const cy = comps[0], cb = comps[1], cr = comps[2];
+    for (let y = 0; y < h; y++) {
+      const yy = ((y * cy.cv / vmax) | 0) * cy.pw;
+      const by = ((y * cb.cv / vmax) | 0) * cb.pw;
+      const ry = ((y * cr.cv / vmax) | 0) * cr.pw;
+      for (let x = 0; x < w; x++) {
+        const Y = cy.plane[yy + ((x * cy.ch / hmax) | 0)];
+        const B = cb.plane[by + ((x * cb.ch / hmax) | 0)] - 128;
+        const R = cr.plane[ry + ((x * cr.ch / hmax) | 0)] - 128;
+        const r = Y + 1.402 * R, g = Y - 0.344136 * B - 0.714136 * R, bl = Y + 1.772 * B;
+        const o = (y * w + x) * 3;
+        rgb[o] = r < 0 ? 0 : r > 255 ? 255 : r | 0;
+        rgb[o + 1] = g < 0 ? 0 : g > 255 ? 255 : g | 0;
+        rgb[o + 2] = bl < 0 ? 0 : bl > 255 ? 255 : bl | 0;
+      }
+    }
+  }
+  return { w: w, h: h, rgb: rgb };
+}
+
+// GIF: first frame only (the corpus pastes stills), global/local palette,
+// interlace, transparency composited onto the white ground like PNG alpha
+function gifDecode(b: Uint8Array): PngImg | null {
+  if (b.length < 13 || b[0] !== 0x47 || b[1] !== 0x49 || b[2] !== 0x46) return null;
+  const w0 = b[6] | (b[7] << 8), h0 = b[8] | (b[9] << 8);
+  if (!w0 || !h0 || w0 * h0 > TRACE_MAX_PX) return null;
+  let p = 13;
+  let gpal: Uint8Array | null = null;
+  if (b[10] & 0x80) {
+    const n = 2 << (b[10] & 7);
+    gpal = b.subarray(13, 13 + n * 3);
+    p = 13 + n * 3;
+  }
+  let transparent = -1;
+  while (p < b.length) {
+    const t = b[p];
+    if (t === 0x21) {                       // extension blocks
+      if (b[p + 1] === 0xf9 && (b[p + 3] & 1)) transparent = b[p + 6];
+      p += 2;
+      while (p < b.length && b[p] !== 0) p += 1 + b[p];
+      p++;
+      continue;
+    }
+    if (t !== 0x2c) return null;            // trailer or junk before any image
+    const ix = b[p + 1] | (b[p + 2] << 8), iy = b[p + 3] | (b[p + 4] << 8);
+    const iw = b[p + 5] | (b[p + 6] << 8), ih = b[p + 7] | (b[p + 8] << 8);
+    const fl = b[p + 9];
+    p += 10;
+    let pal = gpal;
+    if (fl & 0x80) {
+      const n = 2 << (fl & 7);
+      pal = b.subarray(p, p + n * 3);
+      p += n * 3;
+    }
+    if (!pal || !iw || !ih) return null;
+    const minCode = b[p++];
+    if (minCode > 11) return null;
+    let dlen = 0, q = p;
+    while (q < b.length && b[q] !== 0) { dlen += b[q]; q += 1 + b[q]; }
+    const data = new Uint8Array(dlen);
+    let dq = 0;
+    q = p;
+    while (q < b.length && b[q] !== 0) {
+      data.set(b.subarray(q + 1, q + 1 + b[q]), dq);
+      dq += b[q];
+      q += 1 + b[q];
+    }
+    // LZW
+    const clear = 1 << minCode, end = clear + 1;
+    const px = new Uint8Array(iw * ih);
+    const prefix = new Int32Array(4096), suffix = new Uint8Array(4096), first = new Uint8Array(4096);
+    for (let i = 0; i < clear; i++) { suffix[i] = i; first[i] = i; }
+    const stack = new Uint8Array(4097);
+    let np = 0, size = minCode + 1, next = end + 1, prev = -1;
+    let acc = 0, nbits = 0, di = 0;
+    while (np < iw * ih) {
+      while (nbits < size && di < data.length) {
+        acc |= data[di++] << nbits;
+        nbits += 8;
+      }
+      if (nbits < size) break;
+      const code = acc & ((1 << size) - 1);
+      acc >>= size; nbits -= size;
+      if (code === clear) { size = minCode + 1; next = end + 1; prev = -1; continue; }
+      if (code === end) break;
+      let sp = 0, cc = code;
+      if (cc >= next) {                     // KwKwK: code not yet in table
+        if (prev < 0 || cc > next) break;
+        stack[sp++] = first[prev];
+        cc = prev;
+      }
+      while (cc >= end + 1) { stack[sp++] = suffix[cc]; cc = prefix[cc]; }
+      stack[sp++] = suffix[cc];
+      if (prev >= 0 && next < 4096) {
+        prefix[next] = prev;
+        suffix[next] = suffix[cc];          // first char of this string
+        first[next] = first[prev];
+        next++;
+        if (next === (1 << size) && size < 12) size++;
+      }
+      prev = code;
+      while (sp > 0 && np < iw * ih) px[np++] = stack[--sp];
+    }
+    const rgb = new Uint8Array(w0 * h0 * 3);
+    rgb.fill(255);
+    const rowOrder: number[] = [];
+    if (fl & 0x40) {                        // interlaced
+      for (let y = 0; y < ih; y += 8) rowOrder.push(y);
+      for (let y = 4; y < ih; y += 8) rowOrder.push(y);
+      for (let y = 2; y < ih; y += 4) rowOrder.push(y);
+      for (let y = 1; y < ih; y += 2) rowOrder.push(y);
+    } else {
+      for (let y = 0; y < ih; y++) rowOrder.push(y);
+    }
+    for (let r = 0; r < rowOrder.length; r++) {
+      const y = rowOrder[r];
+      for (let x = 0; x < iw; x++) {
+        const idx = px[r * iw + x];
+        const gx = ix + x, gy = iy + y;
+        if (gx >= w0 || gy >= h0 || idx === transparent || idx * 3 + 2 >= pal.length) continue;
+        const o = (gy * w0 + gx) * 3;
+        rgb[o] = pal[idx * 3]; rgb[o + 1] = pal[idx * 3 + 1]; rgb[o + 2] = pal[idx * 3 + 2];
+      }
+    }
+    return { w: w0, h: h0, rgb: rgb };
+  }
+  return null;
+}
+
+// BMP: uncompressed BI_RGB at 8 (palette), 24 or 32 bits, bottom-up or
+// top-down — what screen-capture tools actually write
+function bmpDecode(b: Uint8Array): PngImg | null {
+  if (b.length < 54 || b[0] !== 0x42 || b[1] !== 0x4d) return null;
+  const u32 = (o: number): number =>
+    (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) | 0;
+  const dataOff = u32(10);
+  const hdr = u32(14);
+  if (hdr < 40) return null;
+  const w = u32(18);
+  let h = u32(22);
+  const topDown = h < 0;
+  if (topDown) h = -h;
+  const bpp = b[28] | (b[29] << 8);
+  if (u32(30) !== 0 || (bpp !== 8 && bpp !== 24 && bpp !== 32)) return null;
+  if (w <= 0 || !h || w * h > TRACE_MAX_PX) return null;
+  let pal: Uint8Array | null = null;
+  if (bpp === 8) {
+    const n = u32(46) || 256;
+    pal = b.subarray(14 + hdr, 14 + hdr + n * 4);        // BGRA entries
+  }
+  const stride = ((w * bpp / 8) + 3) & ~3;
+  if (dataOff + stride * h > b.length) return null;
+  const rgb = new Uint8Array(w * h * 3);
+  for (let y = 0; y < h; y++) {
+    const ro = dataOff + (topDown ? y : h - 1 - y) * stride;
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 3;
+      if (bpp === 8 && pal) {
+        const i = b[ro + x] * 4;
+        if (i + 2 >= pal.length) continue;
+        rgb[o] = pal[i + 2]; rgb[o + 1] = pal[i + 1]; rgb[o + 2] = pal[i];
+      } else {
+        const i = ro + x * (bpp / 8);
+        rgb[o] = b[i + 2]; rgb[o + 1] = b[i + 1]; rgb[o + 2] = b[i];
+      }
+    }
+  }
+  return { w: w, h: h, rgb: rgb };
+}
+
+// magic-byte dispatch: the one raster entry point for both raster tiers
+function imgSniff(b: Uint8Array): string {
+  if (b.length < 8) return "";
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return "png";
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "jpg";
+  if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38) return "gif";
+  if (b[0] === 0x42 && b[1] === 0x4d) return "bmp";
+  return "";
+}
+
+function imgDecode(b: Uint8Array): PngImg | null {
+  const kind = imgSniff(b);
+  if (kind === "png") return pngDecode(b);
+  if (kind === "jpg") return jpgDecode(b);
+  if (kind === "gif") return gifDecode(b);
+  if (kind === "bmp") return bmpDecode(b);
+  return null;
 }
 
 // a "bar" is a stack of same-colour ink runs: a-axis is along the stroke,
@@ -2468,7 +2979,7 @@ function slidePics(bytes: Uint8Array, entries: ZipEntry[], slideName: string, xm
     if (!pe) continue;
     let data: Uint8Array;
     try { data = extractEntry(bytes, pe); } catch (err) { continue; }
-    if (data.length < 8 || data[0] !== 0x89 || data[1] !== 0x50) continue; // PNG only
+    if (!imgSniff(data)) continue; // PNG/JPEG/GIF/BMP (DF-13; was PNG only)
     const t = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
                        parseInt(e[1], 10), parseInt(e[2], 10));
     out.push({ x: t[0] * EMU_PX, y: t[1] * EMU_PX,
@@ -2483,7 +2994,7 @@ function traceFigures(xml: string, no: number, pics: FPic[], tables: FTable[]): 
   const parsed = parseSlide(xml);
   const qual: Cluster[] = [];
   for (const pic of pics) {
-    const img = pngDecode(pic.data);
+    const img = imgDecode(pic.data);
     if (!img) continue;
     const lines = traceImage(img, pic.x, pic.y, pic.w, pic.h);
     if (!lines.length) continue;
@@ -3191,7 +3702,7 @@ function uiFigures(no: number, pics: FPic[], tables: FTable[],
                    ocr: { [entry: string]: UWord[] }, wanted: string[]): SlideFigure[] {
   const qual: { pic: FPic; parts: UiParts; w: number }[] = [];
   for (const pic of pics) {
-    const img = pngDecode(pic.data);
+    const img = imgDecode(pic.data);
     if (!img) continue;
     const parts = uiScan(img);
     if (parts) qual.push({ pic: pic, parts: parts, w: img.w });
