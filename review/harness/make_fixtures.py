@@ -802,6 +802,61 @@ _label(s_f12, 0.9 * IN, 1.72 * IN, '0')
 _label(s_f12, 4.02 * IN, 1.72 * IN, '30')
 _label(s_f12, 0.3 * IN, 1.95 * IN, 'R12', 12)
 
+# --- slide 13 (v2.0 / DF-11): a UI SCREENSHOT — the corpus pastes pictures
+# of the app's own panels (search forms, result lists, attribute tables).
+# Two bordered panels: the left holds a heading, two labelled input fields
+# and a filled blue button (white glyph text on the fill), the right holds a
+# heading, a table (a box with three full-width row separators and one
+# column rule) and three body text rows. "Text" is stamped as glyph-sized
+# ink blocks — pixels, exactly what a real screenshot gives the tracer. The
+# wireframe tier must redraw all of it as standardized panels/fields/
+# buttons/separators with placeholder text bars; pre-DF-11 this slide
+# stayed a caption (the trace tier refused it), and the ruler trace must
+# still never see it — window chrome is not a route.
+GRAY13, DARK13, BLUE13 = (127, 127, 127), (60, 60, 60), (46, 116, 181)
+_ui_rects = []
+
+
+def _ui_box(x0, x1, y0, y1, t=2, rgb=GRAY13):
+    _ui_rects.extend([(x0, x1, y0, y0 + t, rgb), (x0, x1, y1 - t, y1, rgb),
+                      (x0, x0 + t, y0, y1, rgb), (x1 - t, x1, y0, y1, rgb)])
+
+
+def _ui_text(x, y, n, h=8, rgb=DARK13):
+    for k in range(n):
+        gx = x + k * 7
+        _ui_rects.append((gx, gx + 5, y, y + h, rgb))
+
+
+_ui_box(24, 276, 20, 400)                      # left panel
+_ui_text(40, 36, 9, h=12)                      # its heading
+_ui_text(40, 74, 6)                            # field label 1
+_ui_box(40, 240, 90, 116)                      # input field 1
+_ui_text(40, 132, 7)                           # field label 2
+_ui_box(40, 240, 148, 174)                     # input field 2
+_ui_rects.append((150, 240, 350, 380, BLUE13))  # the Search button
+_ui_text(170, 361, 5, rgb=(255, 255, 255))     # white text on the fill
+_ui_box(300, 536, 20, 400)                     # right panel
+_ui_text(316, 36, 8, h=12)                     # its heading
+_ui_box(316, 520, 60, 240)                     # the results table
+for sy in (104, 148, 192):                     # row separators
+    _ui_rects.append((318, 518, sy, sy + 2, GRAY13))
+_ui_rects.append((400, 402, 62, 238, GRAY13))  # column rule
+_ui_text(316, 260, 10)                         # body rows under the table
+_ui_text(316, 280, 8)
+_ui_text(316, 300, 12)
+_png_write('ui_screenshot.png', 560, 420, _ui_rects)
+s_f13 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f13.shapes.add_picture('ui_screenshot.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
+# --- slide 14 (v2.0 / DF-11): the photo control — random noise has no flat
+# light ground, no assembled rectangles and no glyph rows, so BOTH raster
+# tiers must stay silent (no wireframe, no bogus trace).
+s_f14 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f14.shapes.add_picture(io.BytesIO(make_png(160, 120)), Emu(int(1.0 * IN)),
+                         Emu(int(1.5 * IN)), Emu(int(4.0 * IN)), Emu(int(3.0 * IN)))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
