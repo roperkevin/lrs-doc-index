@@ -1,10 +1,58 @@
 /**
- * SlideFigures v1.0 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.2 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
- * DF-1 (2026-09-03). Companion to ZipTextExtract, same input (the file's
- * bytes as base64). Returns one SVG per slide that has a diagram:
+ * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
+ * normalisation, legends, rotation and the raster tracing tier. Companion
+ * to ZipTextExtract, same input (the file's bytes as base64). Returns one
+ * SVG per DIAGRAM (a slide can carry several):
  *
  *   { figures: [{ slide, name, svg, alt }], count, skipped }
+ *
+ * v1.1 (DF-2):
+ *   - MULTI-FIGURE SLIDES. Primitives are spatially clustered (union-find
+ *     over expanded bounding boxes; loose labels join the nearest cluster)
+ *     and each qualifying cluster renders as its own figure. A slide's only
+ *     figure keeps the v1.0 name `slideN.svg` (so --reformat overwrites in
+ *     place); siblings are `slideN_fig1.svg`, `slideN_fig2.svg`, … in
+ *     top-to-bottom, left-to-right order. Stacked bands closer than the
+ *     cluster gap stay ONE figure — two rulers an inch apart are one
+ *     diagram's input/output rows, not two diagrams.
+ *   - ALL GRAPHIC CONTENT, one visual language. Beyond connectors: lines
+ *     drawn as shapes (prstGeom line/*Connector*), preset-geometry shapes
+ *     with a visible fill or outline rendered as standardized NODES
+ *     (box/ellipse/diamond families, palette-tinted fill, palette stroke,
+ *     centred wrapped label), freeform custGeom paths re-emitted as SVG
+ *     paths (moveTo/lnTo/cubicBezTo/quadBezTo/close), dash patterns
+ *     normalised to two canonical dashes, and head/tail arrowheads carried
+ *     onto connector edges. A cluster of 2+ nodes joined by a connector —
+ *     or 2+ freeform paths — is a diagram even without a ruler.
+ *
+ * v1.2 (DF-3):
+ *   - CONNECTOR ROUTING. In the graph lane an edge whose endpoint lands on
+ *     (or hand-draggedly near) a node re-anchors to that node's boundary at
+ *     the exact point where the ray toward the other end exits the shape
+ *     (rect/ellipse/diamond each have a closed form). Edges whose source
+ *     was a bent connector route orthogonally between facing node sides.
+ *   - GRID SNAP. Node rows and columns whose centres jitter within
+ *     tolerance snap to one shared centre, and near-equal node sizes
+ *     equalise to the group median — the same "hand-placement is not
+ *     layout" rule the rulers already apply.
+ *   - LEGENDS. A figure whose extents use 2+ palette colours grows a
+ *     swatch legend; the redraw lane, which knows the numbers, states each
+ *     extent's measure range.
+ *   - ROTATION. xfrm rot is honoured: line endpoints rotate exactly;
+ *     near-quarter-turn nodes normalise to an axis-aligned swap (labels
+ *     stay horizontal); other node angles emit a real rotate() on the
+ *     shape outline only. Freeform points rotate exactly.
+ *   - RASTER TRACING. A slide with no vector drawing AND no redraw data
+ *     but a pasted PNG gets a last-resort tracing tier: the PNG is decoded
+ *     in-script (the zip layer's inflate does the zlib work), colour-aware
+ *     stroke runs are vectorised into lines, and those lines run through
+ *     the SAME classify/normalise pipeline — so a traced figure is
+ *     indistinguishable in style from a drawn one. It renders only when
+ *     the trace passes the strict ruler gate (a route plus 3+ ticks);
+ *     anything busier (screenshots, photos) stays silent, and the alt text
+ *     says the figure is traced and approximate.
  *
  * Why this exists: these test plans are route/measure diagrams, and the
  * extracted markdown used to reduce them to loose one-token lines (v2.2
@@ -64,6 +112,13 @@ const LABEL_MIN_GAP = 26;
 const BAND_GAP = 46;
 const FIG_PAD = 20;
 const FIG_W = 760;
+const CLUST_GX = 90;   // px of clear air that separates side-by-side diagrams
+const CLUST_GY = 150;  // px of clear air that separates stacked diagrams
+const TEXT_REACH = 60; // a loose label joins a cluster within this distance
+const NODE_RX = 7;     // one corner radius for every box node in the corpus
+const ANCHOR_PAD = 16; // an edge endpoint this close to a node belongs to it
+const TRACE_MAX_PX = 2600000;  // decode budget for pasted pictures
+const TRACE_MAX_BARS = 48;     // busier than this is a screenshot, not a diagram
 
 function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult {
   const bytes = b64ToBytes(zipBase64);
@@ -82,10 +137,19 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult 
       skipped.push("slide" + no + ":unreadable");
       continue;
     }
-    const fig = buildFigure(xml, no);
-    if (!fig) continue;
-    if (fig.svg.length > FIG_MAX_ONE) { skipped.push("slide" + no + ":oversize"); continue; }
-    figures.push(fig);
+    const figs = buildFigures(xml, no,
+      () => slidePics(bytes, entries, ordered[i].name, xml));
+    for (const fig of figs) {
+      if (figures.length >= FIG_MAX_COUNT) {
+        skipped.push(fig.name.replace(/\.svg$/, "") + ":cap");
+        continue;
+      }
+      if (fig.svg.length > FIG_MAX_ONE) {
+        skipped.push(fig.name.replace(/\.svg$/, "") + ":oversize");
+        continue;
+      }
+      figures.push(fig);
+    }
   }
   return { figures: figures, count: figures.length, skipped: skipped.join(",") };
 }
@@ -94,8 +158,12 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult 
 interface FGroup { s: number; e: number; gx: number; gy: number; gw: number; gh: number; cx: number; cy: number; cw: number; ch: number; }
 interface FLine { x1: number; y1: number; x2: number; y2: number; cls: string; extra: string; }
 interface FText { x: number; y: number; t: string; cls: string; anchor: string; }
-interface FRaw { x1: number; y1: number; x2: number; y2: number; w: number; h: number; col: string; }
+interface FRaw { x1: number; y1: number; x2: number; y2: number; w: number; h: number; col: string; dash: string; arrow: boolean; bent: boolean; }
 interface FRuler { x0: number; x1: number; y: number; }
+interface FNode { x: number; y: number; w: number; h: number; shape: string; sRole: string; tRole: string; label: string; rot: number; }
+interface FPath { d: string; x0: number; y0: number; x1: number; y1: number; role: string; dash: string; closed: boolean; fillRole: string; }
+interface Parsed { lines: FRaw[]; nodes: FNode[]; paths: FPath[]; texts: FText[]; }
+interface Cluster { lines: FRaw[]; nodes: FNode[]; paths: FPath[]; texts: FText[]; x0: number; y0: number; x1: number; y1: number; }
 
 function fnum(v: number): string {
   const r = Math.round(v * 10) / 10;
@@ -184,6 +252,17 @@ function figStyle(): string {
     ".leader{stroke:#6E8285;stroke-width:1}" +
     ".split{stroke:#16302F;stroke-width:1.4;stroke-dasharray:3 2.5;opacity:.55}" +
     ".splitdot{fill:#FFFFFF;stroke:#16302F;stroke-width:1.6}" +
+    ".edge{stroke:#4E6265;stroke-width:1.8}" +
+    ".free{stroke-width:2.2}" +
+    ".freefill{stroke-width:2.2;stroke-linejoin:round}" +
+    ".dashed{stroke-dasharray:7 4.5}.dotted{stroke-dasharray:1.6 3.6}" +
+    ".node{fill:#FFFFFF;stroke:#16302F;stroke-width:1.6}" +
+    ".t-plain{fill:#FFFFFF}.t-ink{fill:#E9EDED}.t-muted{fill:#EFF2F2}" +
+    ".t-cool{fill:#E5F0F5}.t-warm{fill:#F9F0E2}.t-green{fill:#E6F2EC}" +
+    ".t-violet{fill:#EFEAF7}.t-red{fill:#F8E9E5}" +
+    ".nlabel{font-size:12px;fill:#16302F;font-weight:500}" +
+    ".swatch{stroke-width:5}" +
+    ".legend{font-size:10.5px;fill:#4E6265}" +
     ".s-ink{stroke:#16302F}.f-ink{fill:#16302F}" +
     ".s-muted{stroke:#6E8285}.f-muted{fill:#6E8285}" +
     ".s-cool{stroke:#1B6E8C}.f-cool{fill:#1B6E8C}" +
@@ -197,7 +276,10 @@ function figStyle(): string {
     "</style>" +
     '<defs><marker id="ar" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="5.2" ' +
     'markerHeight="5.2" orient="auto-start-reverse">' +
-    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#16302F"/></marker></defs>';
+    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#16302F"/></marker>' +
+    '<marker id="ae" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="5.6" ' +
+    'markerHeight="5.6" orient="auto-start-reverse">' +
+    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#4E6265"/></marker></defs>';
 }
 
 function svgWrap(no: number, w: number, h: number, title: string, desc: string, body: string): string {
@@ -279,30 +361,138 @@ function classifyLines(raw: FRaw[]): { r: FRaw; role: string }[] {
   return out;
 }
 
-function buildVector(xml: string, no: number): SlideFigure | null {
-  const gs = figGroups(xml);
-  const raw: FRaw[] = [];
-  const texts: FText[] = [];
-  const cre = /<p:cxnSp>([\s\S]*?)<\/p:cxnSp>/g;
-  let m: RegExpExecArray | null;
-  while ((m = cre.exec(xml)) !== null) {
-    const b = m[1];
-    const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
-    const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
-    if (!o || !e) continue;
-    const t = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
-                       parseInt(e[1], 10), parseInt(e[2], 10));
-    const xf = b.match(/<a:xfrm([^>]*)>/);
-    const fl = xf ? xf[1] : "";
-    const X = t[0] * EMU_PX, Y = t[1] * EMU_PX, W = t[2] * EMU_PX, H = t[3] * EMU_PX;
-    const c = b.match(/<a:ln\b[^>]*>[\s\S]*?<a:srgbClr val="([0-9A-Fa-f]{6})"/);
-    raw.push({
-      x1: fl.indexOf('flipH="1"') >= 0 ? X + W : X,
-      y1: fl.indexOf('flipV="1"') >= 0 ? Y + H : Y,
-      x2: fl.indexOf('flipH="1"') >= 0 ? X : X + W,
-      y2: fl.indexOf('flipV="1"') >= 0 ? Y : Y + H,
-      w: W, h: H, col: c ? c[1] : "" });
+// dash patterns normalise to two canonical dashes: anything dotted reads as
+// "dotted", every other prstDash as "dashed" — one rhythm across the corpus
+function figDash(b: string): string {
+  const m = b.match(/<a:prstDash val="([^"]+)"/);
+  if (!m) return "";
+  const v = m[1].toLowerCase();
+  if (v === "solid") return "";
+  return v.indexOf("dot") >= 0 && v.indexOf("dash") < 0 ? "dotted" : "dashed";
+}
+
+// theme accents are not resolved through the theme part (too deep for a
+// pasted script); they map to palette slots by INDEX, which is just as
+// deterministic across the corpus as the hue-family rule is for srgb
+const SCHEME_SLOT: { [k: string]: string } = {
+  accent1: "cool", accent2: "warm", accent3: "green",
+  accent4: "violet", accent5: "red", accent6: "muted",
+};
+
+// xfrm rot is 1/60000ths of a degree, applied about the shape centre
+function figRot(attrs: string): number {
+  const m = attrs.match(/rot="(-?\d+)"/);
+  if (!m) return 0;
+  return (((parseInt(m[1], 10) / 60000) % 360) + 360) % 360;
+}
+
+function rotPt(x: number, y: number, cx: number, cy: number, rad: number): number[] {
+  const c = Math.cos(rad), s = Math.sin(rad);
+  const dx = x - cx, dy = y - cy;
+  return [cx + dx * c - dy * s, cy + dx * s + dy * c];
+}
+
+function pushLine(lines: FRaw[], gs: FGroup[], at: number, b: string): void {
+  const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+  const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+  if (!o || !e) return;
+  const t = figXform(gs, at, parseInt(o[1], 10), parseInt(o[2], 10),
+                     parseInt(e[1], 10), parseInt(e[2], 10));
+  const xf = b.match(/<a:xfrm([^>]*)>/);
+  const fl = xf ? xf[1] : "";
+  const X = t[0] * EMU_PX, Y = t[1] * EMU_PX, W = t[2] * EMU_PX, H = t[3] * EMU_PX;
+  const lnB = (b.match(/<a:ln\b[\s\S]*?<\/a:ln>/) || [""])[0];
+  const c = lnB.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/);
+  const arrow = /<a:(?:tailEnd|headEnd) type="(?:triangle|arrow|stealth)"/.test(lnB);
+  const prst = (b.match(/<a:prstGeom prst="([^"]+)"/) || ["", ""])[1];
+  let x1 = fl.indexOf('flipH="1"') >= 0 ? X + W : X;
+  let y1 = fl.indexOf('flipV="1"') >= 0 ? Y + H : Y;
+  let x2 = fl.indexOf('flipH="1"') >= 0 ? X : X + W;
+  let y2 = fl.indexOf('flipV="1"') >= 0 ? Y : Y + H;
+  const rot = figRot(fl);
+  if (rot !== 0) {
+    // flips picked the corners; rotation turns them about the centre, exactly
+    const rad = rot * Math.PI / 180;
+    const p1 = rotPt(x1, y1, X + W / 2, Y + H / 2, rad);
+    const p2 = rotPt(x2, y2, X + W / 2, Y + H / 2, rad);
+    x1 = p1[0]; y1 = p1[1]; x2 = p2[0]; y2 = p2[1];
   }
+  lines.push({ x1: x1, y1: y1, x2: x2, y2: y2,
+    w: rot !== 0 ? x2 - x1 : W, h: rot !== 0 ? y2 - y1 : H,
+    col: c ? c[1] : "", dash: figDash(lnB), arrow: arrow,
+    bent: /bentConnector/.test(prst) });
+}
+
+// freeform custGeom → SVG path, path-space scaled into the shape's extent.
+// moveTo/lnTo/cubicBezTo/quadBezTo/close cover what these decks draw; arcTo
+// is not emitted (its endpoint is implicit, so a wrong guess draws a wrong
+// curve — omission is the honest failure).
+function figFreeform(pp: string, X: number, Y: number, W: number, H: number, rot: number): FPath | null {
+  const cg = pp.match(/<a:custGeom>[\s\S]*?<\/a:custGeom>/);
+  if (!cg) return null;
+  const out: string[] = [];
+  let closed = false;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const rad = rot * Math.PI / 180;
+  const pre = /<a:path w="(\d+)" h="(\d+)"[^>]*>([\s\S]*?)<\/a:path>/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = pre.exec(cg[0])) !== null) {
+    const sx = W / (parseInt(pm[1], 10) || 1), sy = H / (parseInt(pm[2], 10) || 1);
+    const tok = /<a:(moveTo|lnTo|cubicBezTo|quadBezTo|close)\b|<a:pt x="(-?\d+)" y="(-?\d+)"/g;
+    let cmd = "";
+    let pts: number[][] = [];
+    const flush = (): void => {
+      const P = (i: number): string => {
+        let px = X + pts[i][0] * sx, py = Y + pts[i][1] * sy;
+        if (rot !== 0) {
+          const rp = rotPt(px, py, X + W / 2, Y + H / 2, rad);
+          px = rp[0]; py = rp[1];
+        }
+        x0 = Math.min(x0, px); x1 = Math.max(x1, px);
+        y0 = Math.min(y0, py); y1 = Math.max(y1, py);
+        return fnum(px) + " " + fnum(py);
+      };
+      if (cmd === "moveTo" && pts.length >= 1) out.push("M " + P(0));
+      else if (cmd === "lnTo" && pts.length >= 1) out.push("L " + P(0));
+      else if (cmd === "cubicBezTo" && pts.length >= 3) out.push("C " + P(0) + " " + P(1) + " " + P(2));
+      else if (cmd === "quadBezTo" && pts.length >= 2) out.push("Q " + P(0) + " " + P(1));
+      cmd = ""; pts = [];
+    };
+    let t2: RegExpExecArray | null;
+    while ((t2 = tok.exec(pm[3])) !== null) {
+      if (t2[1]) {
+        flush();
+        if (t2[1] === "close") closed = true;
+        else cmd = t2[1];
+      } else if (cmd) {
+        pts.push([parseInt(t2[2], 10), parseInt(t2[3], 10)]);
+      }
+    }
+    flush();
+    if (closed && out.length) out.push("Z");
+  }
+  if (out.length < 2 || x0 > x1) return null;
+  const lnB = (pp.match(/<a:ln\b[\s\S]*?<\/a:ln>/) || [""])[0];
+  const col = (lnB.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+  const fillPart = lnB ? pp.slice(0, pp.indexOf(lnB)) : pp;
+  const fCol = (fillPart.match(/<a:solidFill><a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+  const filled = closed && fillPart.indexOf("<a:solidFill>") >= 0;
+  return { d: out.join(" "), x0: x0, y0: y0, x1: x1, y1: y1,
+    role: figRole(col, "ink"), dash: figDash(lnB),
+    closed: closed, fillRole: filled ? figRole(fCol, "muted") : "" };
+}
+
+// one pass over the slide: every graphic primitive, classified at parse time
+// into lines / nodes / freeform paths / loose labels
+function parseSlide(xml: string): Parsed {
+  const gs = figGroups(xml);
+  const lines: FRaw[] = [];
+  const nodes: FNode[] = [];
+  const paths: FPath[] = [];
+  const texts: FText[] = [];
+  let m: RegExpExecArray | null;
+  const cre = /<p:cxnSp>([\s\S]*?)<\/p:cxnSp>/g;
+  while ((m = cre.exec(xml)) !== null) pushLine(lines, gs, m.index, m[1]);
   const sre = /<p:sp>([\s\S]*?)<\/p:sp>/g;
   while ((m = sre.exec(xml)) !== null) {
     const b = m[1];
@@ -310,46 +500,510 @@ function buildVector(xml: string, no: number): SlideFigure | null {
     const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
     const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
     if (!o || !e) continue;
+    const pp = (b.match(/<p:spPr>[\s\S]*?<\/p:spPr>/) || [""])[0];
+    const prst = (pp.match(/<a:prstGeom prst="([^"]+)"/) || ["", ""])[1];
+    // decks draw "lines" as shapes as often as connectors
+    if (/^(line|straightConnector\d*|bentConnector\d*|curvedConnector\d*)$/.test(prst)) {
+      pushLine(lines, gs, m.index, b);
+      continue;
+    }
+    const g = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
+                       parseInt(e[1], 10), parseInt(e[2], 10));
+    let X = g[0] * EMU_PX, Y = g[1] * EMU_PX, W = g[2] * EMU_PX, H = g[3] * EMU_PX;
+    const xfA = (pp.match(/<a:xfrm([^>]*)>/) || ["", ""])[1];
+    let rot = figRot(xfA);
+    if (pp.indexOf("<a:custGeom>") >= 0) {
+      const fp = figFreeform(pp, X, Y, W, H, rot);
+      if (fp) { paths.push(fp); continue; }
+    }
+    // rotation normalises where it can: a near-quarter turn is an
+    // axis-aligned swap about the centre (the label stays horizontal), a
+    // near-half or near-zero turn changes nothing a symmetric node shows;
+    // only a genuinely oblique angle survives to a real rotate() — and even
+    // then the label stays horizontal, because rotated text is unreadable
+    if ((rot > 70 && rot < 110) || (rot > 250 && rot < 290)) {
+      const cx0 = X + W / 2, cy0 = Y + H / 2;
+      const t0 = W; W = H; H = t0;
+      X = cx0 - W / 2; Y = cy0 - H / 2;
+      rot = 0;
+    } else if (rot < 20 || rot > 340 || (rot > 160 && rot < 200)) {
+      rot = 0;
+    }
     const parts: string[] = [];
     const tre = /<a:t>([^<]*)<\/a:t>/g;
     let tm: RegExpExecArray | null;
     while ((tm = tre.exec(b)) !== null) { const v = tm[1].trim(); if (v) parts.push(v); }
     const t = parts.join(" ").replace(/\s+/g, " ").trim();
+    // node vs loose label: a NODE is a shape the deck made visible — an
+    // explicit fill or outline in spPr, or a themed <p:style> fill/line
+    // reference. Plain textboxes have neither, which is what keeps prose
+    // slides silent.
+    const lnB = (pp.match(/<a:ln\b[\s\S]*?<\/a:ln>/) || [""])[0];
+    const fillPart = lnB ? pp.slice(0, pp.indexOf(lnB)) : pp;
+    const fillCol = (fillPart.match(/<a:solidFill><a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+    const fillSolid = fillPart.indexOf("<a:solidFill>") >= 0;
+    const lnSolid = lnB.indexOf("<a:solidFill>") >= 0;
+    const lnCol = (lnB.match(/<a:srgbClr val="([0-9A-Fa-f]{6})"/) || ["", ""])[1];
+    const st = (b.match(/<p:style>[\s\S]*?<\/p:style>/) || [""])[0];
+    const stFill = (st.match(/<a:fillRef idx="[1-9]\d*">\s*<a:schemeClr val="(\w+)"/) || ["", ""])[1];
+    const stLn = (st.match(/<a:lnRef idx="[1-9]\d*">\s*<a:schemeClr val="(\w+)"/) || ["", ""])[1];
+    if (fillSolid || lnSolid || stFill || stLn) {
+      let tRole = "plain";
+      if (fillSolid) tRole = fillCol ? figRole(fillCol, "plain") : "plain";
+      else if (SCHEME_SLOT[stFill]) tRole = SCHEME_SLOT[stFill];
+      let sRole = "ink";
+      if (lnSolid && lnCol) sRole = figRole(lnCol, "ink");
+      else if (!lnSolid && tRole !== "plain") sRole = tRole;
+      const fam = /ellipse|flowChartConnector|donut|chord|pie|^arc$/.test(prst) ? "ellipse"
+        : (/diamond|flowChartDecision/.test(prst) ? "diamond" : "box");
+      nodes.push({ x: X, y: Y, w: W, h: H, shape: fam, sRole: sRole, tRole: tRole,
+        label: t.length > 56 ? t.slice(0, 53) + "…" : t, rot: rot });
+      continue;
+    }
     if (!t || t.length > 24 || t.split(" ").length > 3) continue;
-    const g = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
-                       parseInt(e[1], 10), parseInt(e[2], 10));
     const c = b.match(/<a:solidFill><a:srgbClr val="([0-9A-Fa-f]{6})"/);
     const numeric = /^\d+(\.\d+)?$/.test(t);
-    texts.push({ x: (g[0] + g[2] / 2) * EMU_PX, y: (g[1] + g[3] / 2) * EMU_PX, t: t,
+    texts.push({ x: X + W / 2, y: Y + H / 2, t: t,
       cls: (numeric ? "measure" : "id") + " f-" +
            figRole(c ? c[1] : "", numeric ? "muted" : "ink"), anchor: "middle" });
   }
-  const cls = classifyLines(raw);
-  const routes = cls.filter((c) => c.role === "route").length;
-  const ticks = cls.filter((c) => c.role === "tick").length;
-  const events = cls.filter((c) => c.role === "event").length;
-  // a diagram is a route plus either a measure ruler or an event extent;
-  // decks in this corpus do one or the other, rarely both
-  if (routes === 0 || (ticks < 3 && events === 0)) return null;
+  return { lines: lines, nodes: nodes, paths: paths, texts: texts };
+}
 
+// a rotated node's real extent: rotate the corners, take the envelope
+function nodeBounds(n: FNode): number[] {
+  if (n.rot === 0) return [n.x, n.y, n.x + n.w, n.y + n.h];
+  const rad = n.rot * Math.PI / 180;
+  const cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const corners = [[n.x, n.y], [n.x + n.w, n.y], [n.x, n.y + n.h], [n.x + n.w, n.y + n.h]];
+  for (const c of corners) {
+    const p = rotPt(c[0], c[1], cx, cy, rad);
+    x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]);
+    y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]);
+  }
+  return [x0, y0, x1, y1];
+}
+
+// ---------------------------------------------- node layout normalisation
+// The rulers already treat hand-placement as noise; nodes get the same
+// treatment. Near-equal sizes equalise to the group median (±20% buckets,
+// resized about the centre), then rows and columns whose centres jitter
+// within tolerance snap to one shared centre. Sizes first: equalising is
+// centre-preserving, so it cannot undo a snap.
+function snapNodes(nodes: FNode[]): void {
+  if (nodes.length < 2) return;
+  const med = (arr: number[]): number => {
+    const s = arr.slice().sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+  };
+  const eq = (get: (n: FNode) => number, set: (n: FNode, v: number) => void): void => {
+    const idx: number[] = nodes.map((n, i) => i);
+    idx.sort((a, b) => get(nodes[a]) - get(nodes[b]));
+    let s = 0;
+    while (s < idx.length) {
+      let e = s;
+      while (e + 1 < idx.length && get(nodes[idx[e + 1]]) <= get(nodes[idx[s]]) * 1.2) e++;
+      if (e > s) {
+        const v = get(nodes[idx[Math.floor((s + e) / 2)]]);
+        for (let k = s; k <= e; k++) set(nodes[idx[k]], v);
+      }
+      s = e + 1;
+    }
+  };
+  eq((n) => n.w, (n, v) => { n.x += (n.w - v) / 2; n.w = v; });
+  eq((n) => n.h, (n, v) => { n.y += (n.h - v) / 2; n.h = v; });
+  const snapAxis = (getC: (n: FNode) => number, move: (n: FNode, d: number) => void,
+                    tol: number): void => {
+    const idx: number[] = nodes.map((n, i) => i);
+    idx.sort((a, b) => getC(nodes[a]) - getC(nodes[b]));
+    let s = 0;
+    while (s < idx.length) {
+      let e = s;
+      while (e + 1 < idx.length && getC(nodes[idx[e + 1]]) - getC(nodes[idx[e]]) <= tol) e++;
+      if (e > s) {
+        let m = 0;
+        for (let k = s; k <= e; k++) m += getC(nodes[idx[k]]);
+        m /= (e - s + 1);
+        for (let k = s; k <= e; k++) move(nodes[idx[k]], m - getC(nodes[idx[k]]));
+      }
+      s = e + 1;
+    }
+  };
+  snapAxis((n) => n.y + n.h / 2, (n, d) => { n.y += d; },
+           Math.max(14, med(nodes.map((n) => n.h)) * 0.45));
+  snapAxis((n) => n.x + n.w / 2, (n, d) => { n.x += d; },
+           Math.max(14, med(nodes.map((n) => n.w)) * 0.45));
+}
+
+// ---------------------------------------------------- connector routing
+// which node (if any) an edge endpoint belongs to: inside, or within
+// ANCHOR_PAD of, the node's box — hand-dragged connectors rarely land
+// exactly on the shape they mean
+function nearNode(nodes: FNode[], x: number, y: number, skip: number): number {
+  let best = -1, bd = 1e9;
+  for (let i = 0; i < nodes.length; i++) {
+    if (i === skip) continue;
+    const n = nodes[i];
+    if (x < n.x - ANCHOR_PAD || x > n.x + n.w + ANCHOR_PAD) continue;
+    if (y < n.y - ANCHOR_PAD || y > n.y + n.h + ANCHOR_PAD) continue;
+    const d = Math.abs(x - (n.x + n.w / 2)) + Math.abs(y - (n.y + n.h / 2));
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+
+// the point where the ray from the node's centre toward (tx,ty) exits the
+// shape — closed forms for all three families
+function anchorPoint(n: FNode, tx: number, ty: number): number[] {
+  const cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+  let dx = tx - cx, dy = ty - cy;
+  const L = Math.sqrt(dx * dx + dy * dy);
+  if (L < 1e-6) return [cx, cy];
+  dx /= L; dy /= L;
+  const hw = n.w / 2 || 1e-6, hh = n.h / 2 || 1e-6;
+  let t: number;
+  if (n.shape === "ellipse") t = 1 / Math.sqrt((dx * dx) / (hw * hw) + (dy * dy) / (hh * hh));
+  else if (n.shape === "diamond") t = 1 / (Math.abs(dx) / hw + Math.abs(dy) / hh);
+  else t = 1 / Math.max(Math.abs(dx) / hw, Math.abs(dy) / hh);
+  return [cx + dx * t, cy + dy * t];
+}
+
+// -------------------------------------------------- diagram clustering
+// One slide often carries SEVERAL diagrams (an input row and a result row,
+// or two cases side by side). Graphic primitives cluster by union-find over
+// their bounding boxes: boxes merge when the clear air between them is under
+// CLUST_GX horizontally AND CLUST_GY vertically — stacked bands of one
+// diagram stay together, genuinely separate drawings split. Loose labels
+// then join the nearest cluster within TEXT_REACH (labels never bridge two
+// clusters into one); a label near nothing is debris and is dropped.
+function clusterParsed(p: Parsed): Cluster[] {
+  const boxes: number[][] = [];
+  const kinds: string[] = [];
+  const refs: number[] = [];
+  for (let i = 0; i < p.lines.length; i++) {
+    const l = p.lines[i];
+    boxes.push([Math.min(l.x1, l.x2), Math.min(l.y1, l.y2),
+                Math.max(l.x1, l.x2), Math.max(l.y1, l.y2)]);
+    kinds.push("l"); refs.push(i);
+  }
+  for (let i = 0; i < p.nodes.length; i++) {
+    boxes.push(nodeBounds(p.nodes[i]));
+    kinds.push("n"); refs.push(i);
+  }
+  for (let i = 0; i < p.paths.length; i++) {
+    const q = p.paths[i];
+    boxes.push([q.x0, q.y0, q.x1, q.y1]);
+    kinds.push("p"); refs.push(i);
+  }
+  if (boxes.length === 0) return [];
+  const parent: number[] = [];
+  for (let i = 0; i < boxes.length; i++) parent.push(i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    return i;
+  };
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], b = boxes[j];
+      const gx = Math.max(a[0], b[0]) - Math.min(a[2], b[2]);
+      const gy = Math.max(a[1], b[1]) - Math.min(a[3], b[3]);
+      if (gx < CLUST_GX && gy < CLUST_GY) parent[find(i)] = find(j);
+    }
+  }
+  const byRoot: { [r: string]: Cluster } = {};
+  const order: string[] = [];
+  for (let i = 0; i < boxes.length; i++) {
+    const r = String(find(i));
+    if (!byRoot[r]) {
+      byRoot[r] = { lines: [], nodes: [], paths: [], texts: [],
+                    x0: 1e9, y0: 1e9, x1: -1e9, y1: -1e9 };
+      order.push(r);
+    }
+    const c = byRoot[r];
+    if (kinds[i] === "l") c.lines.push(p.lines[refs[i]]);
+    else if (kinds[i] === "n") c.nodes.push(p.nodes[refs[i]]);
+    else c.paths.push(p.paths[refs[i]]);
+    c.x0 = Math.min(c.x0, boxes[i][0]); c.y0 = Math.min(c.y0, boxes[i][1]);
+    c.x1 = Math.max(c.x1, boxes[i][2]); c.y1 = Math.max(c.y1, boxes[i][3]);
+  }
+  const clusters: Cluster[] = [];
+  for (const r of order) clusters.push(byRoot[r]);
+  for (const t of p.texts) {
+    let best: Cluster | null = null;
+    let bd = TEXT_REACH;
+    for (const c of clusters) {
+      const dx = Math.max(c.x0 - t.x, t.x - c.x1, 0);
+      const dy = Math.max(c.y0 - t.y, t.y - c.y1, 0);
+      const d = Math.max(dx, dy);
+      if (d < bd) { best = c; bd = d; }
+    }
+    if (best) best.texts.push(t);
+  }
+  clusters.sort((a, b) => (a.y0 - b.y0) || (a.x0 - b.x0));
+  return clusters;
+}
+
+// which lane draws a cluster: "ruler" is the measured-route language (the
+// v1.0 pipeline), "graph" is the node/edge/freeform language, "" is silence
+function clusterMode(c: Cluster): string {
+  const cls = classifyLines(c.lines);
+  let routes = 0, ticks = 0, events = 0;
+  for (const x of cls) {
+    if (x.role === "route") routes++;
+    else if (x.role === "tick") ticks++;
+    else if (x.role === "event") events++;
+  }
+  // a route plus either a measure ruler or an event extent; decks in this
+  // corpus do one or the other, rarely both
+  if (routes > 0 && (ticks >= 3 || events > 0)) return "ruler";
+  if (c.nodes.length >= 2 && c.lines.length + c.paths.length >= 1) return "graph";
+  if (c.paths.length >= 2) return "graph";
+  return "";
+}
+
+function figName(no: number, idx: number, total: number): string {
+  return total > 1 ? "slide" + no + "_fig" + idx + ".svg" : "slide" + no + ".svg";
+}
+
+function wrapLabel(s: string): string[] {
+  if (s.length <= 18) return [s];
+  let best = -1;
+  for (let i = 0; i < s.length; i++) {
+    if (s.charAt(i) !== " ") continue;
+    if (best < 0 || Math.abs(i - s.length / 2) < Math.abs(best - s.length / 2)) best = i;
+  }
+  if (best < 0) return [s];
+  return [s.slice(0, best), s.slice(best + 1)];
+}
+
+// a node renders in one of three standardized families — box (one corner
+// radius for the whole corpus), ellipse, diamond — with a palette-tinted
+// fill, a palette stroke, and its label centred and wrapped to two lines
+function emitNode(n: FNode): string {
+  const cls = "node t-" + n.tRole + " s-" + n.sRole;
+  const cx = n.x + n.w / 2, cy = n.y + n.h / 2;
+  // oblique angles rotate the OUTLINE only — the label stays horizontal,
+  // because rotated text is unreadable (quarter turns were normalised away
+  // at parse time and never reach here)
+  const tf = n.rot !== 0
+    ? ' transform="rotate(' + fnum(n.rot) + " " + fnum(cx) + " " + fnum(cy) + ')"' : "";
+  let shape: string;
+  if (n.shape === "ellipse") {
+    shape = '<ellipse class="' + cls + '" cx="' + fnum(cx) + '" cy="' + fnum(cy) +
+      '" rx="' + fnum(n.w / 2) + '" ry="' + fnum(n.h / 2) + '"' + tf + "/>";
+  } else if (n.shape === "diamond") {
+    shape = '<polygon class="' + cls + '" points="' +
+      fnum(cx) + "," + fnum(n.y) + " " + fnum(n.x + n.w) + "," + fnum(cy) + " " +
+      fnum(cx) + "," + fnum(n.y + n.h) + " " + fnum(n.x) + "," + fnum(cy) + '"' + tf + "/>";
+  } else {
+    shape = '<rect class="' + cls + '" x="' + fnum(n.x) + '" y="' + fnum(n.y) +
+      '" width="' + fnum(n.w) + '" height="' + fnum(n.h) + '" rx="' + String(NODE_RX) + '"' +
+      tf + "/>";
+  }
+  if (!n.label) return shape;
+  const rows = wrapLabel(n.label);
+  let txt = "";
+  for (let i = 0; i < rows.length; i++) {
+    const y = cy + (i - (rows.length - 1) / 2) * 15;
+    txt += '<text class="nlabel" x="' + fnum(cx) + '" y="' + fnum(y) +
+      '" text-anchor="middle" dominant-baseline="central">' + esc(rows[i]) + "</text>";
+  }
+  return shape + txt;
+}
+
+// ------------------------------------------------------- legend synthesis
+// colour carries meaning in this corpus ("both events after split will be
+// highlighted in different colours"), so a figure whose extents use two or
+// more palette colours states what each one is: a butt-capped swatch in the
+// extent's own class plus a label. The swatch class is `swatch`, NOT
+// `event`, so nothing that measures event extents ever counts a legend.
+function emitLegend(entries: { role: string; t: string }[], lx: number, ly: number): {
+  svg: string; endX: number;
+} {
+  const p: string[] = [];
+  let x = lx;
+  for (const en of entries) {
+    p.push('<line class="ln swatch flat s-' + en.role + '" x1="' + fnum(x) + '" y1="' + fnum(ly) +
+      '" x2="' + fnum(x + 22) + '" y2="' + fnum(ly) + '"/>');
+    p.push('<text class="legend" x="' + fnum(x + 28) + '" y="' + fnum(ly) +
+      '" dominant-baseline="central">' + esc(en.t) + "</text>");
+    x += 28 + en.t.length * 6.2 + 18;
+  }
+  return { svg: p.join(""), endX: x - 18 };
+}
+
+function emitPath(q: FPath): string {
+  const dash = q.dash ? " " + q.dash : "";
+  if (q.fillRole) {
+    return '<path class="freefill t-' + q.fillRole + ' s-' + q.role + dash + '" d="' + q.d + '"/>';
+  }
+  return '<path class="ln free s-' + q.role + dash + '" d="' + q.d + '"/>';
+}
+
+// ruler lane: the v1.0 measured-route pipeline over one cluster, with any
+// nodes/freeforms in the same cluster drawn behind-the-scenes intact. Band
+// compression is skipped when they are present — compressBands cannot see
+// them, and moving the ruler out from under a node it shares space with
+// would misplace exactly the thing being kept.
+function renderRuler(c: Cluster, no: number, idx: number, total: number,
+                     traced?: boolean): SlideFigure {
+  const cls = classifyLines(c.lines);
   const lines: FLine[] = [];
-  for (const c of cls) {
-    const r = c.r;
-    let klass = c.role, extra = "";
-    if (c.role === "event") { klass = "event flat"; extra = " s-" + figRole(r.col, "cool"); }
+  for (const k of cls) {
+    const r = k.r;
+    let klass = k.role, extra = "";
+    if (k.role === "event") { klass = "event flat"; extra = " s-" + figRole(r.col, "cool"); }
     lines.push({ x1: r.x1, y1: r.y1, x2: r.x2, y2: r.y2, cls: klass, extra: extra });
   }
-  const norm = normaliseRulers(lines, texts);
-  const body = emitVector(norm.lines, norm.texts, norm.splits, norm.rulers);
+  const plain = c.nodes.length === 0 && c.paths.length === 0;
+  const norm = normaliseRulers(lines, c.texts, plain);
+  let body = emitVector(norm.lines, norm.texts, norm.splits, norm.rulers);
   const bb = bbox(norm.lines, norm.texts);
+  for (const q of c.paths) {
+    body = emitPath(q) + body;
+    bb[0] = Math.min(bb[0], q.x0); bb[1] = Math.min(bb[1], q.y0);
+    bb[2] = Math.max(bb[2], q.x1); bb[3] = Math.max(bb[3], q.y1);
+  }
+  for (const n of c.nodes) {
+    body += emitNode(n);
+    const nb = nodeBounds(n);
+    bb[0] = Math.min(bb[0], nb[0]); bb[1] = Math.min(bb[1], nb[1]);
+    bb[2] = Math.max(bb[2], nb[2]); bb[3] = Math.max(bb[3], nb[3]);
+  }
+  // legend: extents in two or more colours get named. The label is the id
+  // the slide put on a bar of that colour when one exists; the default is a
+  // letter, so two unlabelled colours still read as two different things.
+  const evs = norm.lines.filter((l) => l.cls.indexOf("event") === 0)
+    .slice().sort((a, b) => Math.min(a.x1, a.x2) - Math.min(b.x1, b.x2));
+  const roles: string[] = [];
+  for (const l of evs) {
+    const rm2 = l.extra.match(/s-(\w+)/);
+    const role = rm2 ? rm2[1] : "cool";
+    if (roles.indexOf(role) < 0) roles.push(role);
+  }
+  if (roles.length >= 2) {
+    const entries: { role: string; t: string }[] = [];
+    for (let ri = 0; ri < roles.length; ri++) {
+      let label = "";
+      for (const l of evs) {
+        if ((l.extra.match(/s-(\w+)/) || ["", "cool"])[1] !== roles[ri]) continue;
+        const bx0 = Math.min(l.x1, l.x2) - 8, bx1 = Math.max(l.x1, l.x2) + 8;
+        for (const t of norm.texts) {
+          if (t.cls.indexOf("id") !== 0) continue;
+          if (t.x >= bx0 && t.x <= bx1 && Math.abs(t.y - l.y1) < 40) { label = t.t; break; }
+        }
+        if (label) break;
+      }
+      entries.push({ role: roles[ri],
+        t: label || "extent " + String.fromCharCode(65 + ri) });
+    }
+    const ly = bb[3] + 24;
+    const leg = emitLegend(entries, bb[0], ly);
+    body += leg.svg;
+    bb[3] = ly + 8;
+    bb[2] = Math.max(bb[2], leg.endX);
+  }
   const w = bb[2] - bb[0] + FIG_PAD * 2, h = bb[3] - bb[1] + FIG_PAD * 2;
   const shift = 'transform="translate(' + fnum(FIG_PAD - bb[0]) + "," + fnum(FIG_PAD - bb[1]) + ')"';
   const ms = norm.texts.filter((t) => t.cls.indexOf("measure") === 0).map((t) => t.t);
-  const title = "Slide " + no + " route diagram";
-  const desc = "Measured route diagram drawn from the slide's own shapes" +
-    (ms.length ? ", measures " + ms[0] + " to " + ms[ms.length - 1] : "") + ".";
-  return { slide: no, name: "slide" + no + ".svg",
+  const title = "Slide " + no + " route diagram" +
+    (total > 1 ? " (" + idx + " of " + total + ")" : "");
+  const desc = (traced
+    ? "Route diagram vector-traced from the slide's pasted picture; positions are " +
+      "approximate to the source image and colours are mapped to the corpus palette"
+    : "Measured route diagram drawn from the slide's own shapes" +
+      (ms.length ? ", measures " + ms[0] + " to " + ms[ms.length - 1] : "")) + ".";
+  return { slide: no, name: figName(no, idx, total),
     svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + body + "</g>"), alt: desc };
+}
+
+// graph lane: nodes, connector edges (slate by default, palette-mapped when
+// the source coloured them, arrowheads carried over, dashes normalised) and
+// freeform paths, in z-order edges → freeforms → nodes → labels
+function renderGraph(c: Cluster, no: number, idx: number, total: number): SlideFigure {
+  const p: string[] = [];
+  let x0 = c.x0, y0 = c.y0, x1 = c.x1, y1 = c.y1;
+  snapNodes(c.nodes);
+  for (const n of c.nodes) {
+    const nb = nodeBounds(n);
+    x0 = Math.min(x0, nb[0]); y0 = Math.min(y0, nb[1]);
+    x1 = Math.max(x1, nb[2]); y1 = Math.max(y1, nb[3]);
+  }
+  for (const l of c.lines) {
+    const extra = l.col ? " s-" + figRole(l.col, "ink") : "";
+    const dash = l.dash ? " " + l.dash : "";
+    const mk = l.arrow ? ' marker-end="url(#ae)"' : "";
+    const ai = nearNode(c.nodes, l.x1, l.y1, -1);
+    const bi = nearNode(c.nodes, l.x2, l.y2, ai);
+    if (l.bent && ai >= 0 && bi >= 0) {
+      // orthogonal route between facing node sides, elbows at the midline
+      const A = c.nodes[ai], B = c.nodes[bi];
+      const acx = A.x + A.w / 2, acy = A.y + A.h / 2;
+      const bcx = B.x + B.w / 2, bcy = B.y + B.h / 2;
+      let d: string;
+      if (Math.abs(bcx - acx) >= Math.abs(bcy - acy)) {
+        const s = bcx >= acx ? 1 : -1;
+        const p1 = [acx + s * A.w / 2, acy], p2 = [bcx - s * B.w / 2, bcy];
+        const mx = (p1[0] + p2[0]) / 2;
+        d = "M " + fnum(p1[0]) + " " + fnum(p1[1]) + " L " + fnum(mx) + " " + fnum(p1[1]) +
+          " L " + fnum(mx) + " " + fnum(p2[1]) + " L " + fnum(p2[0]) + " " + fnum(p2[1]);
+      } else {
+        const s = bcy >= acy ? 1 : -1;
+        const p1 = [acx, acy + s * A.h / 2], p2 = [bcx, bcy - s * B.h / 2];
+        const my = (p1[1] + p2[1]) / 2;
+        d = "M " + fnum(p1[0]) + " " + fnum(p1[1]) + " L " + fnum(p1[0]) + " " + fnum(my) +
+          " L " + fnum(p2[0]) + " " + fnum(my) + " L " + fnum(p2[0]) + " " + fnum(p2[1]);
+      }
+      p.push('<path class="ln edge' + extra + dash + '" d="' + d + '"' + mk + "/>");
+      continue;
+    }
+    let p1 = [l.x1, l.y1], p2 = [l.x2, l.y2];
+    if (l.bent) {
+      // a bent connector with a free end still routes orthogonally
+      const d = "M " + fnum(p1[0]) + " " + fnum(p1[1]) + " L " + fnum(p2[0]) + " " + fnum(p1[1]) +
+        " L " + fnum(p2[0]) + " " + fnum(p2[1]);
+      p.push('<path class="ln edge' + extra + dash + '" d="' + d + '"' + mk + "/>");
+      continue;
+    }
+    if (ai >= 0) {
+      p1 = anchorPoint(c.nodes[ai],
+        bi >= 0 ? c.nodes[bi].x + c.nodes[bi].w / 2 : l.x2,
+        bi >= 0 ? c.nodes[bi].y + c.nodes[bi].h / 2 : l.y2);
+    }
+    if (bi >= 0) {
+      p2 = anchorPoint(c.nodes[bi],
+        ai >= 0 ? c.nodes[ai].x + c.nodes[ai].w / 2 : p1[0],
+        ai >= 0 ? c.nodes[ai].y + c.nodes[ai].h / 2 : p1[1]);
+    }
+    p.push('<line class="ln edge' + extra + dash + '" x1="' + fnum(p1[0]) + '" y1="' + fnum(p1[1]) +
+      '" x2="' + fnum(p2[0]) + '" y2="' + fnum(p2[1]) + '"' + mk + "/>");
+  }
+  for (const q of c.paths) p.push(emitPath(q));
+  for (const n of c.nodes) p.push(emitNode(n));
+  for (const t of c.texts) {
+    p.push('<text class="' + t.cls + '" x="' + fnum(t.x) + '" y="' + fnum(t.y) +
+      '" text-anchor="' + t.anchor + '" dominant-baseline="central">' + esc(t.t) + "</text>");
+    const wdt = t.t.length * 4 + 6;
+    x0 = Math.min(x0, t.x - wdt); x1 = Math.max(x1, t.x + wdt);
+    y0 = Math.min(y0, t.y - 9); y1 = Math.max(y1, t.y + 9);
+  }
+  const w = x1 - x0 + FIG_PAD * 2, h = y1 - y0 + FIG_PAD * 2;
+  const shift = 'transform="translate(' + fnum(FIG_PAD - x0) + "," + fnum(FIG_PAD - y0) + ')"';
+  const labels: string[] = [];
+  for (const n of c.nodes) if (n.label) labels.push(n.label);
+  const bits: string[] = [];
+  if (c.nodes.length) {
+    bits.push(c.nodes.length + " node" + (c.nodes.length === 1 ? "" : "s") +
+      (labels.length ? " (" + labels.slice(0, 4).join(", ") + ")" : ""));
+  }
+  if (c.lines.length) bits.push(c.lines.length + " connector" + (c.lines.length === 1 ? "" : "s"));
+  if (c.paths.length) bits.push(c.paths.length + " freeform path" + (c.paths.length === 1 ? "" : "s"));
+  const title = "Slide " + no + " diagram" +
+    (total > 1 ? " (" + idx + " of " + total + ")" : "");
+  const desc = "Diagram drawn from the slide's own shapes: " + bits.join(", ") + ".";
+  return { slide: no, name: figName(no, idx, total),
+    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + p.join("") + "</g>"), alt: desc };
 }
 
 function bbox(lines: FLine[], texts: FText[]): number[] {
@@ -396,7 +1050,7 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
 // was dragged (typically ~0.1in off its own tick) and adjoining extents
 // overlap or gap by a few px at the very measure the test case is about.
 // A ruler is therefore recognised as ONE component and re-laid out.
-function normaliseRulers(lines: FLine[], texts: FText[]): {
+function normaliseRulers(lines: FLine[], texts: FText[], compress: boolean): {
   lines: FLine[]; texts: FText[]; splits: number[][]; rulers: FRuler[];
 } {
   const band = 9.0;
@@ -547,6 +1201,7 @@ function normaliseRulers(lines: FLine[], texts: FText[]): {
     }
     outL.push(l);
   }
+  if (!compress) return { lines: outL, texts: outT, splits: splits, rulers: rulers };
   return compressBands(outL, outT, splits, rulers);
 }
 
@@ -796,19 +1451,341 @@ function buildRedraw(xml: string, no: number): SlideFigure | null {
     body.push('<text class="id f-ink" x="' + fnum(FIG_PAD + 36) + '" y="' + fnum(oy + innerH / 2) +
       '" text-anchor="end" dominant-baseline="central">' + esc(routeId) + "</text>");
   }
+  // the redraw lane KNOWS the numbers, so its legend states each extent's
+  // measure range rather than a letter
+  const leg = emitLegend([
+    { role: roles[0], t: eventId + " " + fnum(m0) + "–" + fnum(split) },
+    { role: roles[1], t: eventId + " " + fnum(split) + "–" + fnum(m1) },
+  ], FIG_PAD, bandH * rows.length + 4);
+  body.push(leg.svg);
   const shape = kind ? kind.toLowerCase() : "straight";
   const title = "Slide " + no + " route diagram";
   const desc = "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
     ", event " + eventId + " from measure " + fnum(m0) + " to " + fnum(m1) +
     ", split at measure " + fnum(split) + ".";
   return { slide: no, name: "slide" + no + ".svg",
-    svg: svgWrap(no, FIG_W, bandH * rows.length + FIG_PAD, title, desc, body.join("")), alt: desc };
+    svg: svgWrap(no, FIG_W, bandH * rows.length + FIG_PAD + 24, title, desc, body.join("")),
+    alt: desc };
 }
 
-function buildFigure(xml: string, no: number): SlideFigure | null {
-  const v = buildVector(xml, no);
-  if (v) return v;
-  return buildRedraw(xml, no);
+// ---------------------------------------- raster tracing tier (last resort)
+// A slide whose only content is a pasted picture — no vector drawing, no
+// tables to redraw from — used to stay a caption. The picture is decoded
+// in-script (PNG only: its zlib stream is two header bytes plus the same
+// RFC 1951 deflate the zip layer already inflates) and its axis-aligned
+// strokes are vectorised into the SAME FRaw lines the vector path produces,
+// so a traced figure runs through the identical classify/normalise pipeline
+// and comes out in the corpus style. Colour-aware run extraction is what
+// separates a route from the extent drawn over it; measures printed INSIDE
+// the picture are pixels, not text, so a traced ruler may carry no numbers —
+// the alt text says the figure is traced and approximate.
+
+function u32be(b: Uint8Array, p: number): number {
+  return ((b[p] << 24) | (b[p + 1] << 16) | (b[p + 2] << 8) | b[p + 3]) >>> 0;
+}
+
+interface PngImg { w: number; h: number; rgb: Uint8Array; }
+
+// 8-bit gray/RGB/palette/RGBA, non-interlaced; alpha composites over white.
+// Anything else (16-bit, interlaced, JPEG…) returns null — silence, not a
+// wrong picture.
+function pngDecode(b: Uint8Array): PngImg | null {
+  if (b.length < 8 || b[0] !== 0x89 || b[1] !== 0x50 || b[2] !== 0x4e || b[3] !== 0x47) return null;
+  let p = 8;
+  let w = 0, h = 0, depth = 0, ctype = -1, interlace = 0;
+  let plte: Uint8Array | null = null;
+  const idat: Uint8Array[] = [];
+  let idatLen = 0;
+  while (p + 8 <= b.length) {
+    const len = u32be(b, p);
+    const type = String.fromCharCode(b[p + 4], b[p + 5], b[p + 6], b[p + 7]);
+    const ds = p + 8;
+    if (ds + len > b.length) return null;
+    if (type === "IHDR") {
+      w = u32be(b, ds); h = u32be(b, ds + 4);
+      depth = b[ds + 8]; ctype = b[ds + 9]; interlace = b[ds + 12];
+    } else if (type === "PLTE") plte = b.subarray(ds, ds + len);
+    else if (type === "IDAT") { idat.push(b.subarray(ds, ds + len)); idatLen += len; }
+    else if (type === "IEND") break;
+    p = ds + len + 4;
+  }
+  if (!w || !h || depth !== 8 || interlace !== 0) return null;
+  const ch = ctype === 0 ? 1 : ctype === 2 ? 3 : ctype === 3 ? 1 : ctype === 6 ? 4 : 0;
+  if (!ch || w * h > TRACE_MAX_PX) return null;
+  const z = new Uint8Array(idatLen);
+  let zo = 0;
+  for (const d of idat) { z.set(d, zo); zo += d.length; }
+  if (z.length < 3 || (z[0] & 0x0f) !== 8 || (z[1] & 0x20) !== 0) return null;
+  let raw: Uint8Array;
+  try { raw = inflateRaw(z.subarray(2), h * (1 + w * ch)); } catch (e) { return null; }
+  if (raw.length < h * (1 + w * ch)) return null;
+  const stride = w * ch;
+  const rgb = new Uint8Array(w * h * 3);
+  const prev = new Uint8Array(stride);
+  const cur = new Uint8Array(stride);
+  let rp = 0;
+  for (let y = 0; y < h; y++) {
+    const f = raw[rp++];
+    for (let i = 0; i < stride; i++) cur[i] = raw[rp + i];
+    rp += stride;
+    if (f === 1) { for (let i = ch; i < stride; i++) cur[i] = (cur[i] + cur[i - ch]) & 0xff; }
+    else if (f === 2) { for (let i = 0; i < stride; i++) cur[i] = (cur[i] + prev[i]) & 0xff; }
+    else if (f === 3) {
+      for (let i = 0; i < stride; i++) {
+        const a = i >= ch ? cur[i - ch] : 0;
+        cur[i] = (cur[i] + ((a + prev[i]) >> 1)) & 0xff;
+      }
+    } else if (f === 4) {
+      for (let i = 0; i < stride; i++) {
+        const a = i >= ch ? cur[i - ch] : 0, up = prev[i], c = i >= ch ? prev[i - ch] : 0;
+        const pa = Math.abs(up - c), pb = Math.abs(a - c), pc = Math.abs(a + up - 2 * c);
+        cur[i] = (cur[i] + (pa <= pb && pa <= pc ? a : (pb <= pc ? up : c))) & 0xff;
+      }
+    } else if (f !== 0) return null;
+    for (let x = 0; x < w; x++) {
+      let r = 0, g = 0, bl = 0;
+      if (ctype === 0) { r = cur[x]; g = r; bl = r; }
+      else if (ctype === 2) { r = cur[x * 3]; g = cur[x * 3 + 1]; bl = cur[x * 3 + 2]; }
+      else if (ctype === 3) {
+        const ix = cur[x] * 3;
+        if (plte && ix + 2 < plte.length) { r = plte[ix]; g = plte[ix + 1]; bl = plte[ix + 2]; }
+      } else {
+        const a = cur[x * 4 + 3];
+        r = ((cur[x * 4] * a + 255 * (255 - a) + 127) / 255) | 0;
+        g = ((cur[x * 4 + 1] * a + 255 * (255 - a) + 127) / 255) | 0;
+        bl = ((cur[x * 4 + 2] * a + 255 * (255 - a) + 127) / 255) | 0;
+      }
+      const o = (y * w + x) * 3;
+      rgb[o] = r; rgb[o + 1] = g; rgb[o + 2] = bl;
+    }
+    prev.set(cur);
+  }
+  return { w: w, h: h, rgb: rgb };
+}
+
+// a "bar" is a stack of same-colour ink runs: a-axis is along the stroke,
+// b-axis across it (rows for horizontal bars, columns for vertical)
+interface TBar { a0: number; a1: number; b0: number; b1: number; sr: number; sg: number; sb: number; n: number; }
+
+function barDist(t: TBar, r: number, g: number, bl: number): number {
+  const mr = t.sr / t.n, mg = t.sg / t.n, mb = t.sb / t.n;
+  return Math.max(Math.abs(mr - r), Math.abs(mg - g), Math.abs(mb - bl));
+}
+
+function traceScan(img: PngImg, horiz: boolean, bg: number[]): TBar[] {
+  const NB = horiz ? img.h : img.w;
+  const NA = horiz ? img.w : img.h;
+  const minLen = horiz ? 24 : 8;
+  const open: TBar[] = [];
+  const commit = (a0: number, a1: number, sr: number, sg: number, sb: number,
+                  n: number, b: number): void => {
+    if (a1 - a0 + 1 < minLen) return;
+    const r = sr / n, g = sg / n, bl = sb / n;
+    for (const t of open) {
+      if (t.b1 < b - 1) continue;
+      const ov = Math.min(a1, t.a1) - Math.max(a0, t.a0) + 1;
+      if (ov < (Math.min(a1 - a0, t.a1 - t.a0) + 1) * 0.6) continue;
+      if (barDist(t, r, g, bl) > 64) continue;
+      t.a0 = Math.min(t.a0, a0); t.a1 = Math.max(t.a1, a1); t.b1 = b;
+      t.sr += sr; t.sg += sg; t.sb += sb; t.n += n;
+      return;
+    }
+    open.push({ a0: a0, a1: a1, b0: b, b1: b, sr: sr, sg: sg, sb: sb, n: n });
+  };
+  for (let b = 0; b < NB; b++) {
+    let a0 = -1, sr = 0, sg = 0, sb = 0, n = 0;
+    for (let a = 0; a <= NA; a++) {
+      let ink = false, r = 0, g = 0, bl = 0;
+      if (a < NA) {
+        const o = horiz ? (b * img.w + a) * 3 : (a * img.w + b) * 3;
+        r = img.rgb[o]; g = img.rgb[o + 1]; bl = img.rgb[o + 2];
+        ink = Math.max(Math.abs(r - bg[0]), Math.abs(g - bg[1]), Math.abs(bl - bg[2])) > 60;
+        if (ink && n > 0) {
+          // colour change splits the run: the extent drawn over the route
+          // stays a different stroke from the route it covers
+          const d = Math.max(Math.abs(sr / n - r), Math.abs(sg / n - g), Math.abs(sb / n - bl));
+          if (d > 64) { commit(a0, a - 1, sr, sg, sb, n, b); a0 = a; sr = 0; sg = 0; sb = 0; n = 0; }
+        }
+      }
+      if (ink) {
+        if (n === 0) a0 = a;
+        sr += r; sg += g; sb += bl; n++;
+      } else if (n > 0) {
+        commit(a0, a - 1, sr, sg, sb, n, b);
+        n = 0; sr = 0; sg = 0; sb = 0;
+      }
+    }
+  }
+  // validity: long, thin, and genuinely stroke-shaped
+  const done: TBar[] = [];
+  for (const t of open) {
+    const len = t.a1 - t.a0 + 1, thick = t.b1 - t.b0 + 1;
+    if (len >= minLen && thick <= 18 && len >= 3 * thick) done.push(t);
+  }
+  return done;
+}
+
+// same-colour bars in one band whose gap is small — or is covered by OTHER
+// bars in the band (the extent hiding the route beneath it) — are one stroke
+function traceMerge(bars: TBar[]): TBar[] {
+  const bc = (t: TBar): number => (t.b0 + t.b1) / 2;
+  bars.sort((a, b) => bc(a) - bc(b));
+  const groups: TBar[][] = [];
+  for (const t of bars) {
+    const g = groups.length ? groups[groups.length - 1] : null;
+    if (g && bc(t) - bc(g[g.length - 1]) <= 6) g.push(t);
+    else groups.push([t]);
+  }
+  const out: TBar[] = [];
+  for (const g of groups) {
+    g.sort((a, b) => a.a0 - b.a0);
+    for (let i = 0; i < g.length; i++) {
+      const cur = g[i];
+      for (let j = i + 1; j < g.length; j++) {
+        const nx = g[j];
+        if (barDist(cur, nx.sr / nx.n, nx.sg / nx.n, nx.sb / nx.n) > 64) continue;
+        const gap = nx.a0 - cur.a1;
+        if (gap > 8) {
+          let cov = 0;
+          for (const o of g) {
+            if (o === cur || o === nx) continue;
+            cov += Math.max(0, Math.min(o.a1, nx.a0) - Math.max(o.a0, cur.a1));
+          }
+          if (cov < gap * 0.8) continue;
+        }
+        cur.a1 = Math.max(cur.a1, nx.a1);
+        cur.b0 = Math.min(cur.b0, nx.b0); cur.b1 = Math.max(cur.b1, nx.b1);
+        cur.sr += nx.sr; cur.sg += nx.sg; cur.sb += nx.sb; cur.n += nx.n;
+        g.splice(j, 1); j--;
+      }
+      out.push(cur);
+    }
+  }
+  return out;
+}
+
+function traceImage(img: PngImg, X: number, Y: number, W: number, H: number): FRaw[] {
+  // background: the border ring's average colour
+  let br = 0, bgc = 0, bb2 = 0, bn = 0;
+  const sample = (x: number, y: number): void => {
+    const o = (y * img.w + x) * 3;
+    br += img.rgb[o]; bgc += img.rgb[o + 1]; bb2 += img.rgb[o + 2]; bn++;
+  };
+  for (let x = 0; x < img.w; x += 4) { sample(x, 0); sample(x, img.h - 1); }
+  for (let y = 0; y < img.h; y += 4) { sample(0, y); sample(img.w - 1, y); }
+  const bg = [br / bn, bgc / bn, bb2 / bn];
+  const hbars = traceMerge(traceScan(img, true, bg));
+  const vbars = traceMerge(traceScan(img, false, bg));
+  if (hbars.length === 0 || hbars.length + vbars.length > TRACE_MAX_BARS) return [];
+  const sx = W / img.w, sy = H / img.h;
+  const hex = (t: TBar): string =>
+    ("00000" + ((((t.sr / t.n) | 0) << 16) | (((t.sg / t.n) | 0) << 8) | ((t.sb / t.n) | 0))
+      .toString(16)).slice(-6);
+  const out: FRaw[] = [];
+  for (const t of hbars) {
+    const yc = Y + ((t.b0 + t.b1 + 1) / 2) * sy;
+    out.push({ x1: X + t.a0 * sx, y1: yc, x2: X + (t.a1 + 1) * sx, y2: yc,
+      w: (t.a1 - t.a0 + 1) * sx, h: 0, col: hex(t), dash: "", arrow: false, bent: false });
+  }
+  for (const t of vbars) {
+    const xc = X + ((t.b0 + t.b1 + 1) / 2) * sx;
+    out.push({ x1: xc, y1: Y + t.a0 * sy, x2: xc, y2: Y + (t.a1 + 1) * sy,
+      w: 0, h: (t.a1 - t.a0 + 1) * sy, col: hex(t), dash: "", arrow: false, bent: false });
+  }
+  return out;
+}
+
+interface FPic { x: number; y: number; w: number; h: number; data: Uint8Array; }
+
+function slidePics(bytes: Uint8Array, entries: ZipEntry[], slideName: string, xml: string): FPic[] {
+  const relsName = slideName.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
+  const relsE = entries.filter((e) => e.name === relsName)[0];
+  if (!relsE) return [];
+  let rels = "";
+  try { rels = utf8ToString(extractEntry(bytes, relsE)); } catch (e) { return []; }
+  const idTo: { [id: string]: string } = {};
+  const tagRe = /<Relationship\b[^>]*>/g;
+  let m: RegExpExecArray | null;
+  while ((m = tagRe.exec(rels)) !== null) {
+    const idm = m[0].match(/\bId="([^"]+)"/);
+    const tgm = m[0].match(/\bTarget="([^"]+)"/);
+    if (idm && tgm) idTo[idm[1]] = tgm[1];
+  }
+  const gs = figGroups(xml);
+  const out: FPic[] = [];
+  const pre = /<p:pic>([\s\S]*?)<\/p:pic>/g;
+  while ((m = pre.exec(xml)) !== null) {
+    const b = m[1];
+    const em = b.match(/<a:blip r:embed="([^"]+)"/);
+    const o = b.match(/<a:off x="(-?\d+)" y="(-?\d+)"\/>/);
+    const e = b.match(/<a:ext cx="(\d+)" cy="(\d+)"\/>/);
+    if (!em || !o || !e) continue;
+    let tg = idTo[em[1]] || "";
+    if (!tg) continue;
+    if (tg.indexOf("../") === 0) tg = "ppt/" + tg.slice(3);
+    else if (tg.indexOf("/") === 0) tg = tg.slice(1);
+    const pe = entries.filter((x) => x.name === tg)[0];
+    if (!pe) continue;
+    let data: Uint8Array;
+    try { data = extractEntry(bytes, pe); } catch (err) { continue; }
+    if (data.length < 8 || data[0] !== 0x89 || data[1] !== 0x50) continue; // PNG only
+    const t = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
+                       parseInt(e[1], 10), parseInt(e[2], 10));
+    out.push({ x: t[0] * EMU_PX, y: t[1] * EMU_PX,
+               w: t[2] * EMU_PX, h: t[3] * EMU_PX, data: data });
+  }
+  out.sort((a, b) => b.w * b.h - a.w * a.h);
+  return out.slice(0, 2);
+}
+
+function traceFigures(xml: string, no: number, pics: FPic[]): SlideFigure[] {
+  const parsed = parseSlide(xml);
+  const qual: Cluster[] = [];
+  for (const pic of pics) {
+    const img = pngDecode(pic.data);
+    if (!img) continue;
+    const lines = traceImage(img, pic.x, pic.y, pic.w, pic.h);
+    if (!lines.length) continue;
+    const clusters = clusterParsed({ lines: lines, nodes: [], paths: [], texts: parsed.texts });
+    for (const c of clusters) {
+      // stricter than the vector gate: a traced figure must be a route AND
+      // a real ruler (3+ ticks) — anything looser is a screenshot fragment
+      const cls = classifyLines(c.lines);
+      let routes = 0, ticks = 0;
+      for (const x of cls) {
+        if (x.role === "route") routes++;
+        else if (x.role === "tick") ticks++;
+      }
+      if (routes >= 1 && ticks >= 3) qual.push(c);
+    }
+  }
+  const out: SlideFigure[] = [];
+  for (let i = 0; i < qual.length; i++) {
+    out.push(renderRuler(qual[i], no, i + 1, qual.length, true));
+  }
+  return out;
+}
+
+// vector clusters first (each qualifying cluster is its own figure); a slide
+// with no vector diagram falls through to the table-driven redraw, and a
+// slide with neither — but a pasted PNG — to the tracing tier
+function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[] {
+  const clusters = clusterParsed(parseSlide(xml));
+  const qual: { c: Cluster; mode: string }[] = [];
+  for (const c of clusters) {
+    const mode = clusterMode(c);
+    if (mode) qual.push({ c: c, mode: mode });
+  }
+  const out: SlideFigure[] = [];
+  for (let i = 0; i < qual.length; i++) {
+    out.push(qual[i].mode === "ruler"
+      ? renderRuler(qual[i].c, no, i + 1, qual.length)
+      : renderGraph(qual[i].c, no, i + 1, qual.length));
+  }
+  if (out.length) return out;
+  const r = buildRedraw(xml, no);
+  if (r) return [r];
+  return traceFigures(xml, no, pics());
 }
 
 // ------------------------------------------------ slide ordering

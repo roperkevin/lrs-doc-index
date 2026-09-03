@@ -56,7 +56,11 @@ if out.returncode != 0:
     print('FAIL SlideFigures threw:\n' + out.stderr[:2000])
     sys.exit(1)
 res = json.loads(out.stdout)
-figs = {f['slide']: f for f in res['figures']}
+by_slide = {}
+for f in res['figures']:
+    by_slide.setdefault(f['slide'], []).append(f)
+figs = {n: fl[0] for n, fl in by_slide.items()}
+allfigs = [(f['name'], f) for f in res['figures']]
 
 # ---- 1 / 2: which slides produce figures --------------------------------
 check(1 in figs, 'vector slide (real connectors) produces a figure')
@@ -65,8 +69,88 @@ check(3 in figs, 'header-row-table slide produces a redrawn figure')
 check(4 not in figs, 'prose-only slide produces NO figure')
 check(res['count'] == len(res['figures']), 'count matches the figure list')
 
+# ---- v1.1 (DF-2): one figure per DIAGRAM, not per slide ------------------
+f5 = by_slide.get(5, [])
+check(len(f5) == 2, f'two separated rulers -> TWO figures ({len(f5)})')
+check([f['name'] for f in f5] == ['slide5_fig1.svg', 'slide5_fig2.svg'],
+      f'sibling figures are named slideN_figK ({[f["name"] for f in f5]})')
+check(figs[1]['name'] == 'slide1.svg',
+      'a slide\'s only figure keeps the v1.0 slideN.svg name')
+if len(f5) == 2:
+    check('0 to 4' in f5[0]['alt'] and '5 to 9' in f5[1]['alt'],
+          'sibling figures come out in top-to-bottom order')
+    check('(1 of 2)' in f5[0]['svg'] and '(2 of 2)' in f5[1]['svg'],
+          'sibling figure titles say which of how many')
+    for f in f5:
+        vsvg = f['svg']
+        check('class="ln event flat' in vsvg and 'class="split"' in vsvg,
+              f'{f["name"]}: each sibling ruler is fully normalised')
+
+# ---- v1.1 (DF-2): the graph lane (nodes + edges, no ruler) ---------------
+g6 = figs.get(6, {})
+g = g6.get('svg', '')
+check(bool(g), 'node/connector slide produces a graph figure')
+check('<rect class="node' in g, 'graph: box shape renders as a standardized node')
+check('<ellipse class="node' in g, 'graph: oval shape renders as an ellipse node')
+check('t-cool' in g and 't-warm' in g,
+      'graph: source fills map to palette tints by hue family')
+check('class="ln edge' in g, 'graph: connector renders as an edge')
+check('Create route' in g and 'Calibrate' in g,
+      'graph: node labels carried into the figure')
+check('node' in g6.get('alt', '').lower() and 'connector' in g6.get('alt', '').lower(),
+      'graph: alt text describes nodes and connectors')
+
+# ---- v1.2 (DF-3): connector routing, grid snap, rotation -----------------
+g7 = figs.get(7, {}).get('svg', '')
+check(bool(g7), 'routing slide produces a graph figure')
+rects7 = re.findall(r'<rect class="node[^"]*" x="(-?[\d.]+)" y="(-?[\d.]+)" '
+                    r'width="([\d.]+)" height="([\d.]+)"', g7)
+row7 = [r for r in rects7 if float(r[3]) < float(r[2])]       # the three row boxes
+tall7 = [r for r in rects7 if float(r[3]) > 2 * float(r[2])]  # the rotated one
+check(len(row7) == 3 and len(tall7) == 1,
+      f'slide 7: three row boxes and one rotated box ({len(row7)}/{len(tall7)})')
+if len(row7) == 3:
+    check(len({r[1] for r in row7}) == 1, 'grid snap: jittered boxes share ONE row baseline')
+    check(len({r[2] for r in row7}) == 1, 'grid snap: near-equal boxes share ONE width')
+    check(len({r[3] for r in row7}) == 1, 'grid snap: near-equal boxes share ONE height')
+    xs7 = sorted(row7, key=lambda r: float(r[0]))
+    e7 = re.findall(r'<line class="ln edge[^"]*" x1="(-?[\d.]+)" y1="(-?[\d.]+)" '
+                    r'x2="(-?[\d.]+)" y2="(-?[\d.]+)"', g7)
+    b1r = float(xs7[0][0]) + float(xs7[0][2])
+    b2l = float(xs7[1][0])
+    cy7 = float(xs7[0][1]) + float(xs7[0][3]) / 2
+    hit = [l for l in e7 if abs(float(l[0]) - b1r) < 0.6 and abs(float(l[2]) - b2l) < 0.6
+           and abs(float(l[1]) - cy7) < 0.6 and abs(float(l[3]) - cy7) < 0.6]
+    check(len(hit) == 1,
+          'routing: a dragged connector re-anchors to both node boundaries at row centre')
+check('<path class="ln edge' in g7, 'routing: elbow connector routes orthogonally as a path')
+if len(tall7) == 1:
+    check(abs(float(tall7[0][3]) / float(tall7[0][2]) - 2.4) < 0.05,
+          'rotation: quarter-turned box normalises to an axis-aligned w/h swap')
+check('Publish' in g7, 'rotation: the rotated node keeps its horizontal label')
+
+# ---- v1.2 (DF-3): legend synthesis ---------------------------------------
+v1 = figs.get(1, {}).get('svg', '')
+check('class="ln swatch flat s-cool' in v1 and 'class="ln swatch flat s-warm' in v1,
+      'legend: two event colours get two swatches')
+check(re.search(r'class="legend"[^>]*>E9<', v1) is not None,
+      'legend: a swatch is labelled with the id the slide put on its bar')
+r2svg = figs.get(2, {}).get('svg', '')
+check('E7 0–20' in r2svg and 'E7 20–40' in r2svg,
+      "legend: redraw lane states each extent's measure range")
+
+# ---- v1.2 (DF-3): raster tracing tier ------------------------------------
+t8 = figs.get(8, {})
+t8svg = t8.get('svg', '')
+check(bool(t8svg), 'picture-only slide produces a traced figure')
+check('traced' in t8.get('alt', ''), 'trace: alt says the figure is traced and approximate')
+check('class="ln route"' in t8svg, 'trace: the route line was vectorised')
+tticks = re.findall(r'<line class="ln tick', t8svg)
+check(len(tticks) >= 4, f'trace: tick stubs vectorised ({len(tticks)})')
+check('s-warm' in t8svg, 'trace: the amber extent maps to the warm palette slot')
+
 # ---- 7: well-formed, and the viewBox holds the content -------------------
-for n, f in figs.items():
+for n, f in allfigs:
     try:
         root = ET.fromstring(f['svg'])
         ok = root.tag.endswith('svg')
@@ -77,20 +161,33 @@ for n, f in figs.items():
     check(bool(vb), f'slide {n}: has a viewBox')
     if vb:
         x0, y0, w, h = [float(v) for v in vb.group(1).split()]
-        xs = [float(v) for v in re.findall(r'[xc][12]?="(-?[\d.]+)"', f['svg'])]
-        ys = [float(v) for v in re.findall(r'[yc][12]?="(-?[\d.]+)"', f['svg'])]
-        inside = (not xs or (min(xs) >= x0 - 60 and max(xs) <= x0 + w + 60))
+        # coordinates inside the shift group live in slide space; apply the
+        # translate so containment is checked in viewBox space (the ±60 slack
+        # covers text extents, which anchor inside the box but render wider)
+        xpat, ypat = r' (?:c?x|x[12])="(-?[\d.]+)"', r' (?:c?y|y[12])="(-?[\d.]+)"'
+        tr = re.search(r'<g transform="translate\((-?[\d.]+),(-?[\d.]+)\)"', f['svg'])
+        gpos = f['svg'].find('<g transform="translate(')
+        pre = f['svg'] if gpos < 0 else f['svg'][:gpos]
+        post = '' if gpos < 0 else f['svg'][gpos:]
+        dx = float(tr.group(1)) if tr else 0.0
+        dy = float(tr.group(2)) if tr else 0.0
+        xs = [float(v) for v in re.findall(xpat, pre)] + \
+             [float(v) + dx for v in re.findall(xpat, post)]
+        ys = [float(v) for v in re.findall(ypat, pre)] + \
+             [float(v) + dy for v in re.findall(ypat, post)]
+        inside = (not xs or (min(xs) >= x0 - 60 and max(xs) <= x0 + w + 60)) and \
+                 (not ys or (min(ys) >= y0 - 60 and max(ys) <= y0 + h + 60))
         check(inside and w > 0 and h > 0,
               f'slide {n}: drawn content sits inside the viewBox ({w:.0f}x{h:.0f})')
 
 # ---- 5: accessibility ----------------------------------------------------
-for n, f in figs.items():
+for n, f in allfigs:
     check('<title>' in f['svg'] and '<desc>' in f['svg'],
           f'slide {n}: carries <title> and <desc>')
     check(bool(f['alt']) and len(f['alt']) > 20, f'slide {n}: alt text is descriptive')
 
 # ---- 6: nothing rasterised ----------------------------------------------
-for n, f in figs.items():
+for n, f in allfigs:
     check('data:image' not in f['svg'] and '<image' not in f['svg'],
           f'slide {n}: no raster embedded')
     check(len(f['svg']) < 60 * 1024, f'slide {n}: figure under 60 KB ({len(f["svg"])}B)')
@@ -124,7 +221,7 @@ if len(ev) >= 2:
           f'vector figure: adjoining extents share ONE exact boundary {pts}')
 
 # ---- 4: palette only, no source colour leaking through -------------------
-for n, f in figs.items():
+for n, f in allfigs:
     # the palette lives in the stylesheet and the arrow marker in <defs>;
     # a literal colour anywhere ELSE means a source colour got copied through
     body = f['svg'][f['svg'].index('</style>'):]
@@ -132,7 +229,8 @@ for n, f in figs.items():
     leaked_body = re.findall(r'(?:stroke|fill)="#[0-9A-Fa-f]{6}"', body)
     check(not leaked_body,
           f'slide {n}: no source colour on an element ({leaked_body[:3]})')
-    check('s-cool' in f['svg'] or 's-warm' in f['svg'] or 'class="ln route"' in f['svg'],
+    check('s-cool' in f['svg'] or 's-warm' in f['svg'] or 'class="ln route"' in f['svg']
+          or 'class="node' in f['svg'],
           f'slide {n}: uses palette role classes')
 
 # ---- redraw path: driven by the slide's own numbers ----------------------

@@ -28,13 +28,21 @@ when a batch is promoted:
    flow v2.8 three-patch round) — the template any future script
    change clones before it may be pasted (or, since the migration,
    before it is promoted over `scripts/`).
-6. **Figure checks** (`check_figures.py`) — SlideFigures v1.0: both
+6. **Figure checks** (`check_figures.py`) — SlideFigures v1.2: both
    production paths (vector render / topology redraw, over both table
    shapes), silence on a slide with no diagram, the component contract
    (uniform centred ticks, measures on a shared baseline and on their
    ticks, butt-capped extents sharing one exact boundary, split marker),
+   the v1.1 lanes (two separated rulers on one slide → two figures named
+   `slideN_figK.svg` in top-to-bottom order, each fully normalised; a
+   node/connector slide → a graph figure with standardized nodes,
+   palette tints by hue family, and edges), the v1.2 contract
+   (connector re-anchoring to node boundaries, orthogonal elbow
+   routing, row/column grid snap with size equalisation, quarter-turn
+   rotation normalisation, legend synthesis with measure ranges in the
+   redraw lane, and the raster tracing tier over a generated PNG),
    palette-only colour, no rasterisation, and `<title>`/`<desc>`.
-   Fixture: `figure_deck.pptx`.
+   Fixtures: `figure_deck.pptx`, `trace_route.png`.
 7. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
    downloaded TestPlanGen draft .md and asserts the prompt v1.7
    coverage contract (section order incl. `## Coverage Map`, Trace
