@@ -1287,7 +1287,7 @@ def main():
           and len((state.last_pkce or {}).get("challenge", "")) >= 40,
           str(state.last_pkce))
     check("redirect is a loopback URI",
-          str((state.last_pkce or {}).get("redirect", "")).startswith("http://127.0.0.1:"),
+          str((state.last_pkce or {}).get("redirect", "")).startswith("http://localhost:"),
           str((state.last_pkce or {}).get("redirect")))
     check("interactive writes the same caches",
           os.path.exists(os.path.join(auth_dir, "graph.json"))
