@@ -644,43 +644,56 @@ function tidyBody(text) {
 }
 
 /**
- * caseHeadings — test-case-derived slide headings (v1.25, TC-1).
- * The test-plan decks in this corpus put one test case per slide, but
- * few of those slides carry a title placeholder — so their sections
- * rendered as bare "## Slide 12" and the reader had to open each one
- * to learn which case it holds. This pass rewrites a BARE slide
- * heading from the case text the slide itself states:
+ * caseHeadings — test-case-derived slide headings (v1.25 TC-1;
+ * reshaped v1.29, TC-3). The test-plan decks in this corpus put one
+ * test case per slide, but few of those slides carry a title
+ * placeholder — so their sections rendered as bare "## Slide 12" and
+ * the reader had to open each one to learn which case it holds. This
+ * pass rewrites a BARE slide heading from what the slide itself
+ * states — and, since TC-3, keeps SPECIFICS (route ids, split
+ * measures) OUT of headings: the H2 names the case and its
+ * Positive/Negative classification, an H3 names the scenario, and
+ * the case line's specifics stay in the body:
  *
- *   ## Slide 5   →  ## Case 2 — Loop – Split measure: 20 <!-- slide 5 -->
+ *   ## Slide 5                          ## Case 2: Positive - Non Spanning Line Event <!-- slide 5 -->
+ *   Positive - Non spanning line event
+ *   2. Loop – Split measure : 20    →   ### Loop
+ *   ...                                 **Loop – Split measure: 20**
  *
  * Deterministic by decision (recorded in local/CHANGES.md v1.25): the
- * slide's own case line IS the header the user wants, an LLM pass
- * would put AI spend and nondeterminism into the no-AI --reformat
- * path, and a slide with no case text keeps its honest "## Slide N".
+ * slide's own case + classification lines ARE the header the user
+ * wants, an LLM pass would put AI spend and nondeterminism into the
+ * no-AI --reformat path, and a slide with no case text keeps its
+ * honest "## Slide N".
  *
  * Rules, per section under a heading that is EXACTLY "## Slide N"
  * (a slide the author titled keeps that title; "### Notes" and later
  * sections are never scanned):
  *   a. exactly ONE numbered line ("2. Loop – Split measure : 20",
- *      "8) Gap …", bullet or plain) → "## Case 2 — <cleaned text>".
+ *      "8) Gap …", bullet or plain) is the case → "## Case 2: <the
+ *      slide's Positive/Negative classification line>", or bare
+ *      "## Case 2" when the slide has no classification line.
  *      Two or more numbered lines mean the slide is a CHECKLIST of
  *      verifications, not a case — the heading stays untouched.
  *   b. no numbered line, but a Positive/Negative classification line
- *      is present (the corpus marker of a case slide) → the first
- *      short digit-bearing content line is the case text ("Normal
- *      route - Split measure :16"). Lines opening "current date" or
- *      "modify" (the decks' modify-this-case notes) never qualify.
+ *      is present (the corpus marker of a case slide) → the
+ *      classification IS the H2; the first short digit-bearing
+ *      content line is the case text ("Normal route - Split measure
+ *      :16"). Lines opening "current date" or "modify" (the decks'
+ *      modify-this-case notes) never qualify.
  *   c. otherwise, a line of the shape "<name> test cases" titles the
  *      section ("Conflict Prevention test cases").
  * Table rows, image/figure links and fenced code are never candidates.
- * The promoted line is removed from the body under rules a/b (its
- * text now IS the heading); a "current date: …" tail stripped from
- * the heading is re-emitted as its own body line so nothing is lost.
- * A case line longer than the 60-char title budget (v1.27, TC-2) no
- * longer truncates mid-sentence into the heading: the heading takes a
- * short title cut at the last phrase break inside the budget, and the
- * full case text stays in the body as a bold subheader line where the
- * case line stood.
+ * Under rules a/b the case line's SCENARIO — the text minus its
+ * split-measure tail, route ids, and a generic leading "Route –" —
+ * becomes a title-cased "### <scenario>" directly under the H2
+ * (cut at the 60-char title budget's last phrase break, v1.27 TC-2;
+ * skipped when the classification already states it), and the full
+ * case text survives as a bold body line whenever any heading
+ * dropped detail, so no measure or route id is ever lost — it just
+ * never sits in a heading. The promoted classification line leaves
+ * the body (it now IS the H2); a "current date: …" tail stripped
+ * from the case line is re-emitted as its own body line.
  * The original slide number rides along as an HTML comment (hidden by
  * every renderer, like the metadata frame) so provenance survives.
  *
@@ -715,9 +728,42 @@ function caseHeadings(text) {
     if (cut < 16) cut = TITLE_MAX;
     return head.slice(0, cut).replace(/[\s\-–—,:;]+$/, "");
   };
-  for (let i = 0; i < lines.length; i++) {
+  // TC-3 (v1.29): heading text is title-cased with the decks' glued
+  // dashes and slashes spaced out ("Positive -line network" →
+  // "Positive - Line Network", "from/ To" → "From / To"); small
+  // connector words stay lowercase mid-title.
+  const SMALL_WORDS = /^(a|an|and|as|at|but|by|for|in|nor|of|on|or|per|the|via|with)$/;
+  const headingText = (t) =>
+    clean(t)
+      .replace(/\s([-–—])(?=\S)/g, " $1 ")
+      .replace(/(\S)([–—]) /g, "$1 $2 ")
+      .replace(/\s*\/\s*/g, " / ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .map((w, k) =>
+        !/^[a-z]/.test(w) ? w
+        : k > 0 && SMALL_WORDS.test(w) ? w
+        : w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  // the case line's SCENARIO: its text minus the specifics that must
+  // never sit in a heading — the split-measure tail ("Split measure:
+  // 20", "splitting measure 0(R3L1) or 100", "split measure 20 of
+  // R1L1"), route ids, and a generic leading "Route –"
+  const scenarioOf = (t) =>
+    clean(
+      String(t)
+        .replace(/[\s\-–—,:]*\bsplit(?:ting)?\s+measures?\b[\s\S]*$/i, "")
+        .replace(/\(?\bR\d+(?:L\d+)?\b\)?/g, " ")
+        .replace(/^\s*Routes?\s*[-–—]\s*(?=\S)/i, "")
+    );
+  const heads = [];
+  for (let i = 0; i < lines.length; i++)
+    if (/^## Slide \d+$/.test(lines[i])) heads.push(i);
+  // sections are edited back-to-front so earlier indices stay valid
+  for (let h = heads.length - 1; h >= 0; h--) {
+    const i = heads[h];
     const hm = /^## Slide (\d+)$/.exec(lines[i]);
-    if (!hm) continue;
     let end = lines.length;
     for (let j = i + 1; j < lines.length; j++) {
       if (/^#{2,3} /.test(lines[j])) { end = j; break; }
@@ -737,52 +783,67 @@ function caseHeadings(text) {
       const m = /^(?:- )?(\d{1,3})[.)]\s+(.*)$/.exec(c.s);
       if (m && /[A-Za-z]/.test(m[2])) numbered.push({ at: c.at, num: m[1], text: m[2] });
     }
-    let heading = "", promoted = -1, tail = "", sub = "";
+    // the Positive/Negative classification line — the corpus marker of
+    // a case slide, and now the H2's text
+    const classCand = cands.find((c) =>
+      /^(?:- )?(Positive|Negative)\b/i.test(c.s) && c.s.length <= 100) || null;
+    const classText = classCand ? headingText(classCand.s.replace(/^- /, "")) : "";
+    let heading = "", caseAt = -1, caseFull = "";
     if (numbered.length === 1) {
-      const t = clean(numbered[0].text);
-      if (t) {
-        const st = shortTitle(t);
-        heading = `Case ${numbered[0].num} — ${st}`;
-        promoted = numbered[0].at;
-        if (st !== t) sub = t;
+      caseFull = clean(numbered[0].text);
+      if (caseFull) {
+        heading = classText ? `Case ${numbered[0].num}: ${classText}` : `Case ${numbered[0].num}`;
+        caseAt = numbered[0].at;
       }
-    } else if (numbered.length === 0) {
-      const classed = cands.some((c) =>
-        /^(Positive|Negative)\b/i.test(c.s) && c.s.length <= 100);
-      if (classed) {
-        for (const c of cands) {
-          const s = c.s.replace(/^- /, "");
-          if (/^(Positive|Negative|current date\b|modify\b)/i.test(s)) continue;
-          if (s.length > 100 || !/\d/.test(s)) continue;
-          const t = clean(s);
-          if (t) {
-            const st = shortTitle(t);
-            heading = st;
-            promoted = c.at;
-            if (st !== t) sub = t;
-          }
-          break;
+    } else if (numbered.length === 0 && classCand) {
+      for (const c of cands) {
+        const s = c.s.replace(/^- /, "");
+        if (/^(Positive|Negative|current date\b|modify\b)/i.test(s)) continue;
+        if (s.length > 100 || !/\d/.test(s)) continue;
+        caseFull = clean(s);
+        if (caseFull) {
+          heading = classText;
+          caseAt = c.at;
         }
-      }
-      if (!heading) {
-        for (const c of cands) {
-          const m = /^(.{1,60}?)\s*test cases\b/i.exec(c.s);
-          if (m && clean(m[1])) { heading = `${clean(m[1])} test cases`; break; }
-        }
+        break;
       }
     }
-    if (!heading) continue;
+    if (!heading) {
+      for (const c of cands) {
+        const m = /^(.{1,60}?)\s*test cases\b/i.exec(c.s);
+        if (m && clean(m[1])) { heading = `${clean(m[1])} test cases`; break; }
+      }
+      if (!heading) continue;
+      lines[i] = `## ${heading} <!-- slide ${hm[1]} -->`;
+      continue;
+    }
+    // scenario H3 (title budget per v1.27 TC-2; skipped when the
+    // classification already states it), and the full case text as a
+    // bold body line whenever a heading dropped detail
+    let h3 = "", sub = "";
+    const scenario = scenarioOf(caseFull);
+    if (scenario) {
+      const st = headingText(shortTitle(scenario));
+      if (!classText || classText.toLowerCase().indexOf(st.toLowerCase()) < 0) h3 = st;
+      if (st.toLowerCase() !== caseFull.toLowerCase()) sub = caseFull;
+    } else {
+      sub = caseFull;
+    }
+    // a "current date: …" tail on the case line is re-emitted as its
+    // own body line so nothing is lost
+    let tail = "";
+    const tm = /(current date\s*:\s*\S.*)$/i.exec(lines[caseAt]);
+    if (tm) tail = tm[1].charAt(0).toUpperCase() + tm[1].slice(1);
+    const repl = [];
+    if (sub) repl.push(`**${sub}**`);
+    if (tail) repl.push(tail);
+    // body edits high-index-first so positions stay valid
+    const edits = [{ at: caseAt, repl }];
+    if (classCand) edits.push({ at: classCand.at, repl: [] });
+    edits.sort((a, b) => b.at - a.at);
+    for (const e of edits) lines.splice(e.at, 1, ...e.repl);
     lines[i] = `## ${heading} <!-- slide ${hm[1]} -->`;
-    if (promoted >= 0) {
-      const tm = /(current date\s*:\s*\S.*)$/i.exec(lines[promoted]);
-      if (tm) tail = tm[1].charAt(0).toUpperCase() + tm[1].slice(1);
-      // a shortened heading keeps the full case text in the body as a bold
-      // subheader where the case line stood, so nothing is lost
-      const repl = [];
-      if (sub) repl.push(`**${sub}**`);
-      if (tail) repl.push(tail);
-      lines.splice(promoted, 1, ...repl);
-    }
+    if (h3) lines.splice(i + 1, 0, "", `### ${h3}`, "");
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
 }
