@@ -72,14 +72,15 @@ CORE_XML = (
 )
 
 
-def make_pptx(fpath, text, with_media=False):
+def make_pptx(fpath, text, with_media=False, with_diagram=False):
     with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
         embed = '<p:pic><a:blip r:embed="rId2"/></p:pic>' if with_media else ""
+        diagram = diagram_shapes() if with_diagram else ""
         z.writestr(
             "ppt/slides/slide1.xml",
             "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
             f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
-            f"</p:txBody></p:sp>{embed}</p:spTree></p:cSld></p:sld>",
+            f"</p:txBody></p:sp>{diagram}{embed}</p:spTree></p:cSld></p:sld>",
         )
         if with_media:
             # media only counts when a slide references it via its rels
@@ -91,6 +92,31 @@ def make_pptx(fpath, text, with_media=False):
             )
             z.writestr("ppt/media/image1.png", PNG)
         z.writestr("docProps/core.xml", CORE_XML)
+
+
+def diagram_shapes():
+    """A slide drawn the way this corpus draws them: a route line, evenly
+    spaced tick stubs and measure labels. SlideFigures renders this through
+    its vector path, so the sweep must write an .svg and link it — the
+    end-to-end leg a script-level gate cannot cover. Planted into an
+    EXISTING fixture rather than a new document, so no count-based
+    assertion in this gate has to move."""
+    IN = 914400
+    parts = []
+    # route line
+    parts.append('<p:cxnSp><p:spPr><a:xfrm>'
+                 f'<a:off x="{IN}" y="{2 * IN}"/><a:ext cx="{3 * IN}" cy="0"/>'
+                 '</a:xfrm></p:spPr></p:cxnSp>')
+    for k in range(7):
+        x = IN + k * (IN // 2)
+        parts.append('<p:cxnSp><p:spPr><a:xfrm>'
+                     f'<a:off x="{x}" y="{2 * IN - 57150}"/><a:ext cx="0" cy="114300"/>'
+                     '</a:xfrm></p:spPr></p:cxnSp>')
+        parts.append('<p:sp><p:spPr><a:xfrm>'
+                     f'<a:off x="{x - 100000}" y="{2 * IN - 400000}"/>'
+                     '<a:ext cx="200000" cy="150000"/></a:xfrm></p:spPr>'
+                     f'<p:txBody><a:p><a:r><a:t>{10 + k}</a:t></a:r></a:p></p:txBody></p:sp>')
+    return "".join(parts)
 
 
 def make_messy_pptx(fpath, text):
@@ -427,7 +453,7 @@ def main():
     # fixture corpus
     make_pptx(os.path.join(src_dir, "Alpha Plan.pptx"),
               "Alpha test plan covering lock acquisition #123 for Roads and Highways",
-              with_media=True)
+              with_media=True, with_diagram=True)
     make_messy_pptx(os.path.join(src_dir, "Beta Story.pptx"),
                     "Beta user story about locks and issue #123")
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
@@ -800,6 +826,32 @@ def main():
     check("no duplicate page links anywhere in the block",
           len(re.findall(r"\]\((http[^)]+)\)", docs_sec)) ==
           len(set(re.findall(r"\]\((http[^)]+)\)", docs_sec))), docs_sec)
+    # ---- slide figures actually reach the library ------------------------
+    # A script-level gate proves SlideFigures RENDERS; only this proves the
+    # SWEEP writes and links what it renders. Registering the script in the
+    # runner's load list was missed once, and because a figure failure is
+    # non-fatal by design it vanished silently: a whole corpus pass rewrote
+    # 123 bodies and produced zero figures with no error anywhere.
+    # media files are prefixed with the SOURCE item id (10 here), not the
+    # Doc Index row id — that distinction is deliberate and easy to get wrong
+    media_dir = os.path.join(sidecar_dir, "media")
+    svgs = [f for f in os.listdir(media_dir) if f.endswith(".svg")]
+    check("sweep wrote an SVG figure for the diagram deck",
+          "doc10_slide1.svg" in svgs, str(svgs))
+    check("figure linked from the sidecar body",
+          "](../media/doc10_slide1.svg)" in sc, sc[:400])
+    check("figure link sits directly after the slide heading",
+          re.search(r"## Slide 1[^\n]*\n\n!\[", sc) is not None, sc[:400])
+    check("the figure replaced the [figure: ...] caption",
+          "[figure:" not in sc, sc[:400])
+    check("alt text describes the diagram",
+          re.search(r"!\[[^\]]{20,}\]\(\.\./media/doc10_slide1\.svg\)", sc) is not None,
+          sc[:400])
+    check("run summary reports figures written",
+          int(out.get("figures", 0)) >= 1, str(out.get("figures")))
+    check("run summary reports no figure errors",
+          int(out.get("figure_errors", 0)) == 0, str(out.get("figure_errors")))
+
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     rel_region = sc.split("<!-- related:begin -->")[-1].split("<!-- related:end -->")[0]
