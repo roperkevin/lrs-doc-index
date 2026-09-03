@@ -48,6 +48,7 @@ keeps the old yaml-on-top layout).
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse | v2.2 (deployed — the local sweep runs it directly) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
+| scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures) | v1.0 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
 | scripts/SidecarPatch.ts | Surgical related-section patching (four metadata frames) | v1.6 (paste pending — safe any time before the v2.8 window) |
@@ -68,6 +69,7 @@ keeps the old yaml-on-top layout).
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.7 sweeps every related-plan case for applicability) | v1.7 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
+| docs/Diagram_Style_Framework.md | The one visual language for slide diagrams: palette, hue-family colour mapping, geometry-led roles, component standardisation | v1.0 |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio; deployed) | v1.1 |
 | agent/QA_Agent_Instructions_v1_3.md | Q&A agent instructions (authored — describes the v2.8 layout + products; supersedes the unpasted v1.2; paste with the v2.8 window) | v1.3 |
 | agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |

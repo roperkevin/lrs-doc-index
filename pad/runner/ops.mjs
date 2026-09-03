@@ -28,6 +28,7 @@ export const SCRIPT_FILES = {
   workbookdump: "WorkbookDump.ts",
   related: "RelatedRank.ts",
   sidecarpatch: "SidecarPatch.ts",
+  figures: "SlideFigures.ts",
 };
 
 // ---- param plumbing -------------------------------------------------
@@ -89,6 +90,8 @@ export function runOp(mains, op) {
     case "ziptext":
       return m(null, zipParam(op), strParam(op, "mediaPrefix", op.mediaPrefix, false));
     case "media":
+      return m(null, zipParam(op));
+    case "figures":
       return m(null, zipParam(op));
     case "regex":
       return m(

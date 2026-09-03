@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-03 (ZipTextExtract v2.2 — DL-1 diagram-label collapse: the drawn route diagrams in test-plan decks no longer flatten into hundreds of one-token label lines; they render as one `[figure: 10–22 · R1 · E1 · Output]` line per slide. Gate `check_batch_v2_2.py` PASSED, v2.1-vs-v2.2 byte-identical on every pre-existing fixture, PAD 27/27 and local sweep 128/128 green. Corpus rollout is `sweep.mjs --reformat` — open action 10.)**. Previously: **2026-08-15 (PIPELINE 100% OFF POWER AUTOMATE: keyword curation deployed locally — `local/curate.mjs` v1.11.1, weekly Saturday 08:00 task, `autoApprove` ON by owner decision, first live run merged 2 aliases; the "LRS Keyword Curation" AI Builder prompt was created on-tenant 2026-08-15 (`173b40ef-c376-4f81-b75b-65c72323d533`) — its absence from the model list proves the cloud KeywordCuration flow was never functional, so there was nothing to turn off. Nothing orchestrated remains in the cloud: nightly sweep + weekly curation both run locally under gates; the two AI Builder prompts and SharePoint storage are all that's tenant-side. 2026-08-14: sweep migrated, DocIndexSweep flow OFF; local sweep since hardened v1.5–v1.11.1 — status page, PDFs, out-of-scope + ghost lanes, body-sim relatedness, HTML lane)**.
+Last updated: **2026-09-03b (SlideFigures v1.0 — slide diagrams are now rendered as SVG figures placed directly after each slide heading: vector slides from their true coordinates, raster-backed slides redrawn from the topology and measures the slide itself states. One style framework across the corpus — `docs/Diagram_Style_Framework.md`. Gates: `check_figures.py` PASSED, standing suites green, PAD 27/27, local sweep 128/128. Verified against two real decks: 20 figures from SplittingEventsinPro, 39 from MergeEventsToolPro.)**. Earlier that day: **(ZipTextExtract v2.2 — DL-1 diagram-label collapse: the drawn route diagrams in test-plan decks no longer flatten into hundreds of one-token label lines; they render as one `[figure: 10–22 · R1 · E1 · Output]` line per slide. Gate `check_batch_v2_2.py` PASSED, v2.1-vs-v2.2 byte-identical on every pre-existing fixture, PAD 27/27 and local sweep 128/128 green. Corpus rollout is `sweep.mjs --reformat` — open action 10.)**. Previously: **2026-08-15 (PIPELINE 100% OFF POWER AUTOMATE: keyword curation deployed locally — `local/curate.mjs` v1.11.1, weekly Saturday 08:00 task, `autoApprove` ON by owner decision, first live run merged 2 aliases; the "LRS Keyword Curation" AI Builder prompt was created on-tenant 2026-08-15 (`173b40ef-c376-4f81-b75b-65c72323d533`) — its absence from the model list proves the cloud KeywordCuration flow was never functional, so there was nothing to turn off. Nothing orchestrated remains in the cloud: nightly sweep + weekly curation both run locally under gates; the two AI Builder prompts and SharePoint storage are all that's tenant-side. 2026-08-14: sweep migrated, DocIndexSweep flow OFF; local sweep since hardened v1.5–v1.11.1 — status page, PDFs, out-of-scope + ghost lanes, body-sim relatedness, HTML lane)**.
 
 ## Core sweep
 
@@ -28,6 +28,7 @@ as of the handover; resume the paste plan only if rolling back.
 | RelatedRank | **v2.2** (2026-08-15 — body-sim/filename/folder as dormant optional fields for the local sweep; flow-shaped output byte-identical to v2.1, `check_related` PASSED) | **PASTED v2.1** with the v2.6 window — sufficient on rollback (v2.2's fields stay dormant on the flow); paste v2.2 only if desired |
 | SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
 | RegexExtract | **v1.4** (r6) | tenant runs v1.2 (pre-v2.2); v1.3 superseded in-repo before its paste — v1.4 is additive-safe under any flow, products surface with the v2.8 window |
+| SlideFigures | **v1.0** (2026-09-03 — DF-1 slide diagrams as SVG; `check_figures.py` PASSED) | **N/A on the cloud flow** — a local-sweep-only step; a rollback simply keeps ZipTextExtract's `[figure: ...]` caption |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
 
 The r2 batch passed `check_batch_r2.py` (all equivalence IDENTICAL,
@@ -121,6 +122,7 @@ v1.2 describes them — paste with the window, step 6).
 
 | Suite | Last green |
 |---|---|
+| check_figures.py (SlideFigures v1.0 / DF-1) | 2026-09-03 |
 | check_batch_v2_2.py (ZipTextExtract v2.2 / DL-1) + the standing suites (check_format incl. the new §12 diagram-label contract, check_related, check_regex) + render_sample.py + check_pad_runner.py (27/27) + check_local_sweep.py (128/128) | 2026-09-03 (see `review/harness/README.md` run records) |
 | check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) | 2026-08-13 (historical — r6 skips as superseded since the v2.2 promotion) |
 | check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r4.py / check_batch_r5.py / check_batch_r6.py | skip as superseded by design (v1.9 / r2 / r3 / r4 / r5 / r6 generations). **r4 has skipped since the RelatedRank v2.2 promotion (2026-08-15)** — the 2026-08-13 row above claimed it still passed, which stopped being true then; verified skipping 2026-09-03 |
@@ -146,3 +148,8 @@ v1.2 describes them — paste with the window, step 6).
     the `---` seam, preserving header, metadata yaml, related region
     and docs block byte-for-byte. No PromptVersion bump: the metadata
     format is unchanged, so this must NOT trigger a full reindex.
+11. **Re-run `sweep.mjs --reformat` for figures** — SlideFigures v1.0 adds an
+    SVG per diagram slide, written into the media folder and linked directly
+    after the slide heading. New and re-indexed docs get them on the nightly
+    run; existing sidecars need the one reformat pass (no AI spend, no
+    PromptVersion bump). This supersedes open action 10 — one pass covers both.

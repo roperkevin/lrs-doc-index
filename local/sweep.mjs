@@ -477,6 +477,35 @@ function upsertDocsBlock(content, block) {
 }
 
 /**
+ * placeFigure — put a slide's rendered SVG directly after its heading
+ * (v1.23), and drop the "[figure: ...]" caption ZipTextExtract left in the
+ * body, since the figure now carries those labels. The caption is the
+ * fallback: if no figure was produced for a slide it stays exactly as it was.
+ */
+function placeFigure(text, slide, href, alt) {
+  const lines = String(text).split("\n");
+  const head = new RegExp(`^#{2,3} Slide ${slide}\\b`);
+  let at = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (head.test(lines[i])) { at = i; break; }
+  }
+  if (at < 0) return text;
+  let end = lines.length;
+  for (let i = at + 1; i < lines.length; i++) {
+    if (/^#{2,3} (Slide \d+|Notes)\b/.test(lines[i])) { end = i; break; }
+  }
+  const kept = [];
+  for (let i = at + 1; i < end; i++) {
+    if (/^\[figure: /.test(lines[i].trim())) continue;
+    kept.push(lines[i]);
+  }
+  while (kept.length && kept[0].trim() === "") kept.shift();
+  const img = `![${String(alt || "Slide diagram").replace(/[\[\]]/g, "")}](${href})`;
+  return lines.slice(0, at + 1).concat(["", img], kept.length ? [""] : [], kept,
+                                       lines.slice(end)).join("\n");
+}
+
+/**
  * tidyBody — presentation polish for the extracted document text
  * (v1.20). Applied to the SIDECAR BODY ONLY: the LLM input, the
  * TextPreview field and the similarity index keep the raw text, so
@@ -620,6 +649,27 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, setStep, localPath, ext,
       for (const img of md.images || []) {
         const imgPath = path.join(cfg.paths.sidecarLibrary, "media", `doc${srcItemId}_${img.name}`);
         writer.writeFile(imgPath, Buffer.from(img.b64 || img.base64 || "", "base64"));
+      }
+    }
+    // v1.23: slide diagrams as SVG figures. ZipTextExtract still collapses a
+    // slide's loose diagram labels to its "[figure: ...]" caption (so a
+    // cloud-flow rollback keeps that behaviour); here the caption is replaced
+    // by the rendered figure. Always re-rendered, never AI: --reformat picks
+    // up figure changes for free.
+    if (ext === "pptx") {
+      try {
+        setStep("figures");
+        const fg = op({ op: "figures", zipFile: localPath });
+        const figs = (fg && fg.figures) || [];
+        for (const f of figs) {
+          const name = `doc${srcItemId}_${f.name}`;
+          writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", name), f.svg);
+          docText = placeFigure(docText, f.slide, `../media/${name}`, f.alt);
+        }
+        if (figs.length) setStep(`figures-${figs.length}`);
+      } catch (e) {
+        // a figure is an enhancement, never a reason to fail an index
+        setStep("figures-skipped");
       }
     }
   } else if (!oversize && ext === "xlsx") {

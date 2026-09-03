@@ -542,6 +542,78 @@ _b64('diagram_deck.pptx')
 
 print('v2.2 fixtures:', {f: os.path.getsize(f) for f in ('diagram_deck.pptx',)})
 
+
+# ---- v1.0 SlideFigures fixtures (check_figures.py) ------------------------
+# figure_deck: slide 1 is a VECTOR ruler (route line + evenly spaced tick
+# stubs + measure labels + two coloured extents meeting at a split), slide 2
+# is a RASTER-style case with no drawing at all but a key/value table stating
+# topology, measures and split (the redraw path), and slide 3 is a header-row
+# table deck (the other table shape in the corpus). Slide 4 has neither and
+# must produce no figure.
+from pptx.util import Emu, Pt
+from pptx.enum.shapes import MSO_CONNECTOR as _CONN
+from pptx.dml.color import RGBColor as _RGB
+
+prs_f = Presentation()
+IN = 914400
+
+def _line(sl, x1, y1, x2, y2, rgb=None, w=None):
+    """x1,y1 -> x2,y2 as ABSOLUTE points (add_connector's signature is
+    begin/end, not offset/extent -- passing a width here draws a diagonal)."""
+    c = sl.shapes.add_connector(_CONN.STRAIGHT, Emu(int(x1)), Emu(int(y1)),
+                                Emu(int(x2)), Emu(int(y2)))
+    if rgb:
+        c.line.color.rgb = _RGB.from_string(rgb)
+    if w:
+        c.line.width = Emu(int(w))
+    return c
+
+def _label(sl, x, y, text, size=11):
+    tb = sl.shapes.add_textbox(Emu(int(x)), Emu(int(y)), Emu(int(0.4 * IN)), Emu(int(0.22 * IN)))
+    tb.text_frame.text = text
+    tb.text_frame.paragraphs[0].runs[0].font.size = Pt(size)
+    return tb
+
+# --- slide 1: vector ruler, measures 10..16, split at 13
+s_f = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+_line(s_f, 1.0 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN)          # the route
+for k in range(7):                                                # tick stubs
+    _line(s_f, (1.0 + k * 0.5) * IN, 1.94 * IN, (1.0 + k * 0.5) * IN, 2.06 * IN)
+    _label(s_f, (0.9 + k * 0.5) * IN, 1.55 * IN, str(10 + k))
+_line(s_f, 1.0 * IN, 2.0 * IN, 2.5 * IN, 2.0 * IN, rgb='002060', w=int(0.05 * IN))
+_line(s_f, 2.52 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN, rgb='FFC000', w=int(0.05 * IN))
+_label(s_f, 0.3 * IN, 1.95 * IN, 'R9', 12)
+_label(s_f, 1.6 * IN, 2.4 * IN, 'E9', 12)
+
+# --- slide 2: no drawing; a key/value table drives the redraw
+s_f2 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
+s_f2.shapes.title.text = '2. Loop - Split measure : 20'
+t_f = s_f2.shapes.add_table(5, 2, Emu(IN), Emu(2 * IN), Emu(3 * IN), Emu(2 * IN)).table
+for r, (k, v) in enumerate([('Event ID', 'E7'), ('Route ID', 'R7'),
+                            ('Measure', '0'), ('To Measure', '40'),
+                            ('From Date', '1/1/2000')]):
+    t_f.cell(r, 0).text = k
+    t_f.cell(r, 1).text = v
+
+# --- slide 3: header-row table (the Merge-deck shape)
+s_f3 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
+s_f3.shapes.title.text = 'Normal route - Split measure : 7'
+t_f3 = s_f3.shapes.add_table(2, 4, Emu(IN), Emu(2 * IN), Emu(5 * IN), Emu(IN)).table
+for c, h in enumerate(['Route ID', 'Event ID', 'From Measure', 'To Measure']):
+    t_f3.cell(0, c).text = h
+for c, v in enumerate(['R3', 'E3', '2', '12']):
+    t_f3.cell(1, c).text = v
+
+# --- slide 4: prose only -> no figure
+s_f4 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
+s_f4.shapes.title.text = 'Conflict prevention notes'
+s_f4.shapes.add_textbox(Emu(IN), Emu(2 * IN), Emu(5 * IN), Emu(IN)).text_frame.text = (
+    'Verify the lock is acquired before editing the route')
+
+prs_f.save('figure_deck.pptx')
+_b64('figure_deck.pptx')
+print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
+
 # SB-5 (MediaExtract leg): storednlen_img.pptx — a single media entry
 # whose deflate stream is a stored block with a wrong NLEN. MediaExtract
 # only inflates media entries, so the docx variant never reaches its

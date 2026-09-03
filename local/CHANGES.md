@@ -1,5 +1,64 @@
 # Local sweep — release notes
 
+## v1.23 (2026-09-03)
+
+**Slide diagrams are drawn, not described.** v1.22 stopped the label
+debris by collapsing it to a `[figure: 10–22 · R1 · E1]` caption; that
+kept the body clean but threw the geometry away. These plans *are*
+route/measure diagrams, so the sweep now renders one **SVG figure per
+diagram slide**, written to the media folder and linked directly after
+the slide heading.
+
+New script **`scripts/SlideFigures.ts` v1.0** (DF-1), a new `figures`
+op in the PAD runner, and `placeFigure()` in the sweep. Two sources,
+one visual language:
+
+- **Vector slides** — the drawing is real DrawingML, so it is rendered
+  from its true coordinates. Nothing redrawn or inferred.
+- **Raster slides** — the drawing is a pasted picture, which cannot be
+  restyled and would keep whatever ticks and colours its author chose.
+  Instead the route is **redrawn** from what the slide itself states:
+  topology from its title (`2. Loop – Split measure : 20`), measures
+  and split from its own tables. A schematic faithful to the slide's
+  data, not a tracing — the alt text says so.
+
+The style framework (`docs/Diagram_Style_Framework.md`) is one palette,
+type scale and set of component rules for the whole corpus: source
+colours map to slots by hue family (deterministic, so one source colour
+lands on one slot in every document); structural roles come from
+geometry, never colour; ticks are uniform and centred on the line;
+measures sit centred above their own tick on a shared baseline; extents
+get butt caps and are snapped to share one exact boundary, with a split
+marker there; route ids become left row labels and event ids centre
+under their bars; leaders that point at a relocated label are dropped;
+one decimal convention per ruler; direction arrows on open routes; dead
+vertical bands compressed; `<title>`/`<desc>` on every figure.
+
+Two decisions worth recording. **Colour cannot decide structure**: one
+deck draws a full-width navy route with black and amber events over it,
+another lays four default-coloured route segments end to end under one
+cyan event — so within a band the colour covering the greatest span is
+the route and every other colour is an extent. And **butt caps are a
+correctness fix, not polish**: round caps overshoot by half the stroke
+width, so a 10→16 extent reads as 9.9→16.1.
+
+ZipTextExtract is **untouched** — it still emits the v2.2 caption, and
+the sweep replaces it with the figure. A cloud-flow rollback therefore
+degrades to exactly v2.2 behaviour with no code change.
+
+Rollout: `sweep.mjs --reformat` (no AI spend, no PromptVersion bump).
+
+Gates: new `review/harness/check_figures.py` **PASSED** — both
+production paths fire, a prose-only slide yields no figure, ticks are
+uniform and centred, measures share one baseline and sit on their
+ticks, adjoining extents share an exact boundary, no source colour
+reaches an element, nothing is rasterised, every figure parses and
+carries `<title>`/`<desc>`. Standing suites green; **PAD 27/27**;
+**local sweep 128/128**; ES2017 clean. Verified end-to-end on two real
+decks: **20 figures** from SplittingEventsinPro_Testplan (25 slides)
+and **39** from 3921MergeEventsToolProTestPlan_V5 (44 slides), 3–12 KB
+each with no embedded rasters.
+
 ## v1.22 (2026-09-03)
 
 **Drawn diagrams stop shredding the body** — the corpus's test-plan
