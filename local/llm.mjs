@@ -224,16 +224,18 @@ let _dvDelegated = null;
 export async function dataverseToken(cfg) {
   const dv = cfg.dataverse || {};
   const mode = dv.auth || (dv.clientSecret !== undefined ? "app" : "device");
-  if (mode === "device") {
+  if (mode === "device" || mode === "interactive") {
     // delegated sign-in as the user — no app registration; the user's
     // own Dataverse/AI Builder permissions apply (they own the prompt)
     if (!_dvDelegated) {
       _dvDelegated = new DelegatedAuth({
+        mode: mode,
         clientId: dv.clientId || DATAVERSE_PUBLIC_CLIENT,
         scopes: [`${cfg.environmentUrl}/user_impersonation`, "offline_access"],
         cachePath: dv.tokenCache,
         tenantId: dv.tenantId,
         deviceUrl: dv.deviceUrl,
+        authorizeUrl: dv.authorizeUrl,
         tokenUrl: dv.tokenUrl,
       });
     }

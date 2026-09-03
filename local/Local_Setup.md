@@ -93,6 +93,30 @@ rejects with 401 — the Graph CLI client is the one whose tokens carry
 real SharePoint permissions (probe matrix, 2026-08-14; rerun
 `probe.mjs --spo` to re-measure in a different tenant).
 
+**If Conditional Access rejects the sign-in** (`AADSTS53003`, "your
+sign-in was successful but does not meet the criteria to access this
+resource"), the block is the *flow*, not the client: a device-code
+sign-in completes in a browser with no relationship to this machine, so
+it can present no device identity, and a policy requiring a compliant or
+joined device refuses it. Changing `clientId` does not help — the
+symptom reproduces on every public client. Set `"auth": "interactive"`
+instead (on `graph`, and it flows to Dataverse/SPO):
+
+```json
+"graph": { "auth": "interactive", "tenantId": "<tenant guid>" }
+```
+
+That runs the authorization-code grant with PKCE against a loopback
+redirect (`http://127.0.0.1:<random port>`; Entra ignores the port for
+public clients, so nothing needs registering). Your own browser on this
+machine handles the sign-in, so it carries the machine's PRT and device
+state and the policy is satisfied. Only the FIRST sign-in differs —
+caching, silent refresh and the SPO seed are unchanged, so scheduled
+runs behave exactly as before. Confirm the machine is actually joined
+first with `dsregcmd /status` (`AzureAdJoined` or `DomainJoined` = YES);
+if it is genuinely unregistered, interactive will fail the same way and
+the app registration below is the only route.
+
 **Alternative — app registration** (for a future service-account
 setup, if someone with Entra rights ever provisions one): set
 `"auth": "app"` with `tenantId`/`clientId` and a `clientSecret` as

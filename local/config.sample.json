@@ -25,7 +25,7 @@
   },
 
   "graph": {
-    "$comment": "auth 'device' (default): NO Azure app registration — the first run prints a device-code sign-in (you sign in as yourself; your existing SharePoint permissions apply) and caches refresh tokens under paths.workDir/auth/. If the tenant blocks the scope on first sign-in, set clientId to a pre-consented public client (Azure CLI: 04b07795-8ddb-461a-bbee-02f9e1bf7b46). App-registration alternative: {\"auth\": \"app\", \"tenantId\": \"...\", \"clientId\": \"...\", \"clientSecret\": {\"$env\": \"DOCINDEX_GRAPH_SECRET\"}} — Local_Setup.md §2.",
+    "$comment": "auth 'device' (default): NO Azure app registration — the first run prints a device-code sign-in (you sign in as yourself; your existing SharePoint permissions apply) and caches refresh tokens under paths.workDir/auth/. If the tenant blocks the scope on first sign-in, set clientId to a pre-consented public client (Azure CLI: 04b07795-8ddb-461a-bbee-02f9e1bf7b46). auth 'interactive': same delegated sign-in, but via the authorization-code grant over a loopback redirect instead of a device code — use it when Conditional Access rejects device-code with AADSTS53003 ('does not meet the criteria to access this resource'), which it does on a joined machine because the device-code browser carries no device identity. Everything after the first sign-in is identical. App-registration alternative: {\"auth\": \"app\", \"tenantId\": \"...\", \"clientId\": \"...\", \"clientSecret\": {\"$env\": \"DOCINDEX_GRAPH_SECRET\"}} — Local_Setup.md §2.",
     "auth": "device"
   },
 

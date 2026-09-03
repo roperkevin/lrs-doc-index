@@ -24,6 +24,20 @@
  * If the tenant's consent policy blocks a scope for these clients,
  * override clientId in config with any public client the tenant
  * allows (e.g. the Azure CLI: 04b07795-8ddb-461a-bbee-02f9e1bf7b46).
+ *
+ * v1.1 — INTERACTIVE mode (auth: "interactive"). The device-code grant
+ * completes in a browser that has no relationship to the machine the
+ * sweep runs on, so it can present no device identity. A Conditional
+ * Access policy requiring a compliant or joined device therefore
+ * rejects it (AADSTS53003) no matter which public client is used —
+ * observed on a hybrid-joined, PRT-healthy machine where every other
+ * sign-in works. Interactive mode instead runs the authorization-code
+ * grant with PKCE against a loopback redirect: the system browser
+ * carries the machine's PRT and device state, so the same policy is
+ * satisfied. Same public clients, same caches, same silent refreshes
+ * afterwards — only the FIRST sign-in differs. (Entra ignores the port
+ * of an http://localhost redirect for public clients, so no
+ * registration change is needed.)
  */
 
 import fs from "node:fs";
@@ -57,6 +71,8 @@ export class DelegatedAuth {
    *     Sites.ReadWrite.All/AllSites, which SharePoint accepts.
    */
   constructor(opts) {
+    this.mode = opts.mode === "interactive" ? "interactive" : "device";
+    this.openBrowser = opts.openBrowser;   // injectable for the gate
     this.clientId = opts.clientId;
     this.scopes = opts.scopes;
     this.resource = opts.resource;
@@ -65,6 +81,7 @@ export class DelegatedAuth {
     const authority = `https://login.microsoftonline.com/${opts.tenantId || "organizations"}`;
     const v = this.resource ? "" : "v2.0/";
     this.deviceUrl = opts.deviceUrl || `${authority}/oauth2/${v}devicecode`;
+    this.authorizeUrl = opts.authorizeUrl || `${authority}/oauth2/${v}authorize`;
     this.tokenUrl = opts.tokenUrl || `${authority}/oauth2/${v}token`;
     this._mem = null;
   }
@@ -170,6 +187,144 @@ export class DelegatedAuth {
     throw new Error("device sign-in timed out — run the sweep from a console and complete the browser sign-in");
   }
 
+  /**
+   * Authorization code + PKCE over a loopback redirect. The browser
+   * this opens is the signed-in user's own browser on THIS machine, so
+   * it presents the device's PRT — which is the whole point: a
+   * device-compliance Conditional Access policy passes here and fails
+   * the device-code grant.
+   */
+  async _interactiveFlow() {
+    if (!process.stderr.isTTY && process.env.DOCINDEX_ALLOW_DEVICE_PROMPT !== "1") {
+      throw new Error(
+        "AUTH EXPIRED — an interactive sign-in is required but this run is " +
+        "non-interactive (scheduled). Run once from a console and complete " +
+        "the sign-in: node --experimental-strip-types local/sweep.mjs " +
+        "--config local/config.json --live"
+      );
+    }
+    const http = await import("node:http");
+    const crypto = await import("node:crypto");
+    const b64url = (b) => b.toString("base64")
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const verifier = b64url(crypto.randomBytes(32));
+    const challenge = b64url(crypto.createHash("sha256").update(verifier).digest());
+    const state = b64url(crypto.randomBytes(16));
+
+    const got = {};
+    // The waiter is armed BEFORE the server can be hit. Creating it after
+    // opening the browser is a race: a fast redirect (or the gate's fetch
+    // hook, which is instant) lands while there is no resolver, and the
+    // flow then waits for a callback that already happened.
+    let arrived;
+    const callback = new Promise((r) => { arrived = r; });
+    const server = http.createServer((req, res) => {
+      const u = new URL(req.url, "http://127.0.0.1");
+      if (u.pathname !== "/") { res.writeHead(404).end(); return; }
+      got.code = u.searchParams.get("code");
+      got.state = u.searchParams.get("state");
+      got.error = u.searchParams.get("error_description") || u.searchParams.get("error");
+      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+      res.end("<html><body style=\"font:16px system-ui;padding:3rem\"><h2>" +
+        (got.error ? "Sign-in failed" : "Signed in") + "</h2><p>" +
+        (got.error ? String(got.error).slice(0, 400) : "You can close this tab and return to the console.") +
+        "</p></body></html>");
+      arrived();
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    // never let the callback listener hold the event loop open: the flow
+    // awaits an explicit promise, so the server has no reason to keep the
+    // process alive after it resolves
+    server.unref();
+    const port = server.address().port;
+    // 127.0.0.1, not "localhost": the listener is bound to IPv4 loopback, and
+    // "localhost" resolves to ::1 first on a dual-stack machine, so the
+    // browser would be redirected to a port nothing is listening on. Entra
+    // accepts either loopback form for a public client and ignores the port.
+    const redirectUri = `http://127.0.0.1:${port}`;
+    const q = {
+      client_id: this.clientId,
+      response_type: "code",
+      redirect_uri: redirectUri,
+      response_mode: "query",
+      state: state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      prompt: "select_account",
+    };
+    if (this.resource) q.resource = this.resource;
+    else q.scope = this.scopes.join(" ");
+    const url = `${this.authorizeUrl}?${new URLSearchParams(q)}`;
+
+    process.stderr.write(
+      "\n=== SIGN IN REQUIRED ===\nOpening your browser to sign in.\n" +
+      "If it does not open, paste this URL into it:\n" + url + "\n\n"
+    );
+    try {
+      if (this.openBrowser) await this.openBrowser(url);
+      else if (process.env.DOCINDEX_AUTH_BROWSER === "fetch") {
+        // gate hook: stand in for the browser by following the redirect
+        // ourselves, so the loopback leg is exercised without a display.
+        // The body MUST be consumed — an undrained response keeps undici's
+        // socket (and the event loop) alive, which looks exactly like the
+        // sign-in hanging.
+        await fetch(url, { redirect: "follow" })
+          .then((r) => r.arrayBuffer())
+          .catch(() => {});
+      } else {
+        const { spawn } = await import("node:child_process");
+        const cmd = process.platform === "win32"
+          ? ["cmd", ["/c", "start", "", url.replace(/&/g, "^&")]]
+          : process.platform === "darwin" ? ["open", [url]] : ["xdg-open", [url]];
+        spawn(cmd[0], cmd[1], { detached: true, stdio: "ignore" }).unref();
+      }
+    } catch { /* the printed URL is the fallback */ }
+
+    const timeoutMs = 5 * 60 * 1000;
+    let timer = null;
+    try {
+      await Promise.race([
+        callback,
+        new Promise((_, rej) => {
+          timer = setTimeout(
+            () => rej(new Error("interactive sign-in timed out after 5 minutes")), timeoutMs);
+        }),
+      ]);
+    } finally {
+      // an uncleared timer keeps the event loop alive for its full 5
+      // minutes: the sign-in succeeds, the work completes, and the process
+      // then sits there looking hung
+      if (timer) clearTimeout(timer);
+      // close() alone only stops NEW connections: the browser's keep-alive
+      // socket stays open and holds the event loop, so the sweep completes
+      // its work and then never exits. Drop live sockets too.
+      try { server.closeAllConnections(); } catch { /* older node */ }
+      server.close();
+      server.unref();
+    }
+    if (got.error) throw new Error(`interactive sign-in failed: ${String(got.error).slice(0, 300)}`);
+    if (!got.code) throw new Error("interactive sign-in returned no authorization code");
+    if (got.state !== state) throw new Error("interactive sign-in state mismatch — aborting");
+
+    const params = {
+      grant_type: "authorization_code",
+      client_id: this.clientId,
+      code: got.code,
+      redirect_uri: redirectUri,
+      code_verifier: verifier,
+    };
+    if (this.resource) params.resource = this.resource;
+    else params.scope = this.scopes.join(" ");
+    const { ok, status, json } = await this._post(this.tokenUrl, params);
+    if (!ok) {
+      throw new Error(
+        `interactive token exchange failed (${status}): ` +
+        String(json.error_description || json.error || "").slice(0, 300)
+      );
+    }
+    return this._store(json);
+  }
+
   async token() {
     const cached = this._mem || this._readCache();
     // a cached token minted for a different client or a different
@@ -198,7 +353,7 @@ export class DelegatedAuth {
     if (cached?.refresh_token) {
       process.stderr.write("auth: cached refresh token no longer valid — signing in again\n");
     }
-    return this._deviceFlow();
+    return this.mode === "interactive" ? this._interactiveFlow() : this._deviceFlow();
   }
 
   invalidate() {

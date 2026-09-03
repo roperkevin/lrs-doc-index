@@ -791,7 +791,10 @@ function loadConfig(argv) {
   // app mode: same registration/secret)
   const inherit = { ...cfg.graph };
   const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
-  if (inheritMode === "device") delete inherit.clientId; // Dataverse device mode has its own public client
+  // delegated modes (device / interactive): each resource keeps its own
+  // public client — Dataverse has its own, and SPO must stay on the Graph
+  // CLI client whose tokens carry real SharePoint permissions
+  if (inheritMode === "device" || inheritMode === "interactive") delete inherit.clientId;
   delete inherit.baseUrl; // Graph-only
   cfg.llm.dataverse = {
     ...inherit,

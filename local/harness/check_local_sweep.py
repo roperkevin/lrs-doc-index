@@ -33,7 +33,7 @@ import tempfile
 import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -147,6 +147,9 @@ class MockState:
         self.llm_last_headers = {}
         self.llm_last_request = {}
         self.devicecode_hits = 0
+        self.authorize_hits = 0
+        self.code_grants = 0
+        self.last_pkce = None
         self.device_grants = 0
         self.refresh_grants = 0
         self.digest = None
@@ -190,6 +193,21 @@ def make_handler(state, lib_guid, src_files):
                     "summary": "", "pe": "", "dev": "", "targetRelease": "",
                     "tools": [], "keywords": []}
 
+        def do_GET_authorize(self, q):
+            """Entra's authorize endpoint: bounce back to the loopback
+            redirect with a code, exactly as a real sign-in would."""
+            state.authorize_hits += 1
+            state.last_pkce = {
+                "challenge": (q.get("code_challenge") or [""])[0],
+                "method": (q.get("code_challenge_method") or [""])[0],
+                "redirect": (q.get("redirect_uri") or [""])[0],
+            }
+            target = (q.get("redirect_uri") or [""])[0]
+            st = (q.get("state") or [""])[0]
+            self.send_response(302)
+            self.send_header("Location", f"{target}?code=mock-auth-code&state={st}")
+            self.end_headers()
+
         def do_POST(self):
             p = urlparse(self.path).path
             if p == "/devicecode":
@@ -203,6 +221,13 @@ def make_handler(state, lib_guid, src_files):
                 })
             if p == "/token":
                 body = self._read().decode()
+                if "authorization_code" in body:
+                    state.code_grants += 1
+                    if "code_verifier=" not in body:
+                        return self._json({"error": "invalid_grant",
+                                           "error_description": "PKCE verifier missing"}, 400)
+                    return self._json({"access_token": "device-token",
+                                       "refresh_token": "mock-rt", "expires_in": 30})
                 if "device_code" in body:
                     state.device_grants += 1
                     # short-lived on purpose: forces the refresh path
@@ -305,6 +330,8 @@ def make_handler(state, lib_guid, src_files):
 
         def do_GET(self):
             p = urlparse(self.path).path
+            if p == "/authorize":
+                return self.do_GET_authorize(parse_qs(urlparse(self.path).query))
             # doc-link probing: realign-route exists, everything else 404s
             if p.startswith("/docs/"):
                 state.probe_paths.append(p)
@@ -376,11 +403,13 @@ def run_curate(cfg_path, extra):
     )
 
 
-def run_sweep(cfg_path, extra, env=None):
+def run_sweep(cfg_path, extra, env=None, env_extra=None):
     # captured output means no TTY: allow the mock device prompt except
     # where a leg deliberately tests the non-interactive fail-fast
     e = dict(env if env is not None else os.environ)
     e.setdefault("DOCINDEX_ALLOW_DEVICE_PROMPT", "1")
+    if env_extra:
+        e.update(env_extra)
     return subprocess.run(
         ["node", "--experimental-strip-types", SWEEP, "--config", cfg_path] + extra,
         capture_output=True, text=True, cwd=REPO, env=e,
@@ -1230,6 +1259,49 @@ def main():
     check("rerun refreshed silently (no new device prompt)",
           state.devicecode_hits == 2 and state.refresh_grants >= 2,
           f"devicecode={state.devicecode_hits} refresh={state.refresh_grants}")
+
+    # ---- leg 6b: interactive auth (auth-code + PKCE over loopback) ----
+    # Device-code completes in a browser with no relationship to this
+    # machine, so it carries no device identity and a device-compliance
+    # CA policy rejects it (AADSTS53003) whatever the client. Interactive
+    # mode runs the auth-code grant against a loopback redirect instead,
+    # so the browser presents the machine's PRT. Everything after the
+    # first sign-in — caching, silent refresh, SPO seeding — is identical.
+    print("== interactive auth leg")
+    shutil.rmtree(auth_dir, ignore_errors=True)
+    for sect in (cfg["graph"], cfg["llm"]["dataverse"], cfg["spo"]):
+        sect["auth"] = "interactive"
+        sect["authorizeUrl"] = base + "/authorize"
+    cfg["sweep"]["promptVersion"] = "v2.0-interactive-leg"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    az_before, code_before = state.authorize_hits, state.code_grants
+    proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"],
+                     env_extra={"DOCINDEX_AUTH_BROWSER": "fetch"})
+    check("interactive run exit 0", proc.returncode == 0, proc.stderr[-800:])
+    check("interactive sign-in ran for graph+dataverse only (SPO still seeded)",
+          state.authorize_hits - az_before == 2 and state.code_grants - code_before == 2,
+          f"authorize={state.authorize_hits - az_before} codes={state.code_grants - code_before}")
+    check("PKCE challenge sent with S256",
+          (state.last_pkce or {}).get("method") == "S256"
+          and len((state.last_pkce or {}).get("challenge", "")) >= 40,
+          str(state.last_pkce))
+    check("redirect is a loopback URI",
+          str((state.last_pkce or {}).get("redirect", "")).startswith("http://127.0.0.1:"),
+          str((state.last_pkce or {}).get("redirect")))
+    check("interactive writes the same caches",
+          os.path.exists(os.path.join(auth_dir, "graph.json"))
+          and os.path.exists(os.path.join(auth_dir, "spo.json")))
+    # a second run must be silent — the value of the whole design
+    az_mid = state.authorize_hits
+    cfg["sweep"]["promptVersion"] = "v2.0-interactive-leg-2"
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"],
+                     env_extra={"DOCINDEX_AUTH_BROWSER": "fetch"})
+    check("interactive rerun exit 0", proc.returncode == 0, proc.stderr[-800:])
+    check("interactive rerun refreshed silently (no new sign-in)",
+          state.authorize_hits == az_mid, f"authorize={state.authorize_hits} vs {az_mid}")
 
     # ---- leg 7: dead auth in a scheduled (non-interactive) run ----
     # caches gone + no TTY + prompt not allowed: fail fast and loud
