@@ -1,15 +1,28 @@
 /**
- * SlideFigures v1.4 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.5 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
  * (2026-09-03) splits the redraw lane's combined figure and anchors every
  * figure to its slide table; DF-5 (2026-09-03) fixes label collisions and
- * arrowhead layering. Companion to ZipTextExtract, same input (the
+ * arrowhead layering; DF-6 (2026-09-03) snaps arrowheads to line tips.
+ * Companion to ZipTextExtract, same input (the
  * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
  * several):
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *
+ * v1.5 (DF-6):
+ *   - ARROWHEADS SNAP TO LINE TIPS. The v1.4 head still let the line show
+ *     underneath it: the stealth notch was a see-through cutout over the
+ *     line's final pixels, and the head (~19px at route weight) reached
+ *     back further than the 15px overshoot, dipping its tail under the
+ *     extent bar. The head is now a SOLID triangle (nothing shows through),
+ *     ARROW_EXT is sized to the head so it sits wholly on its own overshoot
+ *     stub, and the ruler lane emits arrowheads AFTER the extents (on a
+ *     short carrier retracing the route's own final pixels), so nothing
+ *     ever draws over one. arrowOk still keeps heads off ends where the
+ *     band continues, so the trace tier stays arrow-free mid-band.
  *
  * v1.4 (DF-5):
  *   - LABELS NEVER SHARE A SIDE. On a redrawn route that is collinear with
@@ -181,8 +194,11 @@ const NODE_RX = 7;     // one corner radius for every box node in the corpus
 const ANCHOR_PAD = 16; // an edge endpoint this close to a node belongs to it
 const TRACE_MAX_PX = 2600000;  // decode budget for pasted pictures
 const TRACE_MAX_BARS = 48;     // busier than this is a screenshot, not a diagram
-const ARROW_EXT = 15;          // route overshoot past the final tick, so the
-                               // arrowhead sits clear of ticks and extents
+const ARROW_EXT = 18;          // route overshoot past the final tick — sized
+                               // to the arrowhead (5.2 x 3.6px stroke, refX
+                               // 6/8 → its back sits ~14px behind the line
+                               // end) so the whole head rides its own stub,
+                               // never over a tick or an extent bar
 const SPLIT_ARM = 10.5;        // split hairline half-length: past the major
                                // ticks but clear of the measure text band
                                // (whose centre sits 15.5px off the line)
@@ -342,12 +358,17 @@ function figStyle(): string {
     ".measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}" +
     ".id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}" +
     "</style>" +
-    '<defs><marker id="ar" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="5.6" ' +
-    'markerHeight="5.6" orient="auto-start-reverse">' +
-    '<path d="M0 0.5 L8 4 L0 7.5 L2.2 4 z" fill="#16302F"/></marker>' +
-    '<marker id="ae" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="5.6" ' +
-    'markerHeight="5.6" orient="auto-start-reverse">' +
-    '<path d="M0 0.5 L8 4 L0 7.5 L2.2 4 z" fill="#4E6265"/></marker></defs>';
+    // SOLID heads: a notched (stealth) head is a see-through cutout over the
+    // line's final pixels — the line shows inside the arrow. refX 6 puts the
+    // line end ~4.7px behind the tip at route weight, where the triangle is
+    // already wider than the line's round cap — so the cap can't poke out
+    // sideways near the point.
+    '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.2" ' +
+    'markerHeight="5.2" orient="auto-start-reverse">' +
+    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F"/></marker>' +
+    '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5.2" ' +
+    'markerHeight="5.2" orient="auto-start-reverse">' +
+    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265"/></marker></defs>';
 }
 
 function svgWrap(no: number, w: number, h: number, title: string, desc: string, body: string): string {
@@ -1225,9 +1246,20 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
   };
   const sorted = lines.slice().sort((a, b) => order(a) - order(b));
   for (const l of sorted) {
-    const arrow = l.cls === "route" && arrowOk(l) ? ' marker-end="url(#ar)"' : "";
     p.push('<line class="ln ' + l.cls + l.extra + '" x1="' + fnum(l.x1) + '" y1="' + fnum(l.y1) +
-      '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"' + arrow + "/>");
+      '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"/>');
+  }
+  // arrowheads AFTER the extents, so nothing ever draws over one: each head
+  // rides a short carrier retracing its route's own final pixels (invisible
+  // under the solid head), and arrowOk keeps heads off ends where the band
+  // continues past the line
+  for (const l of lines) {
+    if (l.cls !== "route" || !arrowOk(l)) continue;
+    const dx = l.x2 - l.x1, dy = l.y2 - l.y1;
+    const L = Math.sqrt(dx * dx + dy * dy) || 1;
+    const f = Math.min(8, L) / L;
+    p.push('<line class="ln route" x1="' + fnum(l.x2 - dx * f) + '" y1="' + fnum(l.y2 - dy * f) +
+      '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '" marker-end="url(#ar)"/>');
   }
   for (const s of splits) {
     p.push('<line class="split" x1="' + fnum(s[0]) + '" y1="' + fnum(s[1] - SPLIT_ARM) +

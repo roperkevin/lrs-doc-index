@@ -314,6 +314,11 @@ vr = re.search(r'<line class="ln route[^"]*" x1="[\d.]+" y1="[\d.]+" x2="([\d.]+
 vtx = [float(x) for x in re.findall(r'<line class="ln tick[^"]*" x1="([\d.]+)"', v1)]
 check(vr is not None and bool(vtx) and float(vr.group(1)) >= max(vtx) + 10,
       'vector ruler: route overshoots the final tick, arrowhead clear of it')
+check(v1.rfind('marker-end') > v1.rfind('class="ln event'),
+      'vector ruler: arrowhead draws after the extents, never underneath')
+mk = re.search(r'<marker id="ar"[^>]*><path d="([^"]+)"', v1)
+check(mk is not None and mk.group(1).count('L') == 2,
+      'arrowhead is a solid triangle — no notch for the line to show through')
 rt3x = re.search(r'<path class="ln route" d="M ([\d.]+) [\d.]+[^"]* L ([\d.]+) [\d.]+"', r3out)
 t3x = [float(x) for x in re.findall(r'<line class="ln tick[^"]*" x1="([\d.]+)"', r3out)]
 check(rt3x is not None and bool(t3x) and float(rt3x.group(2)) >= max(t3x) + 10,

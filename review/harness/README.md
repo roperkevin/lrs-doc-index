@@ -658,3 +658,15 @@ v1.3 script (fixture discriminates; the other 3 hold invariants).
 Standing suites, PAD (27/27) and the local sweep gate (150/150,
 incl. the sweep v1.27 TC-2 short-title/subheader cases) all green
 alongside; the script type-checks at ES2017.
+
+### Last run (2026-09-03, Node 22.22.2) — v1.5 gate (DF-6)
+
+**PASS** — same 13 figures. Arrowheads snap to line tips: the head is
+now a SOLID triangle (a notched head was a see-through cutout over
+the line's final pixels), the overshoot is sized to the head so its
+back never dips under an extent bar, refX keeps the line's round cap
+inside the head, and the ruler lane emits heads after the extents on
+a carrier retracing the route's own final pixels. Two new
+assertions — head drawn after the extents, and solid-triangle marker
+geometry — both FAIL against the v1.4 script. Local sweep gate
+150/150 and ES2017 type-check green alongside.
