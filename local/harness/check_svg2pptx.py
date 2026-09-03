@@ -1,4 +1,4 @@
-"""Gate for svg2pptx v1.0 — SlideFigures SVG figures -> editable PowerPoint shapes.
+"""Gate for svg2pptx v1.2 — SlideFigures SVG figures -> editable PowerPoint shapes.
 
 Asserts the contract review decks depend on, over a fixture SVG that
 exercises the FULL vocabulary SlideFigures emits (every element kind,
@@ -18,7 +18,12 @@ group, node labels, legend, escaped text):
      never as loose text boxes;
   6. the figure's <title>/<desc> ride the group as name + alt text;
   7. python-pptx (already in review/harness/requirements.txt) can open
-     the package — the closest scriptable stand-in for PowerPoint itself.
+     the package — the closest scriptable stand-in for PowerPoint itself;
+  8. v1.2 slide dress: the SVG's plate (white card + border) is DROPPED —
+     the slide is the background — and every slide carries a title band:
+     the figure's <title> as the slide title plus the source document's
+     title above it, looked up from the corpus naming (doc{N}_*.svg ->
+     sibling {slug}__doc{N}.md sidecar H1) or forced via --doc-title.
 
 Pure stdlib except that last python-pptx leg, which degrades to a note
 when the library is absent. Exit nonzero on any failure.
@@ -190,6 +195,12 @@ check('name="measure"' in s1 and 'name="tick' not in s1.replace('name="tick"', '
       or 'name="tick"' in s1, 'shapes named by role for the selection pane')
 check('<a:blip' not in s1 and 'image' not in ct, 'nothing rasterised')
 
+# ---- 8 (v1.2): no plate — the slide is the background --------------------
+check('name="plate"' not in s1, 'plate: not emitted as a shape')
+check('D7DFDF' not in s1, 'plate: its border colour appears nowhere')
+check(s1.count('prst="roundRect"') == 2,
+      'plate: only the two box nodes round-rect (no background card)')
+
 # ---- 3: styles resolve from the figure's own stylesheet ------------------
 check('val="16302F"' in s1, 'route stroke: ink resolved')
 check('val="3A97C4"' in s1 and 'val="DE8A26"' in s1,
@@ -241,15 +252,51 @@ check('Slide 3 — Route split (1 of 2)' in s1, 'group named from <title>')
 check('Schematic of the case' in s1, '<desc> lands as group alt text')
 check('Slide 10' in s2, 'second SVG landed on the second slide')
 
+# ---- 8 (v1.2): title band -------------------------------------------------
+check('<a:t>Slide 3 — Route split (1 of 2)</a:t>' in s1,
+      'slide title: the figure <title> lands as a real title text box')
+check('name="slide title"' in s1, 'slide title box named for the selection pane')
+check('name="document title"' not in s1,
+      'no doc{N}_ prefix and no --doc-title -> no document-title box')
+gym = re.search(r'name="Slide 3[^"]*"[^>]*/>.*?<a:off x="\d+" y="(\d+)"/>', s1, re.S)
+check(gym is not None and int(gym.group(1)) >= 1120140,
+      'figure group sits below the title band')
+
+# doc-title lookup: media naming doc{N}_*.svg -> sibling kind folder's
+# {slug}__doc{N}.md sidecar, H1 wins
+os.makedirs('fixlib/media', exist_ok=True)
+os.makedirs('fixlib/Test Plans', exist_ok=True)
+open('fixlib/media/doc7_slide3.svg', 'w', encoding='utf-8').write(FIXTURE)
+open('fixlib/Test Plans/route-split-cases__doc7.md', 'w', encoding='utf-8').write(
+    '# Route Split Cases\n\nbody\n')
+out2 = subprocess.run(
+    ['node', SCRIPT, 'fixlib/media', '-o', 'fix_doc.pptx'],
+    capture_output=True, text=True, encoding='utf-8')
+check(out2.returncode == 0, 'doc-title leg: converter exits 0')
+zd = zipfile.ZipFile('fix_doc.pptx')
+sd = zd.read('ppt/slides/slide1.xml').decode('utf-8')
+check('<a:t>Route Split Cases</a:t>' in sd,
+      'document title: sidecar H1 found via the doc7_ prefix')
+check('name="document title"' in sd, 'document title box named')
+out3 = subprocess.run(
+    ['node', SCRIPT, 'fixlib/media', '--doc-title', 'Override Deck',
+     '-o', 'fix_doc2.pptx'],
+    capture_output=True, text=True, encoding='utf-8')
+zo = zipfile.ZipFile('fix_doc2.pptx')
+so = zo.read('ppt/slides/slide1.xml').decode('utf-8')
+check(out3.returncode == 0 and '<a:t>Override Deck</a:t>' in so
+      and 'Route Split Cases' not in so,
+      '--doc-title overrides the sidecar lookup')
+
 # ---- 7: python-pptx opens it (PowerPoint's scriptable stand-in) ----------
 try:
     from pptx import Presentation
     prs = Presentation('fix_figures.pptx')
     check(len(prs.slides) == 2, 'python-pptx: opens, two slides')
     shp = prs.slides[0].shapes
-    check(len(shp) == 1 and shp[0].shape_type is not None,
-          'python-pptx: slide holds the figure group')
-    grp = shp[0]
+    check(len(shp) == 2 and shp[0].shape_type is not None,
+          'python-pptx: slide holds the title box and the figure group')
+    grp = shp[-1]
     check(grp.name.startswith('Slide 3'), 'python-pptx: group name readable')
     check(len(grp.shapes) >= 20,
           f'python-pptx: group holds the shapes ({len(grp.shapes)})')

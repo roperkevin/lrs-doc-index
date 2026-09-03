@@ -107,8 +107,8 @@ keeps the old yaml-on-top layout).
 | local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock Dataverse Predict + mock Anthropic + mock device-code auth; dry/live/idempotency/provider/auth legs; CI) | v1.3 |
 | local/config.sample.json | Machine config template (copy to git-ignored local/config.json) | — |
 | local/CHANGES.md | Local sweep release notes | v1.0 |
-| local/svg2pptx.mjs | Figure SVGs → editable PowerPoint shapes (pull sweep figures into review decks: one native, grouped, restyleable figure per slide; zero dependencies) | v1.0 |
-| local/harness/check_svg2pptx.py | svg2pptx gate (full SlideFigures vocabulary fixture; package/shape/style/label contract + python-pptx open leg; CI) | v1.0 |
+| local/svg2pptx.mjs | Figure SVGs → editable PowerPoint shapes (pull sweep figures into review decks: one native, grouped, restyleable figure per slide, titled with its slide + source document, plate dropped; zero dependencies) | v1.2 |
+| local/harness/check_svg2pptx.py | svg2pptx gate (full SlideFigures vocabulary fixture; package/shape/style/label/title-band contract + doc-title lookup leg + python-pptx open leg; CI) | v1.2 |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,

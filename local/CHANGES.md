@@ -1,5 +1,36 @@
 # Local sweep — release notes
 
+## svg2pptx v1.2 (2026-09-03)
+
+**Clean slides with titles.** Review feedback on v1.0/v1.1 output:
+the figure arrived wrapped in the sidecar's white plate card (border
+and all), and a slide full of shapes gave no clue which document or
+slide it came from. Two changes:
+
+- **The plate is dropped.** The plate exists to frame a figure inside
+  a markdown sidecar; on a slide, the slide IS the background, so the
+  card and its border are not converted — figures land directly on
+  the slide surface.
+- **Every slide carries a title band.** The figure's own `<title>`
+  ("Slide 5 — route diagram (1 of 2)") becomes the slide title, with
+  the SOURCE DOCUMENT's title as a muted eyebrow line above it, and
+  the figure centres in the area below. The document title comes from
+  the corpus' own naming: a media figure `doc{N}_slideK.svg` belongs
+  to the sidecar `{title-slug}__doc{N}.md` in a sibling kind folder,
+  so the converter looks the sidecar up (next to the SVG, one level
+  up, and in the parent's kind subfolders) and takes its H1 — falling
+  back to a `title:` metadata line, the sidecar's slug humanised,
+  then `doc {N}`; a figure with no `doc{N}_` prefix simply gets no
+  eyebrow. `--doc-title "..."` overrides the lookup for every input
+  (for SVGs that never went through the sweep's naming).
+
+Gate: `check_svg2pptx.py` — plate absent (no shape, no border colour,
+only the node roundRects remain), the title band asserts as real text
+boxes, the group sits below the band, and a media-layout leg proves
+the sidecar-H1 lookup plus the `--doc-title` override. PASSED; all 15
+current `check_figures.py` fixture figures convert, and the deck
+renders with the band in LibreOffice Impress.
+
 ## svg2pptx v1.1 (2026-09-03, with SlideFigures v1.8 / DF-9)
 
 **Compound selectors in the style resolver.** The v1.8 two-tone
