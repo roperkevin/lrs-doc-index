@@ -727,6 +727,35 @@ s_f8 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
 s_f8.shapes.add_picture('trace_route.png', Emu(int(0.7 * IN)), Emu(int(1.5 * IN)),
                         Emu(int(6.4 * IN)), Emu(int(2.4 * IN)))
 
+# --- slide 9 (v1.4 / DF-5): the degenerate split — a real deck shape where
+# the stated split measure EQUALS the route's To Measure, so one side of the
+# split is zero-length. The output figure must drop that extent (no orphaned
+# event label at the route end, no "E8 20–20" legend entry, no swatches at
+# all with a single colour left), and the branch topology pins the route to
+# 0.28 of the height — the row label must sit on the line, not mid-height.
+s_f9 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
+s_f9.shapes.title.text = '4. Branch - Split measure : 20'
+t_f9 = s_f9.shapes.add_table(4, 2, Emu(IN), Emu(2 * IN), Emu(3 * IN), Emu(2 * IN)).table
+for r, (k, v) in enumerate([('Event ID', 'E8'), ('Route ID', 'R8L1'),
+                            ('Measure', '0'), ('To Measure', '20')]):
+    t_f9.cell(r, 0).text = k
+    t_f9.cell(r, 1).text = v
+
+# --- slide 10 (v1.4 / DF-5): a ruler with the deck's outlined case-text box
+# above it. The box is a real shape with a themed outline, so pre-DF-5 it
+# rendered as a giant node that duplicated the case heading into the figure;
+# it must be dropped while the ruler beneath still renders (with its arrow).
+s_f10 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+tb10 = s_f10.shapes.add_shape(_SHP.ROUNDED_RECTANGLE, Emu(int(0.6 * IN)), Emu(int(0.4 * IN)),
+                              Emu(int(6.5 * IN)), Emu(int(0.8 * IN)))
+tb10.text_frame.text = ('9. Merge Option disabled, coincident events that have '
+                        'exact attributes from measures 0-4')
+_line(s_f10, 1.0 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN)
+for k in range(5):
+    _line(s_f10, (1.0 + k * 0.75) * IN, 1.94 * IN, (1.0 + k * 0.75) * IN, 2.06 * IN)
+    _label(s_f10, (0.9 + k * 0.75) * IN, 1.55 * IN, str(k))
+_line(s_f10, 1.0 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN, rgb='002060', w=int(0.05 * IN))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})

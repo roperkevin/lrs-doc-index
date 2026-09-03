@@ -676,6 +676,11 @@ function tidyBody(text) {
  * The promoted line is removed from the body under rules a/b (its
  * text now IS the heading); a "current date: …" tail stripped from
  * the heading is re-emitted as its own body line so nothing is lost.
+ * A case line longer than the 60-char title budget (v1.27, TC-2) no
+ * longer truncates mid-sentence into the heading: the heading takes a
+ * short title cut at the last phrase break inside the budget, and the
+ * full case text stays in the body as a bold subheader line where the
+ * case line stood.
  * The original slide number rides along as an HTML comment (hidden by
  * every renderer, like the metadata frame) so provenance survives.
  *
@@ -686,20 +691,29 @@ function tidyBody(text) {
  */
 function caseHeadings(text) {
   const lines = String(text).split("\n");
-  const clean = (s) => {
-    let t = String(s)
+  const clean = (s) =>
+    String(s)
       .replace(/[|#]/g, " ")
       .replace(/\s*[-–—,]?\s*current date\s*:.*$/i, "")
       .replace(/\s*:\s*/g, ": ")
       .replace(/\s+/g, " ")
       .trim()
       .replace(/[\s\-–—,:;]+$/, "");
-    if (t.length > 90) {
-      t = t.slice(0, 90);
-      const cut = t.lastIndexOf(" ");
-      if (cut > 60) t = t.slice(0, cut);
-    }
-    return t;
+  // A long case line no longer truncates mid-sentence into the heading
+  // ("…from measures 0-4 and"). The heading takes a SHORT title — the text
+  // up to the last phrase break (comma/colon/semicolon/dash) inside the
+  // budget, falling back to a word boundary — and the FULL text survives as
+  // a bold subheader line where the case line stood (v1.27, TC-2).
+  const TITLE_MAX = 60;
+  const shortTitle = (t) => {
+    if (t.length <= TITLE_MAX) return t;
+    const head = t.slice(0, TITLE_MAX + 1);
+    let cut = -1;
+    const re = /[,;:]\s|\s[-–—]\s/g;
+    for (let m; (m = re.exec(head)) !== null; ) cut = m.index;
+    if (cut < 16) cut = head.lastIndexOf(" ");
+    if (cut < 16) cut = TITLE_MAX;
+    return head.slice(0, cut).replace(/[\s\-–—,:;]+$/, "");
   };
   for (let i = 0; i < lines.length; i++) {
     const hm = /^## Slide (\d+)$/.exec(lines[i]);
@@ -723,12 +737,14 @@ function caseHeadings(text) {
       const m = /^(?:- )?(\d{1,3})[.)]\s+(.*)$/.exec(c.s);
       if (m && /[A-Za-z]/.test(m[2])) numbered.push({ at: c.at, num: m[1], text: m[2] });
     }
-    let heading = "", promoted = -1, tail = "";
+    let heading = "", promoted = -1, tail = "", sub = "";
     if (numbered.length === 1) {
       const t = clean(numbered[0].text);
       if (t) {
-        heading = `Case ${numbered[0].num} — ${t}`;
+        const st = shortTitle(t);
+        heading = `Case ${numbered[0].num} — ${st}`;
         promoted = numbered[0].at;
+        if (st !== t) sub = t;
       }
     } else if (numbered.length === 0) {
       const classed = cands.some((c) =>
@@ -739,7 +755,12 @@ function caseHeadings(text) {
           if (/^(Positive|Negative|current date\b|modify\b)/i.test(s)) continue;
           if (s.length > 100 || !/\d/.test(s)) continue;
           const t = clean(s);
-          if (t) { heading = t; promoted = c.at; }
+          if (t) {
+            const st = shortTitle(t);
+            heading = st;
+            promoted = c.at;
+            if (st !== t) sub = t;
+          }
           break;
         }
       }
@@ -755,7 +776,12 @@ function caseHeadings(text) {
     if (promoted >= 0) {
       const tm = /(current date\s*:\s*\S.*)$/i.exec(lines[promoted]);
       if (tm) tail = tm[1].charAt(0).toUpperCase() + tm[1].slice(1);
-      lines.splice(promoted, 1, ...(tail ? [tail] : []));
+      // a shortened heading keeps the full case text in the body as a bold
+      // subheader where the case line stood, so nothing is lost
+      const repl = [];
+      if (sub) repl.push(`**${sub}**`);
+      if (tail) repl.push(tail);
+      lines.splice(promoted, 1, ...repl);
     }
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");

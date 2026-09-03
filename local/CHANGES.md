@@ -1,5 +1,35 @@
 # Local sweep — release notes
 
+## v1.27 (2026-09-03)
+
+**Case headings stop truncating (TC-2).** A long case line used to be
+cut mid-sentence into the heading — `## Case 9 — Merge Option
+disabled, coincident events that have exact attributes from measures
+0-4 and <!-- slide 10 -->` — because `caseHeadings` capped the
+promoted text at 90 chars wherever the cut happened to fall. The
+heading now takes a **short title**: the case text up to the last
+phrase break (comma, colon, semicolon or spaced dash) inside a
+60-char budget, with a word-boundary fallback. When the title is
+shortened, the **full case text survives as a bold subheader line**
+where the case line stood, so nothing is lost:
+
+```
+## Case 9 — Merge Option disabled <!-- slide 10 -->
+**Merge Option disabled, coincident events that have exact attributes
+from measures 0-4 and exist in both versions**
+```
+
+A case line that fits the budget keeps the v1.25 behaviour unchanged
+(whole text in the heading, promoted line removed). Applies to both
+the numbered-case rule and the classification-line rule; the
+"current date:" tail handling is unchanged. Idempotent under
+`--reformat` like all of TC-1 (a rewritten heading no longer matches
+`## Slide N`, so the section is never rescanned).
+
+Gate: `check_local_sweep.py` 150/150 — a planted long-case slide
+asserts the short heading, the bold subheader, and that no heading
+ends in a truncation fragment.
+
 ## v1.26 (2026-09-03)
 
 **Figures placed with their tables (DF-4).** `placeFigure` used to

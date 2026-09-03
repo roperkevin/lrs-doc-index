@@ -1,14 +1,53 @@
 /**
- * SlideFigures v1.3 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.4 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
  * (2026-09-03) splits the redraw lane's combined figure and anchors every
- * figure to its slide table. Companion to ZipTextExtract, same input (the
+ * figure to its slide table; DF-5 (2026-09-03) fixes label collisions and
+ * arrowhead layering. Companion to ZipTextExtract, same input (the
  * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
  * several):
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *
+ * v1.4 (DF-5):
+ *   - LABELS NEVER SHARE A SIDE. On a redrawn route that is collinear with
+ *     its own centroid (straight/branch/gap/vertical — the "outward" and
+ *     "inward" normals both degenerate to the same tie), measures and event
+ *     ids used to land on the SAME side and print over each other. The tie
+ *     now breaks the way the vector lane always has: measures above the
+ *     line (right of a vertical one), event ids below (left) — opposite
+ *     sides by construction, so an extent midpoint on a major tick no
+ *     longer stamps "E1" over its own measure.
+ *   - ARROWHEADS CLEAR OF THE RULER. The route's arrowhead is a marker on
+ *     the route element, which draws before the extents layered over it —
+ *     a 5px event bar reaching the route's end buried it, and the final
+ *     tick crossed it. Normalised and redrawn routes now overshoot the
+ *     final tick by ARROW_EXT and carry the arrowhead on the overshoot
+ *     (the number-line convention), where nothing drawn later reaches; the
+ *     head itself sharpens to a stealth profile. A raw route no ruler
+ *     claimed keeps the v1.3 in-place marker.
+ *   - DEGENERATE SPLITS. A split measure equal to a route end (real decks
+ *     carry these) produced a zero-length second extent: an orphaned event
+ *     label at the route end and an "E1 20–20" legend entry. Zero-length
+ *     extents are dropped; a single-extent output keeps the legend off
+ *     (legends exist to tell 2+ colours apart).
+ *   - ROUTE ID ON ITS LINE. The redraw's route id sat at mid-height, which
+ *     is on the line only when the topology centres it (a branch route runs
+ *     at 0.28 of the height — the id floated in dead space). It now sits
+ *     level with the route's entry point.
+ *   - TITLE BOXES ARE NOT NODES. The decks frame their case text in an
+ *     outlined box above the drawing; a visible shape holding long prose
+ *     (or a long numbered case line) rendered as a giant node duplicating
+ *     the section heading into the figure. Such boxes are dropped — their
+ *     text already reaches the sidecar body and the case heading through
+ *     the extractor.
+ *   - NO MID-BAND ARROWS. A route line only carries its direction arrow
+ *     where its band actually ends; when another route/event line continues
+ *     past its endpoint (segments laid end to end, a traced extent running
+ *     beyond the surviving route run), the arrowhead is suppressed instead
+ *     of pointing mid-band.
  *
  * v1.1 (DF-2):
  *   - MULTI-FIGURE SLIDES. Primitives are spatially clustered (union-find
@@ -142,6 +181,11 @@ const NODE_RX = 7;     // one corner radius for every box node in the corpus
 const ANCHOR_PAD = 16; // an edge endpoint this close to a node belongs to it
 const TRACE_MAX_PX = 2600000;  // decode budget for pasted pictures
 const TRACE_MAX_BARS = 48;     // busier than this is a screenshot, not a diagram
+const ARROW_EXT = 15;          // route overshoot past the final tick, so the
+                               // arrowhead sits clear of ticks and extents
+const SPLIT_ARM = 10.5;        // split hairline half-length: past the major
+                               // ticks but clear of the measure text band
+                               // (whose centre sits 15.5px off the line)
 
 function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult {
   const bytes = b64ToBytes(zipBase64);
@@ -298,12 +342,12 @@ function figStyle(): string {
     ".measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}" +
     ".id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}" +
     "</style>" +
-    '<defs><marker id="ar" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="5.2" ' +
-    'markerHeight="5.2" orient="auto-start-reverse">' +
-    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#16302F"/></marker>' +
-    '<marker id="ae" viewBox="0 0 8 8" refX="6.4" refY="4" markerWidth="5.6" ' +
+    '<defs><marker id="ar" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="5.6" ' +
     'markerHeight="5.6" orient="auto-start-reverse">' +
-    '<path d="M0.6 0.8 L7.2 4 L0.6 7.2 z" fill="#4E6265"/></marker></defs>';
+    '<path d="M0 0.5 L8 4 L0 7.5 L2.2 4 z" fill="#16302F"/></marker>' +
+    '<marker id="ae" viewBox="0 0 8 8" refX="7.2" refY="4" markerWidth="5.6" ' +
+    'markerHeight="5.6" orient="auto-start-reverse">' +
+    '<path d="M0 0.5 L8 4 L0 7.5 L2.2 4 z" fill="#4E6265"/></marker></defs>';
 }
 
 function svgWrap(no: number, w: number, h: number, title: string, desc: string, body: string): string {
@@ -572,6 +616,13 @@ function parseSlide(xml: string): Parsed {
     const stFill = (st.match(/<a:fillRef idx="[1-9]\d*">\s*<a:schemeClr val="(\w+)"/) || ["", ""])[1];
     const stLn = (st.match(/<a:lnRef idx="[1-9]\d*">\s*<a:schemeClr val="(\w+)"/) || ["", ""])[1];
     if (fillSolid || lnSolid || stFill || stLn) {
+      // a visible box holding a case line or long prose is the slide's
+      // TITLE/caption, not a diagram node — the decks frame their case text
+      // in an outlined box above the drawing. Its text already reaches the
+      // sidecar body (and the case heading) through the extractor, so the
+      // figure drops the box rather than duplicating a paragraph into the
+      // drawing (DF-5).
+      if (t.length > 56 || (t.length > 30 && /^\d{1,3}[.)]\s/.test(t))) continue;
       let tRole = "plain";
       if (fillSolid) tRole = fillCol ? figRole(fillCol, "plain") : "plain";
       else if (SCHEME_SLOT[stFill]) tRole = SCHEME_SLOT[stFill];
@@ -1152,15 +1203,35 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
   // it. Routes first, then ticks and leaders, then extents on top.
   const order = (l: FLine): number =>
     l.cls === "route" ? 0 : (l.cls.indexOf("event") === 0 ? 2 : 1);
+  // a route carries its direction arrow only where its band actually ENDS:
+  // when another route/event line continues past this line's endpoint (route
+  // segments laid end to end, or a traced extent covering the route beyond
+  // the run that survived), an arrowhead there points mid-band (DF-5)
+  const arrowOk = (l: FLine): boolean => {
+    const dx = l.x2 - l.x1, dy = l.y2 - l.y1;
+    const L = Math.sqrt(dx * dx + dy * dy) || 1;
+    const ux = dx / L, uy = dy / L;
+    for (const o of lines) {
+      if (o === l) continue;
+      if (o.cls !== "route" && o.cls.indexOf("event") !== 0) continue;
+      const ends = [[o.x1, o.y1], [o.x2, o.y2]];
+      for (const e of ends) {
+        const along = (e[0] - l.x2) * ux + (e[1] - l.y2) * uy;
+        const across = Math.abs((e[1] - l.y2) * ux - (e[0] - l.x2) * uy);
+        if (along > 4 && across <= 6) return false;
+      }
+    }
+    return true;
+  };
   const sorted = lines.slice().sort((a, b) => order(a) - order(b));
   for (const l of sorted) {
-    const arrow = l.cls === "route" ? ' marker-end="url(#ar)"' : "";
+    const arrow = l.cls === "route" && arrowOk(l) ? ' marker-end="url(#ar)"' : "";
     p.push('<line class="ln ' + l.cls + l.extra + '" x1="' + fnum(l.x1) + '" y1="' + fnum(l.y1) +
       '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"' + arrow + "/>");
   }
   for (const s of splits) {
-    p.push('<line class="split" x1="' + fnum(s[0]) + '" y1="' + fnum(s[1] - TICK_MAJOR) +
-      '" x2="' + fnum(s[0]) + '" y2="' + fnum(s[1] + TICK_MAJOR) + '"/>');
+    p.push('<line class="split" x1="' + fnum(s[0]) + '" y1="' + fnum(s[1] - SPLIT_ARM) +
+      '" x2="' + fnum(s[0]) + '" y2="' + fnum(s[1] + SPLIT_ARM) + '"/>');
     p.push('<circle class="splitdot" cx="' + fnum(s[0]) + '" cy="' + fnum(s[1]) + '" r="3.2"/>');
   }
   for (const t of texts) {
@@ -1229,7 +1300,10 @@ function normaliseRulers(lines: FLine[], texts: FText[], compress: boolean): {
       for (let k = 0; k + 1 < order.length; k++) step = Math.min(step, order[k + 1] - order[k]);
       while (step * thin < LABEL_MIN_GAP) thin++;
     }
-    outL.push({ x1: rx0, y1: ry, x2: rx1, y2: ry, cls: "route", extra: "" });
+    // the drawn line overshoots the final tick so the arrowhead sits clear of
+    // it and of any extent reaching the ruler's end (the number-line
+    // convention); ticks, measures and extents still live on [rx0, rx1]
+    outL.push({ x1: rx0, y1: ry, x2: rx1 + ARROW_EXT, y2: ry, cls: "route", extra: "" });
     const baseY = ry - TICK_MAJOR / 2 - TICK_GAP;
     for (let k = 0; k < ticks.length; k++) {
       const major = k % 5 === 0 || k === ticks.length - 1;
@@ -1505,16 +1579,26 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
   const innerH = Math.min(360, Math.max(115, innerW / topo.aspect));
   const shape = kind ? kind.toLowerCase() : "straight";
   // one figure per state — the input diagram and the output diagram are two
-  // diagrams on the slide, so they are two figures (DF-4), not stacked bands
+  // diagrams on the slide, so they are two figures (DF-4), not stacked bands.
+  // A split ON a route end (real decks state these) makes one side of the
+  // split zero-length: that extent is dropped rather than drawn as an
+  // invisible bar with an orphaned label (DF-5).
+  const sp2 = Math.max(m0, Math.min(m1, split));
+  const outExt: number[][] = [];
+  if (sp2 - m0 > 1e-9) outExt.push([m0, sp2, 0]);
+  if (m1 - sp2 > 1e-9) outExt.push([sp2, m1, outExt.length]);
+  const outAlt = "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
+    " after the split at measure " + fnum(split) + ": event " + eventId +
+    (outExt.length === 2
+      ? " as " + fnum(m0) + "–" + fnum(sp2) + " and " + fnum(sp2) + "–" + fnum(m1) + "."
+      : " unchanged as " + fnum(m0) + "–" + fnum(m1) +
+        " (the split coincides with a route end).");
   const rows: { ext: number[][]; sp: number; gi: number; alt: string }[] = [
     { ext: [[m0, m1, 0]], sp: NaN, gi: inputGi,
       alt: "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
         ", event " + eventId + " from measure " + fnum(m0) + " to " + fnum(m1) +
         ", before the split at measure " + fnum(split) + "." },
-    { ext: [[m0, split, 0], [split, m1, 1]], sp: split, gi: outputGi,
-      alt: "Schematic redrawn from the slide's data: " + shape + " route " + routeId +
-        " after the split at measure " + fnum(split) + ": event " + eventId + " as " +
-        fnum(m0) + "–" + fnum(split) + " and " + fnum(split) + "–" + fnum(m1) + "." },
+    { ext: outExt, sp: split, gi: outputGi, alt: outAlt },
   ];
   const roles = ["cool", "warm"];
   const figsOut: SlideFigure[] = [];
@@ -1538,7 +1622,16 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
         fnum(oy + p[1] * innerH)).join(" ");
       body.push('<path class="ln route ctx" d="' + d + '"/>');
     }
-    const d = pts.map((p, i) => (i ? "L " : "M ") + fnum(p[0]) + " " + fnum(p[1])).join(" ");
+    let d = pts.map((p, i) => (i ? "L " : "M ") + fnum(p[0]) + " " + fnum(p[1])).join(" ");
+    if (!topo.closed && pts.length >= 2) {
+      // overshoot past the final tick so the arrowhead sits clear of it and
+      // of an extent reaching the route's end (the number-line convention)
+      const pa = pts[pts.length - 2], pb = pts[pts.length - 1];
+      const seg = Math.sqrt((pb[0] - pa[0]) * (pb[0] - pa[0]) +
+                            (pb[1] - pa[1]) * (pb[1] - pa[1])) || 1;
+      d += " L " + fnum(pb[0] + (pb[0] - pa[0]) / seg * ARROW_EXT) + " " +
+        fnum(pb[1] + (pb[1] - pa[1]) / seg * ARROW_EXT);
+    }
     body.push('<path class="ln route" d="' + d + '"' +
       (topo.closed ? "" : ' marker-end="url(#ar)"') + "/>");
     for (const e of row.ext) {
@@ -1551,9 +1644,24 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
         mid.push("L " + fnum(pts[i][0]) + " " + fnum(pts[i][1]));
       mid.push("L " + fnum(b[0]) + " " + fnum(b[1]));
       body.push('<path class="ln event flat s-' + roles[e[2]] + '" d="' + mid.join(" ") + '"/>');
-      const c = atMeasure(pts, cum, total, m0, m1, (e[0] + e[1]) / 2);
+      // anchor the id on the extent's longest straight run rather than its
+      // arc-length midpoint: a midpoint can land on a corner vertex, where a
+      // perpendicular offset from one edge prints ON the adjoining edge (DF-5)
+      let rl = -1, rm = (fa + fb) / 2;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const s0 = Math.max(cum[i], fa), s1 = Math.min(cum[i + 1], fb);
+        if (s1 - s0 > rl) { rl = s1 - s0; rm = (s0 + s1) / 2; }
+      }
+      const c = atMeasure(pts, cum, total, m0, m1, m0 + (m1 - m0) * (rm / total));
       let nx = -c[3], ny = c[2];
-      if ((c[0] - cx) * nx + (c[1] - cy) * ny > 0) { nx = -nx; ny = -ny; }
+      // inside a closed shape; on a collinear route (centroid ON the line,
+      // so "inside" degenerates) take the side the measures do not — below
+      // the line / left of a vertical one, mirroring the vector lane, so an
+      // event id can never print over a measure (DF-5)
+      const dotE = (c[0] - cx) * nx + (c[1] - cy) * ny;
+      if (Math.abs(dotE) < 1e-6 ? (ny < 0 || (ny === 0 && nx > 0)) : dotE > 0) {
+        nx = -nx; ny = -ny;
+      }
       body.push('<text class="id f-' + roles[e[2]] + '" x="' + fnum(c[0] + nx * 17) + '" y="' +
         fnum(c[1] + ny * 17) + '" text-anchor="middle" dominant-baseline="central">' +
         esc(eventId) + "</text>");
@@ -1564,7 +1672,13 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
     while (mm <= m1 + 1e-9) {
       const q = atMeasure(pts, cum, total, m0, m1, mm);
       let nx = -q[3], ny = q[2];
-      if ((q[0] - cx) * nx + (q[1] - cy) * ny < 0) { nx = -nx; ny = -ny; }
+      // outward on a closed shape; on a collinear route measures take the
+      // top of the line (right of a vertical one) — the shared baseline the
+      // vector lane uses, and the opposite side from the event ids (DF-5)
+      const dotT = (q[0] - cx) * nx + (q[1] - cy) * ny;
+      if (Math.abs(dotT) < 1e-6 ? (ny > 0 || (ny === 0 && nx < 0)) : dotT < 0) {
+        nx = -nx; ny = -ny;
+      }
       const isMaj = Math.abs(mm / major - Math.round(mm / major)) < 1e-6;
       const L = (isMaj ? TICK_MAJOR : TICK_MINOR) / 2;
       body.push('<line class="ln tick' + (isMaj ? " maj" : "") + '" x1="' + fnum(q[0] - nx * L) +
@@ -1581,20 +1695,27 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
     if (!isNaN(row.sp) && row.sp > m0 && row.sp < m1) {
       const q = atMeasure(pts, cum, total, m0, m1, row.sp);
       const nx = -q[3], ny = q[2];
-      body.push('<line class="split" x1="' + fnum(q[0] - nx * 14) + '" y1="' + fnum(q[1] - ny * 14) +
-        '" x2="' + fnum(q[0] + nx * 14) + '" y2="' + fnum(q[1] + ny * 14) + '"/>');
+      body.push('<line class="split" x1="' + fnum(q[0] - nx * SPLIT_ARM) +
+        '" y1="' + fnum(q[1] - ny * SPLIT_ARM) + '" x2="' + fnum(q[0] + nx * SPLIT_ARM) +
+        '" y2="' + fnum(q[1] + ny * SPLIT_ARM) + '"/>');
       body.push('<circle class="splitdot" cx="' + fnum(q[0]) + '" cy="' + fnum(q[1]) + '" r="3.4"/>');
     }
-    body.push('<text class="id f-ink" x="' + fnum(FIG_PAD + 36) + '" y="' + fnum(oy + innerH / 2) +
+    // the row label sits level with the route's entry point, not at
+    // mid-height — a branch route runs at 0.28 of the height, and a label
+    // pinned to the middle floats in dead space under it (DF-5)
+    body.push('<text class="id f-ink" x="' + fnum(pts[0][0] - 16) + '" y="' + fnum(pts[0][1]) +
       '" text-anchor="end" dominant-baseline="central">' + esc(routeId) + "</text>");
     let hgt = oy + innerH + 22 + FIG_PAD;
-    if (ri === 1) {
+    if (ri === 1 && row.ext.length >= 2) {
       // the redraw lane KNOWS the numbers, so the output figure's legend
-      // states each extent's measure range rather than a letter
-      const leg = emitLegend([
-        { role: roles[0], t: eventId + " " + fnum(m0) + "–" + fnum(split) },
-        { role: roles[1], t: eventId + " " + fnum(split) + "–" + fnum(m1) },
-      ], FIG_PAD, oy + innerH + 34);
+      // states each extent's measure range rather than a letter; a
+      // single-extent output (degenerate split) keeps the legend off —
+      // legends exist to tell 2+ colours apart
+      const entries: { role: string; t: string }[] = [];
+      for (const e of row.ext) {
+        entries.push({ role: roles[e[2]], t: eventId + " " + fnum(e[0]) + "–" + fnum(e[1]) });
+      }
+      const leg = emitLegend(entries, FIG_PAD, oy + innerH + 34);
       body.push(leg.svg);
       hgt = oy + innerH + 42 + FIG_PAD;
     }
