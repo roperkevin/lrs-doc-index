@@ -35,6 +35,14 @@
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Every fetch below carries a timeout: one hung socket must never
+// stall a scheduled run past its next fire (the retry loops treat a
+// timeout like any other network error). Override via config
+// timeoutMs on the respective section.
+const GRAPH_TIMEOUT_MS = 120000;
+const timeout = (cfg) =>
+  AbortSignal.timeout(cfg.timeoutMs === undefined ? GRAPH_TIMEOUT_MS : Number(cfg.timeoutMs));
+
 function resolveSecret(v, what) {
   if (v && typeof v === "object" && v.$env) {
     const s = process.env[String(v.$env)];
@@ -82,7 +90,7 @@ export class GraphClient {
       client_secret: resolveSecret(this.cfg.clientSecret, "graph.clientSecret"),
       scope: "https://graph.microsoft.com/.default",
     });
-    const res = await fetch(this.tokenUrl, { method: "POST", body });
+    const res = await fetch(this.tokenUrl, { method: "POST", body, signal: timeout(this.cfg) });
     if (!res.ok) {
       throw new Error(`Graph token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
     }
@@ -109,6 +117,7 @@ export class GraphClient {
             "content-type": "application/json",
           },
           body: body === undefined ? undefined : JSON.stringify(body),
+          signal: timeout(this.cfg),
         });
       } catch (e) {
         lastErr = new Error(`Graph ${method} ${url}: ${e.message}`);
@@ -183,6 +192,114 @@ export class GraphClient {
     return this.request("DELETE", `/sites/${siteId}/lists/${listId}/items/${itemId}`);
   }
 
+  /** Download a library file's bytes via its list item's driveItem
+   *  (Graph answers with a 302 to a pre-authorized URL; fetch follows
+   *  it). The sweep's OneDrive-sync-lag fallback (v1.33). */
+  async getItemContentBuffer(siteId, listId, itemId) {
+    const url = `${this.baseUrl}/sites/${siteId}/lists/${listId}/items/${itemId}/driveItem/content`;
+    let res;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, {
+        headers: { authorization: "Bearer " + (await this.token()) },
+        redirect: "follow",
+        signal: timeout(this.cfg),
+      });
+      if (res.status !== 401) break;
+      this._token = null;
+      if (this.delegated) this.delegated.invalidate();
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Graph GET driveItem content (item ${itemId}): ${res.status} ${(await res.text()).slice(0, 300)}`
+      );
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  // ---- drive APIs (remote-files mode, sweep v1.39) ----------------
+  // The sidecar library is its own SharePoint drive; these let the
+  // sweep run with NO OneDrive sync: mirror-down reads, write-through
+  // uploads, deletes. Paths are drive-root-relative, "/"-separated.
+
+  async listDrives(siteId) {
+    return (await this.request("GET", `/sites/${siteId}/drives`)).value || [];
+  }
+
+  /** Every live item in the drive (initial delta sweep, flat, with
+   *  eTags + parent paths). The trailing deltaLink is not kept — each
+   *  run does one full pass; the mirror manifest dedupes downloads. */
+  async driveDeltaAll(driveId) {
+    let url = `/drives/${driveId}/root/delta`;
+    const items = [];
+    while (url) {
+      const page = await this.request("GET", url);
+      for (const it of page.value || []) items.push(it);
+      url = page["@odata.nextLink"] || null;
+    }
+    return items;
+  }
+
+  _drivePath(driveId, relPath, suffix) {
+    const enc = String(relPath).split("/").map(encodeURIComponent).join("/");
+    return `${this.baseUrl}/drives/${driveId}/root:/${enc}:${suffix}`;
+  }
+
+  async getDriveFileByPath(driveId, relPath) {
+    const url = this._drivePath(driveId, relPath, "/content");
+    let res;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, {
+        headers: { authorization: "Bearer " + (await this.token()) },
+        redirect: "follow",
+        signal: timeout(this.cfg),
+      });
+      if (res.status !== 401) break;
+      this._token = null;
+      if (this.delegated) this.delegated.invalidate();
+    }
+    if (!res.ok) {
+      throw new Error(`Graph GET drive file ${relPath}: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
+
+  /** Simple upload (≤ 4 MB — sidecars, figures and capped media all
+   *  fit; larger files need an upload session and are refused). */
+  async putDriveFile(driveId, relPath, data) {
+    if (data.length > 4 * 1024 * 1024) {
+      throw new Error(`drive upload ${relPath}: ${data.length} bytes exceeds the 4 MB simple-upload cap`);
+    }
+    const url = this._drivePath(driveId, relPath, "/content");
+    let res;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, {
+        method: "PUT",
+        headers: {
+          authorization: "Bearer " + (await this.token()),
+          "content-type": "application/octet-stream",
+        },
+        body: data,
+        signal: timeout(this.cfg),
+      });
+      if (res.status !== 401) break;
+      this._token = null;
+      if (this.delegated) this.delegated.invalidate();
+    }
+    if (!res.ok) {
+      throw new Error(`Graph PUT drive file ${relPath}: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    }
+    return res.json();
+  }
+
+  /** Delete by path; a 404 (already gone) is not an error. */
+  async deleteDriveFileByPath(driveId, relPath) {
+    try {
+      await this.request("DELETE", `/drives/${driveId}/root:/${String(relPath).split("/").map(encodeURIComponent).join("/")}:`);
+    } catch (e) {
+      if (!/: 404 /.test(String(e.message)) && !String(e.message).endsWith(": 404")) throw e;
+    }
+  }
+
   /** Create/overwrite a file in the site's DEFAULT drive (the
    *  "Documents"/Shared Documents library) by drive-root path, e.g.
    *  "/Keyword_Curation_Digest.md". Used for files that live outside
@@ -199,6 +316,7 @@ export class GraphClient {
           "content-type": "text/markdown",
         },
         body: content,
+        signal: timeout(this.cfg),
       });
       if (res.status !== 401) break;
       this._token = null;
@@ -275,7 +393,7 @@ export class SpoClient {
       client_secret: resolveSecret(this.cfg.clientSecret, "spo.clientSecret"),
       scope: `${this.origin}/.default`,
     });
-    const res = await fetch(this.tokenUrl, { method: "POST", body });
+    const res = await fetch(this.tokenUrl, { method: "POST", body, signal: timeout(this.cfg) });
     if (!res.ok) {
       throw new Error(`SPO token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
     }
@@ -311,6 +429,7 @@ export class SpoClient {
           authorization: "Bearer " + (await this.token()),
         },
         body: JSON.stringify({ formValues, bNewDocumentUpdate: false }),
+        signal: timeout(this.cfg),
       });
       if (res.status !== 401) break;
       if (this.delegated) this.delegated.invalidate();

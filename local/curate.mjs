@@ -52,6 +52,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { GraphClient } from "./graph.mjs";
 import { aiBuilderPredict, braceSlice, dataverseToken } from "./llm.mjs";
+import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 
 const num = (v) => {
   const n = Number(v);
@@ -68,20 +69,31 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--models") args.flags.models = true;
     else if (a === "--drain") args.flags.drain = true;
+    else if (a === "--repoint") args.flags.repoint = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--models|--drain]");
+    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--models|--drain|--repoint]");
   }
+  assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
+  validateConfig(
+    cfg,
+    args.flags.repoint
+      ? [...CURATE_REQUIRED, "sharePoint.lists.docKeywords"]
+      : CURATE_REQUIRED,
+    args.config
+  );
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   const authDir = path.join(cfg.paths?.workDir || ".", "auth");
   cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
-  // aibuilder auth inherits Graph settings, exactly as sweep.mjs does
+  // aibuilder auth inherits Graph settings, exactly as sweep.mjs does —
+  // delegated modes (device AND interactive, matching sweep.mjs) drop the
+  // Graph clientId so Dataverse keeps its own public client
   const inherit = { ...cfg.graph };
   const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
-  if (inheritMode === "device") delete inherit.clientId;
+  if (inheritMode === "device" || inheritMode === "interactive") delete inherit.clientId;
   delete inherit.baseUrl;
   cfg.llm.dataverse = {
     ...inherit,
@@ -112,6 +124,7 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.curation.dryRun = true;
   cfg._models = !!args.flags.models;
   cfg._drain = !!args.flags.drain;
+  cfg._repoint = !!args.flags.repoint;
   return cfg;
 }
 
@@ -138,6 +151,11 @@ async function listModels(cfg) {
 async function main() {
   const cfg = loadConfig(process.argv.slice(2));
   if (cfg._models) return listModels(cfg);
+  if (cfg._repoint) {
+    const graph = new GraphClient(cfg.graph);
+    const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
+    return runRepoint(cfg, graph, siteId);
+  }
   if (!cfg.llm.curationModelId) {
     throw new Error("llm.curationModelId is not set — run with --models to find the LRS Keyword Curation model GUID");
   }
@@ -152,6 +170,113 @@ async function main() {
     if (cfg._drain) process.stdout.write(`--- drain pass ${pass}\n`);
     const r = await runCuration(cfg, graph, siteId);
     if (r.written === 0) break;
+  }
+}
+
+/**
+ * --repoint — the librarian backfill piece (Curation_Setup.md "Queued
+ * follow-ons", mechanics verbatim): an approved merge fixes the
+ * vocabulary and all FUTURE junction rows, but historical DocKeywords
+ * rows keep pointing at the alias, so RelatedRank undercounts keyword
+ * overlap between old docs and new. For each junction row whose
+ * keyword is an alias (CanonicalRef set, resolved transitively):
+ *   - the doc already carries the canonical (KWKey {doc}|{canon}
+ *     exists) → DELETE the alias row (the reindex-added duplicate);
+ *   - else MERGE it: KeywordId → canonical, KWKey recomposed, Title's
+ *     " | keyword" tail rewritten to the canonical title.
+ * Honors dryRun exactly like the weekly job. Run `sweep.mjs --rerank`
+ * afterwards to propagate the corrected overlaps into the sidecars'
+ * related sections in one pass.
+ */
+async function runRepoint(cfg, graph, siteId) {
+  const sp = cfg.sharePoint;
+  const dry = !!cfg.curation.dryRun;
+  const kwListId = sp.lists.keywords;
+  const dkListId = sp.lists.docKeywords;
+  const plan = [];
+
+  const kwRows = (await graph.listItems(siteId, kwListId, {
+    select: ["Title", "CanonicalRefLookupId"],
+  })).map((it) => ({
+    ID: num(it.id), Title: String(it.fields?.Title || ""),
+    CanonicalRefId: num(it.fields?.CanonicalRefLookupId),
+  }));
+  const kwById = new Map(kwRows.map((r) => [r.ID, r]));
+  // resolve an alias to its FINAL canonical (chains are guarded
+  // against at proposal time, but historical data gets 5 hops of grace)
+  const canonOf = (id) => {
+    let cur = kwById.get(id);
+    for (let hop = 0; cur && cur.CanonicalRefId && hop < 5; hop++) {
+      const next = kwById.get(cur.CanonicalRefId);
+      if (!next) break;
+      cur = next;
+    }
+    return cur;
+  };
+
+  const dkRows = (await graph.listItems(siteId, dkListId, {
+    select: ["Title", "KWKey", "DocumentLookupId", "KeywordLookupId"],
+  })).map((it) => ({
+    ID: num(it.id), Title: String(it.fields?.Title || ""),
+    KWKey: String(it.fields?.KWKey || ""),
+    DocumentId: num(it.fields?.DocumentLookupId),
+    KeywordId: num(it.fields?.KeywordLookupId),
+  }));
+  const kwKeys = new Set(dkRows.map((r) => r.KWKey));
+
+  let repointed = 0, deleted = 0, aliasRows = 0, errors = 0;
+  for (const r of dkRows) {
+    const kw = kwById.get(r.KeywordId);
+    if (!kw || !kw.CanonicalRefId || !r.DocumentId) continue;
+    const canon = canonOf(r.KeywordId);
+    if (!canon || canon.ID === r.KeywordId) continue;
+    aliasRows++;
+    const targetKey = `${r.DocumentId}|${canon.ID}`;
+    try {
+      if (kwKeys.has(targetKey)) {
+        // the doc already carries the canonical — the alias row is
+        // the harmless-but-real duplicate the setup doc describes
+        plan.push({ action: "deleteRow", id: r.ID, what: `dup of ${targetKey}` });
+        if (!dry) await graph.deleteItem(siteId, dkListId, r.ID);
+        kwKeys.delete(r.KWKey);
+        deleted++;
+      } else {
+        const prefix = r.Title.includes(" | ")
+          ? r.Title.slice(0, r.Title.lastIndexOf(" | "))
+          : r.Title;
+        const fields = {
+          KeywordLookupId: canon.ID,
+          KWKey: targetKey,
+          Title: `${prefix} | ${canon.Title}`,
+        };
+        plan.push({ action: "patchRow", id: r.ID, fields });
+        if (!dry) await graph.updateItemFields(siteId, dkListId, r.ID, fields);
+        kwKeys.delete(r.KWKey);
+        kwKeys.add(targetKey);
+        repointed++;
+      }
+    } catch (e) {
+      errors++;
+      process.stderr.write(`repoint failed for junction ${r.ID}: ${e.message}\n`);
+    }
+  }
+
+  const line =
+    `mode=repoint junctions=${dkRows.length} alias_rows=${aliasRows} ` +
+    `repointed=${repointed} deleted=${deleted} errors=${errors}`;
+  const logDir = cfg.paths?.workDir || ".";
+  fs.mkdirSync(logDir, { recursive: true });
+  const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+  const logFile = path.join(logDir, `curate-${stamp}.json`);
+  fs.writeFileSync(logFile, JSON.stringify({ line, dry_run: dry, plan: dry ? plan : undefined }, null, 1));
+  process.stdout.write(JSON.stringify({ line, dry_run: dry, logFile }) + "\n");
+  process.stdout.write(line + "\n");
+  if (dry) process.stdout.write(`dry run: ${plan.length} planned writes recorded in ${logFile}\n`);
+  if (!dry && (repointed || deleted)) {
+    process.stdout.write(
+      "junction rows changed — run `sweep.mjs --rerank` to propagate the " +
+      "corrected keyword overlaps into the related sections in one pass\n"
+    );
   }
 }
 

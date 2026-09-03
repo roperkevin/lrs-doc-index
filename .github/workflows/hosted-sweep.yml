@@ -1,0 +1,61 @@
+# Hosted nightly sweep (review r7 phase 4 — OPT-IN, disabled by
+# default). Runs the Doc Index sweep on a GitHub-hosted runner in
+# remote-files mode (sweep v1.39): no OneDrive — sidecars mirror down
+# and write through Graph, source docs download on demand.
+#
+# DISABLED until the repository variable HOSTED_SWEEP_ENABLED is set
+# to "true". Before enabling, read local/Hosted_Runner.md — it walks
+# the prerequisites (an Entra app registration with client-credential
+# auth; tenant credentials stored as GitHub secrets, which is an org
+# policy decision, not just a technical one) and the config secret's
+# exact shape. The scheduled run self-disables cleanly when the
+# variable or secrets are absent.
+name: hosted-sweep
+
+on:
+  schedule:
+    # 00:00 UTC ≈ the 17:00 Mountain slot the pipeline has always run
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hosted-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    if: vars.HOSTED_SWEEP_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # PDF text extraction (the OCR lane stays opt-in via config —
+      # add tesseract-ocr here if the config enables it)
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
+      # caches (embeddings, doc-link probes, mirror manifest, run
+      # logs) persist across runs; list backups ride along
+      - uses: actions/cache@v4
+        with:
+          path: work
+          key: hosted-sweep-work-${{ github.run_id }}
+          restore-keys: hosted-sweep-work-
+      - name: Write config from secret
+        env:
+          DOCINDEX_HOSTED_CONFIG: ${{ secrets.DOCINDEX_HOSTED_CONFIG }}
+        run: |
+          if [ -z "$DOCINDEX_HOSTED_CONFIG" ]; then
+            echo "DOCINDEX_HOSTED_CONFIG secret is not set — see local/Hosted_Runner.md"
+            exit 1
+          fi
+          printf '%s' "$DOCINDEX_HOSTED_CONFIG" > local/config.hosted.json
+      - name: Run the sweep (remote-files mode)
+        env:
+          DOCINDEX_GRAPH_SECRET: ${{ secrets.DOCINDEX_GRAPH_SECRET }}
+          DOCINDEX_ALERT_WEBHOOK: ${{ secrets.DOCINDEX_ALERT_WEBHOOK }}
+        run: node --experimental-strip-types local/sweep.mjs --config local/config.hosted.json --live

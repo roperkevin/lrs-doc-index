@@ -351,14 +351,56 @@ Each is behavior-equivalent; all are exercised by the gate:
 
 ## 7. Operations
 
-- **Deploy** = `git pull` on the machine. Record the commit in STATUS
-  the way pastes were recorded. Prompt changes deploy the same way
-  (bump `sweep.promptVersion` in config to trigger the backfill).
+- **Deploy** = the nightly self-update: the scheduled `.cmd` scripts
+  fetch and fast-forward to the CI-promoted **`deploy` branch** (the
+  harness workflow advances it from main only when every suite is
+  green — a red main can never reach the nightly run). A manual
+  `git merge --ff-only origin/deploy` deploys immediately. Record the
+  commit in STATUS the way pastes were recorded. Prompt changes
+  deploy the same way (bump `sweep.promptVersion` in config to
+  trigger the backfill).
 - **Errors**: per-doc failures write `IndexStatus=Error` +
   `LastError="{step}: {detail}"` and retry next run — same recovery
-  model as the flow. The summary JSON carries `errors`; alert on it
-  however you like (the cloud flow only had the platform failure
-  email).
+  model as the flow. The summary JSON carries `errors`.
+- **Alerts** (v1.32, optional): set `alerts.webhookUrl` (a Teams/
+  Slack incoming-webhook URL, `{"$env": ...}` supported) and the
+  sweep posts on a fatal abort and for docs stuck 3+ nights.
+  Best-effort delivery — a down webhook never fails a run.
+- **Dead-man check** (v1.32): register `local\run_heartbeat.cmd` as a
+  SECOND scheduled task (e.g. daily 09:00). It runs
+  `sweep.mjs --check-heartbeat` — local stamp only, no sign-in — and
+  alerts when no successful live sweep is recorded within
+  `alerts.maxSilentHours` (48). This catches what the sweep cannot
+  report itself: the task never firing, the machine off, auth dead.
+- **List backups** (v1.32): every run gzips its run-start list
+  snapshots to `workDir\list-backup-*.json.gz` (newest 14) — the
+  restore source if the lists are ever re-created again
+  (`sweep.exportLists: false` disables).
+- **Browse pages + trends** (v1.34/v1.35): live runs rebuild
+  `_Index.md` (root + per kind folder) and append a Recent-runs
+  table to `_Sweep Status.md` (`sweep.indexPages: false` disables
+  the former).
+- **Sync-lag fallback** (v1.33, optional):
+  `sweep.graphDownloadFallback: true` fetches an in-scope-but-
+  unsynced source through Graph instead of erroring for the night.
+- **OCR lane** (v1.36, optional): install Tesseract (+ Poppler's
+  pdftoppm, usually already present) and set `sweep.tesseractPath`;
+  image-only PDFs then index via OCR (lane `"ocr"`), and previously
+  Skipped `plaintext`-lane PDFs rescue automatically. No PATH
+  auto-detection — explicitly opt in.
+- **msg lane** (v1.37): Outlook .msg files index automatically —
+  nothing to enable; previously Skipped rows rescue on the next run.
+- **Embedding relatedness** (v1.38, optional): `sweep.embedRelated:
+  true` + `llm.embeddings {baseUrl, apiKey, model}` adds
+  paraphrase-level related-doc matching via a Voyage/OpenAI-
+  compatible embeddings endpoint (hash-cached; fail-open to BM25).
+  DATA EGRESS: document text leaves the tenant when this is on —
+  §8's decision class.
+- **Remote-files mode / hosted runner** (v1.39, optional):
+  `sweep.remoteFiles: true` runs the whole sweep with NO OneDrive —
+  see `local/Hosted_Runner.md` for the mode's behavior, the
+  disabled-by-default GitHub Actions nightly, and the two decisions
+  (app auth; where tenant credentials live) that come first.
 - **Rollback**: re-enable the cloud flow in the portal; both read the
   same PromptVersion stamps, so the handover back is seamless. Keep
   the flow import packages (`flow/*.zip`) as the durable fallback.
@@ -426,3 +468,43 @@ the digest header reports it). Parse-failure behavior deviates
 gently: malformed model JSON degrades to zero proposals with a log
 note (the flow failed the run); everything else is action-for-action
 from `curation/flow/v1_1/definition.json`.
+
+**`--repoint` — the librarian junction backfill** (2026-09-03, from
+Curation_Setup's queued follow-ons): after approving merges (or an
+autoApprove Saturday), run
+`node --experimental-strip-types local\curate.mjs --config local\config.json --repoint --live`
+to re-point historical DocKeywords rows from merged aliases onto
+their canonical (duplicates deleted, KWKey/Title recomposed), then
+`sweep.mjs --rerank` to propagate the corrected keyword overlaps into
+the related sections in one pass. Dry-run by default; a no-op pass
+prints `repointed=0 deleted=0`. Requires
+`sharePoint.lists.docKeywords` in config (already there for the
+sweep).
+
+## 10. Gantt schedules → Issue Refs (gantt.mjs — Flow #2)
+
+The long-queued feeder for the (deliberately empty) Issue Refs list,
+as an on-demand local job (`local/gantt.mjs` v1.0 — details in
+`local/CHANGES.md` "gantt v1.0"). Prerequisites: the sweep set up
+(§1–§4; same config and sign-ins), and `sharePoint.lists.issueRefs`
+added to config — **verify the list GUID on the tenant first**: no
+flow ever referenced Issue Refs, so it is the one list whose GUID the
+live exports never confirmed (`docs/SP_Adaptation_Notes.md`).
+
+1. Make sure the schedule workbooks are indexed (DocKind
+   **Schedule**) and present in the synced source library.
+2. Dry run:
+   `node --experimental-strip-types local\gantt.mjs --config local\config.json --dry-run`
+   — review the plan (`issues_created= gantt_edges= titlematch_edges=`
+   and the per-write detail in the `gantt-*.json` log).
+3. `--live` (add `--only <schedule.xlsx>` for one workbook). Re-runs
+   are idempotent (IssueKey + LinkKey dedup); a changed schedule
+   updates its Issue Refs rows in place.
+4. Record the first live run in STATUS. Run it after schedule
+   uploads, or schedule it weekly beside curation if the cadence
+   earns it — every run is pure list reads + local xlsx parsing, no
+   AI spend.
+
+RelatedRank already weights the minted `gantt` (60) and `titlematch`
+(40) edges; related lists pick them up as docs reindex or on one
+`sweep.mjs --rerank` pass.

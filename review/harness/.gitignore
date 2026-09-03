@@ -56,3 +56,5 @@ trace_route.png
 fix_slide*.svg
 # v2.0 figure gate generated fixture (DF-11)
 ui_screenshot.png
+# v2.0 figure gate generated fixture library (DF-11)
+fixlib/

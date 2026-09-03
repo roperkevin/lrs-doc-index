@@ -1,5 +1,246 @@
 # Local sweep — release notes
 
+## v1.39 (2026-09-03)
+
+**Remote-files mode — the sweep without OneDrive** (review r7 phase
+4, owner-approved; `sweep.remoteFiles: true`). The last
+single-machine dependency falls: `paths.sidecarLibrary` becomes a
+plain local workspace — every .md in the sidecar drive MIRRORS DOWN
+before ranking needs it (one Graph delta listing per run; the eTag
+manifest in workDir skips unchanged files and remembers this run's
+own uploads; remotely-deleted .md files prune locally), every Writer
+file write/delete WRITES THROUGH the drive API (flushed per document
+— an upload failure lands that doc in the Error lane; status/browse
+pages ride along best-effort), and source docs download on demand
+(remote mode forces the v1.33 fallback). `lib/remotefs.mjs` +
+drive APIs in graph.mjs (list drives, delta, get/put/delete by
+path; simple upload ≤4 MB — all corpus writes fit).
+`sweep.remoteDriveName` overrides the drive lookup (default: the
+textsFolder's last segment). With the flag off, nothing changes.
+
+Ships with `.github/workflows/hosted-sweep.yml` — a nightly
+GitHub-hosted run, DISABLED until the `HOSTED_SWEEP_ENABLED`
+repository variable is set — and `local/Hosted_Runner.md`, which
+walks the two prerequisites (app-registration auth; the org-policy
+decision of tenant credentials living in GitHub secrets) and the
+config secret's shape. Gate legs: empty local dirs stand in for a
+hosted runner — the pre-existing remote sidecar mirrors down, the
+source doc rides the Graph fallback, the new sidecar + status +
+index pages upload, and a second run re-downloads nothing and
+reprocesses nothing. 201/201.
+
+## v1.38 (2026-09-03)
+
+**Embedding-assisted relatedness** (review r7 phase 4,
+owner-approved; OFF by default — `sweep.embedRelated: true` enables,
+and with it off the ranking pipeline is byte-identical to v1.37).
+BM25 catches shared vocabulary; embeddings catch PARAPHRASE-level
+relatedness. `local/lib/embedindex.mjs` embeds each indexed sidecar's
+body via any OpenAI/Voyage-compatible `/v1/embeddings` endpoint
+(config `llm.embeddings: {baseUrl, apiKey, model, ...}` — Voyage AI
+is Anthropic's embeddings partner; the Anthropic API itself has no
+embeddings endpoint), caches vectors by content hash in
+`workDir/embeddings-cache.json` (a doc embeds once per body change —
+reruns and `--rerank` passes spend nothing on an unchanged corpus),
+and merges cosine sims into the ranking through the SAME BodySim
+channel BM25 uses: per doc `max(bm25, embed rescaled from
+[embedSimMin..1] to [0..1])`, floor default 0.6. **RelatedRank.ts is
+untouched** — the tenant-paste equivalence gates stay meaningful —
+and any endpoint failure logs once and falls back to BM25 for the
+run (an enhancement never fails an index). Data egress note: with
+this on, document text leaves the tenant for the embeddings endpoint
+(Local_Setup §8's decision class). Gate legs: a mock embeddings
+endpoint joins a paraphrase pair no other signal can (the msg and
+the onboarding guide — zero shared keywords/ids/BM25), bearer auth
+asserted, zero classify calls, and a second rerank spends zero
+embedding calls off the hash cache. 194/194.
+
+## v1.37 (2026-09-03)
+
+**The msg lane** (review r7 phase 4, owner-approved) — the last
+KNOWN_EXT still parked in the Skip lane. `local/lib/msg.mjs` is a
+zero-dependency CFB/OLE2 reader (v3/v4 sector sizes, FAT + DIFAT +
+miniFAT chains, the directory tree walked from the root so recipient/
+attachment sub-storages' identically-named streams never leak into
+the body) plus the MAPI string properties a sidecar needs: subject
+(0037), sender (0C1A), to/cc (0E04/0E03), body (1000), transport
+headers (007D), each as PT_UNICODE or PT_STRING8; the sent time comes
+from the fixed-property stream (client-submit/delivery FILETIME) with
+the headers' `Date:` line as fallback. The sidecar body renders as
+subject-H1 + From/To/Cc/Sent strip + message text; the message's own
+sender and sent-time become the authorship trail (the OOXML
+core-properties pattern). Lane `"msg"` marks the attempt — an
+unreadable/empty message skips once, never rechurns — and rows
+stamped Skipped before the lane existed rescue automatically (the PDF
+rescue pattern). Gate legs: a generated CFB fixture (mini + regular
+sector chains, attachment isolation) rescues, indexes with authorship
+and the full strip, and doesn't rechurn. 189/189.
+
+## gantt v1.0 (2026-09-03) — companion job
+
+**Flow #2, finally** (`local/gantt.mjs` — the follow-on the README
+carried since v1.9). A local on-demand job, not a cloud flow: for
+every indexed **Schedule** workbook it parses each sheet as an
+iteration table (header found by column names — issue/#, title, PE,
+Dev, Done, "…status"/TP/Test folding into StatusSummary), then:
+
+- **Issue Refs rows** upsert by IssueKey `{repo}#{n}` (the schema's
+  dedup key): IssueTitle as the Gantt row wrote it, PE / Dev /
+  IterationLabel (sheet name) / StatusSummary / DoneFlag,
+  SourceDocument → the schedule's Doc Index row; last sheet/schedule
+  wins, unchanged rows untouched.
+- **`gantt` edges**: schedule ↔ every doc carrying one of its issues
+  (Doc IDs), sorted-pair LinkKey dedup, Strength = carrier count.
+- **`titlematch` edges**: an issue title naming exactly ONE indexed
+  doc (all title tokens present, plural/prefix-tolerant,
+  ambiguity-guarded) joins that doc to the issue's carriers and the
+  schedule — docs that never cite the number enter the cluster.
+  Skipped when the doc already carries the id.
+
+RelatedRank has weighted both edge types since v2.6 — they simply
+light up. Dry-run default; `--live`, `--only <schedule>`;
+`gantt-*.json` run logs (newest 10). Config: add
+`sharePoint.lists.issueRefs` (verify the tenant GUID first — no flow
+ever referenced that list). Gate: five legs — dry plan, Issue Refs
+fields incl. the last-sheet-wins update, both gantt edges, the Beta
+titlematch edge, and a no-op second run. `check_local_sweep.py`
+185/185.
+
+## v1.36 (2026-09-03)
+
+**OCR lane for image-only PDFs** (the fallback the README always
+described as "designed if ever needed"; opt-in: set
+`sweep.tesseractPath`, optionally `sweep.pdftoppmPath` — no PATH
+auto-detection, so machines that happen to have Tesseract don't
+silently change lanes). A PDF whose pdftotext pass yields no text is
+usually a scan; with OCR configured the sweep renders its pages
+(pdftoppm, 200dpi, first `ocrMaxPages` = 20) and reads them with
+Tesseract. Lane `"ocr"` marks the ATTEMPT either way — a scan OCR
+can't read stamps Skipped once and never rechurns (the pdfRescue
+predicate now excludes it too) — and rows previously Skipped at lane
+`"plaintext"` re-enter automatically once OCR exists, the PDF-rescue
+pattern. An OCR crash degrades to the Skip lane, never Error. Gate
+legs: stubbed pdftoppm+tesseract rescue and index scan.pdf at lane
+"ocr" with the OCR text in TextPreview; a second run does not rechurn.
+
+## v1.35 (2026-09-03)
+
+**Corpus browse pages** (`local/lib/indexpages.mjs`). Every live run
+rebuilds `_Index.md` at the sidecar-library root (the catalog grouped
+by kind, newest first: sidecar link · products · release · one-line
+summary) plus one `_Index.md` per kind folder — the Q&A agent answers
+questions, these answer "what's in here?". Built from the rows the
+run already holds; underscore names like `_Sweep Status.md`;
+`sweep.indexPages: false` disables. Gate legs: root catalog groups by
+kind and links sidecars; per-kind index uses folder-local links.
+
+## v1.34 (2026-09-03)
+
+**Status-page trend table.** `_Sweep Status.md` now ends with
+"Recent runs" — the last 14 full-sweep summaries (run stamp,
+processed, errors, figures; smoke runs tagged) read from the per-run
+JSON logs — so creeping errors, dying figure counts, or shrinking
+throughput are visible where the team already looks. Gate leg asserts
+the table renders from the run logs.
+
+## v1.33 (2026-09-03)
+
+**Graph download fallback for unsynced sources** (review r7, risk R4;
+opt-in `sweep.graphDownloadFallback: true`). A source file in scope
+but absent from the OneDrive-synced folder used to Error for the
+night ("source file not found locally") and wait on sync. With the
+fallback on, the sweep fetches the file's bytes through Graph (the
+list item's driveItem content) into a temp file and indexes from
+there — sync lag stops costing nights. `graph_downloads` in the run
+summary counts uses. Default OFF so the sync-lag Error lane (and its
+gate legs) keep today's behavior on machines that prefer it. New
+gate leg: unsynced doc indexes via the fallback, right item fetched.
+
+## v1.32 (2026-09-03)
+
+**Ops safety net** (review r7, risks R1 + R5): the pipeline can now
+tell someone it is down, and the lists are no longer the only copy of
+the graph.
+
+- **List backup every run.** The run-start snapshots the sweep already
+  fetches are gzipped to `workDir/list-backup-<stamp>.json.gz` (raw
+  Graph items, all five lists; newest 14 kept; `sweep.exportLists:
+  false` disables). The tenant has re-created the lists wholesale once
+  already — a restore source now costs one file write per run. The
+  run summary names the file.
+- **Webhook alerts** (`config.alerts.webhookUrl`, Teams/Slack
+  incoming-webhook shape, `{"$env": ...}` supported). A fatal abort
+  posts "Doc Index sweep FAILED" (independent of Graph/auth — a dead
+  sign-in still reaches a phone); a live full run posts the docs
+  stuck 3+ nights. Delivery is best-effort (one retry, 30s timeout):
+  a down webhook never fails a run.
+- **Dead-man heartbeat.** Every successful live full sweep stamps
+  `workDir/last-success.json`; `sweep.mjs --check-heartbeat` (schedule
+  `local\run_heartbeat.cmd` as a second task, offset from the
+  nightly) alerts when the stamp is older than `alerts.maxSilentHours`
+  (48 default) — catching what the sweep cannot report itself: the
+  task never firing, the machine off, auth dead before the fatal
+  handler. Local stamp only, no sign-in needed.
+
+Gate legs: backup exported with all five lists as raw rows + summary
+names it; heartbeat stamped by live runs; fatal run posts the webhook
+alert; fresh heartbeat passes `--check-heartbeat` with no alert; stale
+heartbeat exits 1 and alerts. 170/170.
+
+## v1.31 (2026-09-03)
+
+**Module split — no behavior change.** sweep.mjs had grown to ~2,400
+lines carrying five separable concerns; the pure helpers now live in
+`local/lib/` and sweep.mjs (~1,360 lines) keeps only orchestration
+(loadConfig/Writer/normalizeRows/sidecarHeader/extractDocText/main/
+indexDoc/rankRelated):
+
+- `lib/util.mjs` — string/date helpers, htmlToText, row normalizers,
+  urlToLocal/folderToLocal, pruneRunLogs
+- `lib/doclinks.mjs` — loadDocLinks, DocPageIndex, ToolLinkResolver,
+  docsBlock/upsertDocsBlock, bodySeamEnd, yamlList
+- `lib/presentation.mjs` — placeFigure, tidyBody, caseHeadings,
+  compactWhy
+- `lib/bodyindex.mjs` — the BM25 BodyIndex
+- `lib/statuspage.mjs` — writeStatusPage
+- `lib/config.mjs` — Node guard + config validation (v1.30)
+
+Code moved verbatim (script-assisted extraction); the one intentional
+delta is `lib/doclinks.mjs` resolving the default esri_doc_links.json
+path from its parent directory. Gate: `check_local_sweep.py` 162/162
+unchanged before/after.
+
+## v1.30 (2026-09-03)
+
+**Hardening pass** (codebase review r7, findings C1–C4): four small
+failure-mode fixes, no behavior change on healthy runs.
+
+- **Fetch timeouts everywhere.** Every Graph/SPO/Dataverse/Anthropic/
+  token `fetch` now carries an `AbortSignal.timeout` (Graph/SPO 120s,
+  token mints 60s, generation calls 300s — AI Builder's own gateway
+  408s slower ones). A hung socket previously stalled the whole
+  scheduled run past its next fire with nothing in the log; now it
+  surfaces as a network error and rides the existing retry/backoff.
+  Override per section with `timeoutMs` (`graph`, `spo`,
+  `llm`, `llm.dataverse`).
+- **Config validation** (`local/lib/config.mjs`). A config missing
+  whole sections used to die with a bare TypeError deep in loadConfig;
+  sweep and curate now check the required keys up front and name every
+  missing one in a single message pointing at config.sample.json.
+- **Node version guard.** Type stripping needs Node ≥ 22.6; an older
+  Node now fails with plain instructions instead of the
+  `--experimental-strip-types` flag error.
+- **curate.mjs inherit fix.** The Dataverse auth inheritance dropped
+  the Graph `clientId` only in `device` mode; `interactive` (the mode
+  Conditional Access forced, local/CHANGES.md v1.24) now drops it too,
+  matching sweep.mjs — with a `graph.clientId` override configured,
+  curate would otherwise have signed into Dataverse with the Graph
+  public client.
+
+Gate: `check_local_sweep.py` grew a config-validation leg (bad config
+fails fast, names `sharePoint.hostname` + `paths.sourceLibrary` in one
+message, no TypeError; curate rejects the same way) — 162/162.
+
 ## svg2pptx v1.3 (2026-09-03)
 
 **The slide carries the test case, not just its drawing.** Review

@@ -1,11 +1,19 @@
 # Runs the Office Script harness suites on every push/PR (HG-7, r2).
 # Job 1 needs no binary fixtures — just Python + PyYAML + Node 22.
 # Job 2 builds the OOXML fixtures and runs the full format suite.
+# Job 3 type-checks every scripts/*.ts at ES2017 (review r7, C5 — the
+# check every promotion note cites, now standing instead of manual).
+# Job 4 (main pushes only) fast-forwards the `deploy` branch once
+# everything is green: the sweep machine's self-update pulls `deploy`,
+# so only harness-passing code ever reaches the nightly run (r7, R3).
 name: harness
 
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   fixture-free:
@@ -46,3 +54,29 @@ jobs:
       - run: python3 check_figures.py
       - run: python3 ../../local/harness/check_svg2pptx.py
       - run: python3 render_sample.py
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 review/harness/check_typecheck.py
+
+  promote:
+    # main is deployable only after every suite is green; the sweep
+    # machine pulls `deploy`, never main, so a red main cannot ship.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [fixture-free, full-format, typecheck]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git push origin HEAD:refs/heads/deploy

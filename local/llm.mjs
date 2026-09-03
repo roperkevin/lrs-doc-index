@@ -117,6 +117,16 @@ function resolveSecret(v, what) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Generation calls get a long leash (AI Builder's gateway itself 408s
+// slow generations); token mints a short one. Both exist so one hung
+// socket can never stall a scheduled run — a timeout surfaces as a
+// network error and rides the normal retry/backoff path. Override via
+// config llm.timeoutMs / llm.dataverse.timeoutMs.
+const LLM_TIMEOUT_MS = 300000;
+const TOKEN_TIMEOUT_MS = 60000;
+const llmTimeout = (cfg) =>
+  AbortSignal.timeout(cfg.timeoutMs === undefined ? LLM_TIMEOUT_MS : Number(cfg.timeoutMs));
+
 // ---- auth -----------------------------------------------------------
 
 let _oauthToken = null;
@@ -189,6 +199,7 @@ async function requestJson(cfg, prompt) {
           ...authHeaders(cfg, refresh),
         },
         body,
+        signal: llmTimeout(cfg),
       });
     } catch (e) {
       lastErr = new Error(`LLM request failed: ${e.message}`);
@@ -251,7 +262,10 @@ export async function dataverseToken(cfg) {
     client_secret: resolveSecret(dv.clientSecret, "llm.dataverse.clientSecret"),
     scope: `${cfg.environmentUrl}/.default`,
   });
-  const res = await fetch(tokenUrl, { method: "POST", body });
+  const res = await fetch(tokenUrl, {
+    method: "POST", body,
+    signal: AbortSignal.timeout(dv.timeoutMs === undefined ? TOKEN_TIMEOUT_MS : Number(dv.timeoutMs)),
+  });
   if (!res.ok) {
     throw new Error(`Dataverse token request failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
   }
@@ -312,6 +326,7 @@ export async function aiBuilderPredict(cfg, requestv2, modelId) {
           authorization: "Bearer " + (await dataverseToken(cfg)),
         },
         body,
+        signal: llmTimeout(cfg),
       });
     } catch (e) {
       lastErr = new Error(`AI Builder request failed: ${e.message}`);

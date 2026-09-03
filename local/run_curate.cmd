@@ -9,6 +9,8 @@ for %%A in (work\curate-task.log) do if exist %%A if %%~zA gtr 5000000 move /y w
 
 echo === curate start %date% %time% >> work\curate-task.log
 
-git pull --ff-only >> work\curate-task.log 2>&1
+rem self-update from the CI-promoted `deploy` branch (see run_sweep.cmd)
+git fetch origin deploy >> work\curate-task.log 2>&1
+git merge --ff-only origin/deploy >> work\curate-task.log 2>&1
 
 node --experimental-strip-types local\curate.mjs --config local\config.json --live >> work\curate-task.log 2>&1

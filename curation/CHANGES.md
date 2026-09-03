@@ -1,3 +1,23 @@
+# curate.mjs `--repoint` — the librarian junction backfill (2026-09-03)
+
+The "Queued follow-ons §Junction re-point" piece, shipped as a local
+pass instead of the flow actions the spec drafted (mechanics
+identical). `curate.mjs --config ... --repoint [--live]`: for every
+DocKeywords row whose keyword is an approved alias (CanonicalRef set,
+chains resolved transitively, 5-hop grace), the row is DELETED when
+the doc already carries the canonical junction (the reindex-added
+duplicate) and otherwise MERGED onto the canonical (KeywordId, KWKey
+`{doc}|{canonId}`, Title's `" | keyword"` tail recomposed). Honors
+dryRun; prints `mode=repoint ... repointed= deleted=`; a live pass
+that changed rows suggests `sweep.mjs --rerank` to propagate the
+corrected keyword overlaps corpus-wide in one pass.
+
+Run it after approving merges (or after an autoApprove Saturday) —
+one-off passes, not scheduled: a no-op pass prints
+`repointed=0 deleted=0`. Gate: five new legs in
+`check_local_sweep.py` (dry plan, duplicate delete, lone-row
+re-point with recomposed KWKey/Title, no-op second pass) — 180/180.
+
 # CurationPromptVersion v1.1 — per-reply cap 20 → 50 (2026-08-15)
 
 For `curate.mjs --drain` (local/CHANGES v1.12): the backlog drains in

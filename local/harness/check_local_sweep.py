@@ -23,6 +23,7 @@ Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_local_sweep.py
 """
 import base64
+import gzip
 import json
 import os
 import re
@@ -33,7 +34,7 @@ import tempfile
 import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -223,6 +224,14 @@ class MockState:
         self.probe_paths = []
         self.graph_last_auth = None
         self.spo_last_auth = None
+        self.alerts = []
+        self.content_downloads = []
+        self.embed_calls = 0
+        self.embed_last_auth = None
+        # remote-files mode: the sidecar drive, rel path -> {content, etag}
+        self.remote_files = {}
+        self.drive_downloads = []
+        self.next_etag = 1
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -274,6 +283,30 @@ def make_handler(state, lib_guid, src_files):
 
         def do_POST(self):
             p = urlparse(self.path).path
+            if p == "/alert":
+                # incoming-webhook stand-in: record the alert payload
+                state.alerts.append(json.loads(self._read() or b"{}"))
+                return self._json({"ok": True})
+            if p == "/v1/embeddings":
+                # OpenAI/Voyage-shape embeddings endpoint. Deterministic
+                # vectors: the msg + the onboarding guide land on the
+                # same axis (a paraphrase-level pair sharing no keyword);
+                # everything else gets a hash-derived vector whose
+                # pairwise cosines sit below the 0.6 floor.
+                state.embed_calls += 1
+                state.embed_last_auth = self.headers.get("authorization")
+                body = json.loads(self._read())
+                data = []
+                for i, text in enumerate(body.get("input", [])):
+                    t = text.lower()
+                    if "weekly lrs sync" in t or "onboarding" in t:
+                        v = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    else:
+                        import hashlib
+                        h = hashlib.md5(text.encode()).digest()
+                        v = [h[k] - 128.0 for k in range(8)]
+                    data.append({"index": i, "embedding": v})
+                return self._json({"data": data, "model": body.get("model")})
             if p == "/devicecode":
                 self._read()
                 state.devicecode_hits += 1
@@ -384,13 +417,39 @@ def make_handler(state, lib_guid, src_files):
             return self._json({"error": "unhandled POST " + p}, 500)
 
         def do_PUT(self):
-            p = urlparse(self.path).path
+            p = unquote(urlparse(self.path).path)
             # Graph drive upload — the curation digest lands in the
             # site's default drive (Shared Documents), never a list
             if re.match(r"^/v1\.0/sites/[^/]+/drive/root:/.+:/content$", p):
                 state.digest = self._read().decode()
                 return self._json({"id": "digest"})
+            # sidecar drive write-through (remote-files mode)
+            m = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):/content$", p)
+            if m:
+                etag = f"et{state.next_etag}"
+                state.next_etag += 1
+                state.remote_files[m.group(1)] = {"content": self._read(), "etag": etag}
+                return self._json({"id": "up-" + m.group(1), "eTag": etag}, 201)
             return self._json({"error": "unhandled PUT " + p}, 500)
+
+        def do_DELETE(self):
+            dm = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):$",
+                          unquote(urlparse(self.path).path))
+            if dm:
+                state.remote_files.pop(dm.group(1), None)
+                self.send_response(204)
+                self.send_header("content-length", "0")
+                self.end_headers()
+                return
+            m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)$",
+                         urlparse(self.path).path)
+            if m and m.group(2) in state.lists.get(m.group(1), {}):
+                del state.lists[m.group(1)][m.group(2)]
+                self.send_response(204)
+                self.send_header("content-length", "0")
+                self.end_headers()
+                return
+            return self._json({"error": "unhandled DELETE " + self.path}, 500)
 
         def do_PATCH(self):
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)/fields$", urlparse(self.path).path)
@@ -402,10 +461,54 @@ def make_handler(state, lib_guid, src_files):
                 return self._json({"id": iid})
             return self._json({"error": "unhandled PATCH " + self.path}, 500)
 
+        def _bytes(self, body, ctype="application/octet-stream"):
+            self.send_response(200)
+            self.send_header("content-type", ctype)
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
-            p = urlparse(self.path).path
+            p = unquote(urlparse(self.path).path)
             if p == "/authorize":
                 return self.do_GET_authorize(parse_qs(urlparse(self.path).query))
+            # ---- sidecar drive (remote-files mode) ----
+            if re.match(r"^/v1\.0/sites/[^/]+/drives$", p):
+                return self._json({"value": [
+                    {"id": "drive-sidecar", "name": "LRS Doc Index"},
+                    {"id": "drive-default", "name": "Documents"}]})
+            if p == "/v1.0/drives/drive-sidecar/root/delta":
+                items = []
+                for i, (rel, rec) in enumerate(sorted(state.remote_files.items())):
+                    d, _, n = rel.rpartition("/")
+                    items.append({
+                        "id": f"rf{i}", "name": n, "eTag": rec["etag"],
+                        "size": len(rec["content"]), "file": {},
+                        "parentReference": {
+                            "path": "/drives/drive-sidecar/root:" + ("/" + d if d else "")},
+                    })
+                return self._json({"value": items})
+            m = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):/content$", p)
+            if m:
+                rec = state.remote_files.get(m.group(1))
+                if rec is None:
+                    return self._json({"error": "not found"}, 404)
+                state.drive_downloads.append(m.group(1))
+                return self._bytes(rec["content"])
+            # library file bytes via the list item's driveItem — the
+            # sweep's OneDrive-sync-lag fallback (real Graph 302s to a
+            # download URL; serving bytes directly is equivalent since
+            # fetch follows redirects)
+            m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(\d+)/driveItem/content$", p)
+            if m:
+                state.content_downloads.append(m.group(2))
+                body = (f"Downloaded content for item {m.group(2)} fetched "
+                        "via the Graph fallback, about calibration.").encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/octet-stream")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                return self.wfile.write(body)
             # doc-link probing: realign-route exists, everything else 404s
             if p.startswith("/docs/"):
                 state.probe_paths.append(p)
@@ -466,7 +569,130 @@ LISTS = {
     "docKeywords": "list-dockw",
     "docLinks": "list-doclinks",
     "sourceLibrary": "list-library",
+    "issueRefs": "list-issuerefs",
 }
+
+GANTT = os.path.join(REPO, "local", "gantt.mjs")
+
+FREE, END, FATSECT = 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFFFD
+
+
+def make_msg(path, subject, sender, to, body_text, sent_unix_ms):
+    """Minimal valid CFB .msg (v3, 512B sectors): small streams in the
+    mini stream, the UTF-16 body (>4096 bytes) in regular sectors, and
+    an attachment sub-storage whose identically-named body stream the
+    parser must NOT leak into the message body."""
+    import struct
+
+    def u16(s):
+        return s.encode("utf-16-le")
+
+    filetime = int((sent_unix_ms + 11644473600000) * 10000)
+    props = b"\x00" * 32 + struct.pack("<HHIq", 0x0040, 0x0039, 0, filetime)
+    small = [
+        ("__properties_version1.0", props),
+        ("__substg1.0_0037001F", u16(subject)),
+        ("__substg1.0_0C1A001F", u16(sender)),
+        ("__substg1.0_0E04001F", u16(to)),
+    ]
+    att_sub = ("__substg1.0_1000001F", u16("ATTACH BODY MUST NOT LEAK"))
+    body = u16(body_text)
+    assert len(body) >= 4096, "body must exercise the regular-sector path"
+
+    mini_chunks, mini_starts = [], []
+    for _, data in small + [att_sub]:
+        assert len(data) <= 64
+        mini_starts.append(len(mini_chunks))
+        mini_chunks.append(data + b"\x00" * (64 - len(data)))
+    mini_stream = b"".join(mini_chunks)
+
+    body_sectors = (len(body) + 511) // 512
+    BODY0 = 5  # sectors: 0 FAT, 1-2 directory, 3 miniFAT, 4 mini stream
+    fat = [FREE] * 128
+    fat[0] = FATSECT
+    fat[1], fat[2], fat[3], fat[4] = 2, END, END, END
+    for i in range(body_sectors):
+        fat[BODY0 + i] = BODY0 + i + 1 if i < body_sectors - 1 else END
+    minifat = [END] * len(mini_chunks) + [FREE] * (128 - len(mini_chunks))
+
+    def dirent(name, typ, left, right, child, start, size):
+        nb = u16(name)
+        return (nb + b"\x00" * (64 - len(nb))
+                + struct.pack("<HBBiii", len(nb) + 2, typ, 1, left, right, child)
+                + b"\x00" * 36  # clsid + state bits + times (80-115)
+                + struct.pack("<III", start, size, 0))  # 116-127
+
+    ents = [
+        dirent("Root Entry", 5, -1, -1, 1, 4, len(mini_stream)),
+        dirent(small[0][0], 2, -1, 2, -1, mini_starts[0], len(small[0][1])),
+        dirent(small[1][0], 2, -1, 3, -1, mini_starts[1], len(small[1][1])),
+        dirent(small[2][0], 2, -1, 4, -1, mini_starts[2], len(small[2][1])),
+        dirent(small[3][0], 2, -1, 5, -1, mini_starts[3], len(small[3][1])),
+        dirent("__substg1.0_1000001F", 2, -1, 6, -1, BODY0, len(body)),
+        dirent("__attach_version1.0_#00000000", 1, -1, -1, 7, 0, 0),
+        dirent(att_sub[0], 2, -1, -1, -1, mini_starts[4], len(att_sub[1])),
+    ]
+    dirbuf = b"".join(ents).ljust(1024, b"\x00")
+
+    header = (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 16
+              + struct.pack("<HHHHHHIIIIIIIII",
+                            0x3E, 0x3, 0xFFFE, 9, 6, 0, 0,
+                            0, 1, 1, 0, 4096, 3, 1, END)
+              + struct.pack("<I", 0)
+              + struct.pack("<I", 0) + struct.pack("<I", FREE) * 108)
+    assert len(header) == 512
+
+    out = bytearray(header)
+    out += b"".join(struct.pack("<I", v) for v in fat)
+    out += dirbuf
+    out += b"".join(struct.pack("<I", v) for v in minifat)
+    out += mini_stream.ljust(512, b"\x00")
+    out += body.ljust(body_sectors * 512, b"\x00")
+    with open(path, "wb") as f:
+        f.write(out)
+
+
+def make_gantt_xlsx(fpath):
+    """Two iteration sheets the way the team's schedules are shaped:
+    a header row (issue/title/PE/Dev/status/done), one row per story.
+    Sheet 2 re-states issue 123 with a changed status — the upsert's
+    last-write-wins path."""
+    def cell(ref, text):
+        return f'<c r="{ref}" t="str"><v>{text}</v></c>' if text else ""
+
+    def sheet(rows):
+        body = "".join(
+            f'<row r="{i + 1}">' + "".join(
+                cell(chr(65 + c) + str(i + 1), v) for c, v in enumerate(row) if v
+            ) + "</row>"
+            for i, row in enumerate(rows)
+        )
+        return f"<worksheet><sheetData>{body}</sheetData></worksheet>"
+
+    head = ["Issue #", "Title", "PE", "Dev", "TP Status", "Done?"]
+    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "xl/workbook.xml",
+            '<workbook><sheets>'
+            '<sheet name="Iteration 2" sheetId="1" r:id="rId1"/>'
+            '<sheet name="Iteration 3" sheetId="2" r:id="rId2"/>'
+            "</sheets></workbook>")
+        z.writestr(
+            "xl/_rels/workbook.xml.rels",
+            '<Relationships>'
+            '<Relationship Id="rId1" Type="t" Target="worksheets/sheet1.xml"/>'
+            '<Relationship Id="rId2" Type="t" Target="worksheets/sheet2.xml"/>'
+            "</Relationships>")
+        z.writestr("xl/worksheets/sheet1.xml", sheet([
+            head,
+            ["#123", "Lock acquisition rework", "Claire Wang", "Dev One", "Completed", "Yes"],
+            ["456", "Beta Story", "", "", "In Progress", ""],
+            ["", "A milestone row with no issue", "", "", "", ""],
+        ]))
+        z.writestr("xl/worksheets/sheet2.xml", sheet([
+            head,
+            ["123", "Lock acquisition rework", "Claire Wang", "Dev One", "Testing", "Yes"],
+        ]))
 
 
 def run_curate(cfg_path, extra):
@@ -825,8 +1051,22 @@ def main():
     # sidecars on disk
     md_files = {f: os.path.join(r, f)
                 for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
-                if f.endswith(".md") and not f.startswith("_Sweep")}
+                if f.endswith(".md") and not f.startswith("_")}
     check("five sidecars written (incl. rescued pdf + html)", len(md_files) == 5, str(sorted(md_files)))
+
+    # browse index pages (v1.35): root catalog + per-kind indexes,
+    # rebuilt by every live run from the run's own rows
+    root_idx_path = os.path.join(sidecar_dir, "_Index.md")
+    root_idx = open(root_idx_path).read() if os.path.exists(root_idx_path) else ""
+    check("root browse index lists the corpus by kind",
+          "# LRS Doc Index — catalog" in root_idx
+          and "## Test Plans (1)" in root_idx
+          and "__doc" in root_idx, root_idx[:400])
+    kind_idx_path = os.path.join(sidecar_dir, "Test Plans", "_Index.md")
+    kind_idx = open(kind_idx_path).read() if os.path.exists(kind_idx_path) else ""
+    check("per-kind browse index links its sidecars",
+          "# Test Plans — index" in kind_idx and "__doc" in kind_idx
+          and "(<Test Plans/" not in kind_idx, kind_idx[:400])
 
     # body-text similarity: spec.pdf and notes.txt share body words but
     # NO keyword/edge — only the BodySim candidate source can join them
@@ -1051,6 +1291,12 @@ def main():
           "Nights stuck" in status2
           and "| corrupt.pptx | 2 |" in status2
           and "| missing.txt | 2 |" in status2, status2[:600])
+    # (same-minute gate runs share one log stamp, so only the newest
+    # run of this minute survives as a row — assert shape, not count)
+    check("status page carries the recent-runs trend table (v1.34)",
+          "## Recent runs (" in status2
+          and re.search(r"\| 2026-\d\d-\d\d \d\d:\d\d \| \d+ \| \d+ \| \d+ \|", status2) is not None,
+          status2[-500:])
 
     run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]
     check("run logs pruned to 30", len(run_logs) == 30, str(len(run_logs)))
@@ -1058,6 +1304,26 @@ def main():
           os.path.basename(out["logFile"]) in run_logs
           and sum(1 for f in run_logs if f.startswith("sweep-0000-")) < 40,
           str(sorted(run_logs)[:5]))
+
+    # list backup (v1.32): every run exports the run-start snapshots
+    # as a restorable gzip; the summary names the file
+    backups = [f for f in os.listdir(work_dir) if f.startswith("list-backup-")]
+    check("list backup exported to workDir",
+          len(backups) >= 1 and out.get("list_backup", "") in backups,
+          str(backups) + " " + str(out.get("list_backup")))
+    with gzip.open(os.path.join(work_dir, sorted(backups)[-1])) as f:
+        bk = json.load(f)
+    check("list backup holds all five lists with raw rows",
+          set(bk.get("lists", {})) == {"docIndex", "keywords", "docIds",
+                                       "docKeywords", "docLinks"}
+          and len(bk["lists"]["docIndex"]) >= 3
+          and "fields" in bk["lists"]["docIndex"][0],
+          str({k: len(v) for k, v in bk.get("lists", {}).items()}))
+    # heartbeat (v1.32): a successful live full run stamps last-success
+    with open(os.path.join(work_dir, "last-success.json")) as f:
+        hb = json.load(f)
+    check("heartbeat stamped by the live full run",
+          "at" in hb and hb.get("processed", -1) >= 0, str(hb))
 
     # ---- leg 3b: no pdftotext on the machine — flow-era behavior ----
     # a modified pdf skips gracefully (no Error, no hang) and the log
@@ -1241,6 +1507,42 @@ def main():
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
+    # ---- leg 3d2: --repoint (the librarian junction backfill) ------
+    # 'gantt charts' -> 'gantt chart' merged above; seed the historical
+    # state the setup doc describes: doc 300 carries BOTH alias and
+    # canonical junctions (alias row must be deleted), doc 301 only the
+    # alias (row must be re-pointed, KWKey + Title recomposed).
+    print("== repoint leg")
+    dup = state.seed(LISTS["docKeywords"], {
+        "Title": "OldDoc.pptx | gantt charts", "KWKey": f"300|{CUR['gantts']}",
+        "DocumentLookupId": 300, "KeywordLookupId": int(CUR["gantts"])})
+    state.seed(LISTS["docKeywords"], {
+        "Title": "OldDoc.pptx | gantt chart", "KWKey": f"300|{CUR['gantt']}",
+        "DocumentLookupId": 300, "KeywordLookupId": int(CUR["gantt"])})
+    moved = state.seed(LISTS["docKeywords"], {
+        "Title": "OtherDoc.pptx | gantt charts", "KWKey": f"301|{CUR['gantts']}",
+        "DocumentLookupId": 301, "KeywordLookupId": int(CUR["gantts"])})
+    dk = state.lists[LISTS["docKeywords"]]
+    dk_count = len(dk)
+    proc = run_curate(cfg_path, ["--dry-run", "--repoint"])
+    check("repoint dry run plans without writing",
+          proc.returncode == 0 and "repointed=1 deleted=1" in proc.stdout
+          and len(dk) == dk_count and dup in dk, proc.stdout[-300:])
+    proc = run_curate(cfg_path, ["--live", "--repoint"])
+    check("repoint deletes the duplicate alias junction",
+          proc.returncode == 0 and dup not in dk, proc.stdout[-300:])
+    check("repoint re-points the lone alias junction",
+          dk[moved].get("KeywordLookupId") == int(CUR["gantt"])
+          and dk[moved].get("KWKey") == f"301|{CUR['gantt']}"
+          and dk[moved].get("Title") == "OtherDoc.pptx | gantt chart",
+          str(dk[moved]))
+    check("repoint suggests the rerank pass",
+          "--rerank" in proc.stdout or "rerank" in proc.stdout, proc.stdout[-300:])
+    proc = run_curate(cfg_path, ["--live", "--repoint"])
+    check("second repoint pass is a no-op",
+          proc.returncode == 0 and "repointed=0 deleted=0" in proc.stdout,
+          proc.stdout[-300:])
+
     # ---- leg 3e: full-corpus re-rank (no AI, no extraction) --------
     print("== rerank leg")
     llm_before_rr = state.llm_calls
@@ -1328,6 +1630,212 @@ def main():
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
           f"doc{notes_id}" in spec_rr and "similar text " in spec_rr,
           spec_rr[-400:])
+
+    # ---- leg 3g: Graph download fallback for unsynced sources ------
+    # missing.txt is in scope but absent on disk (OneDrive lag) and has
+    # sat in the Error lane since leg 2. With the opt-in fallback the
+    # sweep fetches its bytes through Graph and indexes it this run.
+    print("== graph download fallback leg")
+    cfg["sweep"]["graphDownloadFallback"] = True
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "missing.txt"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "missing.txt"][0]
+    check("unsynced doc indexed via Graph download",
+          proc.returncode == 0 and out.get("graph_downloads") == 1
+          and row.get("IndexStatus") == "Indexed",
+          str(out) + " " + str(row)[:200])
+    check("fallback downloaded the right item",
+          state.content_downloads == ["16"], str(state.content_downloads))
+    cfg["sweep"]["graphDownloadFallback"] = False
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    # ---- leg 3h: OCR lane for image-only PDFs (v1.36, opt-in) ------
+    # scan.pdf sat Skipped at lane "plaintext" (pdftotext found no
+    # text). With tesseract configured the OCR rescue re-enters it,
+    # pdftoppm renders pages, tesseract reads them, and the doc
+    # indexes at lane "ocr" — which also blocks any re-rescue loop.
+    print("== ocr lane leg")
+    ppm_stub = os.path.join(tmp, "pdftoppm")
+    with open(ppm_stub, "w") as f:
+        f.write('#!/bin/sh\nif [ "$1" = "-v" ]; then exit 0; fi\n'
+                'touch "$7-1.png"\n')  # -png -r 200 -l N <pdf> <root>: root is $7
+    tess_stub = os.path.join(tmp, "tesseract")
+    with open(tess_stub, "w") as f:
+        f.write('#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\n'
+                'echo "Scanned OCR text about calibration measures."\n')
+    for s in (ppm_stub, tess_stub):
+        os.chmod(s, 0o755)
+    cfg["sweep"]["tesseractPath"] = tess_stub
+    cfg["sweep"]["pdftoppmPath"] = ppm_stub
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "scan.pdf"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "scan.pdf"][0]
+    check("image-only pdf rescued and indexed through OCR",
+          proc.returncode == 0 and out.get("processed") == 1
+          and row.get("IndexStatus") == "Indexed"
+          and row.get("ExtractionLane") == "ocr"
+          and "Scanned OCR text" in str(row.get("TextPreview", "")),
+          str(out) + " " + str(row)[:250])
+    # second run: lane "ocr" marks the attempt — no rescue loop
+    proc = run_sweep(cfg_path, ["--live", "--only", "scan.pdf"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("OCR-stamped doc does not rechurn", out.get("processed") == 0, str(out))
+    del cfg["sweep"]["tesseractPath"]
+    del cfg["sweep"]["pdftoppmPath"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    # ---- leg 3i: .msg lane (v1.37) ---------------------------------
+    # An Outlook message pre-stamped Skipped at lane "none" (the state
+    # every .msg row is in today) rescues once the lane exists: CFB
+    # parsed, subject/From/To/Sent + body as the sidecar text, the
+    # message's own sender/sent-time as the authorship trail, and the
+    # attachment sub-storage's identically-named body stream ignored.
+    print("== msg lane leg")
+    make_msg(os.path.join(widened_dir, "message.msg"),
+             "Weekly LRS sync notes", "Kevin Roper", "LRS Team",
+             ("Notes from the weekly LRS sync about calibration points "
+              "and event behavior on merged routes.\r\n\r\n") * 30,
+             1787239800000)  # 2026-08-20T15:30:00Z
+    src_files.append(src_item(21, "message.msg", "2026-08-21T09:00:00Z",
+                              seg="Shared Documents"))
+    state.seed(LISTS["docIndex"], {
+        "Title": "message.msg", "FileName": "message.msg",
+        "DocKey": "shared documents/message.msg", "IndexStatus": "Skipped",
+        "SourceModified": "2026-08-21T09:00:00Z", "PromptVersion": "v2.0",
+        "ExtractionLane": "none"})
+    state.llm_by_file["message.msg"] = {
+        "title": "Weekly Sync Notes", "docKind": "Other", "surface": "Other",
+        "summary": "Sync notes email.", "pe": "", "dev": "",
+        "targetRelease": "", "tools": [], "keywords": []}
+    proc = run_sweep(cfg_path, ["--live", "--only", "message.msg"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "message.msg"][0]
+    check("stamped .msg rescued and indexed through the msg lane",
+          proc.returncode == 0 and out.get("processed") == 1
+          and row.get("IndexStatus") == "Indexed"
+          and row.get("ExtractionLane") == "msg", str(out) + " " + str(row)[:250])
+    check("message's own sender/sent-time become the authorship trail",
+          row.get("SourceAuthor") == "Kevin Roper"
+          and str(row.get("SourceEdited", "")).startswith("2026-08-20T15:30"),
+          str(row)[:250])
+    preview = str(row.get("TextPreview", ""))
+    check("msg text carries subject, strip and body — attachment ignored",
+          preview.startswith("# Weekly LRS sync notes")
+          and "**From:** Kevin Roper" in preview
+          and "**Sent:** 2026-08-20 15:30" in preview
+          and "calibration points" in preview
+          and "MUST NOT LEAK" not in preview, preview[:300])
+    proc = run_sweep(cfg_path, ["--live", "--only", "message.msg"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("indexed .msg does not rechurn", out.get("processed") == 0, str(out))
+
+    # ---- leg 3j: embedding-assisted relatedness (v1.38, opt-in) ----
+    # The msg and the onboarding guide are a PARAPHRASE pair: no shared
+    # keyword, no id, BM25 body overlap below the floor — only the
+    # embedding signal can join them. With embedRelated on, one rerank
+    # relates them; a second rerank spends zero embedding calls (the
+    # content-hash cache); classify calls stay untouched throughout.
+    print("== embeddings leg")
+    llm_before_em = state.llm_calls
+    cfg["sweep"]["embedRelated"] = True
+    cfg["llm"]["embeddings"] = {"baseUrl": base, "apiKey": "mock-embed-key",
+                                "model": "mock-embed-1"}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--rerank"])
+    check("embed rerank exit 0", proc.returncode == 0, proc.stderr[-400:])
+    check("embeddings endpoint called with the bearer key",
+          state.embed_calls >= 1
+          and state.embed_last_auth == "Bearer mock-embed-key",
+          f"calls={state.embed_calls} auth={state.embed_last_auth}")
+    msg_id = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+              if f_.get("FileName") == "message.msg"][0]
+    guide_id = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+                if f_.get("FileName") == "guide.html"][0]
+    msg_sc = ""
+    for r, _, fs_ in os.walk(sidecar_dir):
+        for f in fs_:
+            if f.endswith(f"__doc{msg_id}.md"):
+                msg_sc = open(os.path.join(r, f)).read()
+    check("embeddings joined the paraphrase pair (msg relates the guide)",
+          f"doc{guide_id}" in msg_sc and "similar text" in msg_sc,
+          msg_sc[-600:])
+    check("embed rerank made no classify calls",
+          state.llm_calls == llm_before_em, f"{state.llm_calls} vs {llm_before_em}")
+    embed_after = state.embed_calls
+    proc = run_sweep(cfg_path, ["--live", "--rerank"])
+    check("second embed rerank spends zero embedding calls (hash cache)",
+          proc.returncode == 0 and state.embed_calls == embed_after,
+          f"calls={state.embed_calls} vs {embed_after}")
+    cfg["sweep"]["embedRelated"] = False
+    del cfg["llm"]["embeddings"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
+    # ---- leg 3k: remote-files mode (v1.39 — no OneDrive anywhere) ---
+    # Empty local dirs stand in for a hosted runner: the sidecar drive
+    # mirrors down (a pre-existing remote sidecar appears locally),
+    # the source doc downloads through the v1.33 fallback, and every
+    # sidecar/status/index write uploads through the drive API.
+    print("== remote-files leg")
+    remote_src = os.path.join(tmp, "remote-src")
+    remote_mirror = os.path.join(tmp, "remote-mirror")
+    remote_work = os.path.join(tmp, "remote-work")
+    for d in (remote_src, remote_mirror, remote_work):
+        os.makedirs(d, exist_ok=True)
+    state.remote_files["User Stories/pre-existing__doc999.md"] = {
+        "content": ("# Pre-existing story\n\n<!-- related:begin -->\n_None yet._\n"
+                    "<!-- related:end -->\n\n---\n\nRemote body about calibration "
+                    "points on merged routes.\n").encode(),
+        "etag": "seed-e1"}
+    rcfg = json.loads(json.dumps(cfg))
+    rcfg["paths"] = {"sourceLibrary": remote_src, "sidecarLibrary": remote_mirror,
+                     "workDir": remote_work}
+    rcfg["sweep"]["remoteFiles"] = True
+    rcfg["sweep"]["promptVersion"] = "v2.0-remote-leg"
+    rcfg_path = os.path.join(tmp, "remote-config.json")
+    with open(rcfg_path, "w") as f:
+        json.dump(rcfg, f)
+    dl_before = len(state.content_downloads)
+    proc = run_sweep(rcfg_path, ["--live", "--only", "notes.txt"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("remote run exit 0", proc.returncode == 0, proc.stderr[-600:])
+    check("remote mirror pulled the pre-existing sidecar",
+          os.path.exists(os.path.join(remote_mirror, "User Stories",
+                                      "pre-existing__doc999.md")),
+          str(os.listdir(remote_mirror)))
+    check("source doc downloaded through the Graph fallback",
+          out.get("graph_downloads") == 1
+          and len(state.content_downloads) == dl_before + 1, str(out))
+    notes_id2 = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+                 if f_.get("FileName") == "notes.txt"][0]
+    row = state.lists[LISTS["docIndex"]][notes_id2]
+    check("remote run reindexed the doc",
+          row.get("IndexStatus") == "Indexed"
+          and row.get("PromptVersion") == "v2.0-remote-leg", str(row)[:200])
+    up_keys = set(state.remote_files)
+    check("sidecar write-through uploaded to the drive",
+          any(k.endswith(f"__doc{notes_id2}.md") for k in up_keys), str(up_keys))
+    check("status + index pages uploaded too",
+          "_Sweep Status.md" in up_keys and "_Index.md" in up_keys, str(up_keys))
+    # second run: manifest carries the uploads' eTags, so the mirror
+    # re-downloads nothing and the stamped doc doesn't reprocess
+    dl2_before = len(state.drive_downloads)
+    proc = run_sweep(rcfg_path, ["--live", "--only", "notes.txt"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("second remote run: no re-downloads, no reprocess",
+          proc.returncode == 0 and out.get("processed") == 0
+          and len(state.drive_downloads) == dl2_before,
+          str(out) + f" downloads={len(state.drive_downloads) - dl2_before}")
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
@@ -1486,6 +1994,142 @@ def main():
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("fatal run surfaced on the status page",
           "RUN FAILED" in status and "AUTH EXPIRED" in status, status[:300])
+
+    # ---- leg 8: config validation — friendly failure, not a TypeError ----
+    # a config missing whole sections (fresh machine, typo'd key) must
+    # name every missing key in one message, before any network call
+    print("== config validation leg")
+    bad_cfg = os.path.join(tmp, "bad-config.json")
+    with open(bad_cfg, "w") as f:
+        json.dump({"paths": {"workDir": work_dir}}, f)
+    proc = run_sweep(bad_cfg, ["--dry-run"])
+    check("bad config fails fast", proc.returncode != 0)
+    check("bad config names the missing keys",
+          "missing required key(s)" in proc.stderr
+          and "sharePoint.hostname" in proc.stderr
+          and "paths.sourceLibrary" in proc.stderr, proc.stderr[-400:])
+    check("bad config error is not a bare TypeError",
+          "TypeError" not in proc.stderr, proc.stderr[-400:])
+    proc = run_curate(bad_cfg, ["--dry-run"])
+    check("curate rejects a bad config the same way",
+          proc.returncode != 0 and "missing required key(s)" in proc.stderr,
+          proc.stderr[-400:])
+
+    # ---- leg 9: alerting + dead-man heartbeat (v1.32) --------------
+    print("== alerting leg")
+    # fatal run -> webhook alert (graph unreachable, alerts configured)
+    alert_cfg = dict(cfg)
+    alert_cfg["graph"] = {"tenantId": "mock", "clientId": "mock",
+                          "clientSecret": "mock-secret",
+                          "baseUrl": "http://127.0.0.1:9/v1.0",
+                          "tokenUrl": "http://127.0.0.1:9/token",
+                          "maxRetries": 0}
+    alert_cfg["alerts"] = {"webhookUrl": base + "/alert"}
+    alert_cfg_path = os.path.join(tmp, "alert-config.json")
+    with open(alert_cfg_path, "w") as f:
+        json.dump(alert_cfg, f)
+    proc = run_sweep(alert_cfg_path, ["--live"])
+    check("fatal run posts a webhook alert",
+          proc.returncode != 0 and len(state.alerts) == 1
+          and "Doc Index sweep FAILED" in state.alerts[0].get("text", ""),
+          f"alerts={state.alerts}")
+    # fresh heartbeat -> ok, no alert, exit 0 (no Graph call either:
+    # the config's graph endpoints are unreachable on purpose)
+    proc = run_sweep(alert_cfg_path, ["--check-heartbeat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("fresh heartbeat passes the dead-man check",
+          proc.returncode == 0 and out.get("ok") is True
+          and len(state.alerts) == 1, str(out))
+    # stale heartbeat -> alert + nonzero exit
+    with open(os.path.join(work_dir, "last-success.json"), "w") as f:
+        json.dump({"at": "2020-01-01T00:00:00Z", "processed": 0, "errors": 0}, f)
+    proc = run_sweep(alert_cfg_path, ["--check-heartbeat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("stale heartbeat fails the dead-man check and alerts",
+          proc.returncode == 1 and out.get("ok") is False
+          and len(state.alerts) == 2
+          and "NO successful run" in state.alerts[1].get("text", ""),
+          str(out) + f" alerts={len(state.alerts)}")
+
+    # ---- leg 10: gantt.mjs — Flow #2 (Gantt → Issue Refs + edges) ---
+    # An indexed Schedule workbook: issue rows upsert Issue Refs
+    # (IssueKey dedup, last sheet wins), the schedule links to every
+    # doc carrying its issues (gantt edges), and an issue TITLE that
+    # names exactly one indexed doc joins that doc to the cluster
+    # (titlematch edge) — issue 456's "Beta Story" title names the
+    # Beta doc, which never cites 456.
+    print("== gantt leg")
+    make_gantt_xlsx(os.path.join(widened_dir, "schedule.xlsx"))
+    sched_seed = state.seed(LISTS["docIndex"], {
+        "Title": "Iteration Schedule", "FileName": "schedule.xlsx",
+        "DocKey": "shared documents/schedule.xlsx", "DocKind": "Schedule",
+        "IndexStatus": "Indexed", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-20T10:00:00Z"})
+    gantt_cfg = {
+        "sharePoint": dict(cfg["sharePoint"], libraryRootSegment="Shared Documents"),
+        "paths": {"sourceLibrary": widened_dir, "sidecarLibrary": sidecar_dir,
+                  "workDir": work_dir},
+        "graph": {"tenantId": "mock", "clientId": "mock", "clientSecret": "mock-secret",
+                  "baseUrl": base + "/v1.0", "tokenUrl": base + "/token",
+                  "maxRetries": 0},
+    }
+    gantt_cfg_path = os.path.join(tmp, "gantt-config.json")
+    with open(gantt_cfg_path, "w") as f:
+        json.dump(gantt_cfg, f)
+
+    def run_gantt(extra):
+        return subprocess.run(
+            ["node", "--experimental-strip-types", GANTT, "--config", gantt_cfg_path] + extra,
+            capture_output=True, text=True, cwd=REPO, env=dict(os.environ))
+
+    links_before = len(state.lists.get(LISTS["docLinks"], {}))
+    proc = run_gantt(["--dry-run"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("gantt dry run plans issues + edges without writing",
+          proc.returncode == 0 and out.get("issues_created") == 2
+          and out.get("gantt_edges") == 2 and out.get("titlematch_edges") == 1
+          and not state.lists.get(LISTS["issueRefs"])
+          and len(state.lists.get(LISTS["docLinks"], {})) == links_before,
+          str(out) + " " + proc.stderr[-300:])
+    proc = run_gantt(["--live"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    refs = list(state.lists.get(LISTS["issueRefs"], {}).values())
+    ref123 = next((r for r in refs if r.get("IssueKey", "").endswith("#123")), {})
+    ref456 = next((r for r in refs if r.get("IssueKey", "").endswith("#456")), {})
+    check("gantt live run minted both Issue Refs rows",
+          proc.returncode == 0 and len(refs) == 2
+          and ref123.get("IssueTitle") == "Lock acquisition rework"
+          and ref123.get("IterationLabel") == "Iteration 3"
+          and ref123.get("StatusSummary") == "TP Status=Testing"
+          and ref123.get("DoneFlag") is True
+          and ref123.get("PE") == "Claire Wang"
+          and ref123.get("SourceDocumentLookupId") == int(sched_seed)
+          and ref456.get("IssueTitle") == "Beta Story",
+          str(refs)[:500])
+    links = list(state.lists.get(LISTS["docLinks"], {}).values())
+    gantt_links = [l for l in links if l.get("LinkType") == "gantt"]
+    tm_links = [l for l in links if l.get("LinkType") == "titlematch"]
+    alpha_id, beta_id2 = int(by_name["Alpha Plan.pptx"][0]), int(by_name["Beta Story.pptx"][0])
+    check("gantt edges: schedule ↔ both carriers of #123",
+          len(gantt_links) == 2
+          and {frozenset((l.get("DocALookupId"), l.get("DocBLookupId")))
+               for l in gantt_links}
+          == {frozenset((int(sched_seed), alpha_id)), frozenset((int(sched_seed), beta_id2))}
+          and all("#123" in l.get("SharedValues", "") for l in gantt_links),
+          str(gantt_links)[:400])
+    check("titlematch edge: Beta joins issue 456's cluster via its title",
+          len(tm_links) == 1
+          and frozenset((tm_links[0].get("DocALookupId"), tm_links[0].get("DocBLookupId")))
+          == frozenset((int(sched_seed), beta_id2))
+          and "#456" in tm_links[0].get("SharedValues", ""),
+          str(tm_links)[:400])
+    proc = run_gantt(["--live"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("second gantt run is a no-op (IssueKey + LinkKey dedup)",
+          proc.returncode == 0 and out.get("issues_created") == 0
+          and out.get("issues_updated") == 0 and out.get("gantt_edges") == 0
+          and out.get("titlematch_edges") == 0
+          and len(state.lists.get(LISTS["issueRefs"], {})) == 2, str(out))
 
     server.shutdown()
     report()
