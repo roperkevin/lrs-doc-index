@@ -48,3 +48,5 @@ stage_r5/
 # r6 gate staging + generated cases
 stage_r6/
 rex_r6_cases.json
+# v2.2 gate staging
+stage_v2_2/

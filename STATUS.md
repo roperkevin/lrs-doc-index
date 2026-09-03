@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-08-15 (PIPELINE 100% OFF POWER AUTOMATE: keyword curation deployed locally — `local/curate.mjs` v1.11.1, weekly Saturday 08:00 task, `autoApprove` ON by owner decision, first live run merged 2 aliases; the "LRS Keyword Curation" AI Builder prompt was created on-tenant 2026-08-15 (`173b40ef-c376-4f81-b75b-65c72323d533`) — its absence from the model list proves the cloud KeywordCuration flow was never functional, so there was nothing to turn off. Nothing orchestrated remains in the cloud: nightly sweep + weekly curation both run locally under gates; the two AI Builder prompts and SharePoint storage are all that's tenant-side. 2026-08-14: sweep migrated, DocIndexSweep flow OFF; local sweep since hardened v1.5–v1.11.1 — status page, PDFs, out-of-scope + ghost lanes, body-sim relatedness, HTML lane)**.
+Last updated: **2026-09-03 (ZipTextExtract v2.2 — DL-1 diagram-label collapse: the drawn route diagrams in test-plan decks no longer flatten into hundreds of one-token label lines; they render as one `[figure: 10–22 · R1 · E1 · Output]` line per slide. Gate `check_batch_v2_2.py` PASSED, v2.1-vs-v2.2 byte-identical on every pre-existing fixture, PAD 27/27 and local sweep 128/128 green. Corpus rollout is `sweep.mjs --reformat` — open action 10.)**. Previously: **2026-08-15 (PIPELINE 100% OFF POWER AUTOMATE: keyword curation deployed locally — `local/curate.mjs` v1.11.1, weekly Saturday 08:00 task, `autoApprove` ON by owner decision, first live run merged 2 aliases; the "LRS Keyword Curation" AI Builder prompt was created on-tenant 2026-08-15 (`173b40ef-c376-4f81-b75b-65c72323d533`) — its absence from the model list proves the cloud KeywordCuration flow was never functional, so there was nothing to turn off. Nothing orchestrated remains in the cloud: nightly sweep + weekly curation both run locally under gates; the two AI Builder prompts and SharePoint storage are all that's tenant-side. 2026-08-14: sweep migrated, DocIndexSweep flow OFF; local sweep since hardened v1.5–v1.11.1 — status page, PDFs, out-of-scope + ghost lanes, body-sim relatedness, HTML lane)**.
 
 ## Core sweep
 
@@ -23,7 +23,7 @@ as of the handover; resume the paste plan only if rolling back.
 
 | Script | Repo version | Pasted on tenant |
 |---|---|---|
-| ZipTextExtract | **v2.1** (r6) | tenant runs v1.9 (pasted 2026-08-11); v2.0 superseded in-repo before its paste — **paste v2.1 with the v2.8 window** |
+| ZipTextExtract | **v2.2** (2026-09-03 — DL-1 diagram-label collapse; `check_batch_v2_2.py` PASSED, v2.1-vs-v2.2 IDENTICAL on every pre-v2.2 fixture) | tenant runs v1.9 (pasted 2026-08-11); v2.0 and v2.1 superseded in-repo before their paste — on rollback **paste v2.2 with the v2.8 window** (it carries CF-1 forward) |
 | MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
 | RelatedRank | **v2.2** (2026-08-15 — body-sim/filename/folder as dormant optional fields for the local sweep; flow-shaped output byte-identical to v2.1, `check_related` PASSED) | **PASTED v2.1** with the v2.6 window — sufficient on rollback (v2.2's fields stay dormant on the flow); paste v2.2 only if desired |
 | SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
@@ -121,8 +121,9 @@ v1.2 describes them — paste with the window, step 6).
 
 | Suite | Last green |
 |---|---|
-| check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) + check_batch_r4.py | 2026-08-13 (see `review/harness/README.md` run records) |
-| check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r5.py | skip as superseded by design (v1.9 / r2 / r3 / r5 generations) |
+| check_batch_v2_2.py (ZipTextExtract v2.2 / DL-1) + the standing suites (check_format incl. the new §12 diagram-label contract, check_related, check_regex) + render_sample.py + check_pad_runner.py (27/27) + check_local_sweep.py (128/128) | 2026-09-03 (see `review/harness/README.md` run records) |
+| check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) | 2026-08-13 (historical — r6 skips as superseded since the v2.2 promotion) |
+| check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r4.py / check_batch_r5.py / check_batch_r6.py | skip as superseded by design (v1.9 / r2 / r3 / r4 / r5 / r6 generations). **r4 has skipped since the RelatedRank v2.2 promotion (2026-08-15)** — the 2026-08-13 row above claimed it still passed, which stopped being true then; verified skipping 2026-09-03 |
 
 ## Open actions
 
@@ -135,3 +136,13 @@ v1.2 describes them — paste with the window, step 6).
 7. ~~v2.6 window~~ / ~~v2.7 window~~ — **DONE on tenant** (evidenced by the 2026-08-13 live export: RelatedRank v2.x bindings + two-phase wiring, GFM header template, PromptVersion v1.9) — but see action 1 for the mis-picks the windows introduced; the sidecar-format benefit is NOT live until FX-5 unsticks the backfill.
 8. TestPlanGen v2.8 (independent window): paste prompt v1.4 + designer edits §testplangen-v2_8 (both live flows), smoke one draft in a GFM viewer, then update the TestPlanGen row (`testplangen/CHANGES.md` v2.8).
 9. **TestPlanGen coverage rollout** (`testplangen/Coverage_Runbook.md`): the ordered, import/paste-only path through the pieces of actions 1, 4 and 8 plus the v2.0 ReferenceText contract — live drafts stay case-thin and doc-blind until FX-3/FX-5 revive `related:` retrieval, the fifth prompt parameter exists, and the current prompt is pasted. Every fix is baked into the current zips and prompt files (no designer edits required — that doc is now the patch-in-place alternative only); the runbook sequences imports, pastes and clicks with per-step checks and `Gen_summary` telemetry verification. Work it top to bottom instead of cherry-picking the pieces.
+10. **Roll DL-1 over the corpus** (`sweep.mjs --reformat`, no AI
+    spend): ZipTextExtract v2.2 changes sidecar *bodies* for
+    diagram-bearing decks. New and re-indexed docs pick it up
+    automatically on the nightly run; existing sidecars keep their old
+    label debris until a reformat pass re-extracts them. Run
+    `local\run_sweep.cmd --reformat` (or `node local/sweep.mjs --config
+    <cfg> --live --reformat`) once — it rewrites only the text below
+    the `---` seam, preserving header, metadata yaml, related region
+    and docs block byte-for-byte. No PromptVersion bump: the metadata
+    format is unchanged, so this must NOT trigger a full reindex.

@@ -28,6 +28,11 @@ validates the *intentional* format contract:
      set), attr-order-proof rels, link-safe digit strip, astral
      entities, content-H1 escaping, date-validated core properties,
      and the encrypted / truncated-stored-block throw paths
+ 10. the r2 batch behaviors (SB-4..SB-8), 11. the r6 code-fencing
+     contract (CF-1), and 12. the v2.2 diagram-label collapse (DL-1:
+     a clustered set of floating label shapes renders as one
+     "[figure: ...]" line — tick runs compressed, dedupe, prose and
+     tables untouched, sub-threshold slides inline)
 
 Prereqs: make_fixtures.py has run in this directory. The wrapped Node
 runners are (re)generated here on every run.
@@ -378,6 +383,28 @@ check('```' not in pt and
       'Select the route; click Save; verify the label renders;' in pt and
       'return to the map view and verify the resulting label' in pt,
       'prose_deck: instruction-shaped prose gains no fence at all')
+
+# ---- 12: the v2.2 behavior (ZipTextExtract v2.2 — DL-1 diagram-label
+# collapse) ----------------------------------------------------------------
+dt = run_node('zte_cur.ts', 'diagram_deck.pptx.b64', '')['out']['text']
+dlines = [ln.rstrip() for ln in dt.split('\n')]
+figs = [ln for ln in dlines if ln.startswith('[figure:')]
+check(figs == ['[figure: 10–15 · R1 · E1 · Output]'],
+      f'diagram_deck: exactly one figure line, runs compressed + deduped ({figs})')
+check(not any(ln in ('11', 'R1', 'E1', 'Output') for ln in dlines),
+      'diagram_deck: no label renders as a standalone body line')
+slide2_at = dt.index('## Slide 2')
+check(dt.index(figs[0]) < slide2_at if figs else False,
+      'diagram_deck: the figure line belongs to slide 1')
+check('Verify the split renders across the diagram below today' in dt,
+      'diagram_deck: prose textbox stays in the body')
+check('Modify this test case to use measure five instead' in dt,
+      'diagram_deck: long floating callout stays inline (not a label)')
+check('| Route ID | R1 |' in dt and '| Measure | 10 |' in dt,
+      'diagram_deck: graphicFrame table untouched by the collapse')
+s2 = dt[slide2_at:]
+check('[figure:' not in s2 and all(l in s2.split('\n') for l in ('A1', 'B2', 'C3')),
+      'diagram_deck: 3 floating labels stay inline (below the cluster threshold)')
 
 print()
 if failures:

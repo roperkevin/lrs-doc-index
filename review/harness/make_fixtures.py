@@ -503,6 +503,45 @@ _b64('prose_deck.pptx')
 print('r6 fixtures:', {f: os.path.getsize(f) for f in
                        ('code_deck.pptx', 'prose_deck.pptx')})
 
+# ---- v2.2 fixtures (DL-1 diagram-label collapse) --------------------------
+# diagram_deck: slide 1 draws a route diagram the corpus way — dashed
+# connectors plus tiny floating text boxes for tick numbers and
+# route/event ids — alongside real content (a prose paragraph, a table,
+# a long floating callout that must stay inline). Slide 2 is the
+# control: only 3 short floating boxes, below the cluster threshold, so
+# they must stay inline and no [figure: ...] line may appear.
+# Owned by check_format.py §12; not in the recall set (tick numbers
+# deliberately compress to "10–15").
+from pptx.enum.shapes import MSO_CONNECTOR
+
+prs_d = Presentation()
+s_d = prs_d.slides.add_slide(prs_d.slide_layouts[5])
+s_d.shapes.title.text = "DiagramTitle Route Split"
+tf_d = s_d.shapes.add_textbox(Inches(0.5), Inches(1.2), Inches(8), Inches(1)).text_frame
+tf_d.text = "Verify the split renders across the diagram below today"
+for k, lbl in enumerate(['10', '11', '12', '13', '14', '15',
+                         'R1', 'E1', 'E1', 'Output']):
+    s_d.shapes.add_textbox(Inches(0.4 + 0.55 * k), Inches(2.6),
+                           Inches(0.5), Inches(0.3)).text_frame.text = lbl
+s_d.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(0.4), Inches(3.2),
+                         Inches(6.0), Inches(3.2))
+s_d.shapes.add_textbox(Inches(0.5), Inches(3.6), Inches(6), Inches(0.5)) \
+    .text_frame.text = "Modify this test case to use measure five instead"
+tbl_d = s_d.shapes.add_table(2, 2, Inches(0.5), Inches(4.5), Inches(6), Inches(1)).table
+tbl_d.cell(0, 0).text = 'Route ID'
+tbl_d.cell(0, 1).text = 'R1'
+tbl_d.cell(1, 0).text = 'Measure'
+tbl_d.cell(1, 1).text = '10'
+s_d2 = prs_d.slides.add_slide(prs_d.slide_layouts[5])
+s_d2.shapes.title.text = "ControlTitle"
+for k, lbl in enumerate(['A1', 'B2', 'C3']):
+    s_d2.shapes.add_textbox(Inches(0.5 + k), Inches(2), Inches(0.6), Inches(0.3)) \
+        .text_frame.text = lbl
+prs_d.save('diagram_deck.pptx')
+_b64('diagram_deck.pptx')
+
+print('v2.2 fixtures:', {f: os.path.getsize(f) for f in ('diagram_deck.pptx',)})
+
 # SB-5 (MediaExtract leg): storednlen_img.pptx — a single media entry
 # whose deflate stream is a stored block with a wrong NLEN. MediaExtract
 # only inflates media entries, so the docx variant never reaches its

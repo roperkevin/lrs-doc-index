@@ -46,7 +46,7 @@ keeps the old yaml-on-top layout).
 | flow/DocIndexSweep_v2_7_fix.zip | Repair import package (live-export skeleton, PV-1 scrubbed, + the v2.7-fix definition — payload byte-identical to the folder) | v2.7-fix |
 | flow/DocIndexSweep_v2_8.zip | Import package (the 2026-08-13 live export's OWN skeleton, PV-1 scrubbed, + the v2.8 definition — payload byte-identical to the folder) | v2.8 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing | v2.1 (paste pending — v2.8 window) |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse | v2.2 (deployed — the local sweep runs it directly) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
@@ -59,7 +59,8 @@ keeps the old yaml-on-top layout).
 | review/patches/SidecarPatch_v1_3.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.3 |
 | review/patches/RelatedRank_v2_0.ts | r3 patch (gated; superseded in-repo by v2.1 before its paste) | v2.0 |
 | review/patches/RelatedRank_v2_1.ts | r4 patch (gated + promoted 2026-08-12; pasted with the v2.6 window per the export evidence) | v2.1 |
-| review/patches/ZipTextExtract_v2_1.ts | r6 patch (gated + promoted 2026-08-13; paste with the v2.8 window) | v2.1 |
+| review/patches/ZipTextExtract_v2_1.ts | r6 patch (gated + promoted 2026-08-13; superseded in-repo by v2_2 before its paste — the v2.2 gate's old-side artifact) | v2.1 |
+| review/patches/ZipTextExtract_v2_2.ts | Diagram-label collapse (gated + promoted 2026-09-03; no paste — the local sweep runs `scripts/` directly; replaces the pending v2.1 paste on rollback) | v2.2 |
 | review/patches/RegexExtract_v1_4.ts | r6 patch (gated + promoted 2026-08-13; paste with the v2.8 window) | v1.4 |
 | review/patches/SidecarPatch_v1_6.ts | r6 patch (gated + promoted 2026-08-13; safe to paste any time before the v2.8 window) | v1.6 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
