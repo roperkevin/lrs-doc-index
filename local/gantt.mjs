@@ -76,10 +76,11 @@ function loadConfig(argv) {
     else if (a === "--live") args.flags.live = true;
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--only") args.flags.only = argv[++i];
+    else if (a === "--inspect") args.flags.inspect = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: gantt.mjs --config <config.json> [--live|--dry-run] [--only <file>]");
+    throw new Error("usage: gantt.mjs --config <config.json> [--live|--dry-run] [--only <file>] [--inspect]");
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -88,6 +89,7 @@ function loadConfig(argv) {
   if (args.flags.live) cfg.gantt.dryRun = false;
   if (args.flags.dry) cfg.gantt.dryRun = true;
   cfg.gantt.only = args.flags.only || "";
+  cfg.gantt.inspect = !!args.flags.inspect;
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";
   cfg.sweep = cfg.sweep || {};
   return cfg;
@@ -100,8 +102,11 @@ const ISSUE_URL_RE = /devtopia\.esri\.com\/([^\/\s"'<>\)\]]+)\/([^\/\s"'<>\)\]]+
 function headerRole(text) {
   const t = lower(text).trim();
   if (!t) return null;
-  if (t === "#" || t === "id" || t.includes("issue") || t === "story #") return "issue";
-  if (t.includes("title") || t === "name" || t === "task" || t === "task name" || t === "story") return "title";
+  // issue outranks title so "story #" / "user story #" read as issue
+  if (t === "#" || t === "id" || t.includes("issue") || t.includes("devtopia") ||
+      t.endsWith("#")) return "issue";
+  if (t.includes("title") || t === "name" || t === "task" || t === "task name" ||
+      t.includes("story")) return "title";
   if (t === "pe") return "pe";
   if (t === "dev" || t.includes("developer")) return "dev";
   if (t.includes("done")) return "done";
@@ -109,10 +114,12 @@ function headerRole(text) {
   return null;
 }
 
-/** Header row = the first of the top 10 rows carrying BOTH an issue
- *  column and a title column. Returns {cols, at} or null. */
+/** Header row = the first of the top 30 rows carrying BOTH an issue
+ *  column and a title column (30, not 10 — real schedules stack
+ *  legends and title banners above the table). Returns {cols, at}
+ *  or null. */
 function findHeader(grid) {
-  for (let i = 0; i < Math.min(grid.length, 10); i++) {
+  for (let i = 0; i < Math.min(grid.length, 30); i++) {
     const cols = { status: [] };
     for (let c = 0; c < grid[i].length; c++) {
       const role = headerRole(grid[i][c]);
@@ -229,6 +236,69 @@ async function main() {
     DocKind: String(it.fields?.DocKind || ""),
     IndexStatus: String(it.fields?.IndexStatus || ""),
   }));
+  // the sweep's own root-segment mapping, over the lowercased DocKey
+  const rootLower = lower(sp.libraryRootSegment) + "/";
+  const localOf = (docKey) => {
+    const k = String(docKey);
+    const rel = lower(k).startsWith(rootLower) ? k.slice(rootLower.length) : k;
+    return path.join(cfg.paths.sourceLibrary, ...rel.split("/"));
+  };
+  const schedules = docIndexRows.filter((r) =>
+    r.IndexStatus === "Indexed" && r.DocKind === "Schedule" &&
+    lower(r.DocKey).endsWith(".xlsx") &&
+    (!g.only || lower(r.FileName.trim()) === lower(g.only.trim())));
+
+  // --inspect: no writes, no further fetches — dump each schedule's
+  // sheet structure and what the header detector saw, so a zero-row
+  // run can be diagnosed from real workbooks instead of guessed at
+  if (g.inspect) {
+    for (const sched of schedules) {
+      const local = localOf(sched.DocKey);
+      process.stdout.write(`\n=== ${sched.FileName} ===\n`);
+      if (!fs.existsSync(local)) {
+        process.stdout.write(`  (not in the synced library: ${local})\n`);
+        continue;
+      }
+      let grids;
+      try {
+        grids = xlsxToGrids(fs.readFileSync(local));
+      } catch (e) {
+        process.stdout.write(`  (unreadable: ${e.message})\n`);
+        continue;
+      }
+      for (const sheet of grids) {
+        const grid = sheet.grid || [];
+        const width = grid.reduce((m, r) => Math.max(m, r.length), 0);
+        process.stdout.write(`-- sheet "${sheet.name}": ${grid.length} rows x ${width} cols\n`);
+        let shown = 0;
+        for (let i = 0; i < grid.length && shown < 12; i++) {
+          const cells = (grid[i] || []).map((c) => String(c ?? "").trim());
+          if (cells.every((c) => c === "")) continue;
+          shown++;
+          const roles = cells
+            .map((c, k) => {
+              const r = headerRole(c);
+              return r ? `${k}:${r}` : null;
+            })
+            .filter(Boolean)
+            .join(" ");
+          const shownCells = cells.slice(0, 8)
+            .map((c) => (c === "" ? "·" : `[${c.length > 18 ? c.slice(0, 17) + "…" : c}]`))
+            .join(" ");
+          process.stdout.write(
+            `   row ${i}: ${shownCells}` +
+            (cells.length > 8 ? ` (+${cells.length - 8} cols)` : "") +
+            (roles ? `   roles{${roles}}` : "") + "\n");
+        }
+        const head = findHeader(grid);
+        process.stdout.write(head
+          ? `   header detected at row ${head.at}\n`
+          : "   NO header detected (needs an issue column AND a title column in the first 30 rows)\n");
+      }
+    }
+    return;
+  }
+
   const docIdRows = (await rows("docIds",
     ["Repo", "IssueNumber", "IdKey", "DocumentLookupId"])).map((it) => ({
     Repo: String(it.fields?.Repo || ""),
@@ -260,10 +330,6 @@ async function main() {
   }
   const idKeyPairs = new Set(docIdRows.map((r) => `${r.DocumentId}|${r.Repo}#${r.IssueNumber}`));
 
-  const schedules = docIndexRows.filter((r) =>
-    r.IndexStatus === "Indexed" && r.DocKind === "Schedule" &&
-    lower(r.DocKey).endsWith(".xlsx") &&
-    (!g.only || lower(r.FileName.trim()) === lower(g.only.trim())));
   const matchableDocs = docIndexRows.filter((r) =>
     r.IndexStatus === "Indexed" && r.DocKind !== "Schedule");
 
@@ -294,14 +360,6 @@ async function main() {
     });
     linkKeys.add(linkKey);
     return true;
-  };
-
-  // the sweep's own root-segment mapping, over the lowercased DocKey
-  const rootLower = lower(sp.libraryRootSegment) + "/";
-  const localOf = (docKey) => {
-    const k = String(docKey);
-    const rel = lower(k).startsWith(rootLower) ? k.slice(rootLower.length) : k;
-    return path.join(cfg.paths.sourceLibrary, ...rel.split("/"));
   };
 
   for (const sched of schedules) {

@@ -76,6 +76,22 @@ rescue pattern). Gate legs: a generated CFB fixture (mini + regular
 sector chains, attachment isolation) rescues, indexes with authorship
 and the full strip, and doesn't rechurn. 189/189.
 
+## gantt v1.1 (2026-09-03) — companion job
+
+First real-corpus run found all 4 schedules but parsed **0 rows** —
+the header detector was too narrow for the team's actual workbooks.
+Two widenings, both gated by the reshaped fixture (sheet 2 now hides
+its header under a 12-row banner and uses the new vocabulary, so the
+standing last-write-wins assertion discriminates against v1.0):
+header scan 10 → **30 rows** (real schedules stack banners/legends
+above the table), and vocabulary — issue columns also match
+`devtopia` / any label ending `#` ("User Story #"), title columns
+also match any label containing `story`. Plus **`--inspect`**: dumps
+each schedule's sheets (dimensions, first 12 non-empty rows, the
+roles the detector assigned, where/whether a header was found) with
+zero writes — run it whenever a schedule parses to 0 rows and read
+the real header off the output instead of guessing. 202/202.
+
 ## gantt v1.0 (2026-09-03) — companion job
 
 **Flow #2, finally** (`local/gantt.mjs` — the follow-on the README

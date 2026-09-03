@@ -656,7 +656,11 @@ def make_gantt_xlsx(fpath):
     """Two iteration sheets the way the team's schedules are shaped:
     a header row (issue/title/PE/Dev/status/done), one row per story.
     Sheet 2 re-states issue 123 with a changed status — the upsert's
-    last-write-wins path."""
+    last-write-wins path — and is deliberately awkward: a 12-row
+    banner block above the header (past the original 10-row scan) and
+    the "User Story # / User Story" column vocabulary, so the header
+    tolerance added after the first real-corpus run (0 rows parsed)
+    stays gated."""
     def cell(ref, text):
         return f'<c r="{ref}" t="str"><v>{text}</v></c>' if text else ""
 
@@ -689,10 +693,11 @@ def make_gantt_xlsx(fpath):
             ["456", "Beta Story", "", "", "In Progress", ""],
             ["", "A milestone row with no issue", "", "", "", ""],
         ]))
-        z.writestr("xl/worksheets/sheet2.xml", sheet([
-            head,
-            ["123", "Lock acquisition rework", "Claire Wang", "Dev One", "Testing", "Yes"],
-        ]))
+        z.writestr("xl/worksheets/sheet2.xml", sheet(
+            [["Iteration 3 planning board", "", "", "", "", ""]]
+            + [["", "", "", "", "", ""]] * 11
+            + [["User Story #", "User Story", "PE", "Dev", "TP Status", "Done?"],
+               ["123", "Lock acquisition rework", "Claire Wang", "Dev One", "Testing", "Yes"]]))
 
 
 def run_curate(cfg_path, extra):
@@ -2130,6 +2135,16 @@ def main():
           and out.get("issues_updated") == 0 and out.get("gantt_edges") == 0
           and out.get("titlematch_edges") == 0
           and len(state.lists.get(LISTS["issueRefs"], {})) == 2, str(out))
+    proc = run_gantt(["--inspect"])
+    check("gantt --inspect dumps sheet structure and detection results",
+          proc.returncode == 0
+          and 'sheet "Iteration 2"' in proc.stdout
+          and 'sheet "Iteration 3"' in proc.stdout
+          and "header detected at row 0" in proc.stdout
+          and "header detected at row 12" in proc.stdout
+          and "roles{" in proc.stdout
+          and not state.lists.get(LISTS["issueRefs"], {}).get("-1"),
+          proc.stdout[-600:] + proc.stderr[-200:])
 
     server.shutdown()
     report()
