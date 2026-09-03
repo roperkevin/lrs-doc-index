@@ -1,5 +1,58 @@
 # Local sweep — release notes
 
+## v1.24 (2026-09-03)
+
+**Interactive sign-in (`auth: "interactive"`)** — a Conditional Access
+policy started rejecting the device-code sign-in with `AADSTS53003`
+("your sign-in was successful but does not meet the criteria to access
+this resource", `Device state: Unregistered`), which took the whole
+nightly pipeline down: the refresh token expired, re-auth was refused,
+and every run since failed closed with `AUTH EXPIRED`.
+
+The block is the **flow**, not the client. A device-code sign-in
+completes in a browser with no relationship to the machine running the
+sweep, so it can present no device identity — a policy requiring a
+compliant or joined device refuses it however the client is configured.
+Proven on the affected machine: two different pre-registered public
+clients (`14d82eec…` Graph CLI, `04b07795…` Azure CLI) failed
+identically, while `dsregcmd /status` showed the box hybrid-joined,
+`DeviceAuthStatus: SUCCESS`, with a healthy PRT.
+
+`auth: "interactive"` runs the **authorization-code grant with PKCE over
+a loopback redirect** instead. The sign-in happens in the user's own
+browser on this machine, so it carries the PRT and device state and the
+policy is satisfied. Entra ignores the port of an `http://127.0.0.1`
+redirect for public clients, so nothing needs registering. Only the
+FIRST sign-in differs: caching, silent refresh and the SPO seed-from-
+Graph path are untouched, so scheduled runs behave exactly as before.
+Applies to `graph` and flows to Dataverse/SPO (each keeps its own public
+client, as in device mode — SPO must stay on the Graph CLI client whose
+tokens carry real SharePoint permissions).
+
+Three bugs the gate caught while building it, all of which would have
+bitten a real sign-in:
+
+- **A callback race.** The waiter promise was armed *after* opening the
+  browser, so a fast redirect landed while no resolver existed and the
+  flow waited for a callback that had already happened.
+- **An uncleared 5-minute timer.** The `Promise.race` timeout was never
+  cancelled, so after a *successful* sign-in the process sat for the
+  full five minutes before exiting — once per resource.
+- **A lingering keep-alive socket.** `server.close()` waits for the
+  browser's open connection; the listener is now unref'd and its
+  connections dropped.
+
+`dsregcmd /status` is the prerequisite check: if the machine is genuinely
+unregistered, interactive fails the same way and the app registration
+(`auth: "app"`, already supported) is the only route.
+
+Gate: `check_local_sweep.py` **135/135** (was 128) — a new interactive
+leg drives the full grant against a mock authorize endpoint and asserts
+the S256 PKCE challenge, a loopback redirect URI, that graph+dataverse
+each sign in once while SPO still seeds silently, that the same caches
+are written, and that a second run refreshes with no new sign-in. PAD
+27/27.
+
 ## v1.23 (2026-09-03)
 
 **Slide diagrams are drawn, not described.** v1.22 stopped the label

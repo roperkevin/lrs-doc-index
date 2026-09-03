@@ -24,7 +24,7 @@
  *   key@=<file>  reads the value from a UTF-8 file (same as the
  *                {"$file": ...} indirection in batch jobs).
  *   file=<path>  op-aware alias: the source-file param of the op
- *                (zipFile for ziptext/media, xlsxFile for
+ *                (zipFile for ziptext/media/figures, xlsxFile for
  *                workbookdump).
  *   --argsfile   a UTF-8 file of key=value / key@= lines, one per
  *                line; blank lines and #-comment lines are skipped.
@@ -98,7 +98,8 @@ for (const [opName, file] of Object.entries(SCRIPT_FILES)) {
 }
 
 // `file=` resolves to the op's source-file param.
-const FILE_PARAM = { ziptext: "zipFile", media: "zipFile", workbookdump: "xlsxFile" };
+const FILE_PARAM = { ziptext: "zipFile", media: "zipFile", figures: "zipFile",
+                     workbookdump: "xlsxFile" };
 
 function assignArg(op, pair, from) {
   const eq = pair.indexOf("=");

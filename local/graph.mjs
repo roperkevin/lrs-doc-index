@@ -56,13 +56,15 @@ export class GraphClient {
       `https://login.microsoftonline.com/${cfg.tenantId || "organizations"}/oauth2/v2.0/token`;
     this.maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
     this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
-    if (this.mode === "device") {
+    if (this.mode === "device" || this.mode === "interactive") {
       this.delegated = new DelegatedAuth({
+        mode: this.mode,
         clientId: cfg.clientId || GRAPH_PUBLIC_CLIENT,
         scopes: ["https://graph.microsoft.com/Sites.ReadWrite.All", "offline_access"],
         cachePath: cfg.tokenCache,
         tenantId: cfg.tenantId,
         deviceUrl: cfg.deviceUrl,
+        authorizeUrl: cfg.authorizeUrl,
         tokenUrl: cfg.tokenUrl,
       });
     }
@@ -71,7 +73,7 @@ export class GraphClient {
   }
 
   async token() {
-    if (this.mode === "device") return this.delegated.token();
+    if (this.delegated) return this.delegated.token();
     if (this._token && Date.now() < this._tokenExpires - 60000) return this._token;
     const body = new URLSearchParams({
       grant_type: "client_credentials",
@@ -238,16 +240,18 @@ export class SpoClient {
     this.baseUrl = cfg.baseUrl || cfg.siteUrl;
     this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
     const origin = new URL(cfg.siteUrl).origin;
-    if (this.mode === "device") {
+    if (this.mode === "device" || this.mode === "interactive") {
       // v1 resource form: the v2 named scopes are blocked for these
       // first-party clients (AADSTS65002 preauthorization)
       this.delegated = new DelegatedAuth({
+        mode: this.mode,
         clientId: cfg.clientId || GRAPH_PUBLIC_CLIENT,
         resource: origin,
         cachePath: cfg.tokenCache,
         seedCachePath: cfg.seedCachePath,
         tenantId: cfg.tenantId,
         deviceUrl: cfg.deviceUrl,
+        authorizeUrl: cfg.authorizeUrl,
         tokenUrl: cfg.tokenUrl,
       });
     } else {
@@ -261,7 +265,7 @@ export class SpoClient {
   }
 
   async token() {
-    if (this.mode === "device") return this.delegated.token();
+    if (this.delegated) return this.delegated.token();
     if (this._token && Date.now() < this._tokenExpires - 60000) return this._token;
     const body = new URLSearchParams({
       grant_type: "client_credentials",
