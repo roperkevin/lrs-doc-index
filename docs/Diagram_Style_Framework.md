@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v2.1)
+# Diagram style framework (SlideFigures v2.2)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -442,8 +442,13 @@ place every part by hand.
   implicit, so a wrong guess would draw a wrong curve — omission is the
   honest failure). The redraw path covers the shapes this corpus actually
   uses (straight, vertical, loop, lollipop, branch, alpha, infinity, gap).
-- The raster tiers read PNGs only (JPEG needs a DCT decoder no pasted
-  script should carry), trace axis-aligned structure only, and cannot OCR —
+- The raster tiers decode every raster the corpus pastes (v2.2): full
+  PNG — all bit depths, palettes, transparency composited onto the white
+  ground, Adam7 interlace — plus baseline JPEG, GIF and BMP, each
+  verified against Pillow's decode. Progressive JPEG (SOF2) is refused
+  by design (its spectral-selection scans would triple the decoder for a
+  format PowerPoint never writes) and stays a caption. The tiers trace
+  axis-aligned structure only, and cannot OCR —
   anything printed inside a picture is pixels, so a traced ruler may carry
   ticks but no numbers, and a wireframe's text rows are placeholder bars
   unless the sweep's opt-in OCR lane supplies transcriptions (v2.1). The

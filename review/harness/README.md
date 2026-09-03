@@ -762,3 +762,27 @@ written SVG, an under-confidence word staying a bar) green alongside;
 the script type-checks at ES2017. Slides 13 and 15 verified visually
 in Chromium — transcribed text legible in all three weights, no seam,
 one separator.
+
+### Last run (2026-09-03, Node 22.22.2) — v2.2 gate (DF-13)
+
+**PASS** — 22 figures. New fixture slides: 16/17/18 carry the slide-13
+interface screenshot as JPEG (q90 4:2:0), GIF (adaptive palette) and
+BMP; 19 is a progressive JPEG (SOF2 — refused by design, stays a
+caption); 20 is the previously-refused PNG shape — 4-bit palette with
+a transparent ground whose palette entry is deliberately RED, so a
+decoder that ignores tRNS renders a red ground and fails the
+flat-light-ground gate. New assertions: each format produces a
+wireframe with the PNG render's structure (2 panels + fields), the
+progressive slide stays silent. 8 of the 9 new assertions FAIL
+against the v2.1 script (fixture discriminates; the progressive
+refusal holds on both). Decoder development gate (scratch, vs
+Pillow): 21 cases — JPEG 4:4:4/4:2:2/4:2:0/grayscale/restart-marker/
+odd-size, GIF plain/interlaced/gradient, BMP 24-bit/8-bit-palette,
+PNG 1-bit/4-bit-palette/grey+alpha/transparent-palette/16-bit-grey/
+16-bit-RGB/Adam7 — every non-JPEG case bit-exact, JPEG mean channel
+error < 3.5 (nearest vs libjpeg fancy chroma upsampling).
+check_svg2pptx PASS with all 22 fixture figures converting; PAD
+27/27, the local sweep gate 207/207, standing suites and the ES2017
+typecheck green alongside. The JPEG wireframe verified visually in
+Chromium — structure identical to the PNG render, no block-noise
+artifacts.

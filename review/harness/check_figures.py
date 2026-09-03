@@ -552,6 +552,23 @@ for f in res3.get('figures', []):
 check(out3.returncode == 0 and g13 == u,
       'OCR: malformed transcription JSON degrades to the placeholder render, never a throw')
 
+# ---- v2.2 (DF-13): every common raster format reaches the raster tiers ----
+# slides 16-18 carry the slide-13 screenshot as JPEG / GIF / BMP; slide 20
+# as the previously-refused PNG shape (4-bit palette, transparent ground
+# whose palette entry is RED — a decoder that ignores tRNS renders a red
+# ground and fails the flat-light-ground gate). Slide 19 is a progressive
+# JPEG: refused by design, stays a caption.
+for _sl, _fmt in ((16, 'JPEG'), (17, 'GIF'), (18, 'BMP'),
+                  (20, '4-bit transparent PNG')):
+    _f = figs.get(_sl, {}).get('svg', '')
+    check(bool(_f) and 'interface wireframe' in _f,
+          f'{_fmt} screenshot produces a wireframe figure')
+    check(_f.count('class="wf-panel"') == 2 and 'class="wf-field"' in _f,
+          f'{_fmt}: wireframe structure matches the PNG render '
+          f'({_f.count(chr(34) + "wf-panel")})')
+check(19 not in figs,
+      'progressive JPEG (SOF2) stays a caption — refused by design')
+
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
 for n, f in allfigs:
