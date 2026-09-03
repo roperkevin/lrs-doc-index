@@ -58,6 +58,7 @@ import {
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { writeIndexPages } from "./lib/indexpages.mjs";
+import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
   upsertDocsBlock, bodySeamEnd, yamlList,
@@ -193,6 +194,20 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     setStep("read-txt");
     docText = fs.readFileSync(localPath, "utf8");
     lane = "plaintext";
+  } else if (!oversize && ext === "msg") {
+    // v1.37: the msg lane — Outlook messages parse via the zero-dep
+    // CFB reader (lib/msg.mjs). The message's own sender/sent-time
+    // become the authorship trail (the OOXML core-properties pattern);
+    // a message with no extractable body still skips, at lane "msg"
+    // so the attempt is recorded and never rechurns.
+    setStep("msg");
+    const m = parseMsg(fs.readFileSync(localPath));
+    lane = "msg";
+    srcAuthor = m.from || "";
+    srcEdited = m.date || modified || "";
+    if (String(m.body || "").trim() !== "" || m.subject) {
+      docText = msgToMarkdown(m, path.basename(localPath));
+    }
   } else if (!oversize && (ext === "html" || ext === "htm")) {
     // v1.10: the htmltotext lane the ExtractionLane schema always
     // reserved but no flow version implemented — HTML finally indexes
@@ -232,7 +247,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
       lane = "ocr";
     }
   }
-  // pdf(no tool)/msg/image/other/oversize (and empty html): DocText
+  // pdf(no tool)/image/other/oversize (and empty html/msg): DocText
   // stays empty → Skip lane.
   return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
            figureCount, figureError };
@@ -826,6 +841,13 @@ async function main() {
       ext === "pdf" && !!ocrTools && !!pdfTool && inScope &&
       existing?.IndexStatus === "Skipped" &&
       existing?.ExtractionLane === "plaintext";
+    // msg rescue (v1.37): rows stamped Skipped before the msg lane
+    // existed (lane "none") re-enter once; the attempt restamps lane
+    // "msg", so an unreadable message never rechurns.
+    const msgRescue =
+      ext === "msg" && inScope &&
+      existing?.IndexStatus === "Skipped" &&
+      existing?.ExtractionLane !== "msg";
     const scopeRescue =
       inScope &&
       existing?.IndexStatus === "Skipped" &&
@@ -834,6 +856,7 @@ async function main() {
       !existing ||
       pdfRescue ||
       ocrRescue ||
+      msgRescue ||
       scopeRescue ||
       existing.IndexStatus === "Error" ||
       existing.IndexStatus === "Archived" || // deleted doc restored → re-index

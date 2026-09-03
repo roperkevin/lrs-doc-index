@@ -1,5 +1,26 @@
 # Local sweep — release notes
 
+## v1.37 (2026-09-03)
+
+**The msg lane** (review r7 phase 4, owner-approved) — the last
+KNOWN_EXT still parked in the Skip lane. `local/lib/msg.mjs` is a
+zero-dependency CFB/OLE2 reader (v3/v4 sector sizes, FAT + DIFAT +
+miniFAT chains, the directory tree walked from the root so recipient/
+attachment sub-storages' identically-named streams never leak into
+the body) plus the MAPI string properties a sidecar needs: subject
+(0037), sender (0C1A), to/cc (0E04/0E03), body (1000), transport
+headers (007D), each as PT_UNICODE or PT_STRING8; the sent time comes
+from the fixed-property stream (client-submit/delivery FILETIME) with
+the headers' `Date:` line as fallback. The sidecar body renders as
+subject-H1 + From/To/Cc/Sent strip + message text; the message's own
+sender and sent-time become the authorship trail (the OOXML
+core-properties pattern). Lane `"msg"` marks the attempt — an
+unreadable/empty message skips once, never rechurns — and rows
+stamped Skipped before the lane existed rescue automatically (the PDF
+rescue pattern). Gate legs: a generated CFB fixture (mini + regular
+sector chains, attachment isolation) rescues, indexes with authorship
+and the full strip, and doesn't rechurn. 189/189.
+
 ## gantt v1.0 (2026-09-03) — companion job
 
 **Flow #2, finally** (`local/gantt.mjs` — the follow-on the README

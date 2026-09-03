@@ -503,6 +503,83 @@ LISTS = {
 
 GANTT = os.path.join(REPO, "local", "gantt.mjs")
 
+FREE, END, FATSECT = 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFFFD
+
+
+def make_msg(path, subject, sender, to, body_text, sent_unix_ms):
+    """Minimal valid CFB .msg (v3, 512B sectors): small streams in the
+    mini stream, the UTF-16 body (>4096 bytes) in regular sectors, and
+    an attachment sub-storage whose identically-named body stream the
+    parser must NOT leak into the message body."""
+    import struct
+
+    def u16(s):
+        return s.encode("utf-16-le")
+
+    filetime = int((sent_unix_ms + 11644473600000) * 10000)
+    props = b"\x00" * 32 + struct.pack("<HHIq", 0x0040, 0x0039, 0, filetime)
+    small = [
+        ("__properties_version1.0", props),
+        ("__substg1.0_0037001F", u16(subject)),
+        ("__substg1.0_0C1A001F", u16(sender)),
+        ("__substg1.0_0E04001F", u16(to)),
+    ]
+    att_sub = ("__substg1.0_1000001F", u16("ATTACH BODY MUST NOT LEAK"))
+    body = u16(body_text)
+    assert len(body) >= 4096, "body must exercise the regular-sector path"
+
+    mini_chunks, mini_starts = [], []
+    for _, data in small + [att_sub]:
+        assert len(data) <= 64
+        mini_starts.append(len(mini_chunks))
+        mini_chunks.append(data + b"\x00" * (64 - len(data)))
+    mini_stream = b"".join(mini_chunks)
+
+    body_sectors = (len(body) + 511) // 512
+    BODY0 = 5  # sectors: 0 FAT, 1-2 directory, 3 miniFAT, 4 mini stream
+    fat = [FREE] * 128
+    fat[0] = FATSECT
+    fat[1], fat[2], fat[3], fat[4] = 2, END, END, END
+    for i in range(body_sectors):
+        fat[BODY0 + i] = BODY0 + i + 1 if i < body_sectors - 1 else END
+    minifat = [END] * len(mini_chunks) + [FREE] * (128 - len(mini_chunks))
+
+    def dirent(name, typ, left, right, child, start, size):
+        nb = u16(name)
+        return (nb + b"\x00" * (64 - len(nb))
+                + struct.pack("<HBBiii", len(nb) + 2, typ, 1, left, right, child)
+                + b"\x00" * 36  # clsid + state bits + times (80-115)
+                + struct.pack("<III", start, size, 0))  # 116-127
+
+    ents = [
+        dirent("Root Entry", 5, -1, -1, 1, 4, len(mini_stream)),
+        dirent(small[0][0], 2, -1, 2, -1, mini_starts[0], len(small[0][1])),
+        dirent(small[1][0], 2, -1, 3, -1, mini_starts[1], len(small[1][1])),
+        dirent(small[2][0], 2, -1, 4, -1, mini_starts[2], len(small[2][1])),
+        dirent(small[3][0], 2, -1, 5, -1, mini_starts[3], len(small[3][1])),
+        dirent("__substg1.0_1000001F", 2, -1, 6, -1, BODY0, len(body)),
+        dirent("__attach_version1.0_#00000000", 1, -1, -1, 7, 0, 0),
+        dirent(att_sub[0], 2, -1, -1, -1, mini_starts[4], len(att_sub[1])),
+    ]
+    dirbuf = b"".join(ents).ljust(1024, b"\x00")
+
+    header = (b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 16
+              + struct.pack("<HHHHHHIIIIIIIII",
+                            0x3E, 0x3, 0xFFFE, 9, 6, 0, 0,
+                            0, 1, 1, 0, 4096, 3, 1, END)
+              + struct.pack("<I", 0)
+              + struct.pack("<I", 0) + struct.pack("<I", FREE) * 108)
+    assert len(header) == 512
+
+    out = bytearray(header)
+    out += b"".join(struct.pack("<I", v) for v in fat)
+    out += dirbuf
+    out += b"".join(struct.pack("<I", v) for v in minifat)
+    out += mini_stream.ljust(512, b"\x00")
+    out += body.ljust(body_sectors * 512, b"\x00")
+    with open(path, "wb") as f:
+        f.write(out)
+
 
 def make_gantt_xlsx(fpath):
     """Two iteration sheets the way the team's schedules are shaped:
@@ -1543,6 +1620,52 @@ def main():
     del cfg["sweep"]["pdftoppmPath"]
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
+
+    # ---- leg 3i: .msg lane (v1.37) ---------------------------------
+    # An Outlook message pre-stamped Skipped at lane "none" (the state
+    # every .msg row is in today) rescues once the lane exists: CFB
+    # parsed, subject/From/To/Sent + body as the sidecar text, the
+    # message's own sender/sent-time as the authorship trail, and the
+    # attachment sub-storage's identically-named body stream ignored.
+    print("== msg lane leg")
+    make_msg(os.path.join(widened_dir, "message.msg"),
+             "Weekly LRS sync notes", "Kevin Roper", "LRS Team",
+             ("Notes from the weekly LRS sync about calibration points "
+              "and event behavior on merged routes.\r\n\r\n") * 30,
+             1787239800000)  # 2026-08-20T15:30:00Z
+    src_files.append(src_item(21, "message.msg", "2026-08-21T09:00:00Z",
+                              seg="Shared Documents"))
+    state.seed(LISTS["docIndex"], {
+        "Title": "message.msg", "FileName": "message.msg",
+        "DocKey": "shared documents/message.msg", "IndexStatus": "Skipped",
+        "SourceModified": "2026-08-21T09:00:00Z", "PromptVersion": "v2.0",
+        "ExtractionLane": "none"})
+    state.llm_by_file["message.msg"] = {
+        "title": "Weekly Sync Notes", "docKind": "Other", "surface": "Other",
+        "summary": "Sync notes email.", "pe": "", "dev": "",
+        "targetRelease": "", "tools": [], "keywords": []}
+    proc = run_sweep(cfg_path, ["--live", "--only", "message.msg"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "message.msg"][0]
+    check("stamped .msg rescued and indexed through the msg lane",
+          proc.returncode == 0 and out.get("processed") == 1
+          and row.get("IndexStatus") == "Indexed"
+          and row.get("ExtractionLane") == "msg", str(out) + " " + str(row)[:250])
+    check("message's own sender/sent-time become the authorship trail",
+          row.get("SourceAuthor") == "Kevin Roper"
+          and str(row.get("SourceEdited", "")).startswith("2026-08-20T15:30"),
+          str(row)[:250])
+    preview = str(row.get("TextPreview", ""))
+    check("msg text carries subject, strip and body — attachment ignored",
+          preview.startswith("# Weekly LRS sync notes")
+          and "**From:** Kevin Roper" in preview
+          and "**Sent:** 2026-08-20 15:30" in preview
+          and "calibration points" in preview
+          and "MUST NOT LEAK" not in preview, preview[:300])
+    proc = run_sweep(cfg_path, ["--live", "--only", "message.msg"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("indexed .msg does not rechurn", out.get("processed") == 0, str(out))
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
