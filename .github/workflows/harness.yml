@@ -44,4 +44,5 @@ jobs:
       - run: python3 make_fixtures.py
       - run: python3 check_format.py
       - run: python3 check_figures.py
+      - run: python3 ../../local/harness/check_svg2pptx.py
       - run: python3 render_sample.py

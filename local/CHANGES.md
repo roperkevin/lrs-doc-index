@@ -1,5 +1,38 @@
 # Local sweep — release notes
 
+## svg2pptx v1.0 (2026-09-03) — companion tool
+
+**Figures back into PowerPoint, as editable shapes.** Test plan
+reviews want to pull a sweep figure into a deck and rework it there —
+splitting a case, moving a measure, recolouring an extent — which an
+`<img>` of the SVG cannot do. `local/svg2pptx.mjs` (standalone, Node
+only, zero dependencies — the sweep machine already qualifies) takes
+figure SVGs (files or a media folder) and builds one .pptx with one
+figure per 16:9 slide, each a single native group of PowerPoint
+shapes: move/resize it as one thing, double-click in to edit any part.
+
+    node local/svg2pptx.mjs "<synced library>/media" -o figures.pptx
+    node local/svg2pptx.mjs doc12_slide5.svg doc12_slide6.svg
+
+It converts the CLOSED vocabulary SlideFigures emits — lines (with
+triangle arrowheads for the markers), ruler ticks, butt-capped
+extents, the split hairline (opacity → stroke alpha) and dot, nodes
+as roundRect/ellipse/diamond with their labels INSIDE the shape (edit
+in place; pre-wrapped rows stay unwrapped, overflowing centred like
+the SVG), freeform paths as custGeom (quadratics lifted to cubics),
+dash rhythms as prstDash, and loose texts as snug anchor-centred text
+boxes. Colours, widths, dashes and fonts resolve from the figure's own
+embedded `<style>` block, so a Diagram Style Framework palette change
+flows through without touching the converter; the `<title>`/`<desc>`
+ride along as the group's name and alt text. Anything outside the
+vocabulary is reported and skipped, never guessed at.
+
+Gate: `local/harness/check_svg2pptx.py` (CI, full-format job) — a
+fixture SVG exercising the whole vocabulary, package well-formedness,
+per-primitive shape/style/label assertions, and a python-pptx open
+leg. Verified end to end: all 15 `check_figures.py` fixture figures
+convert and the deck opens and renders in LibreOffice Impress.
+
 ## v1.28 (2026-09-03)
 
 **Content-filter lane.** Found live during the v2.0.1 backfill
