@@ -692,3 +692,26 @@ drifted per lane: 3.2 vs 3.4, and 17 / 20.5 / 21.5). Two standing
 style-invariant assertions — one split-dot radius, one id offset
 across every lane — both FAIL against the pre-token script
 (3.2/3.4 and 20.5/17/21.5).
+
+### Last run (2026-09-03, Node 22.22.2) — v2.0 gate (DF-11)
+
+**PASS** — 17 figures. New fixture slides: 13 (a synthetic UI
+screenshot — two bordered panels holding a heading, two labelled input
+fields, a filled blue button with white glyph text on the fill, and a
+results table drawn as a box with three full-width row separators and a
+column rule; "text" is stamped as glyph-sized ink blocks, exactly what
+a real screenshot gives the tracer) and 14 (random noise — the photo
+control). Assertions: the screenshot renders as a wireframe (panels,
+fields, group box, separators), the blue button maps to the cool
+palette slot by hue family, text rows greek in two weights with the
+count preserved, stacked fields snap to one shared left edge, nothing
+ruler-shaped leaks into the figure, the alt claims placeholders rather
+than OCR, and the noise slide stays silent in BOTH raster tiers. 12 of
+the 15 new assertions FAIL against the v1.9 script (fixture
+discriminates; the rest hold invariants). check_svg2pptx PASS with all
+17 fixture figures converting and opening in python-pptx; standing
+suites, PAD (27/27) and the local sweep gate (158/158) green
+alongside; the script type-checks at ES2017. Wireframe output verified
+visually in Chromium, including a 1.6MP realistic stress screenshot
+(header band, 8 field rows, segmented control, 9-row table) rendering
+in ~0.5s.

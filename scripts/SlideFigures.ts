@@ -1,5 +1,5 @@
 /**
- * SlideFigures v1.9 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v2.0 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
@@ -9,12 +9,40 @@
  * DF-7 (2026-09-03) redraws spanning events as route chains; DF-8
  * (2026-09-03) puts the route on top as a dash and hashes labelled anchors;
  * DF-9 (2026-09-03) cases the dash in white and two-tones the palette;
- * DF-10 (2026-09-03) calms the style to soft bands and lifts the cap.
+ * DF-10 (2026-09-03) calms the style to soft bands and lifts the cap;
+ * DF-11 (2026-09-03) redraws UI screenshots as standardized wireframes.
  * Companion to ZipTextExtract, same input (the
  * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
  * several):
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *
+ * v2.0 (DF-11):
+ *   - UI SCREENSHOTS BECOME WIREFRAMES. Half the corpus's pasted pictures
+ *     are not route diagrams at all — they are screenshots of the app's
+ *     own panels (a search form, a results list, an attribute table). The
+ *     trace tier rightly refused them ("busier than a diagram is a
+ *     screenshot"), so they stayed captions — and a sparse one could in
+ *     principle slip under the 48-stroke cap and reach the ruler
+ *     classifier with strokes that are window chrome, not a route. A
+ *     pasted picture that reads as an interface — a flat, light ground,
+ *     assembled closed rectangles, rows of glyph-sized ink — is now
+ *     REDRAWN as a standardized wireframe: panels and group boxes,
+ *     input fields, buttons and header bands palette-tinted by the same
+ *     hue-family rule as everything else, table rows as separators, and
+ *     text as placeholder bars (two weights: heading ink, body muted).
+ *     Layout is normalised the way the rulers and graphs are: edges that
+ *     jitter within tolerance snap to one shared coordinate, one corner
+ *     radius family, one standardized figure width. Text inside a
+ *     screenshot is pixels, not characters — no OCR is attempted, the
+ *     bars keep each row's true position and extent, and the alt text
+ *     says so. The wireframe gate is STRUCTURAL (>=1 assembled closed
+ *     rectangle, >=2 boxes/blocks, >=3 text rows), which a route diagram
+ *     cannot pass — open lines and ticks assemble no rectangles — so the
+ *     wireframe tier screens raster slides BEFORE the ruler trace: a
+ *     screenshot never reaches the ruler classifier at all, and anything
+ *     diagram-shaped falls straight through to it. Photos and maps fail
+ *     the flat-ground test and stay silent, as before.
  *
  * v1.9 (DF-10):
  *   - CALM, NOT STRIPED. DF-9's white-cased dash over saturated bars
@@ -266,8 +294,21 @@ const CLUST_GY = 150;  // px of clear air that separates stacked diagrams
 const TEXT_REACH = 60; // a loose label joins a cluster within this distance
 const NODE_RX = 7;     // one corner radius for every box node in the corpus
 const ANCHOR_PAD = 16; // an edge endpoint this close to a node belongs to it
-const TRACE_MAX_PX = 2600000;  // decode budget for pasted pictures
+const TRACE_MAX_PX = 5600000;  // decode budget for pasted pictures — hi-dpi
+                               // screenshots run 2880x1800 (DF-11); the old
+                               // 2.6MP budget refused them before the
+                               // wireframe tier could even look
 const TRACE_MAX_BARS = 48;     // busier than this is a screenshot, not a diagram
+// ---- wireframe tier (DF-11) ----
+const UI_STD_W = 720;          // one standardized wireframe width for the corpus
+const UI_INK = 45;             // a pixel this far from the ground is interface ink
+                               // (softer than the trace tier's 60 — screenshot
+                               // chrome is drawn in light greys)
+const UI_SNAP = 7;             // px of jitter that snaps to one shared edge
+const UI_RECT_TOL = 8;         // border ends this close assemble into a rectangle
+const UI_MAX_ELEMS = 260;      // busier than this is a photo mosaic, not a UI
+const UI_GLYPH_HMAX = 32;      // ink taller than this is chrome, not a glyph
+const UI_TEXT_GAP = 1.2;       // glyph gaps up to this x row-height chain a row
 const ARROW_EXT = 14;          // route overshoot past the final tick — sized
                                // to the arrowhead (4.4 x 3px stroke, refX
                                // 6/8 → its back sits ~10px behind the line
@@ -450,6 +491,18 @@ function figStyle(): string {
     ".event.s-green,.swatch.s-green{stroke:#4EB183}" +
     ".event.s-violet,.swatch.s-violet{stroke:#A58BD3}" +
     ".event.s-red,.swatch.s-red{stroke:#DC8168}" +
+    // wireframe vocabulary (DF-11) — every colour is an existing palette
+    // token: panel/field strokes are muted, separators the plate border
+    // grey, greek text bars the context grey with the slate step for
+    // headings. Buttons/bands/tiles reuse the t-hue tints + s-hue strokes,
+    // so a screenshot's saturated fill lands as the same quiet colour
+    // field the rest of the corpus uses.
+    ".wf-panel{fill:#FFFFFF;stroke:#6E8285;stroke-width:1.4}" +
+    ".wf-box{fill:none;stroke:#6E8285;stroke-width:1.1}" +
+    ".wf-field{fill:#FFFFFF;stroke:#6E8285;stroke-width:1.1}" +
+    ".wf-btn{stroke-width:1.2}" +
+    ".wf-sep{stroke:#D7DFDF;stroke-width:1}" +
+    ".wf-gk{fill:#B9C6C6}.wf-gkh{fill:#4E6265}.wf-gkp{fill:#FFFFFF}" +
     "text{font-family:'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif}" +
     ".measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}" +
     ".id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}" +
@@ -2408,11 +2461,565 @@ function traceFigures(xml: string, no: number, pics: FPic[], tables: FTable[]): 
   return out;
 }
 
+// ---------------------------------------- wireframe tier (DF-11)
+// A pasted picture that is a SCREENSHOT OF THE APP — a search panel, a
+// results list, an attribute table — is not a route diagram, and the trace
+// tier rightly refused it. It is still the content of its slide, so it is
+// redrawn as a standardized WIREFRAME: closed border rectangles assemble
+// into panels, group boxes and input fields; flat colour regions become
+// buttons, header bands and tiles, palette-tinted by the same hue-family
+// rule as everything else; interior full-width borders become table-row
+// separators; and rows of glyph-sized ink become placeholder text bars
+// (heading and body weights). Text inside a screenshot is pixels — no OCR
+// is attempted; each bar keeps its row's true position and extent, and the
+// alt text says the labels are placeholders. Layout is normalised the way
+// the rulers and graphs are: edges that jitter within UI_SNAP snap to one
+// shared coordinate, and every wireframe renders at one standardized width.
+//
+// The gate is STRUCTURAL, which is what lets this tier screen raster
+// slides ahead of the ruler trace: an interface has a flat light ground,
+// at least one ASSEMBLED closed rectangle, and 3+ text rows — a route
+// diagram has none of those (open lines and tick stubs assemble no
+// rectangles), so diagram-shaped pictures fall straight through to the
+// trace tier, while a sparse screenshot can no longer slip under the
+// 48-stroke cap and come out a bogus ruler. Photos and maps fail the
+// flat-ground test and stay silent.
+
+interface UBlock { x0: number; y0: number; x1: number; y1: number; col: string; kind: string; role: string; }
+interface UTextRow { x0: number; y0: number; x1: number; y1: number; h: number; kind: string; }
+interface URect { x0: number; y0: number; x1: number; y1: number; kind: string; }
+interface USep { x0: number; y0: number; x1: number; y1: number; }
+interface UiParts {
+  rects: URect[]; blocks: UBlock[]; texts: UTextRow[];
+  hseps: USep[]; vseps: USep[]; rules: USep[];
+}
+
+function uiRingBg(img: PngImg): number[] {
+  let br = 0, bgc = 0, bb2 = 0, bn = 0;
+  const sample = (x: number, y: number): void => {
+    const o = (y * img.w + x) * 3;
+    br += img.rgb[o]; bgc += img.rgb[o + 1]; bb2 += img.rgb[o + 2]; bn++;
+  };
+  for (let x = 0; x < img.w; x += 4) { sample(x, 0); sample(x, img.h - 1); }
+  for (let y = 0; y < img.h; y += 4) { sample(0, y); sample(img.w - 1, y); }
+  return [br / bn, bgc / bn, bb2 / bn];
+}
+
+// an interface sits on a flat, light ground; a photo or a map does not.
+// Sampled on a grid — the answer is a ratio, not a census.
+function uiIsFlat(img: PngImg, bg: number[]): boolean {
+  if ((bg[0] + bg[1] + bg[2]) / 3 < 150) return false;
+  let flat = 0, n = 0;
+  for (let y = 0; y < img.h; y += 3) {
+    for (let x = 0; x < img.w; x += 3) {
+      const o = (y * img.w + x) * 3;
+      const d = Math.max(Math.abs(img.rgb[o] - bg[0]),
+        Math.abs(img.rgb[o + 1] - bg[1]), Math.abs(img.rgb[o + 2] - bg[2]));
+      if (d <= 42) flat++;
+      n++;
+    }
+  }
+  return n > 0 && flat / n >= 0.45;
+}
+
+// thin border strokes — the trace tier's scan re-tuned for interface
+// chrome: a softer ink threshold (borders are light greys), a lower
+// minimum length (a field is narrower than a route), and only genuinely
+// thin marks (<=5px) — filled regions belong to the block pass.
+function uiScanThin(img: PngImg, horiz: boolean, bg: number[]): TBar[] {
+  const NB = horiz ? img.h : img.w;
+  const NA = horiz ? img.w : img.h;
+  const minLen = 12;
+  const open: TBar[] = [];
+  const commit = (a0: number, a1: number, sr: number, sg: number, sb: number,
+                  n: number, b: number): void => {
+    if (a1 - a0 + 1 < minLen) return;
+    const r = sr / n, g = sg / n, bl = sb / n;
+    for (const t of open) {
+      if (t.b1 < b - 1) continue;
+      const ov = Math.min(a1, t.a1) - Math.max(a0, t.a0) + 1;
+      if (ov < (Math.min(a1 - a0, t.a1 - t.a0) + 1) * 0.6) continue;
+      if (barDist(t, r, g, bl) > 64) continue;
+      t.a0 = Math.min(t.a0, a0); t.a1 = Math.max(t.a1, a1); t.b1 = b;
+      t.sr += sr; t.sg += sg; t.sb += sb; t.n += n;
+      return;
+    }
+    open.push({ a0: a0, a1: a1, b0: b, b1: b, sr: sr, sg: sg, sb: sb, n: n });
+  };
+  for (let b = 0; b < NB; b++) {
+    let a0 = -1, sr = 0, sg = 0, sb = 0, n = 0;
+    for (let a = 0; a <= NA; a++) {
+      let ink = false, r = 0, g = 0, bl = 0;
+      if (a < NA) {
+        const o = horiz ? (b * img.w + a) * 3 : (a * img.w + b) * 3;
+        r = img.rgb[o]; g = img.rgb[o + 1]; bl = img.rgb[o + 2];
+        ink = Math.max(Math.abs(r - bg[0]), Math.abs(g - bg[1]), Math.abs(bl - bg[2])) > UI_INK;
+        if (ink && n > 0) {
+          const d = Math.max(Math.abs(sr / n - r), Math.abs(sg / n - g), Math.abs(sb / n - bl));
+          if (d > 64) { commit(a0, a - 1, sr, sg, sb, n, b); a0 = a; sr = 0; sg = 0; sb = 0; n = 0; }
+        }
+      }
+      if (ink) {
+        if (n === 0) a0 = a;
+        sr += r; sg += g; sb += bl; n++;
+      } else if (n > 0) {
+        commit(a0, a - 1, sr, sg, sb, n, b);
+        n = 0; sr = 0; sg = 0; sb = 0;
+      }
+    }
+  }
+  const done: TBar[] = [];
+  for (const t of open) {
+    const len = t.a1 - t.a0 + 1, thick = t.b1 - t.b0 + 1;
+    if (len >= minLen && thick <= 5 && len >= 4 * thick) done.push(t);
+  }
+  return done;
+}
+
+// flat colour regions — buttons, header bands, selected tabs, tiles — found
+// on a coarse cell grid so a glyph or an icon printed over the fill cannot
+// fragment it: a cell is solid when nearly all its pixels agree on one
+// colour that is not the ground, and adjacent agreeing cells merge.
+function uiBlocks(img: PngImg, bg: number[]): UBlock[] {
+  const CELL = 6;
+  const gw = Math.floor(img.w / CELL), gh = Math.floor(img.h / CELL);
+  if (gw < 2 || gh < 2) return [];
+  const mean: number[][] = [];
+  const solid: boolean[] = [];
+  for (let cy = 0; cy < gh; cy++) {
+    for (let cx = 0; cx < gw; cx++) {
+      let sr = 0, sg = 0, sb = 0;
+      for (let y = cy * CELL; y < cy * CELL + CELL; y++) {
+        for (let x = cx * CELL; x < cx * CELL + CELL; x++) {
+          const o = (y * img.w + x) * 3;
+          sr += img.rgb[o]; sg += img.rgb[o + 1]; sb += img.rgb[o + 2];
+        }
+      }
+      const n = CELL * CELL;
+      const mr = sr / n, mg = sg / n, mb = sb / n;
+      let agree = 0;
+      for (let y = cy * CELL; y < cy * CELL + CELL; y++) {
+        for (let x = cx * CELL; x < cx * CELL + CELL; x++) {
+          const o = (y * img.w + x) * 3;
+          const d = Math.max(Math.abs(img.rgb[o] - mr),
+            Math.abs(img.rgb[o + 1] - mg), Math.abs(img.rgb[o + 2] - mb));
+          if (d <= 40) agree++;
+        }
+      }
+      const db = Math.max(Math.abs(mr - bg[0]), Math.abs(mg - bg[1]), Math.abs(mb - bg[2]));
+      mean.push([mr, mg, mb]);
+      solid.push(agree >= n * 0.82 && db > UI_INK);
+    }
+  }
+  const parent: number[] = [];
+  for (let i = 0; i < gw * gh; i++) parent.push(i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; }
+    return i;
+  };
+  const near = (a: number, b: number): boolean =>
+    Math.max(Math.abs(mean[a][0] - mean[b][0]), Math.abs(mean[a][1] - mean[b][1]),
+      Math.abs(mean[a][2] - mean[b][2])) <= 48;
+  for (let cy = 0; cy < gh; cy++) {
+    for (let cx = 0; cx < gw; cx++) {
+      const i = cy * gw + cx;
+      if (!solid[i]) continue;
+      if (cx + 1 < gw && solid[i + 1] && near(i, i + 1)) parent[find(i)] = find(i + 1);
+      if (cy + 1 < gh && solid[i + gw] && near(i, i + gw)) parent[find(i)] = find(i + gw);
+    }
+  }
+  const comp: { [r: string]: { x0: number; y0: number; x1: number; y1: number;
+    n: number; sr: number; sg: number; sb: number } } = {};
+  for (let cy = 0; cy < gh; cy++) {
+    for (let cx = 0; cx < gw; cx++) {
+      const i = cy * gw + cx;
+      if (!solid[i]) continue;
+      const r = String(find(i));
+      if (!comp[r]) comp[r] = { x0: cx, y0: cy, x1: cx, y1: cy, n: 0, sr: 0, sg: 0, sb: 0 };
+      const c = comp[r];
+      c.x0 = Math.min(c.x0, cx); c.x1 = Math.max(c.x1, cx);
+      c.y0 = Math.min(c.y0, cy); c.y1 = Math.max(c.y1, cy);
+      c.n++; c.sr += mean[i][0]; c.sg += mean[i][1]; c.sb += mean[i][2];
+    }
+  }
+  const out: UBlock[] = [];
+  for (const r in comp) {
+    const c = comp[r];
+    const bw = (c.x1 - c.x0 + 1), bh = (c.y1 - c.y0 + 1);
+    if (c.n < bw * bh * 0.55) continue;
+    if (bw * CELL < 18 || bh * CELL < 10) continue;
+    const hx = (v: number): string => ("0" + (Math.round(v) & 0xff).toString(16)).slice(-2);
+    out.push({ x0: c.x0 * CELL, y0: c.y0 * CELL,
+      x1: (c.x1 + 1) * CELL, y1: (c.y1 + 1) * CELL,
+      col: hx(c.sr / c.n) + hx(c.sg / c.n) + hx(c.sb / c.n), kind: "btn", role: "" });
+  }
+  return out;
+}
+
+// glyph-sized ink: short runs stack into glyph boxes (an active-set sweep,
+// so cost stays linear in the ink), then glyphs sharing a baseline chain
+// into text rows. Border verticals masquerading as strokes are rejected by
+// aspect; border horizontals never enter (their runs are long).
+function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
+  interface Gly { x0: number; x1: number; y0: number; y1: number; last: number; }
+  const open: Gly[] = [];
+  const done: Gly[] = [];
+  for (let y = 0; y < img.h; y++) {
+    for (let i = open.length - 1; i >= 0; i--) {
+      if (open[i].last < y - 2) { done.push(open[i]); open.splice(i, 1); }
+    }
+    let a0 = -1;
+    for (let x = 0; x <= img.w; x++) {
+      let ink = false;
+      if (x < img.w) {
+        const o = (y * img.w + x) * 3;
+        ink = Math.max(Math.abs(img.rgb[o] - bg[0]), Math.abs(img.rgb[o + 1] - bg[1]),
+          Math.abs(img.rgb[o + 2] - bg[2])) > UI_INK;
+      }
+      if (ink) { if (a0 < 0) a0 = x; continue; }
+      if (a0 < 0) continue;
+      const a1 = x - 1;
+      if (a1 - a0 + 1 <= 14) {
+        let hit: Gly | null = null;
+        for (const g of open) {
+          if (a0 <= g.x1 + 2 && a1 >= g.x0 - 2) { hit = g; break; }
+        }
+        if (hit) {
+          hit.x0 = Math.min(hit.x0, a0); hit.x1 = Math.max(hit.x1, a1);
+          hit.y1 = y; hit.last = y;
+        } else {
+          open.push({ x0: a0, x1: a1, y0: y, y1: y, last: y });
+        }
+      }
+      a0 = -1;
+    }
+  }
+  for (const g of open) done.push(g);
+  const glyphs: Gly[] = [];
+  for (const g of done) {
+    const w = g.x1 - g.x0 + 1, h = g.y1 - g.y0 + 1;
+    if (w > 40 || h < 4 || h > UI_GLYPH_HMAX) continue;
+    if (w <= 3 && h > 6 * w) continue;   // a border sliver, not a stroke
+    glyphs.push(g);
+  }
+  glyphs.sort((a, b) => (a.y0 + a.y1) - (b.y0 + b.y1));
+  const rows: UTextRow[] = [];
+  let band: Gly[] = [];
+  const flushBand = (): void => {
+    if (!band.length) return;
+    const hs = band.map((g) => g.y1 - g.y0 + 1).sort((a, b) => a - b);
+    const bh = hs[Math.floor(hs.length / 2)];
+    band.sort((a, b) => a.x0 - b.x0);
+    let cur: UTextRow | null = null;
+    let count = 0;
+    const emit = (): void => {
+      if (cur && (count >= 2 || cur.x1 - cur.x0 >= 12) && cur.x1 - cur.x0 >= 10) rows.push(cur);
+      cur = null; count = 0;
+    };
+    for (const g of band) {
+      if (cur && g.x0 - cur.x1 <= Math.max(6, UI_TEXT_GAP * bh)) {
+        cur.x1 = Math.max(cur.x1, g.x1);
+        cur.y0 = Math.min(cur.y0, g.y0); cur.y1 = Math.max(cur.y1, g.y1);
+        cur.h = cur.y1 - cur.y0 + 1;
+        count++;
+      } else {
+        emit();
+        cur = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1, h: g.y1 - g.y0 + 1, kind: "gk" };
+        count = 1;
+      }
+    }
+    emit();
+    band = [];
+  };
+  for (const g of glyphs) {
+    if (band.length) {
+      const last = band[band.length - 1];
+      if ((g.y0 + g.y1) / 2 - (last.y0 + last.y1) / 2 > 5) flushBand();
+    }
+    band.push(g);
+  }
+  flushBand();
+  return rows;
+}
+
+// closed rectangles assemble from the thin bars: a top/bottom pair with
+// matching extents plus side verticals covering the span. Bottoms are tried
+// FARTHEST first — a table's row separators match its top border's extents
+// too, and the nearest-match rule would pair the top with the first row
+// line and shred the table into stripes; the true bottom is the farthest
+// span whose sides still cover it (two stacked cards fail that coverage
+// and fall back to their own bottoms).
+function uiAssemble(hb: TBar[], vb: TBar[]): {
+  rects: URect[]; hseps: USep[]; vseps: USep[]; rules: USep[];
+} {
+  interface HB { x0: number; x1: number; y: number; used: boolean; }
+  interface VB { y0: number; y1: number; x: number; side: boolean; used: boolean; }
+  const hs: HB[] = [];
+  for (const t of hb) hs.push({ x0: t.a0, x1: t.a1, y: (t.b0 + t.b1) / 2, used: false });
+  const vs: VB[] = [];
+  for (const t of vb) vs.push({ y0: t.a0, y1: t.a1, x: (t.b0 + t.b1) / 2, side: false, used: false });
+  hs.sort((a, b) => a.y - b.y);
+  // a side is single-use: tops process in y order, so the outer box claims
+  // its verticals first and a pair of interior row separators can no longer
+  // borrow them to assemble a phantom rectangle between themselves — the
+  // separators stay separators
+  const sideAt = (x: number, y0: number, y1: number): VB | null => {
+    for (const v of vs) {
+      if (v.side) continue;
+      if (Math.abs(v.x - x) > UI_RECT_TOL) continue;
+      const ov = Math.min(v.y1, y1) - Math.max(v.y0, y0);
+      if (ov >= (y1 - y0) * 0.7) return v;
+    }
+    return null;
+  };
+  const rects: URect[] = [];
+  for (let i = 0; i < hs.length; i++) {
+    if (hs[i].used) continue;
+    for (let j = hs.length - 1; j > i; j--) {
+      if (hs[j].used) continue;
+      if (hs[j].y - hs[i].y < 10) continue;
+      if (Math.abs(hs[j].x0 - hs[i].x0) > UI_RECT_TOL) continue;
+      if (Math.abs(hs[j].x1 - hs[i].x1) > UI_RECT_TOL) continue;
+      const L = sideAt(Math.min(hs[i].x0, hs[j].x0), hs[i].y, hs[j].y);
+      const R = sideAt(Math.max(hs[i].x1, hs[j].x1), hs[i].y, hs[j].y);
+      if (!L || !R || L === R) continue;
+      rects.push({ x0: Math.min(hs[i].x0, hs[j].x0), y0: hs[i].y,
+        x1: Math.max(hs[i].x1, hs[j].x1), y1: hs[j].y, kind: "box" });
+      hs[i].used = true; hs[j].used = true;
+      L.side = true; R.side = true;
+      break;
+    }
+  }
+  const hseps: USep[] = [], vseps: USep[] = [], rules: USep[] = [];
+  for (const h of hs) {
+    if (h.used) continue;
+    let host: URect | null = null;
+    for (const r of rects) {
+      if (h.y <= r.y0 + 4 || h.y >= r.y1 - 4) continue;
+      if (h.x0 < r.x0 - 4 || h.x1 > r.x1 + 4) continue;
+      if (h.x1 - h.x0 < (r.x1 - r.x0) * 0.6) continue;
+      if (!host || (r.x1 - r.x0) * (r.y1 - r.y0) <
+          (host.x1 - host.x0) * (host.y1 - host.y0)) host = r;
+    }
+    if (host) { hseps.push({ x0: h.x0, y0: h.y, x1: h.x1, y1: h.y }); h.used = true; }
+    else if (h.x1 - h.x0 >= 90) rules.push({ x0: h.x0, y0: h.y, x1: h.x1, y1: h.y });
+  }
+  for (const v of vs) {
+    if (v.side || v.used) continue;
+    for (const r of rects) {
+      if (v.x <= r.x0 + 4 || v.x >= r.x1 - 4) continue;
+      if (v.y0 < r.y0 - 4 || v.y1 > r.y1 + 4) continue;
+      if (v.y1 - v.y0 < (r.y1 - r.y0) * 0.6) continue;
+      vseps.push({ x0: v.x, y0: v.y0, x1: v.x, y1: v.y1 });
+      v.used = true;
+      break;
+    }
+  }
+  return { rects: rects, hseps: hseps, vseps: vseps, rules: rules };
+}
+
+// one shared coordinate for edges that jitter within tolerance — the same
+// "hand-placement is not layout" rule the rulers and the node grid apply,
+// here covering what a screenshot's own rendering jitter and the bar
+// scans' rounding leave behind
+function uiSnapAxis(items: { v: number; set: (x: number) => void }[], tol: number): void {
+  items.sort((a, b) => a.v - b.v);
+  let s = 0;
+  while (s < items.length) {
+    let e = s;
+    while (e + 1 < items.length && items[e + 1].v - items[e].v <= tol) e++;
+    if (e > s) {
+      let m = 0;
+      for (let k = s; k <= e; k++) m += items[k].v;
+      m /= (e - s + 1);
+      for (let k = s; k <= e; k++) items[k].set(m);
+    }
+    s = e + 1;
+  }
+}
+
+// the wireframe gate + classification: null means "not an interface"
+function uiScan(img: PngImg): UiParts | null {
+  const bg = uiRingBg(img);
+  if (!uiIsFlat(img, bg)) return null;
+  const hb = traceMerge(uiScanThin(img, true, bg));
+  const vb = traceMerge(uiScanThin(img, false, bg));
+  const asm = uiAssemble(hb, vb);
+  const blocks = uiBlocks(img, bg);
+  const texts = uiTextRows(img, bg);
+  const total = asm.rects.length + blocks.length + texts.length +
+    asm.hseps.length + asm.vseps.length + asm.rules.length;
+  if (asm.rects.length < 1) return null;
+  if (asm.rects.length + blocks.length < 2) return null;
+  if (texts.length < 3) return null;
+  if (total > UI_MAX_ELEMS) return null;
+  // classification: panels hold things, fields are wide/short and hold at
+  // most one text row, everything else stays a group box; blocks split by
+  // proportion into buttons, header bands and tiles, tinted by hue family
+  const ths = texts.map((t) => t.h).sort((a, b) => a - b);
+  const medH = ths.length ? ths[Math.floor(ths.length / 2)] : 10;
+  const inside = (x: number, y: number, r: URect): boolean =>
+    x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
+  for (const r of asm.rects) {
+    let kids = 0, kidTexts = 0;
+    for (const o of asm.rects) {
+      if (o === r) continue;
+      if ((o.x1 - o.x0) * (o.y1 - o.y0) >= (r.x1 - r.x0) * (r.y1 - r.y0)) continue;
+      if (inside((o.x0 + o.x1) / 2, (o.y0 + o.y1) / 2, r)) kids++;
+    }
+    for (const b of blocks) if (inside((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, r)) kids++;
+    for (const t of texts) if (inside((t.x0 + t.x1) / 2, (t.y0 + t.y1) / 2, r)) kidTexts++;
+    const w = r.x1 - r.x0, h = r.y1 - r.y0;
+    if (h <= Math.max(40, 2.8 * medH) && w >= 2.2 * h && kids === 0 && kidTexts <= 1) {
+      r.kind = "field";
+    } else if (kids + kidTexts >= 2) {
+      r.kind = "panel";
+    }
+  }
+  for (const b of blocks) {
+    let parentW = img.w;
+    for (const r of asm.rects) {
+      if (inside((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, r)) {
+        parentW = Math.min(parentW, r.x1 - r.x0);
+      }
+    }
+    const w = b.x1 - b.x0, h = b.y1 - b.y0;
+    b.role = figRole(b.col, "muted");
+    if (h <= Math.max(44, 3.2 * medH)) b.kind = w >= parentW * 0.55 ? "band" : "btn";
+    else b.kind = "tile";
+  }
+  for (const t of texts) {
+    let onfill = false;
+    for (const b of blocks) {
+      if ((t.x0 + t.x1) / 2 > b.x0 && (t.x0 + t.x1) / 2 < b.x1 &&
+          (t.y0 + t.y1) / 2 > b.y0 && (t.y0 + t.y1) / 2 < b.y1) { onfill = true; break; }
+    }
+    t.kind = onfill ? "gkp" : (t.h >= 1.35 * medH ? "gkh" : "gk");
+  }
+  return { rects: asm.rects, blocks: blocks, texts: texts,
+    hseps: asm.hseps, vseps: asm.vseps, rules: asm.rules };
+}
+
+function uiRender(no: number, idx: number, total: number, p: UiParts,
+                  imgW: number): SlideFigure {
+  // edge snap in image space, then one standardized width
+  const lefts: { v: number; set: (x: number) => void }[] = [];
+  const rights: { v: number; set: (x: number) => void }[] = [];
+  const tops: { v: number; set: (x: number) => void }[] = [];
+  const bots: { v: number; set: (x: number) => void }[] = [];
+  const boxy: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (const r of p.rects) boxy.push(r);
+  for (const b of p.blocks) boxy.push(b);
+  for (const r of boxy) {
+    lefts.push({ v: r.x0, set: (x: number) => { r.x0 = x; } });
+    rights.push({ v: r.x1, set: (x: number) => { r.x1 = x; } });
+    tops.push({ v: r.y0, set: (x: number) => { r.y0 = x; } });
+    bots.push({ v: r.y1, set: (x: number) => { r.y1 = x; } });
+  }
+  for (const t of p.texts) lefts.push({ v: t.x0, set: (x: number) => { t.x0 = x; } });
+  uiSnapAxis(lefts, UI_SNAP); uiSnapAxis(rights, UI_SNAP);
+  uiSnapAxis(tops, UI_SNAP); uiSnapAxis(bots, UI_SNAP);
+  const mids: { v: number; set: (x: number) => void }[] = [];
+  for (const t of p.texts) {
+    mids.push({ v: (t.y0 + t.y1) / 2,
+      set: (x: number) => { const h = t.y1 - t.y0; t.y0 = x - h / 2; t.y1 = x + h / 2; } });
+  }
+  uiSnapAxis(mids, 4);
+  const s = Math.min(UI_STD_W / imgW, 1.6);
+  const el: string[] = [];
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  const grow = (a: number, b: number, c: number, d: number): void => {
+    x0 = Math.min(x0, a); y0 = Math.min(y0, b); x1 = Math.max(x1, c); y1 = Math.max(y1, d);
+  };
+  const rect = (cls: string, rx0: number, ry0: number, rx1: number, ry1: number,
+                rr: number): void => {
+    el.push('<rect class="' + cls + '" x="' + fnum(rx0 * s) + '" y="' + fnum(ry0 * s) +
+      '" width="' + fnum((rx1 - rx0) * s) + '" height="' + fnum((ry1 - ry0) * s) +
+      '" rx="' + fnum(rr) + '"/>');
+    grow(rx0 * s, ry0 * s, rx1 * s, ry1 * s);
+  };
+  // z-order: panels at the back (largest first), colour blocks, then group
+  // boxes/fields, separators, and the text bars over everything
+  const panels = p.rects.filter((r) => r.kind === "panel")
+    .sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0));
+  for (const r of panels) rect("wf-panel", r.x0, r.y0, r.x1, r.y1, NODE_RX);
+  for (const b of p.blocks) {
+    if (b.kind === "btn") continue;
+    rect("wf-btn t-" + b.role + " s-" + b.role, b.x0, b.y0, b.x1, b.y1, 4);
+  }
+  for (const r of p.rects) {
+    if (r.kind === "panel") continue;
+    rect(r.kind === "field" ? "wf-field" : "wf-box", r.x0, r.y0, r.x1, r.y1, 4);
+  }
+  const seps = p.hseps.concat(p.vseps).concat(p.rules);
+  for (const q of seps) {
+    el.push('<line class="ln wf-sep" x1="' + fnum(q.x0 * s) + '" y1="' + fnum(q.y0 * s) +
+      '" x2="' + fnum(q.x1 * s) + '" y2="' + fnum(q.y1 * s) + '"/>');
+    grow(q.x0 * s, q.y0 * s, q.x1 * s, q.y1 * s);
+  }
+  for (const b of p.blocks) {
+    if (b.kind !== "btn") continue;
+    rect("wf-btn t-" + b.role + " s-" + b.role, b.x0, b.y0, b.x1, b.y1, 4);
+  }
+  for (const t of p.texts) {
+    const bh = Math.min(12, Math.max(4.5, t.h * s * 0.6));
+    const yc = ((t.y0 + t.y1) / 2) * s;
+    const bw = Math.max(8, (t.x1 - t.x0) * s);
+    el.push('<rect class="wf-' + t.kind + '" x="' + fnum(t.x0 * s) + '" y="' + fnum(yc - bh / 2) +
+      '" width="' + fnum(bw) + '" height="' + fnum(bh) + '" rx="' + fnum(bh / 2) + '"/>');
+    grow(t.x0 * s, yc - bh / 2, t.x0 * s + bw, yc + bh / 2);
+  }
+  const w = x1 - x0 + FIG_PAD * 2, h = y1 - y0 + FIG_PAD * 2;
+  const shift = 'transform="translate(' + fnum(FIG_PAD - x0) + "," + fnum(FIG_PAD - y0) + ')"';
+  const nf = p.rects.filter((r) => r.kind === "field").length;
+  const nb = p.blocks.filter((b) => b.kind === "btn").length;
+  const bits: string[] = [];
+  if (panels.length) bits.push(panels.length + " panel" + (panels.length === 1 ? "" : "s"));
+  if (nf) bits.push(nf + " field" + (nf === 1 ? "" : "s"));
+  if (nb) bits.push(nb + " button" + (nb === 1 ? "" : "s"));
+  if (p.blocks.length - nb) bits.push((p.blocks.length - nb) + " colour block" +
+    (p.blocks.length - nb === 1 ? "" : "s"));
+  if (p.hseps.length) bits.push(p.hseps.length + " row separator" +
+    (p.hseps.length === 1 ? "" : "s"));
+  bits.push(p.texts.length + " text row" + (p.texts.length === 1 ? "" : "s"));
+  const title = "Slide " + no + " interface wireframe" +
+    (total > 1 ? " (" + idx + " of " + total + ")" : "");
+  const desc = "Interface screenshot redrawn as a standardized wireframe: " +
+    bits.join(", ") + ". Text inside a screenshot is pixels, so text rows render " +
+    "as placeholder bars; positions are approximate to the source image and " +
+    "colours are mapped to the corpus palette.";
+  return { slide: no, name: figName(no, idx, total),
+    svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + el.join("") + "</g>"),
+    alt: desc, anchor: [] };
+}
+
+function uiFigures(no: number, pics: FPic[], tables: FTable[]): SlideFigure[] {
+  const qual: { pic: FPic; parts: UiParts; w: number }[] = [];
+  for (const pic of pics) {
+    const img = pngDecode(pic.data);
+    if (!img) continue;
+    const parts = uiScan(img);
+    if (parts) qual.push({ pic: pic, parts: parts, w: img.w });
+  }
+  const out: SlideFigure[] = [];
+  const spans: number[][] = [];
+  for (let i = 0; i < qual.length; i++) {
+    out.push(uiRender(no, i + 1, qual.length, qual[i].parts, qual[i].w));
+    spans.push([qual[i].pic.y, qual[i].pic.y + qual[i].pic.h]);
+  }
+  assignAnchors(out, spans, tables);
+  return out;
+}
+
 // vector clusters first (each qualifying cluster is its own figure); a slide
 // with no vector diagram falls through to the table-driven redraw, and a
-// slide with neither — but a pasted PNG — to the tracing tier. Every lane
-// anchors its figures to the slide's tables (geometry for drawn/traced
-// figures, meaning for redrawn ones — see assignAnchors/buildRedraw).
+// slide with neither — but a pasted PNG — to the raster tiers: the wireframe
+// tier screens the picture first (its structural gate only passes genuine
+// interface screenshots, which the ruler trace should never see — window
+// chrome is not a route), then the ruler trace takes what remains. Every
+// lane anchors its figures to the slide's
+// tables (geometry for drawn/traced/wireframe figures, meaning for redrawn
+// ones — see assignAnchors/buildRedraw).
 function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[] {
   const tables = slideTables(xml);
   const clusters = clusterParsed(parseSlide(xml));
@@ -2435,7 +3042,10 @@ function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[
   }
   const r = buildRedraw(xml, no, tables);
   if (r.length) return r;
-  return traceFigures(xml, no, pics(), tables);
+  const pl = pics();
+  const ui = uiFigures(no, pl, tables);
+  if (ui.length) return ui;
+  return traceFigures(xml, no, pl, tables);
 }
 
 // ------------------------------------------------ slide ordering

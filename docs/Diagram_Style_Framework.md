@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.9)
+# Diagram style framework (SlideFigures v2.0)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -120,10 +120,57 @@ result is the same `FRaw` lines the vector path produces, run through the
 identical classify/normalise pipeline — a traced figure is
 indistinguishable in style from a drawn one. It renders only when the
 trace passes a gate *stricter* than the vector one (a route **and** 3+
-ticks); anything busier — screenshots, photos, more than 48 strokes —
-stays silent, and the alt text says the figure is traced and approximate.
-Order of preference is unchanged: real vectors, then the slide's own
-stated data, then tracing.
+ticks); anything busier — photos, more than 48 strokes — stays silent,
+and the alt text says the figure is traced and approximate. Since v2.0
+screenshots no longer fall to this tier at all: the wireframe tier (see
+above) screens every pasted picture first, so the order of preference is
+real vectors, then the slide's own stated data, then the wireframe for
+interface screenshots, then tracing for what remains.
+
+## UI screenshots: the wireframe tier (v2.0)
+
+Half the corpus's pasted pictures are not route diagrams — they are
+screenshots of the app's own interface: a search form, a results list, an
+attribute table. The trace tier rightly refused them ("busier than a
+diagram is a screenshot"), so they stayed captions. They are now **redrawn
+as standardized wireframes**, one visual language for every screenshot in
+the corpus:
+
+| Interface element | Rendering |
+|---|---|
+| Bordered region holding other elements | **Panel** — white fill, muted 1.4px stroke, the corpus corner radius (7px) |
+| Wide, short bordered box holding at most one text row | **Input field** — white fill, muted 1.1px stroke, 4px corners |
+| Other assembled rectangle | **Group box** — no fill, muted stroke |
+| Flat colour region, button-proportioned | **Button** — palette *tint* fill + deep stroke, mapped from the source colour by the same hue-family rule as everything else |
+| Flat colour region spanning its container | **Header band** — same tinted treatment |
+| Full-width border inside a box | **Row separator** (table rows render this way); full-height ones are column rules |
+| Row of glyph-sized ink | **Placeholder text bar** — a pill at the row's true position and extent; heading rows (taller than 1.35× the median) take the slate weight, body rows the context grey, rows on a colour fill the plate white |
+
+**How it reads the pixels.** The picture must first read as an interface
+at all: a flat, light ground (photos and maps fail here and stay silent),
+at least one *assembled* closed rectangle — a top/bottom border pair with
+matching extents plus side verticals covering the span, bottoms tried
+farthest-first so a table's row separators are never mistaken for box
+bottoms, and each side vertical bounds at most one box — plus three or
+more text rows. Flat colour regions are found on a coarse cell grid, so a
+glyph or an icon printed over a button's fill cannot fragment it. The
+structural gate is what lets this tier screen raster slides **before**
+the ruler trace: open route lines and tick stubs assemble no rectangles,
+so diagram-shaped pictures fall straight through to the trace tier, and a
+screenshot never reaches the ruler classifier at all.
+
+**No OCR, by design.** Text inside a screenshot is pixels. Rather than
+guess at characters, each text row renders as a placeholder bar that keeps
+the row's true position, extent and weight — the layout survives, the
+words do not — and the alt text says so. The slide's own extracted text
+(title, notes, tables) still carries the searchable words.
+
+**Normalisation.** The same "hand-placement is not layout" rule as
+everywhere else: element edges that jitter within 7px snap to one shared
+coordinate (a stack of fields comes out flush), text baselines within 4px
+align, and every wireframe renders at one standardized width (720px)
+regardless of the source capture's resolution — a 4K screenshot and a
+laptop screenshot of the same panel come out the same figure.
 
 ## Spanning events: route chains (v1.6)
 
@@ -287,6 +334,10 @@ colour-led rule gets one of them backwards.
 | event | 8px stroke, **butt caps** | Extents — soft highlight bands under the dash |
 | tick / major | 1.15 / 1.4px | Scale marks |
 | leader | 1.0px | Callouts |
+| wf-panel / wf-field / wf-box | 1.4 / 1.1 / 1.1px muted stroke | Wireframe panels, input fields, group boxes |
+| wf-btn | tint fill + deep stroke, 1.2px | Wireframe buttons, bands, tiles |
+| wf-sep | 1px plate-border grey | Wireframe table rows and column rules |
+| wf-gk / wf-gkh / wf-gkp | context grey / slate / plate pills | Placeholder text bars: body, heading, on-fill |
 
 Geometry is tokenised the same way (v1.6), so every lane — ruler, redraw,
 spanning, trace — places the same element the same distance from the line:
@@ -373,10 +424,15 @@ place every part by hand.
   implicit, so a wrong guess would draw a wrong curve — omission is the
   honest failure). The redraw path covers the shapes this corpus actually
   uses (straight, vertical, loop, lollipop, branch, alpha, infinity, gap).
-- The tracing tier reads PNGs only (JPEG needs a DCT decoder no pasted
-  script should carry), traces axis-aligned strokes only, and cannot OCR —
-  measures printed inside the picture are pixels, so a traced ruler may
-  carry ticks but no numbers.
+- The raster tiers read PNGs only (JPEG needs a DCT decoder no pasted
+  script should carry), trace axis-aligned structure only, and cannot OCR —
+  anything printed inside a picture is pixels, so a traced ruler may carry
+  ticks but no numbers, and a wireframe's text rows are placeholder bars,
+  not words. The slide's own extracted text still carries the searchable
+  words.
+- The wireframe tier wants a flat, LIGHT ground: dark-theme screenshots
+  stay silent (the corpus's decks capture the app's light theme), as do
+  borderless flat designs with nothing the rectangle assembly can close.
 - Band compression is skipped in a ruler figure that also contains nodes or
   freeform paths — compressBands cannot see them, and moving the ruler out
   from under a node it shares space with would misplace exactly the thing

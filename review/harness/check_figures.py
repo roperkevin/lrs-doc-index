@@ -432,6 +432,35 @@ mk9 = re.search(r'<marker id="ar"[^>]*>(<path[^>]*>)', v1)
 check(mk9 is not None and 'stroke=' not in mk9.group(1),
       'arrowheads are plain solid triangles again — no outline needed on a soft band')
 
+# ---- v2.0 (DF-11): UI screenshots redraw as standardized wireframes -------
+u13 = figs.get(13, {})
+u = u13.get('svg', '')
+check(bool(u), 'UI-screenshot slide produces a wireframe figure')
+check(u13.get('name') == 'slide13.svg',
+      'wireframe: a slide\'s only figure keeps the slideN.svg name')
+check('interface wireframe' in u, 'wireframe: title says what the figure is')
+check('placeholder' in u13.get('alt', '') and 'wireframe' in u13.get('alt', ''),
+      'wireframe: alt says text rows are placeholder bars (no OCR is claimed)')
+npan = u.count('class="wf-panel"')
+check(npan == 2, f'wireframe: both bordered panels render as panels ({npan})')
+check(u.count('class="wf-field"') == 2,
+      'wireframe: both input boxes render as standardized fields')
+fld = re.findall(r'<rect class="wf-field" x="([\d.]+)"', u)
+check(len(fld) == 2 and len(set(fld)) == 1,
+      f'wireframe: stacked fields snap to ONE shared left edge ({fld})')
+check('class="wf-btn t-cool s-cool"' in u,
+      'wireframe: the blue button maps to the cool palette slot by hue family')
+check('class="wf-box"' in u, 'wireframe: the results table renders as a group box')
+nsep = u.count('class="ln wf-sep"')
+check(nsep >= 4, f'wireframe: table row separators + column rule vectorised ({nsep})')
+check('class="wf-gkh"' in u and 'class="wf-gk"' in u,
+      'wireframe: text rows greek in two weights (heading + body)')
+ngk = len(re.findall(r'class="wf-gk[hp]?"', u))
+check(ngk >= 6, f'wireframe: the screenshot\'s text rows all carry bars ({ngk})')
+check('class="ln route"' not in u and 'class="ln tick' not in u,
+      'wireframe: nothing ruler-shaped leaks into an interface figure')
+check(14 not in figs, 'photo/noise slide produces NO figure — neither tier fires')
+
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
 for n, f in allfigs:
