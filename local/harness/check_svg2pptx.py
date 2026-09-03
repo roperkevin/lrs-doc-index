@@ -47,10 +47,9 @@ STYLE = (
     '<style>'
     '.plate{fill:#FFFFFF;stroke:#D7DFDF;stroke-width:1}'
     '.ln{fill:none;stroke-linecap:round;stroke-linejoin:round}'
-    '.route{stroke:#16302F;stroke-width:3;stroke-dasharray:8 5;stroke-linecap:butt}'
-    '.routecase{stroke:#FFFFFF;stroke-width:5;stroke-dasharray:8 5;stroke-linecap:butt}'
+    '.route{stroke:#16302F;stroke-width:3;stroke-dasharray:10 6;stroke-linecap:butt}'
     '.ctx{stroke:#B9C6C6;stroke-width:2.4}'
-    '.event{stroke-width:6.5}.flat{stroke-linecap:butt}'
+    '.event{stroke-width:8}.flat{stroke-linecap:butt}'
     '.tick{stroke:#6E8285;stroke-width:1.15}'
     '.maj{stroke:#4E6265;stroke-width:1.4}'
     '.leader{stroke:#6E8285;stroke-width:1}'
@@ -74,21 +73,21 @@ STYLE = (
     '.s-green{stroke:#2E7D5B}.f-green{fill:#2E7D5B}'
     '.s-violet{stroke:#7A5AA6}.f-violet{fill:#7A5AA6}'
     '.s-red{stroke:#B2442F}.f-red{fill:#B2442F}'
-    '.event.s-cool,.swatch.s-cool{stroke:#3A97C4}'
-    '.event.s-warm,.swatch.s-warm{stroke:#DE8A26}'
-    '.event.s-green,.swatch.s-green{stroke:#3FA173}'
-    '.event.s-violet,.swatch.s-violet{stroke:#9678CC}'
-    '.event.s-red,.swatch.s-red{stroke:#D96A50}'
+    '.event.s-cool,.swatch.s-cool{stroke:#4FA7D5}'
+    '.event.s-warm,.swatch.s-warm{stroke:#E39A45}'
+    '.event.s-green,.swatch.s-green{stroke:#4EB183}'
+    '.event.s-violet,.swatch.s-violet{stroke:#A58BD3}'
+    '.event.s-red,.swatch.s-red{stroke:#DC8168}'
     "text{font-family:'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif}"
     '.measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}'
     '.id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}'
     '</style>'
     '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" '
-    'markerHeight="4.4" orient="auto-start-reverse" overflow="visible">'
-    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F" stroke="#FFFFFF" stroke-width="0.9"/></marker>'
+    'markerHeight="4.4" orient="auto-start-reverse">'
+    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F"/></marker>'
     '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" '
-    'markerHeight="4.4" orient="auto-start-reverse" overflow="visible">'
-    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265" stroke="#FFFFFF" stroke-width="0.9"/></marker></defs>'
+    'markerHeight="4.4" orient="auto-start-reverse">'
+    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265"/></marker></defs>'
 )
 
 FIXTURE = (
@@ -103,7 +102,6 @@ FIXTURE = (
     '<line class="ln event flat s-warm" x1="300" y1="60" x2="540" y2="60"/>'
     '<line class="ln tick maj" x1="60" y1="52.5" x2="60" y2="67.5"/>'
     '<line class="ln tick" x1="120" y1="55.5" x2="120" y2="64.5"/>'
-    '<line class="ln routecase" x1="40" y1="60" x2="640" y2="60"/>'
     '<line class="ln route" x1="40" y1="60" x2="640" y2="60"/>'
     '<line class="ln route" x1="632" y1="60" x2="640" y2="60" marker-end="url(#ar)"/>'
     '<line class="split" x1="300" y1="49.5" x2="300" y2="70.5"/>'
@@ -192,20 +190,18 @@ check('<a:blip' not in s1 and 'image' not in ct, 'nothing rasterised')
 
 # ---- 3: styles resolve from the figure's own stylesheet ------------------
 check('val="16302F"' in s1, 'route stroke: ink resolved')
-check('val="3A97C4"' in s1 and 'val="DE8A26"' in s1,
-      'extent strokes: BRIGHT bar variants resolved via compound rules (v1.8)')
+check('val="4FA7D5"' in s1 and 'val="E39A45"' in s1,
+      'extent strokes: SOFT band variants resolved via compound rules (v1.9)')
 check('val="7A5AA6"' in s1,
       'freeform keeps the DEEP violet — compound rules scope to event/swatch only')
-check(re.search(r'<a:ln w="\d+" cap="flat"><a:solidFill><a:srgbClr val="FFFFFF"/>', s1)
-      is not None, 'route casing: white dashed underlay carried through')
 check('val="E5F0F5"' in s1 and 'val="F9F0E2"' in s1,
       'node fills: palette tints resolved')
 m = re.search(r'<a:ln w="(\d+)" cap="flat">'
-              r'<a:solidFill><a:srgbClr val="3A97C4"/>', s1)
+              r'<a:solidFill><a:srgbClr val="4FA7D5"/>', s1)
 check(m is not None, 'event extent: butt cap carried through')
 if m:
-    check(abs(int(m.group(1)) - round(6.5 * 9525)) <= 10,
-          f'event extent: 6.5px stroke -> EMU width ({m.group(1)})')
+    check(abs(int(m.group(1)) - round(8 * 9525)) <= 10,
+          f'event extent: 8px band -> EMU width ({m.group(1)})')
 check(re.search(r'val="16302F"><a:alpha val="55000"/>', s1) is not None,
       "split hairline: opacity .55 -> 55% stroke alpha")
 check('<a:prstDash val="sysDash"/>' in s1, 'split dash (3 2.5) -> sysDash')

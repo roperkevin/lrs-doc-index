@@ -1,5 +1,16 @@
 # Local sweep — release notes
 
+## svg2pptx gate sync (2026-09-03, with SlideFigures v1.9 / DF-10)
+
+Converter unchanged — the DF-10 calm-band restyle (soft field hues,
+8px bands, 10/6 dash, no casing underlay or marker outlines) resolves
+from each figure's own stylesheet, through the v1.1 compound-selector
+support. `check_svg2pptx.py`'s fixture is synced to the v1.9 emission
+(routecase rule and its fixture line removed, soft hexes, plain
+markers) and its width/hex assertions updated (8px band EMU, soft
+variants bright→soft, casing assertion retired). PASSED; all 16
+`check_figures.py` fixture figures convert and open in python-pptx.
+
 ## svg2pptx v1.1 (2026-09-03, with SlideFigures v1.8 / DF-9)
 
 **Compound selectors in the style resolver.** The v1.8 two-tone

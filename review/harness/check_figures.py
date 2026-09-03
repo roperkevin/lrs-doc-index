@@ -411,27 +411,26 @@ check(rt12 is not None and bool(t12) and
                                         float(rt12.group(2))) + 0.1,
       'a clamped hash mark stays ON the route')
 
-# ---- v1.8 (DF-9): white casing under the dash, two-tone palette -----------
-check('.routecase{stroke:#FFFFFF' in v1,
-      'route casing class: white, defined in the stylesheet')
-for lane, svg_l in (('vector', b_v), ('redraw', b_r3),
-                    ('spanning', f11[0]['svg'] if len(f11) == 2 else '')):
-    n_case = svg_l.count('class="ln routecase"')
-    n_route = len(re.findall(r'class="ln route[" ]', svg_l))
-    check(n_case > 0 and n_case == n_route,
-          f'{lane} lane: every route element rides its own casing '
-          f'({n_case}/{n_route})')
-check(b_v.find('class="ln routecase"') > b_v.rfind('class="ln event'),
-      'casing draws with the route — above the extents, not under them')
-check(re.search(r'\.event\.s-cool,\.swatch\.s-cool\{stroke:#3A97C4\}', v1) is not None
+# ---- v1.9 (DF-10): calm bands, no casing stripes, higher figure cap -------
+# The DF-9 white-cased dash over saturated bars read as a candy stripe; the
+# style is now ONE dark mark on ONE quiet colour field — a soft 8px band
+# under a slim long-rhythm dash, no underlay, no marker outline.
+check('routecase' not in v1 and 'routecase' not in r3out
+      and (len(f11) != 2 or 'routecase' not in f11[0]['svg']),
+      'no casing stripes anywhere — the dash sits directly on the band')
+check('.event{stroke-width:8}' in v1,
+      'extents widen into soft highlight BANDS (8px)')
+mdash = re.search(r'\.route\{([^}]*)\}', v1)
+check(mdash is not None and 'stroke-dasharray:10 6' in mdash.group(1),
+      'route dash calms to a longer 10/6 rhythm')
+check(re.search(r'\.event\.s-cool,\.swatch\.s-cool\{stroke:#4FA7D5\}', v1) is not None
       and '.s-cool{stroke:#1B6E8C}' in v1,
-      'two-tone: bars take the bright variant, thin marks keep the deep one')
+      'two-tone: bands take the SOFT variant, thin marks keep the deep one')
 check('.f-warm{fill:#9C5A12}' in v1,
       'warm text ink deepened to clear 4.5:1 on the plate')
 mk9 = re.search(r'<marker id="ar"[^>]*>(<path[^>]*>)', v1)
-check(mk9 is not None and 'stroke="#FFFFFF"' in mk9.group(1)
-      and 'overflow="visible"' in v1[:v1.index('<marker id="ae"')],
-      'arrowheads outlined in white (and unclipped) for the same separation')
+check(mk9 is not None and 'stroke=' not in mk9.group(1),
+      'arrowheads are plain solid triangles again — no outline needed on a soft band')
 
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
