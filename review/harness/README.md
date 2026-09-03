@@ -1,5 +1,22 @@
 # Local script harness — standing suites + gates
 
+## Suite index (live vs. historical, at a glance)
+
+| Suite | Status | Guards |
+|---|---|---|
+| `check_format.py` + `render_sample.py` | **live** (CI full-format) | ZipTextExtract/WorkbookDump/RegexExtract format contract |
+| `check_related.py` | **live** (CI fixture-free) | RelatedRank + SidecarPatch |
+| `check_regex.py` | **live** (CI fixture-free) | RegexExtract IdResult contract |
+| `check_figures.py` | **live** (CI full-format) | SlideFigures |
+| `check_typecheck.py` | **live** (CI, own job) | every `scripts/*.ts` type-checks at ES2017 |
+| `../../pad/harness/check_pad_runner.py` | **live** (CI fixture-free) | PAD runner + ops.mjs loader |
+| `../../local/harness/check_local_sweep.py` | **live** (CI fixture-free) | the whole local pipeline: sweep, curate (+`--repoint`), gantt, auth, alerts |
+| `../../local/harness/check_svg2pptx.py` | **live** (CI full-format) | svg2pptx |
+| `check_batch_v2_2.py` | **live** | ZipTextExtract v2.2 / DL-1 promotion |
+| `check_batch.py`, `check_batch_r2..r6.py` | historical — self-skip as superseded | the v1.9/r2–r6 promotion rounds (records below) |
+| `run_diff.py` | historical — skips unless wraps regenerated | the v1.5→v1.6 equivalence record |
+| `check_batch_r3.py` note | r4+ supersede r3; r4 itself skips since the RelatedRank v2.2 promotion | |
+
 The standing suites always run against the **current `scripts/`
 versions** (or whatever `HARNESS_SCRIPTS` points at) and generate
 version-neutral `*_cur.ts` runners, so their labels never go stale

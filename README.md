@@ -109,6 +109,11 @@ keeps the old yaml-on-top layout).
 | local/CHANGES.md | Local sweep release notes | v1.0 |
 | local/svg2pptx.mjs | Figure SVGs → editable PowerPoint shapes (pull sweep figures into review decks: one native, grouped, restyleable figure per slide, titled with its case heading + source document, the case's tables as native editable tables, sidecar metadata line; zero dependencies) | v1.3 |
 | local/harness/check_svg2pptx.py | svg2pptx gate (full SlideFigures vocabulary fixture; package/shape/style/label/title-band/case-table contract + sidecar lookup legs + python-pptx open leg; CI) | v1.3 |
+| local/lib/*.mjs | The sweep's shared modules (v1.31 split): util, doclinks, presentation, bodyindex, statuspage, indexpages, alerts, config | — |
+| local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
+| local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
+| review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |
+| STATUS_history.md | The per-day STATUS narratives, moved out of STATUS.md's head (2026-09-03) | — |
 
 Older flow versions (`flow/v1_9/` — the pre-v2.0 baseline, moved from
 `flow/definition.json` in review round r2 — `flow/v2_0/`,
@@ -120,7 +125,9 @@ the r2 PV-1 addenda.
 
 Retired, not included: TagStrip (superseded by ZipTextExtract; the
 script may remain in Excel harmlessly). Issue Refs list is present
-but empty by design — its feeder is flow #2, not yet built.
+and empty until its feeder — flow #2, now built as the local job
+`local/gantt.mjs` — gets its first live run (verify the list GUID on
+tenant first; STATUS action 13c).
 
 ## Flow v2.5 highlights (cumulative)
 
@@ -440,18 +447,16 @@ from v2.3 or earlier, do the v2.4 steps first
 
 ## Known limits / queued work
 
-Run-script payload caps files at roughly 3.5 MB (oversized docs
-Error visibly; an OCR fallback lane is designed if ever needed).
-html/pdf/msg extensions land as Skipped rows awaiting future
-lanes. Flow #2 (Gantt → Issue Refs + title-matching) and the
-librarian backfill pass (junction lookups from KWKey,
-retro-illustration of early docs — now also carrying the
-DocKeywords re-point after approved keyword merges: an approved
-alias fixes the vocabulary and all future junction rows, but
-historical rows stay on the alias id, and a reindex adds canonical
-rows without deleting stale ones, until the backfill re-points
-them; mechanics specified in `curation/Curation_Setup.md`) are the
-queued follow-ons. Test-plan generation's own deferred work — docx
+Run-script payload caps files at roughly 3.5 MB on the CLOUD flow
+(the local sweep raised its guard to 50 MB). Since the 2026-09-03 r7
+batch most of the old queue is built: html and pdf index (v1.10),
+image-only PDFs OCR when `sweep.tesseractPath` is set (v1.36), Flow
+#2 ships as `local/gantt.mjs` (first live run pending — STATUS
+action 13c), and the librarian DocKeywords re-point is
+`curate.mjs --repoint` (run it after approved merges, then
+`sweep --rerank`). Still queued: the msg lane (Skipped rows await
+it), and the librarian pass's retro-illustration piece
+(`curation/Curation_Setup.md`). Test-plan generation's own deferred work — docx
 conversion of drafts and the IssueRefs-driven coverage matrix — is
 specified in `testplangen/TestPlanGen_Setup.md`'s Queued follow-ons
 (the Copilot Studio front end shipped in v1.1; see
