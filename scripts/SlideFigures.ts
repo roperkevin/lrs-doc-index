@@ -1,16 +1,32 @@
 /**
- * SlideFigures v1.5 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.6 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
  * (2026-09-03) splits the redraw lane's combined figure and anchors every
  * figure to its slide table; DF-5 (2026-09-03) fixes label collisions and
- * arrowhead layering; DF-6 (2026-09-03) snaps arrowheads to line tips.
+ * arrowhead layering; DF-6 (2026-09-03) snaps arrowheads to line tips;
+ * DF-7 (2026-09-03) redraws spanning events as route chains.
  * Companion to ZipTextExtract, same input (the
  * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
  * several):
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *
+ * v1.6 (DF-7):
+ *   - SPANNING EVENTS REDRAW AS ROUTE CHAINS. A "line network" slide
+ *     states an event running ACROSS routes (From RID R1L3 measure 10 →
+ *     To RouteID R3L3 measure 25, via R2L3, split at 52.5 in R2L3's own
+ *     measure domain). Collapsing that onto one route's ruler drew a
+ *     10→25 tick grid that exists on no route and clamped the split away
+ *     as degenerate. Such slides now draw the route CHAIN (order from the
+ *     slide's route-list table): one segment per route, each ending in
+ *     its own arrowhead (the diagram's vocabulary for a route end), route
+ *     ids under their segments, the stated measures above their anchors
+ *     (no invented tick grids — the tables state only the anchors), the
+ *     split on the route the result table names for it, and a legend
+ *     qualifying each output range with its routes ("E1 R1L3 10 → R2L3
+ *     52.5") — a cross-route range is meaningless without them.
  *
  * v1.5 (DF-6):
  *   - ARROWHEADS SNAP TO LINE TIPS. The v1.4 head still let the line show
@@ -1536,6 +1552,159 @@ function niceStep(span: number): number {
   return Math.max(1, Math.round(span / 8));
 }
 
+// ------------------------------------- spanning-event redraw (DF-7)
+// the route chain the event spans, from the slide's route-list table (a
+// header-row table whose first column is "Route ID" over the route rows,
+// in network order). Absent a usable list, the chain is just the two
+// stated endpoints.
+function routeChain(tables: FTable[], fromRid: string, toRid: string): string[] {
+  for (const t of tables) {
+    const rows = t.rows;
+    if (rows.length < 3 || (rows[0][0] || "").toLowerCase() !== "route id") continue;
+    const ids: string[] = [];
+    for (let r = 1; r < rows.length; r++) {
+      const v = rows[r][0] || "";
+      if (/^[A-Za-z0-9]{1,10}$/.test(v)) ids.push(v);
+    }
+    const a = ids.indexOf(fromRid), b = ids.indexOf(toRid);
+    if (a >= 0 && b >= 0 && a !== b) {
+      return a < b ? ids.slice(a, b + 1) : ids.slice(b, a + 1).reverse();
+    }
+  }
+  return [fromRid, toRid];
+}
+
+// which route the split measure lives on: the result table states it — the
+// event column whose To Measure (or From Measure) IS the split names the
+// route beside it. "" when no result table answers.
+function splitRoute(tables: FTable[], gi: number, split: number): string {
+  if (gi < 0) return "";
+  const rows = tables[gi].rows;
+  const row = (label: string): string[] | null => {
+    for (const r of rows) if ((r[0] || "").toLowerCase() === label) return r;
+    return null;
+  };
+  const fm = row("from measure"), tm = row("to measure");
+  const fr = row("from rid"), tr = row("to routeid") || row("to rid");
+  for (let c = 1; c < rows[0].length; c++) {
+    if (tm && tr && parseFloat(tm[c]) === split &&
+        /^[A-Za-z0-9]{1,10}$/.test(tr[c] || "")) return tr[c];
+    if (fm && fr && parseFloat(fm[c]) === split &&
+        /^[A-Za-z0-9]{1,10}$/.test(fr[c] || "")) return fr[c];
+  }
+  return "";
+}
+
+interface SpanParams {
+  m0: number; m1: number; split: number; eventId: string;
+  fromRid: string; toRid: string; inputGi: number; outputGi: number;
+}
+
+// The chain draws as the slide draws it: one segment per route laid end to
+// end, EACH ENDING IN ITS OWN ARROWHEAD (a route's end is where its arrow
+// is — that is the diagram's vocabulary), route ids below their segments,
+// the stated measures above their anchors (the segment interiors carry no
+// invented tick grids: the slide's tables state only the anchors), event
+// ids above their extents, and the output figure's legend qualifying each
+// range with its routes — "E1 R1L3 10 → R2L3 52.5" — because a cross-route
+// range is meaningless without them. Segment widths are equal: a schematic
+// of the network's order, not a claim about route lengths.
+function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigure[] {
+  const chain = routeChain(tables, p.fromRid, p.toRid);
+  let sRid = splitRoute(tables, p.outputGi, p.split);
+  let k = chain.indexOf(sRid);
+  if (k < 0) { k = Math.floor(chain.length / 2); sRid = chain[k]; }
+  const innerW = FIG_W - FIG_PAD * 2 - 24 - ARROW_EXT;
+  const ox = FIG_PAD + 12;
+  const ry = FIG_PAD + 40;            // measures sit above this line
+  const segW = innerW / chain.length;
+  const x1 = ox + innerW;
+  const sx = ox + (k + 0.5) * segW;   // the split, mid-segment: the split
+                                      // route's own measure domain is not
+                                      // stated, so no position within it is
+  const chainTxt = chain.join(" → ");
+  const rows: { ext: number[][]; sp: number; gi: number; alt: string }[] = [
+    { ext: [[ox, x1, 0]], sp: NaN, gi: p.inputGi,
+      alt: "Schematic redrawn from the slide's data: event " + p.eventId +
+        " spanning routes " + chainTxt + ", from " + p.fromRid + " measure " +
+        fnum(p.m0) + " to " + p.toRid + " measure " + fnum(p.m1) +
+        ", before the split at measure " + fnum(p.split) + " on " + sRid + "." },
+    { ext: [[ox, sx, 0], [sx, x1, 1]], sp: sx, gi: p.outputGi,
+      alt: "Schematic redrawn from the slide's data: event " + p.eventId +
+        " spanning routes " + chainTxt + " after the split at measure " +
+        fnum(p.split) + " on " + sRid + ": " + p.eventId + " as " + p.fromRid +
+        " " + fnum(p.m0) + " → " + sRid + " " + fnum(p.split) + " and " + sRid +
+        " " + fnum(p.split) + " → " + p.toRid + " " + fnum(p.m1) + "." },
+  ];
+  const roles = ["cool", "warm"];
+  const figsOut: SlideFigure[] = [];
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    const body: string[] = [];
+    // route segments first (each route is its own line; the last overshoots
+    // for its arrowhead like every ruler)
+    for (let i = 0; i < chain.length; i++) {
+      const a = ox + i * segW, b = ox + (i + 1) * segW;
+      body.push('<line class="ln route" x1="' + fnum(a) + '" y1="' + fnum(ry) +
+        '" x2="' + fnum(i === chain.length - 1 ? b + ARROW_EXT : b) +
+        '" y2="' + fnum(ry) + '"/>');
+    }
+    body.push('<line class="ln tick maj" x1="' + fnum(ox) + '" y1="' + fnum(ry - TICK_MAJOR / 2) +
+      '" x2="' + fnum(ox) + '" y2="' + fnum(ry + TICK_MAJOR / 2) + '"/>');
+    // extents over the routes
+    for (const e of row.ext) {
+      body.push('<line class="ln event flat s-' + roles[e[2]] + '" x1="' + fnum(e[0]) +
+        '" y1="' + fnum(ry) + '" x2="' + fnum(e[1]) + '" y2="' + fnum(ry) + '"/>');
+      body.push('<text class="id f-' + roles[e[2]] + '" x="' + fnum((e[0] + e[1]) / 2) +
+        '" y="' + fnum(ry - 17) + '" text-anchor="middle" dominant-baseline="central">' +
+        esc(p.eventId) + "</text>");
+    }
+    // arrowheads LAST — every route ends in its own arrow, on top of the
+    // extent running through the joint (the slide's own vocabulary)
+    for (let i = 0; i < chain.length; i++) {
+      const tip = ox + (i + 1) * segW + (i === chain.length - 1 ? ARROW_EXT : 0);
+      body.push('<line class="ln route" x1="' + fnum(tip - 8) + '" y1="' + fnum(ry) +
+        '" x2="' + fnum(tip) + '" y2="' + fnum(ry) + '" marker-end="url(#ar)"/>');
+    }
+    if (!isNaN(row.sp)) {
+      body.push('<line class="split" x1="' + fnum(row.sp) + '" y1="' + fnum(ry - SPLIT_ARM) +
+        '" x2="' + fnum(row.sp) + '" y2="' + fnum(ry + SPLIT_ARM) + '"/>');
+      body.push('<circle class="splitdot" cx="' + fnum(row.sp) + '" cy="' + fnum(ry) + '" r="3.4"/>');
+    }
+    // the stated measures, above their anchors (start / split / end)
+    const meas: number[][] = [[ox, p.m0], [x1, p.m1]];
+    if (!isNaN(row.sp)) meas.push([sx, p.split]);
+    for (const mv of meas) {
+      body.push('<text class="measure" x="' + fnum(mv[0]) +
+        '" y="' + fnum(ry - TICK_MAJOR / 2 - TICK_GAP) +
+        '" text-anchor="middle" dominant-baseline="central">' + fnum(mv[1]) + "</text>");
+    }
+    // route ids below their segments
+    for (let i = 0; i < chain.length; i++) {
+      body.push('<text class="id f-ink" x="' + fnum(ox + (i + 0.5) * segW) +
+        '" y="' + fnum(ry + TICK_MAJOR / 2 + TICK_GAP + 6) +
+        '" text-anchor="middle" dominant-baseline="central">' + esc(chain[i]) + "</text>");
+    }
+    let hgt = ry + 36 + FIG_PAD;
+    if (ri === 1) {
+      const leg = emitLegend([
+        { role: roles[0], t: p.eventId + " " + p.fromRid + " " + fnum(p.m0) + " → " +
+          sRid + " " + fnum(p.split) },
+        { role: roles[1], t: p.eventId + " " + sRid + " " + fnum(p.split) + " → " +
+          p.toRid + " " + fnum(p.m1) },
+      ], FIG_PAD, ry + 48);
+      body.push(leg.svg);
+      hgt = ry + 56 + FIG_PAD;
+    }
+    const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " + rows.length + ")";
+    figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length),
+      svg: svgWrap(no, FIG_W, hgt, title, row.alt, body.join("")),
+      alt: row.alt,
+      anchor: row.gi >= 0 ? tables[row.gi].rows[0].slice() : [] });
+  }
+  return figsOut;
+}
+
 function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
   const cells: string[] = [];
   const tre = /<a:t>([^<]*)<\/a:t>/g;
@@ -1604,6 +1773,22 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       if (k === "measure" || k === "from measure") { hasMeasure = true; break; }
     }
     if (hasMeasure) { outputGi = gi; break; }
+  }
+
+  // SPANNING EVENTS (DF-7). A "line network" slide states an event that
+  // RUNS ACROSS ROUTES — "From RID R1L3, From Measure 10, To RouteID R3L3,
+  // To Measure 25", with the split measure in the MIDDLE route's own
+  // domain (52.5 on R2L3). Collapsing that onto one route's ruler drew a
+  // 10→25 grid that exists on no route and clamped the split away
+  // entirely. Such slides render as a route CHAIN instead.
+  const fromRid = after("from rid");
+  const toRid = after("to routeid") || after("to rid");
+  if (fromRid && toRid && fromRid !== toRid &&
+      /^[A-Za-z0-9]{1,10}$/.test(fromRid) && /^[A-Za-z0-9]{1,10}$/.test(toRid)) {
+    return buildSpanRedraw(no, tables, {
+      m0: m0, m1: m1, split: split, eventId: eventId,
+      fromRid: fromRid, toRid: toRid, inputGi: inputGi, outputGi: outputGi,
+    });
   }
 
   const topo = topology(kind);

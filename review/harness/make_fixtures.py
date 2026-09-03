@@ -756,6 +756,39 @@ for k in range(5):
     _label(s_f10, (0.9 + k * 0.75) * IN, 1.55 * IN, str(k))
 _line(s_f10, 1.0 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN, rgb='002060', w=int(0.05 * IN))
 
+# --- slide 11 (v1.6 / DF-7): a SPANNING event across a line network. The
+# event runs From RID R1L6 measure 10 → To RouteID R3L6 measure 25 via
+# R2L6, split at 52.5 in R2L6's own measure domain; the route-list table
+# gives the chain order and the result table names the split's route. The
+# old single-route redraw drew a 10→25 grid that exists on no route and
+# clamped the split away as degenerate.
+s_f11 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
+s_f11.shapes.title.text = '11. Normal route - Split measure : 52.5'
+t_f11 = s_f11.shapes.add_table(6, 2, Emu(int(4 * IN)), Emu(int(1.8 * IN)),
+                               Emu(int(2.6 * IN)), Emu(int(2 * IN))).table
+for r, (k, v) in enumerate([('Event ID', 'E6'), ('From RID', 'R1L6'),
+                            ('From Measure', '10'), ('To RouteID', 'R3L6'),
+                            ('To Measure', '25'), ('From Date', '1/1/2000')]):
+    t_f11.cell(r, 0).text = k
+    t_f11.cell(r, 1).text = v
+t_f11r = s_f11.shapes.add_table(4, 3, Emu(int(0.5 * IN)), Emu(int(2 * IN)),
+                                Emu(int(2.4 * IN)), Emu(int(1.4 * IN))).table
+for r, row in enumerate([('Route ID', 'From Date', 'To Date'),
+                         ('R1L6', '1/1/2000', 'Null'),
+                         ('R2L6', '1/1/2000', 'Null'),
+                         ('R3L6', '1/1/2000', 'Null')]):
+    for c, v in enumerate(row):
+        t_f11r.cell(r, c).text = v
+t_f11o = s_f11.shapes.add_table(5, 4, Emu(int(1 * IN)), Emu(int(4.6 * IN)),
+                                Emu(int(4.5 * IN)), Emu(int(1.8 * IN))).table
+for r, row in enumerate([('Event ID', 'E6', 'E6', 'E6'),
+                         ('From RID', 'R1L6', 'R1L6', 'R2L6'),
+                         ('From Measure', '10', '10', '52.5'),
+                         ('To RouteID', 'R3L6', 'R2L6', 'R3L6'),
+                         ('To Measure', '25', '52.5', '25')]):
+    for c, v in enumerate(row):
+        t_f11o.cell(r, c).text = v
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})

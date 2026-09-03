@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.5)
+# Diagram style framework (SlideFigures v1.6)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -124,6 +124,30 @@ ticks); anything busier — screenshots, photos, more than 48 strokes —
 stays silent, and the alt text says the figure is traced and approximate.
 Order of preference is unchanged: real vectors, then the slide's own
 stated data, then tracing.
+
+## Spanning events: route chains (v1.6)
+
+A "line network" slide states an event that runs **across routes**: the
+input table carries `From RID` / `From Measure` / `To RouteID` /
+`To Measure` (R1L3 10 → R3L3 25, via R2L3), the route-list table gives
+the network order, and the split measure lives in the *middle* route's
+own domain (52.5 on R2L3 — outside 10–25 entirely). Collapsing that onto
+one route's ruler drew a 10→25 tick grid that exists on no route and
+clamped the split away as degenerate.
+
+Such slides redraw as a **route chain**: one segment per route, laid end
+to end, **each ending in its own arrowhead** — the diagram's vocabulary
+for a route's end — with route ids under their segments and event ids
+above their extents. The segment interiors carry **no invented tick
+grids**: the tables state only the anchors, so only the anchors are
+labelled (start measure, split measure, end measure, above their own
+points). The split sits on the route the result table names for it (the
+event column whose To/From Measure *is* the split), at that segment's
+centre — the split route's own domain is unstated, so no position within
+it is either. The output legend qualifies each range with its routes
+(`E1 R1L3 10 → R2L3 52.5` / `E1 R2L3 52.5 → R3L3 25`), because a
+cross-route range is meaningless without them. Segment widths are equal:
+a schematic of the network's order, not a claim about route lengths.
 
 ## Why figures exist
 
