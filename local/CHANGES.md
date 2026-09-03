@@ -18,6 +18,53 @@ the freeform keeps the deep one, the white casing carries through.
 PASSED; all 16 `check_figures.py` fixture figures convert and open in
 python-pptx.
 
+## v1.29 (2026-09-03)
+
+**Case headings drop the specifics (TC-3).** The TC-1 headings put the
+slide's case line — route ids, split measures and all — straight into
+the H2 (`## Case 20 — Route – Changing from/ To date Split measure:
+105(R2L1)`), so a reader scanning the table of contents got data, not
+names. Requested shape: a heading names the case and its
+classification; the specifics stay in the body. `caseHeadings` now
+builds, per case slide:
+
+```
+## Case 20: Positive - Line Network – Spanning Line Event <!-- slide 23 -->
+
+### Changing From / To Date
+
+**Route – Changing from/ To date Split measure: 105(R2L1)**
+```
+
+- **H2** = `Case N: <classification>` — the slide's own
+  Positive/Negative line, title-cased with the decks' glued dashes
+  spaced out (`Positive -line network` → `Positive - Line Network`).
+  An unnumbered case slide (the rule-b lane) gets the classification
+  alone; a numbered case with no classification line gets a bare
+  `Case N`. The promoted classification line leaves the body.
+- **H3** = the scenario: the case text minus its split-measure tail,
+  route ids, and a generic leading `Route –`, title-cased and cut at
+  the TC-2 title budget (`Loop`, `Routes in Loop`, `Changing From /
+  To Date`). Skipped when the classification already states it.
+- The **full case text survives as a bold body line** whenever any
+  heading dropped detail — no measure or route id is ever lost, it
+  just never sits in a heading. The `current date:` tail handling and
+  the `<!-- slide N -->` provenance comment are unchanged, as are the
+  checklist rule (2+ numbered lines → heading stays `## Slide N`) and
+  the `<name> test cases` rule.
+
+Still deterministic, still sidecar-body-only, still idempotent under
+`--reformat` (a rewritten heading no longer matches `## Slide N`).
+Existing sidecars keep the TC-1 shape until the open-action-11
+reformat pass — one pass now covers figures, TC-1→TC-3 headings and
+DL-1 together.
+
+Gate: `check_local_sweep.py` 158/158 — the case-slide fixtures now
+assert the classification H2, the scenario H3, the bold specifics
+line, both promoted lines' removal, the redundant-H3 suppression on
+the long-case slide, and that no H2/H3 carries a split measure or
+route id; the reformat leg asserts the same shape re-derives.
+
 ## svg2pptx gate sync (2026-09-03, with SlideFigures v1.7 / DF-8)
 
 The converter itself is unchanged — colours, widths, dashes and caps

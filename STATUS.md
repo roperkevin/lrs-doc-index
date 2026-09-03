@@ -122,7 +122,7 @@ v1.2 describes them — paste with the window, step 6).
 
 | Suite | Last green |
 |---|---|
-| check_local_sweep.py incl. the v1.28 content-filter lane (153/153) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (sweep v1.28) |
+| check_local_sweep.py incl. the v1.29 TC-3 heading shape (158/158) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (sweep v1.29) |
 | check_svg2pptx.py (svg2pptx v1.0 — SVG figures → editable pptx shapes: package/shape/style/label contract + python-pptx open leg) | 2026-09-03 |
 | check_figures.py (SlideFigures v1.6 / DF-7 — spanning-event route chains; plus the DF-5/DF-6 label-collision, degenerate-split, title-box and arrowhead contract) | 2026-09-03 |
 | check_batch_v2_2.py (ZipTextExtract v2.2 / DL-1) + the standing suites (check_format incl. the new §12 diagram-label contract, check_related, check_regex) + render_sample.py + check_pad_runner.py (27/27) + check_local_sweep.py (128/128) | 2026-09-03 (see `review/harness/README.md` run records) |
@@ -155,8 +155,11 @@ v1.2 describes them — paste with the window, step 6).
     after the slide heading. New and re-indexed docs get them on the nightly
     run; existing sidecars need the one reformat pass (no AI spend, no
     PromptVersion bump). This supersedes open action 10 — one pass covers both.
-    Since sweep v1.25 the same pass also applies the TC-1 test-case slide
-    headings (`local/CHANGES.md` v1.25) — still one pass for all three.
+    Since sweep v1.25 the same pass also applies the test-case slide
+    headings (`local/CHANGES.md` v1.25; reshaped v1.29 / TC-3 —
+    classification H2 + scenario H3, specifics kept in the body, so
+    sidecars carrying TC-1-shaped `## Case N — …` headings need this
+    pass too) — still one pass for everything.
 12. **Restore sweep auth** — device-code sign-in is refused by
     Conditional Access (`AADSTS53003`), so the nightly pipeline has been
     failing closed with `AUTH EXPIRED` since the refresh token expired.
