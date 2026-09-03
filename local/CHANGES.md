@@ -1,5 +1,31 @@
 # Local sweep — release notes
 
+## v1.38 (2026-09-03)
+
+**Embedding-assisted relatedness** (review r7 phase 4,
+owner-approved; OFF by default — `sweep.embedRelated: true` enables,
+and with it off the ranking pipeline is byte-identical to v1.37).
+BM25 catches shared vocabulary; embeddings catch PARAPHRASE-level
+relatedness. `local/lib/embedindex.mjs` embeds each indexed sidecar's
+body via any OpenAI/Voyage-compatible `/v1/embeddings` endpoint
+(config `llm.embeddings: {baseUrl, apiKey, model, ...}` — Voyage AI
+is Anthropic's embeddings partner; the Anthropic API itself has no
+embeddings endpoint), caches vectors by content hash in
+`workDir/embeddings-cache.json` (a doc embeds once per body change —
+reruns and `--rerank` passes spend nothing on an unchanged corpus),
+and merges cosine sims into the ranking through the SAME BodySim
+channel BM25 uses: per doc `max(bm25, embed rescaled from
+[embedSimMin..1] to [0..1])`, floor default 0.6. **RelatedRank.ts is
+untouched** — the tenant-paste equivalence gates stay meaningful —
+and any endpoint failure logs once and falls back to BM25 for the
+run (an enhancement never fails an index). Data egress note: with
+this on, document text leaves the tenant for the embeddings endpoint
+(Local_Setup §8's decision class). Gate legs: a mock embeddings
+endpoint joins a paraphrase pair no other signal can (the msg and
+the onboarding guide — zero shared keywords/ids/BM25), bearer auth
+asserted, zero classify calls, and a second rerank spends zero
+embedding calls off the hash cache. 194/194.
+
 ## v1.37 (2026-09-03)
 
 **The msg lane** (review r7 phase 4, owner-approved) — the last

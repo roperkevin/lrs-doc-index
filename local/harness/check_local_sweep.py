@@ -226,6 +226,8 @@ class MockState:
         self.spo_last_auth = None
         self.alerts = []
         self.content_downloads = []
+        self.embed_calls = 0
+        self.embed_last_auth = None
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -281,6 +283,26 @@ def make_handler(state, lib_guid, src_files):
                 # incoming-webhook stand-in: record the alert payload
                 state.alerts.append(json.loads(self._read() or b"{}"))
                 return self._json({"ok": True})
+            if p == "/v1/embeddings":
+                # OpenAI/Voyage-shape embeddings endpoint. Deterministic
+                # vectors: the msg + the onboarding guide land on the
+                # same axis (a paraphrase-level pair sharing no keyword);
+                # everything else gets a hash-derived vector whose
+                # pairwise cosines sit below the 0.6 floor.
+                state.embed_calls += 1
+                state.embed_last_auth = self.headers.get("authorization")
+                body = json.loads(self._read())
+                data = []
+                for i, text in enumerate(body.get("input", [])):
+                    t = text.lower()
+                    if "weekly lrs sync" in t or "onboarding" in t:
+                        v = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+                    else:
+                        import hashlib
+                        h = hashlib.md5(text.encode()).digest()
+                        v = [h[k] - 128.0 for k in range(8)]
+                    data.append({"index": i, "embedding": v})
+                return self._json({"data": data, "model": body.get("model")})
             if p == "/devicecode":
                 self._read()
                 state.devicecode_hits += 1
@@ -1666,6 +1688,49 @@ def main():
     proc = run_sweep(cfg_path, ["--live", "--only", "message.msg"])
     out = json.loads(proc.stdout.splitlines()[0])
     check("indexed .msg does not rechurn", out.get("processed") == 0, str(out))
+
+    # ---- leg 3j: embedding-assisted relatedness (v1.38, opt-in) ----
+    # The msg and the onboarding guide are a PARAPHRASE pair: no shared
+    # keyword, no id, BM25 body overlap below the floor — only the
+    # embedding signal can join them. With embedRelated on, one rerank
+    # relates them; a second rerank spends zero embedding calls (the
+    # content-hash cache); classify calls stay untouched throughout.
+    print("== embeddings leg")
+    llm_before_em = state.llm_calls
+    cfg["sweep"]["embedRelated"] = True
+    cfg["llm"]["embeddings"] = {"baseUrl": base, "apiKey": "mock-embed-key",
+                                "model": "mock-embed-1"}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--rerank"])
+    check("embed rerank exit 0", proc.returncode == 0, proc.stderr[-400:])
+    check("embeddings endpoint called with the bearer key",
+          state.embed_calls >= 1
+          and state.embed_last_auth == "Bearer mock-embed-key",
+          f"calls={state.embed_calls} auth={state.embed_last_auth}")
+    msg_id = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+              if f_.get("FileName") == "message.msg"][0]
+    guide_id = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+                if f_.get("FileName") == "guide.html"][0]
+    msg_sc = ""
+    for r, _, fs_ in os.walk(sidecar_dir):
+        for f in fs_:
+            if f.endswith(f"__doc{msg_id}.md"):
+                msg_sc = open(os.path.join(r, f)).read()
+    check("embeddings joined the paraphrase pair (msg relates the guide)",
+          f"doc{guide_id}" in msg_sc and "similar text" in msg_sc,
+          msg_sc[-600:])
+    check("embed rerank made no classify calls",
+          state.llm_calls == llm_before_em, f"{state.llm_calls} vs {llm_before_em}")
+    embed_after = state.embed_calls
+    proc = run_sweep(cfg_path, ["--live", "--rerank"])
+    check("second embed rerank spends zero embedding calls (hash cache)",
+          proc.returncode == 0 and state.embed_calls == embed_after,
+          f"calls={state.embed_calls} vs {embed_after}")
+    cfg["sweep"]["embedRelated"] = False
+    del cfg["llm"]["embeddings"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
