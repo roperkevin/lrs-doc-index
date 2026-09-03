@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.8)
+# Diagram style framework (SlideFigures v1.9)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -155,11 +155,11 @@ The route used to draw first, as a solid bar the event extents were laid
 over — so a fully covered route simply vanished: on half the corpus's
 rulers the "route" existed only as its arrowhead. The z-order is now
 **extents at the back, ticks over them, the route on top** in every lane,
-and the route is drawn as a **dash** (8 on / 5 off, butt caps, 3px)
+and the route is drawn as a **dash** (10 on / 6 off since v1.9, butt caps, 3px)
 rather than a solid: its gaps let the extent colour read through, so the
 route and the extent both stay legible over the same pixels — the extent
 as the colour field, the route as the dash running through it. Event
-extents widen to 6.5px so their colour still shows around the dash.
+extents widen into 8px bands (v1.9) so their colour reads around the dash.
 
 Arrowheads shrink with the slimmer route (4.4 marker units, ~13px at
 route weight — the old ~19px head outweighed the line) and every
@@ -167,32 +167,43 @@ marker-end rides a short **solid carrier** retracing the line's final
 pixels: a marker on the dashed path itself could land on a dash gap and
 float detached from its line.
 
-**v1.8 cases the dash in white.** Ink directly on the cool teal was mud:
-every route dash (and its arrow carrier) now draws over a white
-**casing** line of the same geometry and rhythm — the map-cartography
-move — so the ink separates crisply from any bar colour beneath, and on
-the white plate the casing simply disappears. The casing shares the
-dash pattern, so the gaps still show the bar untouched. Arrowheads get
-the same separation as a thin white outline on the marker triangle.
+**v1.9 calms the whole arrangement to one dark mark on one quiet
+field.** v1.8's answer — a white casing under every dash, white
+outlines on the arrowheads, saturated bars — separated the layers but
+read as a candy stripe. The extents are now soft mid-tone **highlight
+bands** (8px), the ink dash rides directly on them with a longer 10/6
+rhythm, and the casing and marker outlines are gone: a slim dark line
+on a soft band needs no separation tricks. The effect is a route drawn
+through a highlighter stroke — the band carries the event's colour and
+span, the dash carries the route.
 
-## Two-tone palette (v1.8)
+## Two-tone palette (v1.8, softened in v1.9)
 
-One hex per hue had to serve colour **fields** (the 6.5px extent bars)
+One hex per hue had to serve colour **fields** (the extent bands)
 and **thin marks and text** alike, and satisfied neither: dark enough
-for a legible 1.8px edge is too dark a field under an ink dash. Each
-hue now has two steps with one meaning:
+for a legible 1.8px edge is far too heavy a field under an ink dash.
+Each hue has two steps with one meaning:
 
-- **Bars and legend swatches** take the brighter *field* variant, via
+- **Bands and legend swatches** take the soft *field* variant, via
   compound `.event.s-hue` / `.swatch.s-hue` rules — class names and the
   hue-family mapping are unchanged, so nothing downstream re-learns
-  anything. The set was validated as a categorical palette: adjacent-pair
-  CVD ΔE ≥ 8, normal-vision ΔE ≥ 20, all steps inside the lightness
-  band; every bar is directly labelled, which relieves the amber step's
-  sub-3:1 surface contrast.
+  anything. The set was validated as a categorical palette (adjacent-pair
+  CVD separation, normal-vision ΔE ≥ 16, chroma floor and lightness band
+  in range); every band is directly labelled, which relieves the soft
+  steps' sub-3:1 surface contrast.
 - **Node outlines, graph edges, freeform paths and entity text** keep
   the deep variant (warm text deepens to `#9C5A12` to clear 4.5:1 on
   the plate). Structural ink and muted are untouched — the route reads
   as structure, the extents as content.
+
+## Figure cap (v1.9)
+
+`FIG_MAX_COUNT` rises 40 → 96. The 40 predates one-SVG-per-diagram
+(DF-4), which turned every redraw case slide into an input+output pair
+of figures: a 44-slide deck overran the cap and its tail — including
+its picture-backed slides — was silently `:cap`-skipped, which
+presented as "PNG slides stopped converting". Both real decks now
+render every diagram slide with zero skips.
 
 ## Labelled anchors get hash marks (v1.7)
 
@@ -239,16 +250,15 @@ Each hue carries two steps since v1.8: a bright **field** step for the
 extent bars and legend swatches, and a **deep** step for thin marks
 (node outlines, graph edges, freeforms) and text.
 
-| Role | Field (bars/swatches) | Deep (marks/text) | Used for |
+| Role | Field (bands/swatches) | Deep (marks/text) | Used for |
 |---|---|---|---|
 | ink | — | `#16302F` | Route dash, entity labels |
 | muted | — | `#6E8285` | Ruler ticks, measures, leaders |
-| cool | `#3A97C4` | `#1B6E8C` | Event extent A |
-| warm | `#DE8A26` | `#C2701A` stroke / `#9C5A12` text | Event extent B |
-| green | `#3FA173` | `#2E7D5B` | Event extent C |
-| violet | `#9678CC` | `#7A5AA6` | Event extent D |
-| red | `#D96A50` | `#B2442F` | Event extent E |
-| casing | `#FFFFFF` | — | White underlay beneath every route dash and arrowhead |
+| cool | `#4FA7D5` | `#1B6E8C` | Event extent A |
+| warm | `#E39A45` | `#C2701A` stroke / `#9C5A12` text | Event extent B |
+| green | `#4EB183` | `#2E7D5B` | Event extent C |
+| violet | `#A58BD3` | `#7A5AA6` | Event extent D |
+| red | `#DC8168` | `#B2442F` | Event extent E |
 | plate | `#FFFFFF` | — | Figure ground, both themes |
 
 **Mapping rule.** Source colours are classified by **hue family**, never by
@@ -273,8 +283,8 @@ colour-led rule gets one of them backwards.
 |---|---|---|
 | measure | 11px, muted, tabular numerals | Ruler numbers |
 | id | 12.5px, 600 | Route and event ids |
-| route | 3px stroke, 8/5 dash, butt caps | The network line — a dash over the extents (v1.7) |
-| event | 6.5px stroke, **butt caps** | Extents |
+| route | 3px stroke, 10/6 dash, butt caps | The network line — a dash over the extent bands (v1.7/v1.9) |
+| event | 8px stroke, **butt caps** | Extents — soft highlight bands under the dash |
 | tick / major | 1.15 / 1.4px | Scale marks |
 | leader | 1.0px | Callouts |
 
