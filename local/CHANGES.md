@@ -21,8 +21,12 @@ identically, while `dsregcmd /status` showed the box hybrid-joined,
 `auth: "interactive"` runs the **authorization-code grant with PKCE over
 a loopback redirect** instead. The sign-in happens in the user's own
 browser on this machine, so it carries the PRT and device state and the
-policy is satisfied. Entra ignores the port of an `http://127.0.0.1`
-redirect for public clients, so nothing needs registering. Only the
+policy is satisfied. Entra ignores the **port** of a loopback redirect
+but not the **host**: these clients register `http://localhost`, and the
+`http://127.0.0.1` form is refused with `AADSTS50011` — so nothing needs
+registering, but the host must be spelled `localhost`, and both loopback
+stacks are bound on the chosen port because `localhost` may resolve to
+either (`graph.redirectHost` overrides if a registration differs). Only the
 FIRST sign-in differs: caching, silent refresh and the SPO seed-from-
 Graph path are untouched, so scheduled runs behave exactly as before.
 Applies to `graph` and flows to Dataverse/SPO (each keeps its own public

@@ -73,6 +73,9 @@ export class DelegatedAuth {
   constructor(opts) {
     this.mode = opts.mode === "interactive" ? "interactive" : "device";
     this.openBrowser = opts.openBrowser;   // injectable for the gate
+    // "localhost" matches what these public clients register; override only
+    // if a tenant's app registration uses the 127.0.0.1 form instead
+    this.redirectHost = opts.redirectHost;
     this.clientId = opts.clientId;
     this.scopes = opts.scopes;
     this.resource = opts.resource;
@@ -231,17 +234,32 @@ export class DelegatedAuth {
         "</p></body></html>");
       arrived();
     });
+    // Entra ignores the PORT of a loopback redirect but not the HOST: these
+    // public clients register "http://localhost", and sending
+    // "http://127.0.0.1" is rejected as a mismatch (AADSTS50011). So the
+    // redirect must say localhost — which on a dual-stack machine may
+    // resolve to ::1 OR 127.0.0.1, and a browser that picks the one we are
+    // not listening on gets a connection refused. Bind BOTH loopback
+    // addresses on the same port and let either satisfy the callback.
+    const host = this.redirectHost || "localhost";
     await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+    let server6 = null;
+    if (host === "localhost") {
+      try {
+        server6 = http.createServer(server.listeners("request")[0]);
+        await new Promise((res, rej) => {
+          server6.once("error", rej);
+          server6.listen(port, "::1", res);
+        });
+        server6.unref();
+      } catch { server6 = null; /* no IPv6 loopback here — IPv4 is enough */ }
+    }
     // never let the callback listener hold the event loop open: the flow
     // awaits an explicit promise, so the server has no reason to keep the
     // process alive after it resolves
     server.unref();
-    const port = server.address().port;
-    // 127.0.0.1, not "localhost": the listener is bound to IPv4 loopback, and
-    // "localhost" resolves to ::1 first on a dual-stack machine, so the
-    // browser would be redirected to a port nothing is listening on. Entra
-    // accepts either loopback form for a public client and ignores the port.
-    const redirectUri = `http://127.0.0.1:${port}`;
+    const redirectUri = `http://${host}:${port}`;
     const q = {
       client_id: this.clientId,
       response_type: "code",
@@ -298,9 +316,12 @@ export class DelegatedAuth {
       // close() alone only stops NEW connections: the browser's keep-alive
       // socket stays open and holds the event loop, so the sweep completes
       // its work and then never exits. Drop live sockets too.
-      try { server.closeAllConnections(); } catch { /* older node */ }
-      server.close();
-      server.unref();
+      for (const s of [server, server6]) {
+        if (!s) continue;
+        try { s.closeAllConnections(); } catch { /* older node */ }
+        s.close();
+        s.unref();
+      }
     }
     if (got.error) throw new Error(`interactive sign-in failed: ${String(got.error).slice(0, 300)}`);
     if (!got.code) throw new Error("interactive sign-in returned no authorization code");

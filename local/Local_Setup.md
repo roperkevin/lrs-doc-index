@@ -107,8 +107,14 @@ instead (on `graph`, and it flows to Dataverse/SPO):
 ```
 
 That runs the authorization-code grant with PKCE against a loopback
-redirect (`http://127.0.0.1:<random port>`; Entra ignores the port for
-public clients, so nothing needs registering). Your own browser on this
+redirect (`http://localhost:<random port>`). Entra ignores the **port**
+of a loopback redirect but not the **host**: these public clients
+register `http://localhost`, and sending the `http://127.0.0.1` form is
+rejected as a mismatch (`AADSTS50011`) — so nothing needs registering,
+but the host has to be spelled that way. Both loopback stacks are bound
+on that port, since `localhost` may resolve to either. If a tenant's
+registration uses the 127.0.0.1 form instead, set
+`graph.redirectHost: "127.0.0.1"`. Your own browser on this
 machine handles the sign-in, so it carries the machine's PRT and device
 state and the policy is satisfied. Only the FIRST sign-in differs —
 caching, silent refresh and the SPO seed are unchanged, so scheduled

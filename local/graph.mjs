@@ -65,6 +65,7 @@ export class GraphClient {
         tenantId: cfg.tenantId,
         deviceUrl: cfg.deviceUrl,
         authorizeUrl: cfg.authorizeUrl,
+        redirectHost: cfg.redirectHost,
         tokenUrl: cfg.tokenUrl,
       });
     }
@@ -252,6 +253,7 @@ export class SpoClient {
         tenantId: cfg.tenantId,
         deviceUrl: cfg.deviceUrl,
         authorizeUrl: cfg.authorizeUrl,
+        redirectHost: cfg.redirectHost,
         tokenUrl: cfg.tokenUrl,
       });
     } else {

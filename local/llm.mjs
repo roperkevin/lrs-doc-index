@@ -236,6 +236,7 @@ export async function dataverseToken(cfg) {
         tenantId: dv.tenantId,
         deviceUrl: dv.deviceUrl,
         authorizeUrl: dv.authorizeUrl,
+        redirectHost: dv.redirectHost,
         tokenUrl: dv.tokenUrl,
       });
     }
