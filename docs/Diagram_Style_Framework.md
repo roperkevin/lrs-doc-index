@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.2)
+# Diagram style framework (SlideFigures v1.3)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -18,8 +18,28 @@ debris and is dropped. Each qualifying cluster renders as its own figure:
   `--reformat` overwrites in place;
 - siblings are `slideN_fig1.svg`, `slideN_fig2.svg`, … in top-to-bottom,
   left-to-right order, and their titles say which of how many
-  (*"Slide 4 route diagram (2 of 3)"*). The sweep links them under the
-  slide heading in the same order.
+  (*"Slide 4 route diagram (2 of 3)"*).
+
+Since v1.3 this holds in the **redraw lane** too: the case's input state
+and its output state are two diagrams, so they are the sibling pair
+`slideN_fig1.svg` (before the split) and `slideN_fig2.svg` (after, with
+the legend) rather than one stacked figure.
+
+## Table anchors (v1.3)
+
+Every figure carries `anchor`: the first row of the slide table it sits
+with, as cell texts (`[]` when the slide gives it no table). The sweep
+inserts each anchored figure directly **before** that table in the
+extracted markdown — the slide's own layout, where a diagram sits with
+the table stating its numbers — and falls back to directly after the
+slide heading for unanchored figures, in renderer order either way.
+Drawn and traced figures anchor by **geometry**: the table sharing the
+cluster's vertical band (largest overlap wins), else the nearest table
+starting below the cluster's middle; a table wholly above never anchors,
+and each table anchors at most one figure. Redrawn figures anchor by
+**meaning**: the input figure to the table its measures were read from,
+the output figure to the result table (the other measure-bearing table
+of 3+ columns, searched from the slide's end).
 
 ## Beyond rulers: the graph lane (v1.1)
 
