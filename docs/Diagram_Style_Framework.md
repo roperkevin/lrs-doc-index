@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v2.0)
+# Diagram style framework (SlideFigures v2.1)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -127,7 +127,7 @@ above) screens every pasted picture first, so the order of preference is
 real vectors, then the slide's own stated data, then the wireframe for
 interface screenshots, then tracing for what remains.
 
-## UI screenshots: the wireframe tier (v2.0)
+## UI screenshots: the wireframe tier (v2.0, fidelity v2.1)
 
 Half the corpus's pasted pictures are not route diagrams — they are
 screenshots of the app's own interface: a search form, a results list, an
@@ -144,7 +144,7 @@ the corpus:
 | Flat colour region, button-proportioned | **Button** — palette *tint* fill + deep stroke, mapped from the source colour by the same hue-family rule as everything else |
 | Flat colour region spanning its container | **Header band** — same tinted treatment |
 | Full-width border inside a box | **Row separator** (table rows render this way); full-height ones are column rules |
-| Row of glyph-sized ink | **Placeholder text bar** — a pill at the row's true position and extent; heading rows (taller than 1.35× the median) take the slate weight, body rows the context grey, rows on a colour fill the plate white |
+| Row of glyph-sized ink | **Text** — real transcribed text when the sweep's OCR lane covers the row (v2.1; heading rows in the ink weight, body rows slate, on-fill rows ink over the tint); otherwise a **placeholder bar** — a pill at the row's true position and extent, heading/body/on-fill weights |
 
 **How it reads the pixels.** The picture must first read as an interface
 at all: a flat, light ground (photos and maps fail here and stay silent),
@@ -159,11 +159,29 @@ the ruler trace: open route lines and tick stubs assemble no rectangles,
 so diagram-shaped pictures fall straight through to the trace tier, and a
 screenshot never reaches the ruler classifier at all.
 
-**No OCR, by design.** Text inside a screenshot is pixels. Rather than
-guess at characters, each text row renders as a placeholder bar that keeps
-the row's true position, extent and weight — the layout survives, the
-words do not — and the alt text says so. The slide's own extracted text
-(title, notes, tables) still carries the searchable words.
+**OCR is the sweep's, never the script's (v2.1).** Text inside a
+screenshot is pixels, and SlideFigures itself stays zero-dependency — it
+never guesses at characters. But the local sweep has an opt-in Tesseract
+lane (`sweep.tesseractPath`, the v1.36 OCR opt-in), and since v2.1 the
+two cooperate: the figures result names the media entries whose pictures
+produced wireframes without transcriptions (`ocrWanted`), the sweep OCRs
+exactly those pictures (word boxes via Tesseract TSV, sparse-text mode)
+and re-renders once. A text row covered by words renders as **real
+text** in the row's own weight; a row OCR missed — or a word under the
+confidence floor — keeps its placeholder bar, the row's scanned geometry
+stays the layout authority either way, and the alt text states how many
+rows are transcription vs placeholder. Without the OCR lane the render
+is byte-identical to v2.0: placeholder bars, alt saying so.
+
+**Anti-aliasing is not layout (v2.1).** A screenshot's anti-aliased edge
+scans as several parallel 1px bars whose shades differ too much for the
+colour merge to unite — left alone, each assembled into its own
+separator, so one soft seam rendered as a full-height line cluster
+through the middle of the figure and one table border doubled itself.
+Parallel thin bars within 3px now collapse into one stroke before
+assembly, and a separator that runs *through* content — across a closed
+box's interior, or through two or more text rows — is a scan artifact,
+not a row or column rule, and is dropped.
 
 **Normalisation.** The same "hand-placement is not layout" rule as
 everywhere else: element edges that jitter within 7px snap to one shared
@@ -427,9 +445,9 @@ place every part by hand.
 - The raster tiers read PNGs only (JPEG needs a DCT decoder no pasted
   script should carry), trace axis-aligned structure only, and cannot OCR —
   anything printed inside a picture is pixels, so a traced ruler may carry
-  ticks but no numbers, and a wireframe's text rows are placeholder bars,
-  not words. The slide's own extracted text still carries the searchable
-  words.
+  ticks but no numbers, and a wireframe's text rows are placeholder bars
+  unless the sweep's opt-in OCR lane supplies transcriptions (v2.1). The
+  slide's own extracted text still carries the searchable words.
 - The wireframe tier wants a flat, LIGHT ground: dark-theme screenshots
   stay silent (the corpus's decks capture the app's light theme), as do
   borderless flat designs with nothing the rectangle assembly can close.

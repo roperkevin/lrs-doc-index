@@ -58,3 +58,6 @@ fix_slide*.svg
 ui_screenshot.png
 # v2.0 figure gate generated fixture library (DF-11)
 fixlib/
+# v2.1 figure gate generated fixtures (DF-12)
+ui_artifact.png
+ocr_garbage.json

@@ -46,6 +46,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
@@ -164,7 +165,23 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     if (ext === "pptx") {
       try {
         setStep("figures");
-        const fg = op({ op: "figures", zipFile: localPath });
+        let fg = op({ op: "figures", zipFile: localPath });
+        // v1.40 (DF-12): a wireframe figure comes back naming the media
+        // entries that still lack transcriptions (ocrWanted). With the
+        // OCR lane configured (sweep.tesseractPath — the v1.36 opt-in),
+        // transcribe exactly those pictures and re-render once, so the
+        // wireframes carry the screenshot's real text instead of greek
+        // bars. No OCR tools, or OCR finding nothing, keeps the
+        // placeholder render — an enhancement, never a failure.
+        if (fg && fg.ocrWanted && ocrTools) {
+          setStep("figures-ocr");
+          try {
+            const ocrJson = ocrFigureMedia(ocrTools, localPath, fg.ocrWanted);
+            if (ocrJson) fg = op({ op: "figures", zipFile: localPath, ocrJson });
+          } catch (e) {
+            process.stderr.write(`FIGOCR ${path.basename(localPath)}: ${e.message}\n`);
+          }
+        }
         const figs = (fg && fg.figures) || [];
         const bySlide = new Map();
         for (const f of figs) {
@@ -1561,6 +1578,84 @@ function ocrPdf(tools, pdfPath, sw) {
       if (t.status === 0 && String(t.stdout).trim() !== "") out.push(t.stdout.trim());
     }
     return out.join("\n\n").trim();
+  } finally {
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
+  }
+}
+
+/** DF-12 (v1.40): pull NAMED ppt/media entries out of the pptx — a
+ *  minimal central-directory read (the xlsx_grid.mjs stance, node:zlib
+ *  only). MediaExtract is not used here on purpose: its 350 KB
+ *  per-image cap refuses exactly the hi-dpi screenshots OCR is for. */
+function pptxMediaEntries(pptxPath, names) {
+  const buf = fs.readFileSync(pptxPath);
+  let eocd = -1;
+  const scanFrom = Math.max(0, buf.length - 65557);
+  for (let i = buf.length - 22; i >= scanFrom; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return [];
+  let off = buf.readUInt32LE(eocd + 16);
+  const count = buf.readUInt16LE(eocd + 10);
+  const out = [];
+  for (let k = 0; k < count && off + 46 <= buf.length; k++) {
+    if (buf.readUInt32LE(off) !== 0x02014b50) break;
+    const method = buf.readUInt16LE(off + 10);
+    const csize = buf.readUInt32LE(off + 20);
+    const nameLen = buf.readUInt16LE(off + 28);
+    const extraLen = buf.readUInt16LE(off + 30);
+    const cmtLen = buf.readUInt16LE(off + 32);
+    const lho = buf.readUInt32LE(off + 42);
+    const name = buf.toString("latin1", off + 46, off + 46 + nameLen);
+    off += 46 + nameLen + extraLen + cmtLen;
+    const base = name.replace(/^.*\//, "");
+    if (!/^ppt\/media\//.test(name) || !names.includes(base)) continue;
+    if (lho + 30 > buf.length) continue;
+    const nl = buf.readUInt16LE(lho + 26), el = buf.readUInt16LE(lho + 28);
+    const ds = lho + 30 + nl + el;
+    const raw = buf.subarray(ds, ds + csize);
+    try {
+      out.push({ name: base, data: method === 8 ? zlib.inflateRawSync(raw) : raw });
+    } catch { /* a corrupt entry contributes nothing — OCR is best-effort */ }
+  }
+  return out;
+}
+
+/** DF-12 (v1.40): transcribe the wireframed screenshots the figures op
+ *  named (ocrWanted, comma-separated media basenames) with Tesseract's
+ *  TSV output — word boxes in the picture's own pixel space, --psm 11
+ *  (sparse text: UI labels are scattered, not a prose block). Returns
+ *  the ocrJson payload SlideFigures takes, or null when there is
+ *  nothing usable; confidence rides along and the script applies its
+ *  own floor. */
+function ocrFigureMedia(tools, pptxPath, wantedCsv) {
+  const names = String(wantedCsv || "").split(",").filter(Boolean).slice(0, 16);
+  if (!names.length) return null;
+  const entries = pptxMediaEntries(pptxPath, names);
+  if (!entries.length) return null;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-figocr-"));
+  try {
+    const out = [];
+    for (const e of entries) {
+      const p = path.join(dir, e.name);
+      fs.writeFileSync(p, e.data);
+      const r = spawnSync(tools.tess, [p, "stdout", "--psm", "11", "tsv"], {
+        encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
+      });
+      if (r.error || r.status !== 0) continue;
+      const words = [];
+      for (const line of String(r.stdout || "").split("\n")) {
+        const c = line.split("\t");
+        if (c.length < 12 || c[0] !== "5") continue;
+        const t = c[11].trim();
+        const conf = Number(c[10]);
+        if (!t || !(conf > 0)) continue;
+        words.push({ x: Number(c[6]), y: Number(c[7]), w: Number(c[8]),
+                     h: Number(c[9]), t: t, c: conf });
+      }
+      if (words.length) out.push({ entry: e.name, words });
+    }
+    return out.length ? JSON.stringify(out) : null;
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
   }

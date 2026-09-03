@@ -48,7 +48,7 @@ keeps the old yaml-on-top layout).
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
 | scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse | v2.2 (deployed — the local sweep runs it directly) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
-| scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures) | v1.0 |
+| scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures; UI screenshots as standardized wireframes, with real OCR'd text when the sweep's Tesseract lane feeds transcriptions in) | v2.1 (deployed — the local sweep runs it directly) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
 | scripts/SidecarPatch.ts | Surgical related-section patching (four metadata frames) | v1.6 (paste pending — safe any time before the v2.8 window) |
@@ -97,7 +97,7 @@ keeps the old yaml-on-top layout).
 | pad/harness/check_pad_runner.py | PAD runner gate (generated fixtures + wrap.py parity leg + single-op leg; CI) | v1.1 |
 | pad/samples/job.sample.json | Fixture-free smoke job | — |
 | pad/CHANGES.md | PAD offload release notes | v2.2 |
-| pad/runner/ops.mjs | Shared script-loader/op-dispatch (used by the PAD runner and the local sweep) | v1.0 |
+| pad/runner/ops.mjs | Shared script-loader/op-dispatch (used by the PAD runner and the local sweep) | v2.4 |
 | local/Local_Setup.md | Local sweep build + deploy guide — the whole sweep off Power Automate (SharePoint stays) | v1.0 |
 | local/sweep.mjs | Local sweep orchestrator — flow v2.8 reimplemented over Graph + direct LLM API + synced libraries | v1.0 |
 | local/auth.mjs | Delegated device-code sign-in (Microsoft pre-registered public clients — no Azure app registration) | v1.0 |

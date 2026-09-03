@@ -732,3 +732,33 @@ alongside; the script type-checks at ES2017. Wireframe output verified
 visually in Chromium, including a 1.6MP realistic stress screenshot
 (header band, 8 field rows, segmented control, 9-row table) rendering
 in ~0.5s.
+
+### Last run (2026-09-03, Node 22.22.2) — v2.1 gate (DF-12)
+
+**PASS** — 18 figures. New fixture slide 15 (the ARTIFACT screenshot):
+an anti-aliased vertical seam — three 1px columns at greys 90/180/100,
+shades the ≤64 colour merge cannot unite — running most of the panel's
+height straight through an input field and three text rows, plus a
+doubled table row separator (dark line + lighter shadow 2px apart).
+New assertions: the seam leaves NO vertical line cluster (v2.0 drew
+two full-height lines through the middle of the figure), the doubled
+separator collapses to ONE, the slide's real structure still renders;
+and the OCR half — a second run passing a transcription payload
+(`ocrJson`) renders covered rows as real `<text>` in the matching
+weights ("Search Options" heading, "Route ID" body joined
+left-to-right, on-fill ink), leaves missed rows as bars, drops a
+low-confidence word, states the transcribed/placeholder split in the
+alt, names untranscribed wireframed pictures in `ocrWanted` (and
+drops transcribed ones), renders byte-identically for a picture with
+no transcription, and degrades malformed OCR JSON to the placeholder
+render without a throw. 8 of the 13 new assertions FAIL against the
+v2.0 script (fixture discriminates; the rest hold invariants).
+check_svg2pptx PASS with all 18 fixture figures converting and the
+transcribed rows landing as editable shape text in python-pptx;
+standing suites, PAD (27/27) and the local sweep gate (206/206, incl.
+the new wireframe-OCR leg: a screenshot-only deck driven through the
+sweep with a TSV-only tesseract stub, real text asserted in the
+written SVG, an under-confidence word staying a bar) green alongside;
+the script type-checks at ES2017. Slides 13 and 15 verified visually
+in Chromium — transcribed text legible in all three weights, no seam,
+one separator.

@@ -28,11 +28,13 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
 import threading
 import zipfile
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -130,6 +132,70 @@ def diagram_shapes():
                  f'<a:tr>{tc("Measure")}{tc("10")}</a:tr>'
                  '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>')
     return "".join(parts)
+
+
+def ui_png():
+    """A 240x160 UI screenshot: a bordered panel holding a heading row, a
+    labelled input field and one body text row — the minimal picture that
+    passes the wireframe tier's structural gate (>=1 assembled rectangle,
+    >=2 boxes, >=3 text rows on a flat light ground)."""
+    W, H = 240, 160
+    img = [[(255, 255, 255)] * W for _ in range(H)]
+
+    def rect(x0, x1, y0, y1, v):
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                img[y][x] = (v, v, v)
+
+    def box(x0, x1, y0, y1):
+        rect(x0, x1, y0, y0 + 2, 110)
+        rect(x0, x1, y1 - 2, y1, 110)
+        rect(x0, x0 + 2, y0, y1, 110)
+        rect(x1 - 2, x1, y0, y1, 110)
+
+    def text(x, y, n, h=7):
+        for k in range(n):
+            rect(x + k * 7, x + k * 7 + 4, y, y + h, 50)
+
+    box(10, 230, 10, 150)   # the panel
+    text(24, 24, 8, h=10)   # heading row
+    text(24, 46, 6)         # field label
+    box(24, 120, 60, 84)    # the input field
+    text(24, 100, 6)        # body row
+    raw = b"".join(b"\x00" + b"".join(bytes(c) for c in row) for row in img)
+
+    def chunk(t, d):
+        return struct.pack(">I", len(d)) + t + d + \
+            struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw))
+            + chunk(b"IEND", b""))
+
+
+def make_ui_pptx(fpath, text):
+    """A deck whose only picture is the UI screenshot — the wireframe-OCR
+    leg's fixture (sweep v1.40 / SlideFigures DF-12)."""
+    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "ppt/slides/slide1.xml",
+            "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+            f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
+            "</p:txBody></p:sp>"
+            '<p:pic><p:blipFill><a:blip r:embed="rId2"/></p:blipFill>'
+            '<p:spPr><a:xfrm><a:off x="914400" y="914400"/>'
+            '<a:ext cx="4572000" cy="3048000"/></a:xfrm></p:spPr></p:pic>'
+            "</p:spTree></p:cSld></p:sld>",
+        )
+        z.writestr(
+            "ppt/slides/_rels/slide1.xml.rels",
+            '<Relationships><Relationship Id="rId2" '
+            'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+            'relationships/image" Target="../media/image1.png"/></Relationships>',
+        )
+        z.writestr("ppt/media/image1.png", ui_png())
+        z.writestr("docProps/core.xml", CORE_XML)
 
 
 def make_messy_pptx(fpath, text):
@@ -2130,6 +2196,76 @@ def main():
           and out.get("issues_updated") == 0 and out.get("gantt_edges") == 0
           and out.get("titlematch_edges") == 0
           and len(state.lists.get(LISTS["issueRefs"], {})) == 2, str(out))
+
+    # ---- leg: wireframe OCR (sweep v1.40 / SlideFigures DF-12) -----------
+    # A deck whose only picture is a UI screenshot renders as a wireframe;
+    # with the OCR lane configured the sweep must transcribe exactly the
+    # media the figures op names (ocrWanted), re-render once, and write a
+    # figure whose covered text rows carry the screenshot's REAL text. The
+    # tesseract stub answers ONLY the TSV call — proving the figures path
+    # asks for word boxes, not the PDF lane's plain text — and one word
+    # arrives under the script's confidence floor to prove it stays a bar.
+    print("== wireframe ocr leg")
+    # the auth legs left interactive auth (and a deleted token cache) in
+    # cfg — restore the app-auth mock the mainline legs ran under
+    cfg["graph"] = {"tenantId": "mock", "clientId": "mock",
+                    "clientSecret": "mock-secret", "baseUrl": base + "/v1.0",
+                    "tokenUrl": base + "/token", "maxRetries": 0}
+    cfg["llm"] = {"provider": "aibuilder", "environmentUrl": base,
+                  "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6",
+                  "curationModelId": CURATION_MODEL, "maxRetries": 0}
+    cfg["spo"] = {"auth": "app", "tenantId": "mock", "clientId": "mock",
+                  "clientSecret": "mock-secret", "tokenUrl": base + "/token",
+                  "siteUrl": "https://mock.example/sites/lrsworkspace",
+                  "baseUrl": base + "/sites/lrsworkspace"}
+    ui_dir = os.path.join(cfg["paths"]["sourceLibrary"], "General") \
+        if os.path.basename(cfg["paths"]["sourceLibrary"]) != "source" \
+        else cfg["paths"]["sourceLibrary"]
+    os.makedirs(ui_dir, exist_ok=True)
+    make_ui_pptx(os.path.join(ui_dir, "Panel UI.pptx"),
+                 "Panel UI deck describing the search panel.")
+    src_files.append(src_item(21, "Panel UI.pptx", "2026-08-22T10:00:00Z"))
+    ppm2 = os.path.join(tmp, "pdftoppm2")
+    with open(ppm2, "w") as f:
+        f.write("#!/bin/sh\nexit 0\n")
+    tess2 = os.path.join(tmp, "tesseract2")
+    with open(tess2, "w") as f:
+        f.write(
+            '#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\n'
+            'want=no\nfor a in "$@"; do [ "$a" = "tsv" ] && want=yes; done\n'
+            'if [ "$want" != "yes" ]; then echo "figures OCR must ask for tsv" >&2; exit 1; fi\n'
+            'printf "level\\tpage\\tblock\\tpar\\tline\\tword\\tleft\\ttop\\twidth\\theight\\tconf\\ttext\\n"\n'
+            'printf "5\\t1\\t1\\t1\\t1\\t1\\t24\\t24\\t40\\t10\\t95\\tSearch\\n"\n'
+            'printf "5\\t1\\t1\\t1\\t1\\t2\\t70\\t24\\t30\\t10\\t93\\tPanel\\n"\n'
+            'printf "5\\t1\\t1\\t1\\t2\\t1\\t24\\t46\\t28\\t7\\t90\\tRoute\\n"\n'
+            'printf "5\\t1\\t1\\t1\\t3\\t1\\t24\\t100\\t30\\t7\\t12\\tR1L3\\n"\n')
+    for s in (ppm2, tess2):
+        os.chmod(s, 0o755)
+    cfg["sweep"]["tesseractPath"] = tess2
+    cfg["sweep"]["pdftoppmPath"] = ppm2
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "Panel UI.pptx"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.stdout.strip() else {}
+    check("screenshot deck indexed with a figure and no figure errors",
+          proc.returncode == 0 and out.get("processed") == 1
+          and int(out.get("figures", 0)) >= 1
+          and int(out.get("figure_errors", 0)) == 0,
+          str(out) + " " + proc.stderr[-300:])
+    wf_path = os.path.join(sidecar_dir, "media", "doc21_slide1.svg")
+    wf = open(wf_path, encoding="utf-8").read() if os.path.exists(wf_path) else ""
+    check("wireframe figure written for the screenshot",
+          "interface wireframe" in wf, wf[:300])
+    check("transcribed rows carry the screenshot's REAL text (TSV word boxes)",
+          ">Search Panel</text>" in wf and ">Route</text>" in wf, wf[:600])
+    check("a word under the confidence floor stays a placeholder bar",
+          "R1L3" not in wf and 'class="wf-gk' in wf, wf[:600])
+    check("figure alt states the transcription",
+          "transcribed" in wf, wf[:600])
+    del cfg["sweep"]["tesseractPath"]
+    del cfg["sweep"]["pdftoppmPath"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
 
     server.shutdown()
     report()

@@ -387,7 +387,11 @@ Each is behavior-equivalent; all are exercised by the gate:
   pdftoppm, usually already present) and set `sweep.tesseractPath`;
   image-only PDFs then index via OCR (lane `"ocr"`), and previously
   Skipped `plaintext`-lane PDFs rescue automatically. No PATH
-  auto-detection — explicitly opt in.
+  auto-detection — explicitly opt in. Since v1.40 the same opt-in
+  also feeds the wireframe figures: pptx screenshots redrawn as
+  wireframes get their text rows transcribed (real text in the
+  figure instead of placeholder bars) — `--reformat` rolls it over
+  the existing corpus with no AI spend.
 - **msg lane** (v1.37): Outlook .msg files index automatically —
   nothing to enable; previously Skipped rows rescue on the next run.
 - **Embedding relatedness** (v1.38, optional): `sweep.embedRelated:

@@ -1,5 +1,5 @@
 /**
- * SlideFigures v2.0 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v2.1 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
@@ -10,12 +10,41 @@
  * (2026-09-03) puts the route on top as a dash and hashes labelled anchors;
  * DF-9 (2026-09-03) cases the dash in white and two-tones the palette;
  * DF-10 (2026-09-03) calms the style to soft bands and lifts the cap;
- * DF-11 (2026-09-03) redraws UI screenshots as standardized wireframes.
+ * DF-11 (2026-09-03) redraws UI screenshots as standardized wireframes;
+ * DF-12 (2026-09-03) lifts wireframe fidelity — real OCR'd text and
+ * anti-aliasing artifact suppression.
  * Companion to ZipTextExtract, same input (the
- * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
- * several):
+ * file's bytes as base64), plus an OPTIONAL third parameter (DF-12): a
+ * JSON array of per-picture OCR transcriptions,
+ * [{ entry, words: [{ x, y, w, h, t, c? }] }], keyed by media basename
+ * in the picture's own pixel space. Returns one SVG per DIAGRAM (a
+ * slide can carry several):
  *
- *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped,
+ *     ocrWanted }
+ *
+ * v2.1 (DF-12):
+ *   - WIREFRAME TEXT IS REAL WHERE OCR PROVIDES IT. The wireframe tier
+ *     never OCRs — it stays zero-dependency — but the local sweep has an
+ *     opt-in Tesseract lane (sweep.tesseractPath), and a caller that has
+ *     transcriptions can now pass them in: a text row whose extent is
+ *     covered by OCR words renders as real `<text>` (heading, body and
+ *     on-fill weights matching the bar classes) instead of a placeholder
+ *     bar; rows OCR missed keep their bars, and the alt text states how
+ *     many rows are transcription vs placeholder. To keep the loop
+ *     single-shot and the OCR spend targeted, the result names the media
+ *     entries whose pictures produced wireframes WITHOUT transcriptions
+ *     (`ocrWanted`, comma-separated basenames): the sweep OCRs exactly
+ *     those and re-renders once.
+ *   - ANTI-ALIASING IS NOT LAYOUT. A screenshot's anti-aliased edge
+ *     scans as SEVERAL parallel 1px bars whose shades differ too much
+ *     for the colour merge; each became its own separator, so one soft
+ *     seam rendered as a full-height line CLUSTER through the middle of
+ *     the figure and one table border doubled itself. Parallel thin bars
+ *     within UI_PAR_GAP now collapse into one stroke before assembly,
+ *     and a separator that runs THROUGH content — across a closed box's
+ *     interior, or through 2+ text rows — is a scan artifact, not a row
+ *     or column rule, and is dropped.
  *
  * v2.0 (DF-11):
  *   - UI SCREENSHOTS BECOME WIREFRAMES. Half the corpus's pasted pictures
@@ -270,7 +299,10 @@
  * does not call this, and v2.2's caption stands.
  */
 interface SlideFigure { slide: number; name: string; svg: string; alt: string; anchor: string[]; }
-interface FiguresResult { figures: SlideFigure[]; count: number; skipped: string; }
+// ocrWanted (DF-12): comma-separated media basenames of pictures that
+// produced wireframes with placeholder text bars — the entries a caller
+// with an OCR tool should transcribe and pass back in for a re-render.
+interface FiguresResult { figures: SlideFigure[]; count: number; skipped: string; ocrWanted: string; }
 
 const FIG_MAX_COUNT = 96;      // DF-10: 40 predates DF-4 splitting every
                                // redraw diagram into an input+output PAIR —
@@ -309,6 +341,12 @@ const UI_RECT_TOL = 8;         // border ends this close assemble into a rectang
 const UI_MAX_ELEMS = 260;      // busier than this is a photo mosaic, not a UI
 const UI_GLYPH_HMAX = 32;      // ink taller than this is chrome, not a glyph
 const UI_TEXT_GAP = 1.2;       // glyph gaps up to this x row-height chain a row
+const UI_PAR_GAP = 3;          // parallel thin bars this close are ONE
+                               // anti-aliased stroke, not a stripe cluster
+                               // (DF-12 — an AA edge scans as several 1px
+                               // bars whose shades defeat the colour merge)
+const UI_OCR_CONF = 40;        // OCR words below this confidence stay
+                               // placeholder bars (DF-12)
 const ARROW_EXT = 14;          // route overshoot past the final tick — sized
                                // to the arrowhead (4.4 x 3px stroke, refX
                                // 6/8 → its back sits ~10px behind the line
@@ -324,13 +362,15 @@ const ID_OFF = MEAS_OFF + 5;   // entity-id baseline off the line (ids are a
                                // so they sit a step further out)
 const LEGEND_GAP = 24;         // legend baseline below the figure's content
 
-function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult {
+function main(workbook: ExcelScript.Workbook, zipBase64: string, ocrJson?: string): FiguresResult {
   const bytes = b64ToBytes(zipBase64);
   const entries = readCentralDirectory(bytes);
   const slideParts = entries.filter((e) => /^ppt\/slides\/slide\d+\.xml$/.test(e.name));
   const ordered = orderSlides(bytes, entries, slideParts);
+  const ocr = uiOcrParse(ocrJson);
   const figures: SlideFigure[] = [];
   const skipped: string[] = [];
+  const wanted: string[] = [];
   for (let i = 0; i < ordered.length; i++) {
     const no = i + 1;
     if (figures.length >= FIG_MAX_COUNT) { skipped.push("slide" + no + ":cap"); continue; }
@@ -342,7 +382,7 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult 
       continue;
     }
     const figs = buildFigures(xml, no,
-      () => slidePics(bytes, entries, ordered[i].name, xml));
+      () => slidePics(bytes, entries, ordered[i].name, xml), ocr, wanted);
     for (const fig of figs) {
       if (figures.length >= FIG_MAX_COUNT) {
         skipped.push(fig.name.replace(/\.svg$/, "") + ":cap");
@@ -355,7 +395,8 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string): FiguresResult 
       figures.push(fig);
     }
   }
-  return { figures: figures, count: figures.length, skipped: skipped.join(",") };
+  return { figures: figures, count: figures.length, skipped: skipped.join(","),
+    ocrWanted: wanted.join(",") };
 }
 
 // ---------------------------------------------------------------- geometry
@@ -503,6 +544,13 @@ function figStyle(): string {
     ".wf-btn{stroke-width:1.2}" +
     ".wf-sep{stroke:#D7DFDF;stroke-width:1}" +
     ".wf-gk{fill:#B9C6C6}.wf-gkh{fill:#4E6265}.wf-gkp{fill:#FFFFFF}" +
+    // DF-12: transcribed rows render as real text in the same three
+    // roles the bars used — body slate, heading ink, on-fill. The bars'
+    // on-fill WHITE does not carry over: the source's saturated fill
+    // lands on a soft palette tint, and white-on-tint is unreadable, so
+    // on-fill text takes the ink (readable on every t-hue field). Size
+    // rides per-element — it tracks each row's own scanned height.
+    ".wf-tx{fill:#4E6265}.wf-txh{fill:#16302F;font-weight:600}.wf-txp{fill:#16302F;font-weight:500}" +
     "text{font-family:'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif}" +
     ".measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}" +
     ".id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}" +
@@ -2387,7 +2435,7 @@ function traceImage(img: PngImg, X: number, Y: number, W: number, H: number): FR
   return out;
 }
 
-interface FPic { x: number; y: number; w: number; h: number; data: Uint8Array; }
+interface FPic { x: number; y: number; w: number; h: number; data: Uint8Array; entry: string; }
 
 function slidePics(bytes: Uint8Array, entries: ZipEntry[], slideName: string, xml: string): FPic[] {
   const relsName = slideName.replace("ppt/slides/", "ppt/slides/_rels/") + ".rels";
@@ -2424,7 +2472,8 @@ function slidePics(bytes: Uint8Array, entries: ZipEntry[], slideName: string, xm
     const t = figXform(gs, m.index, parseInt(o[1], 10), parseInt(o[2], 10),
                        parseInt(e[1], 10), parseInt(e[2], 10));
     out.push({ x: t[0] * EMU_PX, y: t[1] * EMU_PX,
-               w: t[2] * EMU_PX, h: t[3] * EMU_PX, data: data });
+               w: t[2] * EMU_PX, h: t[3] * EMU_PX, data: data,
+               entry: tg.replace(/^.*\//, "") });
   }
   out.sort((a, b) => b.w * b.h - a.w * a.h);
   return out.slice(0, 2);
@@ -2492,6 +2541,59 @@ interface USep { x0: number; y0: number; x1: number; y1: number; }
 interface UiParts {
   rects: URect[]; blocks: UBlock[]; texts: UTextRow[];
   hseps: USep[]; vseps: USep[]; rules: USep[];
+}
+// an OCR'd word in the picture's own pixel space (DF-12)
+interface UWord { x: number; y: number; w: number; h: number; t: string; }
+
+// DF-12: transcriptions arrive as JSON — [{ entry, words: [{x,y,w,h,t,c?}] }],
+// entry a media basename, coordinates in the picture's pixels, c the OCR
+// engine's confidence. Defensive parse: this crosses a process boundary
+// (the sweep's Tesseract lane), so anything malformed degrades to "no
+// transcription" — never a throw, the same stance RelatedRank takes on
+// its JSON inputs.
+function uiOcrParse(ocrJson?: string): { [entry: string]: UWord[] } {
+  const out: { [entry: string]: UWord[] } = {};
+  if (!ocrJson) return out;
+  let data: unknown;
+  try { data = JSON.parse(ocrJson); } catch (e) { return out; }
+  if (!Array.isArray(data)) return out;
+  for (const raw of data as { entry?: unknown; words?: unknown }[]) {
+    if (!raw || typeof raw.entry !== "string" || !Array.isArray(raw.words)) continue;
+    const ws: UWord[] = [];
+    for (const w of raw.words as { x?: unknown; y?: unknown; w?: unknown; h?: unknown; t?: unknown; c?: unknown }[]) {
+      if (!w || typeof w.t !== "string") continue;
+      const t = w.t.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+      if (!t) continue;
+      const x = Number(w.x), y = Number(w.y), wd = Number(w.w), ht = Number(w.h);
+      if (!isFinite(x) || !isFinite(y) || !(wd > 0) || !(ht > 0)) continue;
+      const c = w.c === undefined ? 100 : Number(w.c);
+      if (!(c >= UI_OCR_CONF)) continue;
+      ws.push({ x: x, y: y, w: wd, h: ht, t: t });
+    }
+    if (ws.length) out[raw.entry.replace(/^.*\//, "")] = ws;
+  }
+  return out;
+}
+
+// the OCR words whose boxes sit on this text row, left to right. A word
+// belongs to the row when their vertical extents genuinely overlap and it
+// is not wholly outside the row's span — the row's own geometry stays the
+// layout authority (position and extent come from the scanned ink, the
+// words only replace the greek).
+function uiRowText(t: UTextRow, words: UWord[]): string {
+  const hits: UWord[] = [];
+  for (const w of words) {
+    const ov = Math.min(t.y1, w.y + w.h) - Math.max(t.y0, w.y);
+    if (ov < 0.55 * Math.min(t.y1 - t.y0 + 1, w.h)) continue;
+    if (w.x + w.w < t.x0 - 8 || w.x > t.x1 + 8) continue;
+    hits.push(w);
+  }
+  hits.sort((a, b) => a.x - b.x);
+  const parts: string[] = [];
+  for (const w of hits) parts.push(w.t);
+  let s = parts.join(" ").trim();
+  if (s.length > 90) s = s.slice(0, 89) + "…";
+  return s;
 }
 
 function uiRingBg(img: PngImg): number[] {
@@ -2742,6 +2844,78 @@ function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
   return rows;
 }
 
+// anti-aliasing splits one drawn edge into several parallel 1px bars in
+// nearby columns whose shades differ too much for the colour merge to
+// unite (a soft seam ramps white→grey→white; adjacent steps pass, the
+// extremes don't). Left alone, each bar assembled into its OWN separator:
+// one edge rendered as a full-height line cluster through the middle of
+// the figure, one table border as a double line (DF-12). Bars in the same
+// orientation whose cross-axis gap is within UI_PAR_GAP and whose spans
+// genuinely overlap are ONE stroke; colour is deliberately ignored — the
+// shades differing is exactly the failure being repaired.
+function uiCollapseParallel(bars: TBar[]): TBar[] {
+  const bc = (t: TBar): number => (t.b0 + t.b1) / 2;
+  bars.sort((a, b) => bc(a) - bc(b));
+  const out: TBar[] = [];
+  for (const t of bars) {
+    let hit: TBar | null = null;
+    for (let i = out.length - 1; i >= 0; i--) {
+      const o = out[i];
+      if (t.b0 - o.b1 > UI_PAR_GAP) break;
+      const ov = Math.min(t.a1, o.a1) - Math.max(t.a0, o.a0) + 1;
+      if (ov >= 0.7 * (Math.min(t.a1 - t.a0, o.a1 - o.a0) + 1)) { hit = o; break; }
+    }
+    if (hit) {
+      hit.a0 = Math.min(hit.a0, t.a0); hit.a1 = Math.max(hit.a1, t.a1);
+      hit.b0 = Math.min(hit.b0, t.b0); hit.b1 = Math.max(hit.b1, t.b1);
+      hit.sr += t.sr; hit.sg += t.sg; hit.sb += t.sb; hit.n += t.n;
+    } else out.push(t);
+  }
+  return out;
+}
+
+// a separator that runs THROUGH content is a scan artifact, not layout
+// (DF-12): a real row separator sits BETWEEN text rows and a real column
+// rule passes BETWEEN cells, while a gradient seam or a shadow edge that
+// survived the thin-bar scan crosses the glyphs and closed boxes
+// themselves. Drop any leftover separator that (a) cuts straight through
+// a closed rectangle or colour block — entering one side and leaving the
+// other — or (b) passes through the interior of 2+ text rows (2+, so a
+// rule grazed by one over-chained row survives).
+function uiDropArtifactSeps(asm: { rects: URect[]; hseps: USep[]; vseps: USep[]; rules: USep[] },
+                            blocks: UBlock[], texts: UTextRow[]): void {
+  const boxes: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  for (const r of asm.rects) boxes.push(r);
+  for (const b of blocks) boxes.push(b);
+  const vBad = (s: USep): boolean => {
+    for (const r of boxes) {
+      if (s.x0 > r.x0 + 4 && s.x0 < r.x1 - 4 &&
+          s.y0 < r.y0 - 4 && s.y1 > r.y1 + 4) return true;
+    }
+    let rows = 0;
+    for (const t of texts) {
+      if (s.x0 > t.x0 + 2 && s.x0 < t.x1 - 2 &&
+          Math.min(s.y1, t.y1) - Math.max(s.y0, t.y0) >= (t.y1 - t.y0) * 0.5) rows++;
+    }
+    return rows >= 2;
+  };
+  const hBad = (s: USep): boolean => {
+    for (const r of boxes) {
+      if (s.y0 > r.y0 + 4 && s.y0 < r.y1 - 4 &&
+          s.x0 < r.x0 - 4 && s.x1 > r.x1 + 4) return true;
+    }
+    let rows = 0;
+    for (const t of texts) {
+      if (s.y0 > t.y0 + 2 && s.y0 < t.y1 - 2 &&
+          Math.min(s.x1, t.x1) - Math.max(s.x0, t.x0) >= (t.x1 - t.x0) * 0.5) rows++;
+    }
+    return rows >= 2;
+  };
+  asm.vseps = asm.vseps.filter((s) => !vBad(s));
+  asm.hseps = asm.hseps.filter((s) => !hBad(s));
+  asm.rules = asm.rules.filter((s) => !hBad(s));
+}
+
 // closed rectangles assemble from the thin bars: a top/bottom pair with
 // matching extents plus side verticals covering the span. Bottoms are tried
 // FARTHEST first — a table's row separators match its top border's extents
@@ -2842,11 +3016,12 @@ function uiSnapAxis(items: { v: number; set: (x: number) => void }[], tol: numbe
 function uiScan(img: PngImg): UiParts | null {
   const bg = uiRingBg(img);
   if (!uiIsFlat(img, bg)) return null;
-  const hb = traceMerge(uiScanThin(img, true, bg));
-  const vb = traceMerge(uiScanThin(img, false, bg));
+  const hb = uiCollapseParallel(traceMerge(uiScanThin(img, true, bg)));
+  const vb = uiCollapseParallel(traceMerge(uiScanThin(img, false, bg)));
   const asm = uiAssemble(hb, vb);
   const blocks = uiBlocks(img, bg);
   const texts = uiTextRows(img, bg);
+  uiDropArtifactSeps(asm, blocks, texts);
   const total = asm.rects.length + blocks.length + texts.length +
     asm.hseps.length + asm.vseps.length + asm.rules.length;
   if (asm.rects.length < 1) return null;
@@ -2901,7 +3076,7 @@ function uiScan(img: PngImg): UiParts | null {
 }
 
 function uiRender(no: number, idx: number, total: number, p: UiParts,
-                  imgW: number): SlideFigure {
+                  imgW: number, words: UWord[] | null): SlideFigure {
   // edge snap in image space, then one standardized width
   const lefts: { v: number; set: (x: number) => void }[] = [];
   const rights: { v: number; set: (x: number) => void }[] = [];
@@ -2961,9 +3136,24 @@ function uiRender(no: number, idx: number, total: number, p: UiParts,
     if (b.kind !== "btn") continue;
     rect("wf-btn t-" + b.role + " s-" + b.role, b.x0, b.y0, b.x1, b.y1, 4);
   }
+  // text rows: real text where OCR covers the row (DF-12), placeholder
+  // bars everywhere else. The row's scanned geometry stays the layout
+  // authority — the transcription only replaces the greek, in the same
+  // three weights the bars used (heading / body / on-fill).
+  let txn = 0;
   for (const t of p.texts) {
-    const bh = Math.min(12, Math.max(4.5, t.h * s * 0.6));
     const yc = ((t.y0 + t.y1) / 2) * s;
+    const label = words ? uiRowText(t, words) : "";
+    if (label) {
+      const fs = Math.min(15, Math.max(8, t.h * s * 0.9));
+      const cls = t.kind === "gkh" ? "wf-txh" : (t.kind === "gkp" ? "wf-txp" : "wf-tx");
+      el.push('<text class="' + cls + '" x="' + fnum(t.x0 * s) + '" y="' + fnum(yc + fs * 0.36) +
+        '" font-size="' + fnum(fs) + '">' + esc(label) + "</text>");
+      grow(t.x0 * s, yc - fs * 0.55, t.x0 * s + label.length * fs * 0.56, yc + fs * 0.55);
+      txn++;
+      continue;
+    }
+    const bh = Math.min(12, Math.max(4.5, t.h * s * 0.6));
     const bw = Math.max(8, (t.x1 - t.x0) * s);
     el.push('<rect class="wf-' + t.kind + '" x="' + fnum(t.x0 * s) + '" y="' + fnum(yc - bh / 2) +
       '" width="' + fnum(bw) + '" height="' + fnum(bh) + '" rx="' + fnum(bh / 2) + '"/>');
@@ -2984,16 +3174,21 @@ function uiRender(no: number, idx: number, total: number, p: UiParts,
   bits.push(p.texts.length + " text row" + (p.texts.length === 1 ? "" : "s"));
   const title = "Slide " + no + " interface wireframe" +
     (total > 1 ? " (" + idx + " of " + total + ")" : "");
+  const txt = txn === 0
+    ? "Text inside a screenshot is pixels, so text rows render as placeholder bars"
+    : txn + " of " + p.texts.length + " text rows carry text transcribed from the " +
+      "screenshot (OCR, approximate)" +
+      (txn === p.texts.length ? "" : "; the rest render as placeholder bars");
   const desc = "Interface screenshot redrawn as a standardized wireframe: " +
-    bits.join(", ") + ". Text inside a screenshot is pixels, so text rows render " +
-    "as placeholder bars; positions are approximate to the source image and " +
-    "colours are mapped to the corpus palette.";
+    bits.join(", ") + ". " + txt + "; positions are approximate to the source " +
+    "image and colours are mapped to the corpus palette.";
   return { slide: no, name: figName(no, idx, total),
     svg: svgWrap(no, w, h, title, desc, "<g " + shift + ">" + el.join("") + "</g>"),
     alt: desc, anchor: [] };
 }
 
-function uiFigures(no: number, pics: FPic[], tables: FTable[]): SlideFigure[] {
+function uiFigures(no: number, pics: FPic[], tables: FTable[],
+                   ocr: { [entry: string]: UWord[] }, wanted: string[]): SlideFigure[] {
   const qual: { pic: FPic; parts: UiParts; w: number }[] = [];
   for (const pic of pics) {
     const img = pngDecode(pic.data);
@@ -3004,7 +3199,12 @@ function uiFigures(no: number, pics: FPic[], tables: FTable[]): SlideFigure[] {
   const out: SlideFigure[] = [];
   const spans: number[][] = [];
   for (let i = 0; i < qual.length; i++) {
-    out.push(uiRender(no, i + 1, qual.length, qual[i].parts, qual[i].w));
+    const words = ocr[qual[i].pic.entry] || null;
+    // a wireframe rendered without a transcription is the OCR worth
+    // spending (DF-12): name its media entry so the caller can OCR
+    // exactly these pictures and re-render once
+    if (!words && wanted.indexOf(qual[i].pic.entry) < 0) wanted.push(qual[i].pic.entry);
+    out.push(uiRender(no, i + 1, qual.length, qual[i].parts, qual[i].w, words));
     spans.push([qual[i].pic.y, qual[i].pic.y + qual[i].pic.h]);
   }
   assignAnchors(out, spans, tables);
@@ -3020,7 +3220,8 @@ function uiFigures(no: number, pics: FPic[], tables: FTable[]): SlideFigure[] {
 // lane anchors its figures to the slide's
 // tables (geometry for drawn/traced/wireframe figures, meaning for redrawn
 // ones — see assignAnchors/buildRedraw).
-function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[] {
+function buildFigures(xml: string, no: number, pics: () => FPic[],
+                      ocr: { [entry: string]: UWord[] }, wanted: string[]): SlideFigure[] {
   const tables = slideTables(xml);
   const clusters = clusterParsed(parseSlide(xml));
   const qual: { c: Cluster; mode: string }[] = [];
@@ -3043,7 +3244,7 @@ function buildFigures(xml: string, no: number, pics: () => FPic[]): SlideFigure[
   const r = buildRedraw(xml, no, tables);
   if (r.length) return r;
   const pl = pics();
-  const ui = uiFigures(no, pl, tables);
+  const ui = uiFigures(no, pl, tables, ocr, wanted);
   if (ui.length) return ui;
   return traceFigures(xml, no, pl, tables);
 }

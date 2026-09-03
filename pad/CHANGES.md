@@ -1,5 +1,14 @@
 # PAD offload — release notes
 
+## v2.4 (2026-09-03)
+
+`runner/ops.mjs`: the `figures` op takes an optional `ocrJson` param
+(SlideFigures v2.1 / DF-12 — per-picture OCR transcriptions,
+`[{ entry, words: [{x,y,w,h,t,c?}] }]`), passed through like every
+other optional param ($file indirection included). Omitted, the call
+and its result are what they were — the sweep's wireframe-OCR loop
+(local v1.40) is the only caller that sets it. Gate re-PASSED 27/27.
+
 ## v2.3 (2026-08-14)
 
 `runner/ops.mjs`: the script loading + op dispatch (SCRIPT_FILES,

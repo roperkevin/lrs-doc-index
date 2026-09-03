@@ -857,6 +857,45 @@ s_f14 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
 s_f14.shapes.add_picture(io.BytesIO(make_png(160, 120)), Emu(int(1.0 * IN)),
                          Emu(int(1.5 * IN)), Emu(int(4.0 * IN)), Emu(int(3.0 * IN)))
 
+# --- slide 15 (v2.1 / DF-12): the ARTIFACT screenshot — real screenshots
+# carry anti-aliased edges that scan as several parallel 1px bars whose
+# shades differ too much for the colour merge. Two planted artifacts:
+# (a) a vertical seam of three 1px columns (greys 90/180/100 — the
+# 90-vs-180 step defeats the ≤64 colour merge) running most of the panel's
+# height, straight THROUGH an input field and three text rows — pre-DF-12
+# this rendered as a full-height line cluster through the middle of the
+# figure; (b) a doubled table row separator (dark line + lighter shadow
+# line 2px apart, again >64 apart in shade) — pre-DF-12 a double line.
+# DF-12 must collapse the parallels and drop the seam entirely (it crosses
+# content), keeping exactly ONE row separator and ZERO vertical ones.
+_ui2 = []
+
+
+def _ui2_box(x0, x1, y0, y1, t=2, rgb=GRAY13):
+    _ui2.extend([(x0, x1, y0, y0 + t, rgb), (x0, x1, y1 - t, y1, rgb),
+                 (x0, x0 + t, y0, y1, rgb), (x1 - t, x1, y0, y1, rgb)])
+
+
+_ui2_box(24, 536, 20, 400)                     # the panel
+_ui_rects, _keep = _ui2, _ui_rects             # reuse _ui_text onto _ui2
+_ui_text(40, 36, 9, h=12)                      # heading
+_ui_text(40, 74, 6)                            # field label
+_ui_rects = _keep
+_ui2_box(40, 240, 90, 116)                     # the input field the seam crosses
+_ui2_box(300, 520, 60, 240)                    # a table box
+_ui2.append((302, 518, 120, 122, (60, 60, 60)))    # row separator...
+_ui2.append((302, 518, 124, 126, (145, 145, 145)))  # ...and its AA shadow double
+for _ry in (260, 280, 300):                    # wide-pitch rows the seam crosses
+    for _k in range(13):                       # (the seam sits in a glyph gap,
+        _gx = 40 + _k * 11                     # so each row chains across it)
+        _ui2.append((_gx, _gx + 5, _ry, _ry + 8, DARK13))
+for _sx, _sg in ((112, 90), (114, 180), (116, 100)):  # the AA seam
+    _ui2.append((_sx, _sx + 1, 30, 390, (_sg, _sg, _sg)))
+_png_write('ui_artifact.png', 560, 420, _ui2)
+s_f15 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f15.shapes.add_picture('ui_artifact.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
