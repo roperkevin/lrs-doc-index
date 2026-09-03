@@ -1,5 +1,26 @@
 # Local sweep — release notes
 
+## v1.40 (2026-09-03)
+
+**Wireframe OCR — screenshots keep their words** (SlideFigures v2.1 /
+DF-12). A pptx's figures op now comes back naming the media entries
+whose pictures rendered as wireframes with placeholder text bars
+(`ocrWanted`); with the OCR lane configured (`sweep.tesseractPath`,
+the v1.36 opt-in — no new config), the sweep transcribes exactly
+those pictures (Tesseract TSV word boxes, `--psm 11` sparse-text
+mode) and re-renders once, so the wireframes carry the screenshot's
+real text instead of greek bars. Media bytes come from a minimal
+central-directory read of the pptx itself (`pptxMediaEntries`) —
+MediaExtract is deliberately not used here, since its 350 KB
+per-image cap refuses exactly the hi-dpi screenshots OCR is for.
+Best-effort at every step: no OCR tools, OCR finding nothing, or a
+corrupt media entry keeps the placeholder render; an OCR crash logs
+`FIGOCR` to stderr and never fails the index. `--reformat` picks the
+text up for free, like every figure change. Gate: the wireframe-OCR
+leg (a screenshot-only deck, a tesseract stub that answers ONLY the
+TSV call, real text asserted in the written SVG, an
+under-confidence word staying a bar). 206/206.
+
 ## v1.39 (2026-09-03)
 
 **Remote-files mode — the sweep without OneDrive** (review r7 phase

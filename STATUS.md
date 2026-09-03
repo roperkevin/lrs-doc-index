@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-03q** — see "Current state" below.
+Last updated: **2026-09-03s** — see "Current state" below.
 Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
 review r7): this file keeps the deployed-truth TABLES; the story of
 each change belongs to the component CHANGES files.
@@ -45,6 +45,21 @@ each change belongs to the component CHANGES files.
   credentials policy decision in `local/Hosted_Runner.md`). Gates:
   `check_local_sweep.py` **201/201**; standing suites + typecheck
   green.
+- **2026-09-03s (wireframe fidelity — DF-12, authored on main):**
+  SlideFigures **v2.1** (wireframe text is REAL where OCR provides it
+  — covered rows render as `<text>` in the bar weights, missed rows
+  keep bars, `ocrWanted` names the pictures worth transcribing; and
+  anti-aliasing artifact suppression — parallel 1px scan bars collapse
+  to one stroke, separators crossing content are dropped, killing the
+  full-height line clusters and doubled borders real screenshots
+  produced), sweep **v1.40** (the wireframe-OCR loop over the existing
+  `sweep.tesseractPath` opt-in — no new config), ops **v2.4** (the
+  optional `ocrJson` param). Gates: `check_figures.py` 18 figures (8
+  of 13 new assertions discriminate against v2.0),
+  `check_local_sweep.py` **206/206** incl. the wireframe-OCR leg, PAD
+  27/27, svg2pptx PASS (all 18 figures, transcribed text editable in
+  python-pptx), typecheck green. Corpus refresh: `--reformat` (no AI
+  spend); OCR'd text appears wherever Tesseract is configured.
 
 ## Core sweep
 
@@ -69,7 +84,7 @@ as of the handover; resume the paste plan only if rolling back.
 | RelatedRank | **v2.2** (2026-08-15 — body-sim/filename/folder as dormant optional fields for the local sweep; flow-shaped output byte-identical to v2.1, `check_related` PASSED) | **PASTED v2.1** with the v2.6 window — sufficient on rollback (v2.2's fields stay dormant on the flow); paste v2.2 only if desired |
 | SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
 | RegexExtract | **v1.4** (r6) | tenant runs v1.2 (pre-v2.2); v1.3 superseded in-repo before its paste — v1.4 is additive-safe under any flow, products surface with the v2.8 window |
-| SlideFigures | **v2.0** (2026-09-03 — DF-1 slide diagrams as SVG; DF-2 multi-figure/graph lane; DF-3 routing, grid snap, legends, rotation, raster tracing; DF-4 one SVG per redraw diagram + table anchors; DF-5 label-collision fixes, degenerate splits, title boxes dropped; DF-6 arrowheads snapped to line tips; DF-7 spanning events as route chains; DF-8 route to the front as a dash, smaller heads on solid carriers, hash marks for labelled anchors; DF-9 two-tone palette; DF-10 calm soft-band style + figure cap 40→96; DF-11 UI screenshots redrawn as standardized wireframes; `check_figures.py` PASSED) | **N/A on the cloud flow** — a local-sweep-only step; a rollback simply keeps ZipTextExtract's `[figure: ...]` caption |
+| SlideFigures | **v2.1** (2026-09-03 — DF-1 slide diagrams as SVG; DF-2 multi-figure/graph lane; DF-3 routing, grid snap, legends, rotation, raster tracing; DF-4 one SVG per redraw diagram + table anchors; DF-5 label-collision fixes, degenerate splits, title boxes dropped; DF-6 arrowheads snapped to line tips; DF-7 spanning events as route chains; DF-8 route to the front as a dash, smaller heads on solid carriers, hash marks for labelled anchors; DF-9 two-tone palette; DF-10 calm soft-band style + figure cap 40→96; DF-11 UI screenshots redrawn as standardized wireframes; DF-12 wireframe fidelity — real OCR'd text via the sweep's Tesseract lane, anti-aliasing artifact suppression; `check_figures.py` PASSED) | **N/A on the cloud flow** — a local-sweep-only step; a rollback simply keeps ZipTextExtract's `[figure: ...]` caption |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
 
 The r2 batch passed `check_batch_r2.py` (all equivalence IDENTICAL,
@@ -163,10 +178,10 @@ v1.2 describes them — paste with the window, step 6).
 
 | Suite | Last green |
 |---|---|
-| check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt (185/185) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (review r7 batch) |
+| check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
 | check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
 | check_svg2pptx.py (svg2pptx v1.3 — SVG figures → editable pptx shapes: package/shape/style/label contract, no-plate + title-band dress, case-heading titles + native case tables + metadata line from the sidecar, sidecar lookup + override + --no-tables legs, python-pptx open leg incl. table read-back) | 2026-09-03 |
-| check_figures.py (SlideFigures v1.6 / DF-7 — spanning-event route chains; plus the DF-5/DF-6 label-collision, degenerate-split, title-box and arrowhead contract) | 2026-09-03 |
+| check_figures.py (SlideFigures v2.1 / DF-12 — wireframe OCR text + anti-aliasing artifact suppression, 18 figures; plus the DF-5..DF-11 contract: label collisions, degenerate splits, title boxes, arrowheads, spanning-event chains, wireframes) | 2026-09-03 (DF-12) |
 | check_batch_v2_2.py (ZipTextExtract v2.2 / DL-1) + the standing suites (check_format incl. the new §12 diagram-label contract, check_related, check_regex) + render_sample.py + check_pad_runner.py (27/27) + check_local_sweep.py (128/128) | 2026-09-03 (see `review/harness/README.md` run records) |
 | check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) | 2026-08-13 (historical — r6 skips as superseded since the v2.2 promotion) |
 | check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r4.py / check_batch_r5.py / check_batch_r6.py | skip as superseded by design (v1.9 / r2 / r3 / r4 / r5 / r6 generations). **r4 has skipped since the RelatedRank v2.2 promotion (2026-08-15)** — the 2026-08-13 row above claimed it still passed, which stopped being true then; verified skipping 2026-09-03 |

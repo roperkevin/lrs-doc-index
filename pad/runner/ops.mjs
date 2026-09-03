@@ -92,7 +92,11 @@ export function runOp(mains, op) {
     case "media":
       return m(null, zipParam(op));
     case "figures":
-      return m(null, zipParam(op));
+      // ocrJson (DF-12) is optional: [{ entry, words: [{x,y,w,h,t,c?}] }]
+      // transcriptions for wireframed screenshots; omitted = placeholder
+      // bars, exactly the pre-DF-12 render.
+      return m(null, zipParam(op),
+        op.ocrJson === undefined ? undefined : jsonParam(op, "ocrJson", op.ocrJson, false));
     case "regex":
       return m(
         null,

@@ -45,7 +45,8 @@ src += '''
 declare const require: (m: string) => { readFileSync: (p: string, e: string) => string };
 const fs = require('fs');
 const argv = (globalThis as {process?: {argv: string[]}}).process!.argv;
-console.log(JSON.stringify(main(null as unknown, fs.readFileSync(argv[2], 'utf8'))));
+console.log(JSON.stringify(main(null as unknown, fs.readFileSync(argv[2], 'utf8'),
+  argv[3] ? fs.readFileSync(argv[3], 'utf8') : undefined)));
 '''
 open('sfig_cur.ts', 'w', encoding='utf-8').write(src)
 
@@ -460,6 +461,96 @@ check(ngk >= 6, f'wireframe: the screenshot\'s text rows all carry bars ({ngk})'
 check('class="ln route"' not in u and 'class="ln tick' not in u,
       'wireframe: nothing ruler-shaped leaks into an interface figure')
 check(14 not in figs, 'photo/noise slide produces NO figure — neither tier fires')
+
+# ---- v2.1 (DF-12): artifact suppression + OCR text ------------------------
+# slide 15 plants a screenshot with an anti-aliased vertical seam (three
+# 1px columns through a field and three text rows) and a doubled row
+# separator: the seam must vanish entirely and the double collapse to one.
+u15 = figs.get(15, {})
+w15 = u15.get('svg', '')
+check(bool(w15), 'artifact slide still produces a wireframe figure')
+seps15 = re.findall(r'<line class="ln wf-sep" x1="([\d.]+)" y1="([\d.]+)" '
+                    r'x2="([\d.]+)" y2="([\d.]+)"', w15)
+vsep15 = [s for s in seps15 if s[0] == s[2]]
+hsep15 = [s for s in seps15 if s[1] == s[3]]
+check(len(vsep15) == 0,
+      f'DF-12: the anti-aliased seam leaves NO vertical line cluster ({len(vsep15)})')
+check(len(hsep15) == 1,
+      f'DF-12: the doubled row separator collapses to ONE line ({len(hsep15)})')
+check(w15.count('class="wf-field"') == 1 and 'class="wf-box"' in w15,
+      'DF-12: the artifact slide\'s real structure still renders (field + table)')
+
+# OCR pass: same deck, now with transcriptions for slide 13's screenshot.
+# Rows covered by words become real <text> in the matching weight; rows
+# OCR missed keep their bars; the alt states the split; and ocrWanted
+# names exactly the wireframed pictures still lacking a transcription.
+import zipfile
+_zf = zipfile.ZipFile('figure_deck.pptx')
+_shot = open('ui_screenshot.png', 'rb').read()
+_art = open('ui_artifact.png', 'rb').read()
+ent13 = ent15 = None
+for _n in _zf.namelist():
+    if _n.startswith('ppt/media/'):
+        _d = _zf.read(_n)
+        if _d == _shot:
+            ent13 = _n.rsplit('/', 1)[1]
+        elif _d == _art:
+            ent15 = _n.rsplit('/', 1)[1]
+check(bool(ent13) and bool(ent15), f'fixture media entries located ({ent13}/{ent15})')
+ow = set((res.get('ocrWanted') or '').split(','))
+check(ent13 in ow and ent15 in ow,
+      f'DF-12: without transcriptions, ocrWanted names both wireframed pictures ({sorted(ow)})')
+ocr_payload = [{'entry': ent13, 'words': [
+    {'x': 40, 'y': 36, 'w': 30, 'h': 12, 't': 'Search', 'c': 96},
+    {'x': 74, 'y': 36, 'w': 28, 'h': 12, 't': 'Options', 'c': 93},
+    {'x': 40, 'y': 74, 'w': 24, 'h': 8, 't': 'Route', 'c': 90},
+    {'x': 66, 'y': 74, 'w': 12, 'h': 8, 't': 'ID', 'c': 88},
+    {'x': 40, 'y': 132, 'w': 44, 'h': 8, 't': 'Measure', 'c': 91},
+    {'x': 170, 'y': 361, 'w': 34, 'h': 8, 't': 'Search', 'c': 95},
+    {'x': 316, 'y': 36, 'w': 50, 'h': 12, 't': 'Results', 'c': 92},
+    {'x': 316, 'y': 260, 'w': 30, 'h': 8, 't': 'R1L3', 'c': 89},
+    {'x': 352, 'y': 260, 'w': 14, 'h': 8, 't': '10', 'c': 87},
+    {'x': 200, 'y': 30, 'w': 10, 'h': 8, 't': 'zz', 'c': 12},  # low conf: ignored
+]}]
+open('ocr_payload.json', 'w', encoding='utf-8').write(json.dumps(ocr_payload))
+out2 = subprocess.run(['node', '--experimental-strip-types', 'sfig_cur.ts',
+                       'figure_deck.pptx.b64', 'ocr_payload.json'],
+                      capture_output=True, text=True, encoding='utf-8')
+check(out2.returncode == 0, 'OCR pass: SlideFigures runs with a transcription payload')
+res2 = json.loads(out2.stdout) if out2.returncode == 0 else {'figures': []}
+figs2 = {}
+for f in res2['figures']:
+    figs2.setdefault(f['slide'], f)
+o13 = figs2.get(13, {})
+o = o13.get('svg', '')
+check('<text class="wf-txh"' in o and '>Search Options</text>' in o,
+      'OCR: a transcribed heading row renders as REAL heading-weight text')
+check('<text class="wf-tx"' in o and '>Route ID</text>' in o,
+      'OCR: words on one row join left-to-right as body text')
+check('<text class="wf-txp"' in o and '>Search</text>' in o,
+      'OCR: on-fill text keeps its own role (ink on the tint, not the bars\' white)')
+check('class="wf-gk"' in o,
+      'OCR: rows the transcription missed keep their placeholder bars')
+check('zz' not in o, 'OCR: a low-confidence word never reaches the figure')
+alt2 = o13.get('alt', '')
+check('transcribed' in alt2 and 'placeholder' in alt2 and 'OCR' in alt2,
+      'OCR: alt states the transcribed/placeholder split')
+ow2 = set((res2.get('ocrWanted') or '').split(','))
+check(ent13 not in ow2 and ent15 in ow2,
+      f'OCR: ocrWanted drops the transcribed picture, keeps the untranscribed one ({sorted(ow2)})')
+o15 = figs2.get(15, {}).get('svg', '')
+check(o15 == w15, 'OCR: a picture with no transcription renders byte-identically')
+open('ocr_garbage.json', 'w', encoding='utf-8').write('{"not": ["an", "array"')
+out3 = subprocess.run(['node', '--experimental-strip-types', 'sfig_cur.ts',
+                       'figure_deck.pptx.b64', 'ocr_garbage.json'],
+                      capture_output=True, text=True, encoding='utf-8')
+res3 = json.loads(out3.stdout) if out3.returncode == 0 else {'figures': []}
+g13 = ''
+for f in res3.get('figures', []):
+    if f['slide'] == 13:
+        g13 = f['svg']
+check(out3.returncode == 0 and g13 == u,
+      'OCR: malformed transcription JSON degrades to the placeholder render, never a throw')
 
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
