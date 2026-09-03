@@ -14,9 +14,13 @@ for %%A in (work\sweep-task.log) do if exist %%A if %%~zA gtr 5000000 move /y wo
 
 echo === sweep start %date% %time% >> work\sweep-task.log
 
-rem self-update: merged fixes deploy themselves on the next run.
-rem --ff-only can never wedge this machine — if the pull can't
-rem fast-forward it just runs the version already checked out.
-git pull --ff-only >> work\sweep-task.log 2>&1
+rem self-update from the CI-promoted `deploy` branch: main advances
+rem `deploy` only after every harness suite is green (the workflow's
+rem promote job), so a red main can never reach the nightly run.
+rem --ff-only can never wedge this machine — if the merge can't
+rem fast-forward (or `deploy` doesn't exist yet) it just runs the
+rem version already checked out.
+git fetch origin deploy >> work\sweep-task.log 2>&1
+git merge --ff-only origin/deploy >> work\sweep-task.log 2>&1
 
 node --experimental-strip-types local\sweep.mjs --config local\config.json --live >> work\sweep-task.log 2>&1
