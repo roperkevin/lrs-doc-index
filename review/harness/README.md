@@ -28,7 +28,14 @@ when a batch is promoted:
    flow v2.8 three-patch round) — the template any future script
    change clones before it may be pasted (or, since the migration,
    before it is promoted over `scripts/`).
-6. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
+6. **Figure checks** (`check_figures.py`) — SlideFigures v1.0: both
+   production paths (vector render / topology redraw, over both table
+   shapes), silence on a slide with no diagram, the component contract
+   (uniform centred ticks, measures on a shared baseline and on their
+   ticks, butt-capped extents sharing one exact boundary, split marker),
+   palette-only colour, no rasterisation, and `<title>`/`<desc>`.
+   Fixture: `figure_deck.pptx`.
+7. **Draft coverage lint** (`check_draft_coverage.py`) — runs over a
    downloaded TestPlanGen draft .md and asserts the prompt v1.7
    coverage contract (section order incl. `## Coverage Map`, Trace
    on every case, CAUTION alert, no empty/dangling Covered by cells,
@@ -588,3 +595,37 @@ diagrams, collapsing into 20 figure lines. Body 1098 → 857 lines (241
 of label debris gone; short standalone lines 301 → 40), every
 route/event id preserved, and all 515 table / heading / image-link
 lines byte-identical between v2.1 and v2.2.
+
+## Figure gate — SlideFigures v1.0 (`check_figures.py`)
+
+The gate for DF-1, slide diagrams as SVG. Its fixture `figure_deck.pptx`
+plants one slide of each kind: a vector ruler (route line, evenly spaced
+tick stubs, measure labels, two coloured extents meeting at a split), a
+key/value-table slide with no drawing at all, a header-row-table slide
+(the other table shape in the corpus), and a prose-only slide that must
+produce nothing.
+
+```
+python3 make_fixtures.py     # builds figure_deck.pptx too
+python3 check_figures.py     # any FAIL = do not ship
+```
+
+### Last run (2026-09-03, Node 22.22.2) — v1.0 gate
+
+**PASS** — 3 figures from the 4-slide fixture; both production paths
+fire and the prose-only slide is silent; tick lengths reduce to
+minor/major only with every tick centred on the line; all measures share
+one baseline and each sits on a tick; the two extents share one exact
+boundary with a split marker on it; no source colour reaches an element
+on any figure; nothing rasterised; every figure parses as XML inside its
+viewBox and carries `<title>`/`<desc>`. Standing suites, PAD (27/27) and
+the local sweep gate (128/128) all green alongside.
+
+Real-deck verification (not fixtures, so not part of the gate):
+**20 figures** from SplittingEventsinPro_Testplan.pptx (25 slides — one
+vector, the rest redrawn) and **39** from
+3921MergeEventsToolProTestPlan_V5.pptx (44 slides, all vector). The
+second deck is why the colour-coverage rule and the header-row table
+reader exist: it lays four default-coloured route segments end to end
+under one cyan event, and its tables carry headers across the top rather
+than down the side. Both shapes now round-trip.
