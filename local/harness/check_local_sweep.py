@@ -206,6 +206,7 @@ class MockState:
         self.lists = {}
         self.llm_by_file = {}
         self.llm_calls = 0
+        self.llm_files = []
         self.llm_last_headers = {}
         self.llm_last_request = {}
         self.devicecode_hits = 0
@@ -333,7 +334,17 @@ def make_handler(state, lib_guid, src_files):
                 }
                 state.llm_last_request = body
                 fname_in = body.get("requestv2", {}).get("FileName", "")
+                state.llm_files.append(fname_in)
                 out = self._classify(lambda fname: fname == fname_in)
+                # sentinel: AI Builder's input content moderation rejecting
+                # the prompt — the real 400 body, verbatim shape
+                if out.get("__filtered__"):
+                    return self._json({"error": {
+                        "code": "0x80048d0b",
+                        "message": "{\"operationStatus\":\"Error\",\"error\":"
+                                   "{\"type\":\"Error\",\"code\":\"InputContentFiltered\","
+                                   "\"message\":\"Prompt was filtered. []\"},"
+                                   "\"predictionId\":null}"}}, 400)
                 # wrap in prose + fences: the sweep must brace-slice,
                 # exactly like the flow's Prompt_json_slice
                 text = "Sure! Here is the JSON:\n```json\n" + json.dumps(out) + "\n```"
@@ -505,6 +516,12 @@ def main():
                 "<style>p{color:red}</style></head><body>"
                 "<h1>Onboarding &amp; Setup</h1>"
                 "<p>Guide about onboarding new hires.</p></body></html>")
+    # a doc whose text AI Builder's content moderation refuses (v1.28):
+    # extraction succeeds, the Predict call 400s InputContentFiltered —
+    # deterministically, so it must stamp Skipped (no nightly rechurn,
+    # no re-burned AI call), not Error
+    with open(os.path.join(src_dir, "filtered.txt"), "w") as f:
+        f.write("Model instructions the moderation endpoint refuses to read.")
 
     # stub pdftotext: text for spec.pdf, nothing for anything else
     # (argv: -layout -enc UTF-8 <file> - ; also handles -v detection)
@@ -550,6 +567,7 @@ def main():
         src_item(17, "scan.pdf", "2026-08-06T10:00:00Z"),
         src_item(18, "outside.pdf", "2026-08-05T10:00:00Z", seg="Shared Documents"),
         src_item(19, "guide.html", "2026-08-04T10:00:00Z"),
+        src_item(20, "filtered.txt", "2026-08-03T10:00:00Z"),
     ]
 
     state = MockState()
@@ -595,6 +613,7 @@ def main():
             "title": "Beta Story", "docKind": "User Story", "surface": "Pro",
             "summary": "A story about locks.", "pe": "", "dev": "",
             "targetRelease": "", "tools": [], "keywords": ["locks"]},
+        "filtered.txt": {"__filtered__": True},
         "notes.txt": {
             "title": "", "docKind": "Other", "surface": "Other",
             "summary": "Calibration notes.", "pe": "", "dev": "",
@@ -696,8 +715,8 @@ def main():
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
-    check("dry run processed 10 (incl. the PDF-rescued spec.pdf)",
-          out.get("processed") == 10, str(out))
+    check("dry run processed 11 (incl. the PDF-rescued spec.pdf)",
+          out.get("processed") == 11, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run planned the ghost archive without executing",
           out.get("archived") == 1
@@ -720,7 +739,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 10", out.get("processed") == 10, str(out))
+    check("live processed 11", out.get("processed") == 11, str(out))
     check("live errors 2 (corrupt.pptx, missing.txt)", out.get("errors") == 2, str(out))
     check("live counted 2 out-of-scope docs", out.get("out_of_scope") == 2, str(out))
 
@@ -728,7 +747,7 @@ def main():
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 10 docs + the ghost", len(by_name) == 11, str(sorted(by_name)))
+    check("doc index rows for all 11 docs + the ghost", len(by_name) == 12, str(sorted(by_name)))
 
     _, html = by_name.get("guide.html", (None, {}))
     check("html indexed via the htmltotext lane",
@@ -757,6 +776,18 @@ def main():
     check("out-of-scope pdf -> stamped Skip too",
           outpdf.get("IndexStatus") == "Skipped"
           and "out of sync scope" in str(outpdf.get("LastError", "")), str(outpdf)[:250])
+
+    # content-filter lane (v1.28): AI Builder refused the doc text, which is
+    # deterministic — the row must stamp Skipped at the CURRENT
+    # PromptVersion (not Error), so it neither rechurns nor re-burns an AI
+    # call nightly; the idempotency leg below proves both
+    _, filt = by_name.get("filtered.txt", (None, {}))
+    check("content-filtered doc -> stamped Skipped, not Error",
+          filt.get("IndexStatus") == "Skipped"
+          and str(filt.get("LastError", "")).startswith("content filter:")
+          and "InputContentFiltered" in str(filt.get("LastError", "")), str(filt)[:300])
+    check("content-filtered stamp pins the current PromptVersion",
+          filt.get("PromptVersion") == "v2.0", str(filt)[:200])
 
     _, missing = by_name.get("missing.txt", (None, {}))
     check("in-scope missing file -> retryable Error",
@@ -809,7 +840,7 @@ def main():
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "10 processed, 2 errors" in status and "corrupt.pptx" in status,
+          "11 processed, 2 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
@@ -997,6 +1028,9 @@ def main():
           and out.get("archived") == 0, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
+    check("content-filtered doc never re-burns an AI call (dry + live only)",
+          state.llm_files.count("filtered.txt") == 2,
+          str(state.llm_files.count("filtered.txt")))
     # streaks: run 1 stamped 1 night; this full run makes it 2
     status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("error streaks advance on full runs",

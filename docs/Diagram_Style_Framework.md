@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v1.5)
+# Diagram style framework (SlideFigures v1.6)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -125,6 +125,30 @@ stays silent, and the alt text says the figure is traced and approximate.
 Order of preference is unchanged: real vectors, then the slide's own
 stated data, then tracing.
 
+## Spanning events: route chains (v1.6)
+
+A "line network" slide states an event that runs **across routes**: the
+input table carries `From RID` / `From Measure` / `To RouteID` /
+`To Measure` (R1L3 10 → R3L3 25, via R2L3), the route-list table gives
+the network order, and the split measure lives in the *middle* route's
+own domain (52.5 on R2L3 — outside 10–25 entirely). Collapsing that onto
+one route's ruler drew a 10→25 tick grid that exists on no route and
+clamped the split away as degenerate.
+
+Such slides redraw as a **route chain**: one segment per route, laid end
+to end, **each ending in its own arrowhead** — the diagram's vocabulary
+for a route's end — with route ids under their segments and event ids
+above their extents. The segment interiors carry **no invented tick
+grids**: the tables state only the anchors, so only the anchors are
+labelled (start measure, split measure, end measure, above their own
+points). The split sits on the route the result table names for it (the
+event column whose To/From Measure *is* the split), at that segment's
+centre — the split route's own domain is unstated, so no position within
+it is either. The output legend qualifies each range with its routes
+(`E1 R1L3 10 → R2L3 52.5` / `E1 R2L3 52.5 → R3L3 25`), because a
+cross-route range is meaningless without them. Segment widths are equal:
+a schematic of the network's order, not a claim about route lengths.
+
 ## Why figures exist
 
 These test plans are route/measure diagrams: a route line, a measure ruler,
@@ -184,6 +208,21 @@ colour-led rule gets one of them backwards.
 | event | 5.0px stroke, **butt caps** | Extents |
 | tick / major | 1.15 / 1.4px | Scale marks |
 | leader | 1.0px | Callouts |
+
+Geometry is tokenised the same way (v1.6), so every lane — ruler, redraw,
+spanning, trace — places the same element the same distance from the line:
+
+| Token | Value | Applies to |
+|---|---|---|
+| MEAS_OFF | 15.5px | Measure baseline off the line |
+| ID_OFF | 20.5px | Entity-id baseline off the line (the heavier face sits a step further out) |
+| SPLIT_ARM | 10.5px | Split hairline half-length |
+| DOT_R | 3.2px | Split-dot radius |
+| ARROW_EXT | 18px | Route overshoot carrying the arrowhead |
+| LEGEND_GAP | 24px | Legend baseline below the content |
+
+The gate asserts the cross-lane invariants (one split-dot radius, one
+id offset) so the lanes cannot drift apart again.
 
 Font is a system stack only: an SVG loaded through `<img>` cannot fetch a
 webfont.

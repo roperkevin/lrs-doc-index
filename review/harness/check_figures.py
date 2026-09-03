@@ -332,6 +332,63 @@ check('marker-end' in g10, 'title-box slide: the ruler keeps its direction arrow
 check('marker-end' not in t8svg,
       'trace: no mid-band arrow where the extent runs past the route run')
 
+# ---- v1.6 (DF-7): spanning events redraw as route chains ------------------
+f11 = by_slide.get(11, [])
+check(len(f11) == 2, f'spanning-event slide -> two figures ({len(f11)})')
+if len(f11) == 2:
+    sin, sout = f11[0]['svg'], f11[1]['svg']
+    check('>R1L6<' in sin and '>R2L6<' in sin and '>R3L6<' in sin,
+          'spanning: every route in the chain is drawn and labelled')
+    check(sin.count('marker-end') == 3,
+          f'spanning: each route ends in its own arrowhead '
+          f'({sin.count("marker-end")})')
+    check('>10<' in sin and '>25<' in sin and '10.0' not in sin
+          and sin.count('<text class="measure"') == 2,
+          'spanning: only the stated measure anchors — no invented tick grid')
+    bin_, bout = sin[sin.index('</style>'):], sout[sout.index('</style>'):]
+    check('splitdot' not in bin_ and 's-warm' not in bin_,
+          'spanning input figure: no split marker, one extent colour')
+    check('splitdot' in bout and '>52.5<' in bout
+          and 's-cool' in bout and 's-warm' in bout,
+          'spanning output: split at 52.5 with both extent colours')
+    dot11 = re.search(r'<circle class="splitdot" cx="([\d.]+)"', sout)
+    rid2 = re.search(r'<text class="id f-ink" x="([\d.]+)"[^>]*>R2L6<', sout)
+    check(dot11 is not None and rid2 is not None and
+          abs(float(dot11.group(1)) - float(rid2.group(1))) < 1.0,
+          'spanning: the split sits on the route the result table names (R2L6)')
+    check('E6 R1L6 10 → R2L6 52.5' in sout and 'E6 R2L6 52.5 → R3L6 25' in sout,
+          'spanning legend: each range qualified with its routes')
+    check('spanning routes R1L6 → R2L6 → R3L6' in f11[0]['alt']
+          and 'after the split at measure 52.5 on R2L6' in f11[1]['alt'],
+          'spanning alts state the chain and the split route')
+    check(f11[0].get('anchor') == ['Event ID', 'E6']
+          and f11[1].get('anchor') == ['Event ID', 'E6', 'E6', 'E6'],
+          f'spanning anchors: input -> key/value table, output -> result table '
+          f'({f11[0].get("anchor")} / {f11[1].get("anchor")})')
+
+# ---- style invariants: one geometry across every lane ---------------------
+rads = set()
+for n, f in allfigs:
+    rads |= set(re.findall(r'<circle class="splitdot"[^/]*r="([\d.]+)"', f['svg']))
+check(len(rads) == 1, f'split dots share ONE radius across lanes {sorted(rads)}')
+
+
+def _idoff(svg, idtxt, line_re):
+    t = re.search(r'<text class="id[^"]*" x="[\d.]+" y="([\d.]+)"[^>]*>' + idtxt + '<', svg)
+    r = re.search(line_re, svg)
+    if not t or not r:
+        return None
+    return round(abs(float(t.group(1)) - float(r.group(1))), 1)
+
+
+off_v = _idoff(v1, 'E9', r'<line class="ln event flat[^"]*" x1="[\d.]+" y1="([\d.]+)"')
+off_r = _idoff(r3out, 'E3', r'<path class="ln route" d="M [\d.]+ ([\d.]+)')
+off_s = _idoff(f11[0]['svg'] if len(f11) == 2 else '', 'R1L6',
+               r'<line class="ln route" x1="[\d.]+" y1="([\d.]+)"')
+check(off_v is not None and off_v == off_r == off_s,
+      f'entity ids sit at ONE shared offset off the line in every lane '
+      f'({off_v}/{off_r}/{off_s})')
+
 print()
 if failures:
     print(f'RESULT: FAIL — {len(failures)} assertion(s) failed')

@@ -670,3 +670,25 @@ a carrier retracing the route's own final pixels. Two new
 assertions — head drawn after the extents, and solid-triangle marker
 geometry — both FAIL against the v1.4 script. Local sweep gate
 150/150 and ES2017 type-check green alongside.
+
+### Last run (2026-09-03, Node 22.22.2) — v1.6 gate (DF-7)
+
+**PASS** — 15 figures. New fixture slide 11: a spanning event across a
+line network (From RID R1L6 measure 10 → To RouteID R3L6 measure 25
+via R2L6, split 52.5 in R2L6's own domain, with the route-list and
+result tables the real decks carry). Assertions: the whole chain is
+drawn and labelled, each route ends in its own arrowhead, only the
+stated measure anchors appear (no invented tick grid), the split sits
+on the route the result table names, the output legend qualifies each
+range with its routes, the alts state the chain, and the anchors pair
+input→key/value table / output→result table. 7 of the 10 new
+assertions FAIL against the v1.5 script, which collapsed the case
+onto a single-route 10→25 grid with the split clamped away. Local
+sweep gate 153/153 and ES2017 type-check green alongside.
+
+Same round: geometry tokenised across the lanes (MEAS_OFF / ID_OFF /
+DOT_R / LEGEND_GAP — the split-dot radius and entity-id offsets had
+drifted per lane: 3.2 vs 3.4, and 17 / 20.5 / 21.5). Two standing
+style-invariant assertions — one split-dot radius, one id offset
+across every lane — both FAIL against the pre-token script
+(3.2/3.4 and 20.5/17/21.5).

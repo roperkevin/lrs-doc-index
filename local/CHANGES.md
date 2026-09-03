@@ -1,5 +1,35 @@
 # Local sweep — release notes
 
+## v1.28 (2026-09-03)
+
+**Content-filter lane.** Found live during the v2.0.1 backfill
+rehearsal: AI Builder's input moderation refused
+`Descriptions-ModelInstructions-Dependencies.pptx` with a 400
+`InputContentFiltered` — the deck quotes model-instruction-like text,
+which the filter reads as prompt-injection material, and the refusal
+is deterministic on the doc's own content. Under the Error lane that
+doc would retry — and re-burn one AI Builder call — every night,
+failing identically.
+
+`Catch_index` now recognises an `InputContentFiltered` failure at the
+`llm` step and stamps the row **`Skipped`** instead of `Error`
+(the out-of-scope pattern: once, visible on the status page via
+`LastError` `"content filter: ..."`, no nightly rechurn), pinning the
+current `PromptVersion`/`SourceModified` so `Needs_index` stays
+quiet; a filtered PDF also records `ExtractionLane: plaintext` so the
+PDF rescue never rechurns it either. Like any Skipped row it
+re-enters on the next promptVersion bump or a source edit — editing
+the offending text out of the doc is the way to get it indexed. The
+run summary's `errors` count and the status page's error lane exclude
+it.
+
+Gate: `check_local_sweep.py` 153/153 — a planted doc whose Predict
+call 400s `InputContentFiltered` (the real error body) asserts the
+Skipped stamp, the pinned PromptVersion, an unchanged `errors` count,
+and — via the idempotency leg — that the doc never re-enters and
+never re-burns an AI call; all three new assertions (plus three
+count checks) fail against v1.27.
+
 ## v1.27 (2026-09-03)
 
 **Case headings stop truncating (TC-2).** A long case line used to be

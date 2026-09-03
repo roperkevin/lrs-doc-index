@@ -338,6 +338,16 @@ Each is behavior-equivalent; all are exercised by the gate:
   reachable (no promptVersion bump, no corpus-wide AI respend). A
   doc IN scope whose file is missing on disk is treated as OneDrive
   sync lag: a retryable Error that clears itself when the file lands.
+- **Content-filter lane** (v1.28): AI Builder's input moderation can
+  refuse a document's own text (`InputContentFiltered` — decks that
+  quote model-instruction-like content trip it), and the refusal is
+  deterministic, so an Error stamp would re-burn one AI call per
+  night failing identically. Such a doc gets a STAMPED `Skipped` row
+  with `LastError` `"content filter: ..."` at the current
+  PromptVersion — once, no rechurn. It re-enters `Needs_index` on the
+  next `sweep.promptVersion` bump or when the source doc is edited
+  (trimming the offending text and re-saving is the way to get the
+  doc indexed).
 
 ## 7. Operations
 
