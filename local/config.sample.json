@@ -37,6 +37,12 @@
     "curationModelId": "<run: curate.mjs --models — the 'LRS Keyword Curation' GUID>"
   },
 
+  "alerts": {
+    "$comment": "Optional push alerting (v1.32). webhookUrl = a Teams/Slack incoming-webhook URL (accepts {\"$env\": \"NAME\"}); the sweep posts {\"text\": ...} on a fatal abort and for docs stuck 3+ nights, and `sweep.mjs --check-heartbeat` (schedule local\\run_heartbeat.cmd as a second task) alerts when no successful live sweep is recorded within maxSilentHours. Absent section = alerts off.",
+    "webhookUrl": {"$env": "DOCINDEX_ALERT_WEBHOOK"},
+    "maxSilentHours": 48
+  },
+
   "curation": {
     "$comment": "Weekly keyword curation (local/curate.mjs — Local_Setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur. autoApprove: true applies guard-passing merges immediately (digest becomes an audit log; undo = clear CanonicalRef + set CurationStatus Rejected).",
     "digestName": "Keyword_Curation_Digest.md",
@@ -47,7 +53,7 @@
   },
 
   "sweep": {
-    "$comment": "Mirrors flow v2.8 Config. Values below are the v2.8 defaults; keep them in sync with STATUS when the flow config changes.",
+    "$comment": "Mirrors flow v2.8 Config. Values below are the v2.8 defaults; keep them in sync with STATUS when the flow config changes. Also available: graphDownloadFallback (true = a source file missing from the OneDrive-synced folder is fetched through Graph instead of erroring for the night, v1.33) and exportLists (false disables the per-run gzip list backup in workDir, v1.32).",
     "maxDocsPerRun": 150,
     "promptVersion": "v2.0",
     "defaultRepo": "A/b",

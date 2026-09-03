@@ -1,5 +1,49 @@
 # Local sweep — release notes
 
+## v1.33 (2026-09-03)
+
+**Graph download fallback for unsynced sources** (review r7, risk R4;
+opt-in `sweep.graphDownloadFallback: true`). A source file in scope
+but absent from the OneDrive-synced folder used to Error for the
+night ("source file not found locally") and wait on sync. With the
+fallback on, the sweep fetches the file's bytes through Graph (the
+list item's driveItem content) into a temp file and indexes from
+there — sync lag stops costing nights. `graph_downloads` in the run
+summary counts uses. Default OFF so the sync-lag Error lane (and its
+gate legs) keep today's behavior on machines that prefer it. New
+gate leg: unsynced doc indexes via the fallback, right item fetched.
+
+## v1.32 (2026-09-03)
+
+**Ops safety net** (review r7, risks R1 + R5): the pipeline can now
+tell someone it is down, and the lists are no longer the only copy of
+the graph.
+
+- **List backup every run.** The run-start snapshots the sweep already
+  fetches are gzipped to `workDir/list-backup-<stamp>.json.gz` (raw
+  Graph items, all five lists; newest 14 kept; `sweep.exportLists:
+  false` disables). The tenant has re-created the lists wholesale once
+  already — a restore source now costs one file write per run. The
+  run summary names the file.
+- **Webhook alerts** (`config.alerts.webhookUrl`, Teams/Slack
+  incoming-webhook shape, `{"$env": ...}` supported). A fatal abort
+  posts "Doc Index sweep FAILED" (independent of Graph/auth — a dead
+  sign-in still reaches a phone); a live full run posts the docs
+  stuck 3+ nights. Delivery is best-effort (one retry, 30s timeout):
+  a down webhook never fails a run.
+- **Dead-man heartbeat.** Every successful live full sweep stamps
+  `workDir/last-success.json`; `sweep.mjs --check-heartbeat` (schedule
+  `local\run_heartbeat.cmd` as a second task, offset from the
+  nightly) alerts when the stamp is older than `alerts.maxSilentHours`
+  (48 default) — catching what the sweep cannot report itself: the
+  task never firing, the machine off, auth dead before the fatal
+  handler. Local stamp only, no sign-in needed.
+
+Gate legs: backup exported with all five lists as raw rows + summary
+names it; heartbeat stamped by live runs; fatal run posts the webhook
+alert; fresh heartbeat passes `--check-heartbeat` with no alert; stale
+heartbeat exits 1 and alerts. 170/170.
+
 ## v1.31 (2026-09-03)
 
 **Module split — no behavior change.** sweep.mjs had grown to ~2,400

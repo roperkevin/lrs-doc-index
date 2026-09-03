@@ -54,8 +54,9 @@ import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.
 import {
   lower, cut, folderOf, yamlEscape, stripQuotes, pipeToSlash, fmtDate,
   quoteYamlItem, htmlToText, num, hyperlink, urlToLocal, folderToLocal,
-  pruneRunLogs,
+  pruneRunLogs, exportListSnapshots,
 } from "./lib/util.mjs";
+import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
   upsertDocsBlock, bodySeamEnd, yamlList,
@@ -232,9 +233,10 @@ function loadConfig(argv) {
     else if (a === "--only") args.flags.only = argv[++i];
     else if (a === "--rerank") args.flags.rerank = true;
     else if (a === "--reformat") args.flags.reformat = true;
+    else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -248,6 +250,7 @@ function loadConfig(argv) {
   if (args.flags.only !== undefined) cfg.sweep.smokeFile = args.flags.only;
   if (args.flags.rerank) cfg.sweep.rerank = true;
   if (args.flags.reformat) cfg.sweep.reformat = true;
+  if (args.flags.checkHeartbeat) cfg.sweep.checkHeartbeat = true;
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   // device-mode refresh-token caches (one per resource) live in workDir
@@ -481,6 +484,16 @@ async function main() {
   const sp = cfg.sharePoint;
   const dry = !!sw.dryRun;
 
+  // --check-heartbeat: the dead-man check (v1.32). Local stamp only —
+  // no Graph, no sign-in — so it reports even when the pipeline is
+  // down BECAUSE auth is. Run it from a second scheduled task.
+  if (sw.checkHeartbeat) {
+    const r = await checkHeartbeat(cfg);
+    process.stdout.write(JSON.stringify({ mode: "check-heartbeat", ...r }) + "\n");
+    process.exitCode = r.ok ? 0 : 1;
+    return;
+  }
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-sweep-"));
   const mains = await loadScripts(
     cfg.scriptsDir || DEFAULT_SCRIPTS_DIR,
@@ -527,11 +540,14 @@ async function main() {
   const writer = new Writer(graph, siteId, sp.lists, dry, spo);
 
   // ---- run-start snapshots (replaces per-doc Check_* queries) ----
-  const fetch = async (listKey, kind, select) =>
-    normalizeRows(
-      await graph.listItems(siteId, sp.lists[listKey], { select }),
-      kind
-    );
+  // Raw items are kept alongside the normalized rows so every run can
+  // export a restorable list backup (v1.32) at zero extra fetch cost.
+  const rawSnapshots = {};
+  const fetch = async (listKey, kind, select) => {
+    const items = await graph.listItems(siteId, sp.lists[listKey], { select });
+    rawSnapshots[listKey] = items;
+    return normalizeRows(items, kind);
+  };
   const docIndexRows = await fetch("docIndex", "docIndex", [
     "Title", "FileName", "DocKey", "IndexStatus", "SourceModified",
     "PromptVersion", "TextFileUrl", "DocKind", "Surface", "TargetRelease",
@@ -541,6 +557,7 @@ async function main() {
   const docIdRows = await fetch("docIds", "docIds", ["Title", "Repo", "IssueNumber", "Source", "IdKey", "DocumentLookupId"]);
   const docLinkRows = await fetch("docLinks", "docLinks", ["LinkType", "SharedValues", "Strength", "LinkKey", "DocALookupId", "DocBLookupId"]);
   const docKwRows = await fetch("docKeywords", "docKeywords", ["Title", "KWKey", "DocumentLookupId", "KeywordLookupId"]);
+  const listBackup = exportListSnapshots(cfg, rawSnapshots);
 
   const byDocKey = new Map(docIndexRows.map((r) => [lower(r.DocKey), r]));
   // error lane for the status page: seeded from the snapshot, docs
@@ -690,6 +707,8 @@ async function main() {
     archived: 0,
     figures: 0,
     figure_errors: 0,
+    graph_downloads: 0,
+    list_backup: listBackup ? path.basename(listBackup) : "",
   };
 
   for (const item of files) {
@@ -797,10 +816,22 @@ async function main() {
 
     let step = "start";
     try {
+      // OneDrive-sync-lag fallback (v1.33, opt-in): the source is in
+      // scope but not on disk yet — fetch its bytes through Graph into
+      // a temp file and index from there, instead of an Error night.
+      let effPath = localPath;
+      if (sw.graphDownloadFallback && inScope && !fs.existsSync(localPath)) {
+        step = "graph-download";
+        const buf = await graph.getItemContentBuffer(srcSiteId, sp.lists.sourceLibrary, item.id);
+        effPath = path.join(tmpDir, "dl", `${srcItemId}-${name}`);
+        fs.mkdirSync(path.dirname(effPath), { recursive: true });
+        fs.writeFileSync(effPath, buf);
+        summary.graph_downloads++;
+      }
       step = "extract";
       await indexDoc({
         cfg, sw, sp, op, writer, summary, pdfTool, bodyIndex, docLinks, linkResolver,
-        item: { name, fileRef, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope },
+        item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
         setStep: (s) => (step = s),
@@ -955,7 +986,24 @@ async function main() {
         fs.writeFileSync(streakFile, JSON.stringify(streaks, null, 1));
       } catch { /* best effort */ }
     }
-    writeStatusPage(cfg, { summary, logFile, errorLane, streaks });
+    writeStatusPage(cfg, { summary, logFile, errorLane, streaks, runLogDir: logDir });
+    if (!sw.smokeFile) {
+      // dead-man stamp + chronic-error alert (v1.32): the run
+      // completed, so stamp the heartbeat; docs stuck 3+ nights get a
+      // push alert on top of their status-page row
+      recordHeartbeat(cfg, summary);
+      const chronic = [...errorLane.entries()]
+        .filter(([k]) => (Number(streaks[k]) || 0) >= 3)
+        .map(([, v]) => `${v.name}: ${String(v.err).slice(0, 120)}`);
+      if (chronic.length) {
+        await sendAlert(
+          cfg,
+          `Doc Index sweep: ${chronic.length} doc(s) stuck 3+ nights`,
+          chronic.slice(0, 10).join("\n") +
+          "\nSee _Sweep Status.md in the sidecar library."
+        );
+      }
+    }
   }
 
   process.stdout.write(JSON.stringify({ ...summary, logFile }) + "\n");
@@ -1356,10 +1404,13 @@ function detectPdfTool(sw) {
 let gStatusCfg = null;
 const _setStatusCfg = (c) => (gStatusCfg = c);
 
-main().catch((e) => {
+main().catch(async (e) => {
   process.stderr.write("sweep: " + (e.stack || e.message) + "\n");
   if (gStatusCfg && !gStatusCfg.sweep?.dryRun) {
     writeStatusPage(gStatusCfg, { summary: {}, errorLane: null, fatal: e.message });
+    // push-style fatal alert (v1.32) — best-effort, independent of
+    // Graph/auth so a dead sign-in still reaches someone's phone
+    await sendAlert(gStatusCfg, "Doc Index sweep FAILED", e.message);
   }
   process.exit(1);
 });

@@ -192,6 +192,30 @@ export class GraphClient {
     return this.request("DELETE", `/sites/${siteId}/lists/${listId}/items/${itemId}`);
   }
 
+  /** Download a library file's bytes via its list item's driveItem
+   *  (Graph answers with a 302 to a pre-authorized URL; fetch follows
+   *  it). The sweep's OneDrive-sync-lag fallback (v1.33). */
+  async getItemContentBuffer(siteId, listId, itemId) {
+    const url = `${this.baseUrl}/sites/${siteId}/lists/${listId}/items/${itemId}/driveItem/content`;
+    let res;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      res = await fetch(url, {
+        headers: { authorization: "Bearer " + (await this.token()) },
+        redirect: "follow",
+        signal: timeout(this.cfg),
+      });
+      if (res.status !== 401) break;
+      this._token = null;
+      if (this.delegated) this.delegated.invalidate();
+    }
+    if (!res.ok) {
+      throw new Error(
+        `Graph GET driveItem content (item ${itemId}): ${res.status} ${(await res.text()).slice(0, 300)}`
+      );
+    }
+    return Buffer.from(await res.arrayBuffer());
+  }
+
   /** Create/overwrite a file in the site's DEFAULT drive (the
    *  "Documents"/Shared Documents library) by drive-root path, e.g.
    *  "/Keyword_Curation_Digest.md". Used for files that live outside

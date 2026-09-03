@@ -23,6 +23,7 @@ Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_local_sweep.py
 """
 import base64
+import gzip
 import json
 import os
 import re
@@ -223,6 +224,8 @@ class MockState:
         self.probe_paths = []
         self.graph_last_auth = None
         self.spo_last_auth = None
+        self.alerts = []
+        self.content_downloads = []
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -274,6 +277,10 @@ def make_handler(state, lib_guid, src_files):
 
         def do_POST(self):
             p = urlparse(self.path).path
+            if p == "/alert":
+                # incoming-webhook stand-in: record the alert payload
+                state.alerts.append(json.loads(self._read() or b"{}"))
+                return self._json({"ok": True})
             if p == "/devicecode":
                 self._read()
                 state.devicecode_hits += 1
@@ -406,6 +413,20 @@ def make_handler(state, lib_guid, src_files):
             p = urlparse(self.path).path
             if p == "/authorize":
                 return self.do_GET_authorize(parse_qs(urlparse(self.path).query))
+            # library file bytes via the list item's driveItem — the
+            # sweep's OneDrive-sync-lag fallback (real Graph 302s to a
+            # download URL; serving bytes directly is equivalent since
+            # fetch follows redirects)
+            m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(\d+)/driveItem/content$", p)
+            if m:
+                state.content_downloads.append(m.group(2))
+                body = (f"Downloaded content for item {m.group(2)} fetched "
+                        "via the Graph fallback, about calibration.").encode()
+                self.send_response(200)
+                self.send_header("content-type", "application/octet-stream")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                return self.wfile.write(body)
             # doc-link probing: realign-route exists, everything else 404s
             if p.startswith("/docs/"):
                 state.probe_paths.append(p)
@@ -1059,6 +1080,26 @@ def main():
           and sum(1 for f in run_logs if f.startswith("sweep-0000-")) < 40,
           str(sorted(run_logs)[:5]))
 
+    # list backup (v1.32): every run exports the run-start snapshots
+    # as a restorable gzip; the summary names the file
+    backups = [f for f in os.listdir(work_dir) if f.startswith("list-backup-")]
+    check("list backup exported to workDir",
+          len(backups) >= 1 and out.get("list_backup", "") in backups,
+          str(backups) + " " + str(out.get("list_backup")))
+    with gzip.open(os.path.join(work_dir, sorted(backups)[-1])) as f:
+        bk = json.load(f)
+    check("list backup holds all five lists with raw rows",
+          set(bk.get("lists", {})) == {"docIndex", "keywords", "docIds",
+                                       "docKeywords", "docLinks"}
+          and len(bk["lists"]["docIndex"]) >= 3
+          and "fields" in bk["lists"]["docIndex"][0],
+          str({k: len(v) for k, v in bk.get("lists", {}).items()}))
+    # heartbeat (v1.32): a successful live full run stamps last-success
+    with open(os.path.join(work_dir, "last-success.json")) as f:
+        hb = json.load(f)
+    check("heartbeat stamped by the live full run",
+          "at" in hb and hb.get("processed", -1) >= 0, str(hb))
+
     # ---- leg 3b: no pdftotext on the machine — flow-era behavior ----
     # a modified pdf skips gracefully (no Error, no hang) and the log
     # says why; nothing else regresses
@@ -1329,6 +1370,28 @@ def main():
           f"doc{notes_id}" in spec_rr and "similar text " in spec_rr,
           spec_rr[-400:])
 
+    # ---- leg 3g: Graph download fallback for unsynced sources ------
+    # missing.txt is in scope but absent on disk (OneDrive lag) and has
+    # sat in the Error lane since leg 2. With the opt-in fallback the
+    # sweep fetches its bytes through Graph and indexes it this run.
+    print("== graph download fallback leg")
+    cfg["sweep"]["graphDownloadFallback"] = True
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--live", "--only", "missing.txt"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "missing.txt"][0]
+    check("unsynced doc indexed via Graph download",
+          proc.returncode == 0 and out.get("graph_downloads") == 1
+          and row.get("IndexStatus") == "Indexed",
+          str(out) + " " + str(row)[:200])
+    check("fallback downloaded the right item",
+          state.content_downloads == ["16"], str(state.content_downloads))
+    cfg["sweep"]["graphDownloadFallback"] = False
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
     cfg["llm"] = {"provider": "anthropic", "apiKey": "mock-key",
@@ -1506,6 +1569,42 @@ def main():
     check("curate rejects a bad config the same way",
           proc.returncode != 0 and "missing required key(s)" in proc.stderr,
           proc.stderr[-400:])
+
+    # ---- leg 9: alerting + dead-man heartbeat (v1.32) --------------
+    print("== alerting leg")
+    # fatal run -> webhook alert (graph unreachable, alerts configured)
+    alert_cfg = dict(cfg)
+    alert_cfg["graph"] = {"tenantId": "mock", "clientId": "mock",
+                          "clientSecret": "mock-secret",
+                          "baseUrl": "http://127.0.0.1:9/v1.0",
+                          "tokenUrl": "http://127.0.0.1:9/token",
+                          "maxRetries": 0}
+    alert_cfg["alerts"] = {"webhookUrl": base + "/alert"}
+    alert_cfg_path = os.path.join(tmp, "alert-config.json")
+    with open(alert_cfg_path, "w") as f:
+        json.dump(alert_cfg, f)
+    proc = run_sweep(alert_cfg_path, ["--live"])
+    check("fatal run posts a webhook alert",
+          proc.returncode != 0 and len(state.alerts) == 1
+          and "Doc Index sweep FAILED" in state.alerts[0].get("text", ""),
+          f"alerts={state.alerts}")
+    # fresh heartbeat -> ok, no alert, exit 0 (no Graph call either:
+    # the config's graph endpoints are unreachable on purpose)
+    proc = run_sweep(alert_cfg_path, ["--check-heartbeat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("fresh heartbeat passes the dead-man check",
+          proc.returncode == 0 and out.get("ok") is True
+          and len(state.alerts) == 1, str(out))
+    # stale heartbeat -> alert + nonzero exit
+    with open(os.path.join(work_dir, "last-success.json"), "w") as f:
+        json.dump({"at": "2020-01-01T00:00:00Z", "processed": 0, "errors": 0}, f)
+    proc = run_sweep(alert_cfg_path, ["--check-heartbeat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("stale heartbeat fails the dead-man check and alerts",
+          proc.returncode == 1 and out.get("ok") is False
+          and len(state.alerts) == 2
+          and "NO successful run" in state.alerts[1].get("text", ""),
+          str(out) + f" alerts={len(state.alerts)}")
 
     server.shutdown()
     report()

@@ -6,6 +6,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 
 export const lower = (s) => String(s ?? "").toLowerCase();
 export const cut = (s, n) => (String(s).length > n ? String(s).slice(0, n) : String(s));
@@ -89,11 +90,41 @@ export function folderToLocal(folder, sw, cfg) {
 export function pruneRunLogs(logDir, keep = 30, prefix = "sweep-") {
   let names;
   try {
-    names = fs.readdirSync(logDir).filter((f) => f.startsWith(prefix) && f.endsWith(".json")).sort();
+    names = fs.readdirSync(logDir)
+      .filter((f) => f.startsWith(prefix) && (f.endsWith(".json") || f.endsWith(".json.gz")))
+      .sort();
   } catch {
     return;
   }
   for (const f of names.slice(0, Math.max(0, names.length - keep))) {
     try { fs.unlinkSync(path.join(logDir, f)); } catch { /* best effort */ }
+  }
+}
+
+/**
+ * Nightly list backup (v1.32): the six SharePoint lists are the only
+ * copy of the graph, and the tenant has re-created them wholesale
+ * once already (SP_Adaptation_Notes "Current tenant GUIDs"). The
+ * sweep holds every row in memory at run start anyway, so each run
+ * gzips that snapshot to workDir — a restore source that costs one
+ * file write. Keeps the newest 14; sweep.exportLists: false disables.
+ * Returns the file path, or null (disabled / no workDir / failed).
+ */
+export function exportListSnapshots(cfg, snapshots, keep = 14) {
+  const dir = cfg?.paths?.workDir;
+  if (!dir || cfg?.sweep?.exportLists === false) return null;
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const file = path.join(dir, `list-backup-${stamp}.json.gz`);
+    fs.writeFileSync(file, zlib.gzipSync(JSON.stringify({
+      exported: new Date().toISOString(),
+      lists: snapshots,
+    })));
+    pruneRunLogs(dir, keep, "list-backup-");
+    return file;
+  } catch (e) {
+    process.stderr.write("list backup failed: " + e.message + "\n");
+    return null;
   }
 }
