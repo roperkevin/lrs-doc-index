@@ -34,7 +34,7 @@ import tempfile
 import threading
 import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
@@ -228,6 +228,10 @@ class MockState:
         self.content_downloads = []
         self.embed_calls = 0
         self.embed_last_auth = None
+        # remote-files mode: the sidecar drive, rel path -> {content, etag}
+        self.remote_files = {}
+        self.drive_downloads = []
+        self.next_etag = 1
 
     def seed(self, guid, fields):
         self.lists.setdefault(guid, {})
@@ -413,15 +417,30 @@ def make_handler(state, lib_guid, src_files):
             return self._json({"error": "unhandled POST " + p}, 500)
 
         def do_PUT(self):
-            p = urlparse(self.path).path
+            p = unquote(urlparse(self.path).path)
             # Graph drive upload — the curation digest lands in the
             # site's default drive (Shared Documents), never a list
             if re.match(r"^/v1\.0/sites/[^/]+/drive/root:/.+:/content$", p):
                 state.digest = self._read().decode()
                 return self._json({"id": "digest"})
+            # sidecar drive write-through (remote-files mode)
+            m = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):/content$", p)
+            if m:
+                etag = f"et{state.next_etag}"
+                state.next_etag += 1
+                state.remote_files[m.group(1)] = {"content": self._read(), "etag": etag}
+                return self._json({"id": "up-" + m.group(1), "eTag": etag}, 201)
             return self._json({"error": "unhandled PUT " + p}, 500)
 
         def do_DELETE(self):
+            dm = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):$",
+                          unquote(urlparse(self.path).path))
+            if dm:
+                state.remote_files.pop(dm.group(1), None)
+                self.send_response(204)
+                self.send_header("content-length", "0")
+                self.end_headers()
+                return
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(-?\d+)$",
                          urlparse(self.path).path)
             if m and m.group(2) in state.lists.get(m.group(1), {}):
@@ -442,10 +461,40 @@ def make_handler(state, lib_guid, src_files):
                 return self._json({"id": iid})
             return self._json({"error": "unhandled PATCH " + self.path}, 500)
 
+        def _bytes(self, body, ctype="application/octet-stream"):
+            self.send_response(200)
+            self.send_header("content-type", ctype)
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def do_GET(self):
-            p = urlparse(self.path).path
+            p = unquote(urlparse(self.path).path)
             if p == "/authorize":
                 return self.do_GET_authorize(parse_qs(urlparse(self.path).query))
+            # ---- sidecar drive (remote-files mode) ----
+            if re.match(r"^/v1\.0/sites/[^/]+/drives$", p):
+                return self._json({"value": [
+                    {"id": "drive-sidecar", "name": "LRS Doc Index"},
+                    {"id": "drive-default", "name": "Documents"}]})
+            if p == "/v1.0/drives/drive-sidecar/root/delta":
+                items = []
+                for i, (rel, rec) in enumerate(sorted(state.remote_files.items())):
+                    d, _, n = rel.rpartition("/")
+                    items.append({
+                        "id": f"rf{i}", "name": n, "eTag": rec["etag"],
+                        "size": len(rec["content"]), "file": {},
+                        "parentReference": {
+                            "path": "/drives/drive-sidecar/root:" + ("/" + d if d else "")},
+                    })
+                return self._json({"value": items})
+            m = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):/content$", p)
+            if m:
+                rec = state.remote_files.get(m.group(1))
+                if rec is None:
+                    return self._json({"error": "not found"}, 404)
+                state.drive_downloads.append(m.group(1))
+                return self._bytes(rec["content"])
             # library file bytes via the list item's driveItem — the
             # sweep's OneDrive-sync-lag fallback (real Graph 302s to a
             # download URL; serving bytes directly is equivalent since
@@ -1731,6 +1780,62 @@ def main():
     del cfg["llm"]["embeddings"]
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
+
+    # ---- leg 3k: remote-files mode (v1.39 — no OneDrive anywhere) ---
+    # Empty local dirs stand in for a hosted runner: the sidecar drive
+    # mirrors down (a pre-existing remote sidecar appears locally),
+    # the source doc downloads through the v1.33 fallback, and every
+    # sidecar/status/index write uploads through the drive API.
+    print("== remote-files leg")
+    remote_src = os.path.join(tmp, "remote-src")
+    remote_mirror = os.path.join(tmp, "remote-mirror")
+    remote_work = os.path.join(tmp, "remote-work")
+    for d in (remote_src, remote_mirror, remote_work):
+        os.makedirs(d, exist_ok=True)
+    state.remote_files["User Stories/pre-existing__doc999.md"] = {
+        "content": ("# Pre-existing story\n\n<!-- related:begin -->\n_None yet._\n"
+                    "<!-- related:end -->\n\n---\n\nRemote body about calibration "
+                    "points on merged routes.\n").encode(),
+        "etag": "seed-e1"}
+    rcfg = json.loads(json.dumps(cfg))
+    rcfg["paths"] = {"sourceLibrary": remote_src, "sidecarLibrary": remote_mirror,
+                     "workDir": remote_work}
+    rcfg["sweep"]["remoteFiles"] = True
+    rcfg["sweep"]["promptVersion"] = "v2.0-remote-leg"
+    rcfg_path = os.path.join(tmp, "remote-config.json")
+    with open(rcfg_path, "w") as f:
+        json.dump(rcfg, f)
+    dl_before = len(state.content_downloads)
+    proc = run_sweep(rcfg_path, ["--live", "--only", "notes.txt"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("remote run exit 0", proc.returncode == 0, proc.stderr[-600:])
+    check("remote mirror pulled the pre-existing sidecar",
+          os.path.exists(os.path.join(remote_mirror, "User Stories",
+                                      "pre-existing__doc999.md")),
+          str(os.listdir(remote_mirror)))
+    check("source doc downloaded through the Graph fallback",
+          out.get("graph_downloads") == 1
+          and len(state.content_downloads) == dl_before + 1, str(out))
+    notes_id2 = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
+                 if f_.get("FileName") == "notes.txt"][0]
+    row = state.lists[LISTS["docIndex"]][notes_id2]
+    check("remote run reindexed the doc",
+          row.get("IndexStatus") == "Indexed"
+          and row.get("PromptVersion") == "v2.0-remote-leg", str(row)[:200])
+    up_keys = set(state.remote_files)
+    check("sidecar write-through uploaded to the drive",
+          any(k.endswith(f"__doc{notes_id2}.md") for k in up_keys), str(up_keys))
+    check("status + index pages uploaded too",
+          "_Sweep Status.md" in up_keys and "_Index.md" in up_keys, str(up_keys))
+    # second run: manifest carries the uploads' eTags, so the mirror
+    # re-downloads nothing and the stamped doc doesn't reprocess
+    dl2_before = len(state.drive_downloads)
+    proc = run_sweep(rcfg_path, ["--live", "--only", "notes.txt"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("second remote run: no re-downloads, no reprocess",
+          proc.returncode == 0 and out.get("processed") == 0
+          and len(state.drive_downloads) == dl2_before,
+          str(out) + f" downloads={len(state.drive_downloads) - dl2_before}")
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")

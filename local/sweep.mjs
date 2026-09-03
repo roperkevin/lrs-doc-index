@@ -60,6 +60,7 @@ import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { writeIndexPages } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
+import { RemoteLibrary } from "./lib/remotefs.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
   upsertDocsBlock, bodySeamEnd, yamlList,
@@ -338,12 +339,13 @@ function splitHyperlinks(fields) {
 }
 
 class Writer {
-  constructor(graph, siteId, lists, dryRun, spo) {
+  constructor(graph, siteId, lists, dryRun, spo, remote) {
     this.graph = graph;
     this.siteId = siteId;
     this.lists = lists;
     this.dryRun = dryRun;
     this.spo = spo;
+    this.remote = remote || null; // remote-files write-through (v1.39)
     this.plan = [];
     this._pseudoId = -1;
   }
@@ -376,10 +378,12 @@ class Writer {
     if (this.dryRun) return;
     fs.mkdirSync(path.dirname(absPath), { recursive: true });
     fs.writeFileSync(absPath, data);
+    if (this.remote) this.remote.queuePut(absPath);
   }
   deleteFile(absPath) {
     this.log("deleteFile", absPath, {});
     if (this.dryRun) return;
+    if (this.remote) this.remote.queueDelete(absPath);
     try {
       fs.rmSync(absPath);
     } catch {
@@ -575,7 +579,24 @@ async function main() {
   );
   const siteId = await graph.siteId(sp.hostname, sp.sitePath);
   const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
-  const writer = new Writer(graph, siteId, sp.lists, dry, spo);
+
+  // remote-files mode (v1.39): no OneDrive anywhere — the sidecar
+  // library mirrors down (eTag-deduped) and every file write/delete
+  // uploads through Graph; source reads ride the v1.33 fallback.
+  let remote = null;
+  if (sw.remoteFiles) {
+    sw.graphDownloadFallback = true;
+    remote = new RemoteLibrary(
+      graph, siteId,
+      sw.remoteDriveName || String(sw.textsFolder).replace(/^\//, "").split("/").pop(),
+      cfg.paths.sidecarLibrary,
+      path.join(cfg.paths.workDir || tmpDir, "mirror-manifest.json")
+    );
+    await remote.init();
+    const m = await remote.mirrorMarkdown();
+    process.stderr.write(`remote mirror: ${m.files} sidecar file(s), ${m.downloaded} downloaded\n`);
+  }
+  const writer = new Writer(graph, siteId, sp.lists, dry, spo, remote);
 
   // ---- run-start snapshots (replaces per-doc Check_* queries) ----
   // Raw items are kept alongside the normalized rows so every run can
@@ -696,6 +717,7 @@ async function main() {
           },
           textFileUrl: url,
         });
+        if (remote) await remote.flush();
         rsum.reranked++;
       } catch (e) {
         rsum.errors++;
@@ -816,6 +838,7 @@ async function main() {
         if (next === cur) rfsum.unchanged++;
         else {
           writer.writeFile(scLocal, next);
+          if (remote) await remote.flush();
           rfsum.rewritten++;
         }
       } catch (e) {
@@ -891,6 +914,12 @@ async function main() {
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
         setStep: (s) => (step = s),
       });
+      if (remote) {
+        // an upload failure here IS a failed index (the sidecar never
+        // reached SharePoint) — it lands in the Error lane like any step
+        step = "remote-upload";
+        await remote.flush();
+      }
       errorLane.delete(docKey);
     } catch (e) {
       // Catch_index: Error row, LastError "{step}: {detail}", continue.
@@ -950,6 +979,11 @@ async function main() {
       } catch (e2) {
         process.stderr.write(`ERROR-row write failed for ${name}: ${e2.message}\n`);
       }
+      // media written before the failure still uploads (best-effort)
+      if (remote) {
+        await remote.flush().catch((e3) =>
+          process.stderr.write(`remote flush after error: ${e3.message}\n`));
+      }
     }
   }
 
@@ -1007,6 +1041,10 @@ async function main() {
     if (ghosts.length > cap) {
       process.stderr.write(`note: ${ghosts.length - cap} more ghost row(s) will archive on later runs (cap ${cap}/run)\n`);
     }
+    if (remote) {
+      await remote.flush().catch((e) =>
+        process.stderr.write(`remote flush after ghosts: ${e.message}\n`));
+    }
   }
 
   summary.related_flags = summary.related_flags.trim();
@@ -1045,6 +1083,21 @@ async function main() {
     // browse pages (v1.35): the catalog as humans see it — root +
     // per-kind _Index.md, rebuilt from the rows this run already holds
     writeIndexPages(cfg, docIndexRows, sw.kindFolders);
+    if (remote) {
+      // the fs-written pages (status + indexes) ride the same
+      // write-through; best-effort — a failed page upload is not a
+      // failed run
+      const lib = cfg.paths.sidecarLibrary;
+      for (const p of [
+        path.join(lib, "_Sweep Status.md"),
+        path.join(lib, "_Index.md"),
+        ...Object.values(sw.kindFolders || {}).map((f) => path.join(lib, f, "_Index.md")),
+      ]) {
+        if (fs.existsSync(p)) remote.queuePut(p);
+      }
+      await remote.flush().catch((e) =>
+        process.stderr.write(`remote flush of status/index pages: ${e.message}\n`));
+    }
     if (!sw.smokeFile) {
       // dead-man stamp + chronic-error alert (v1.32): the run
       // completed, so stamp the heartbeat; docs stuck 3+ nights get a

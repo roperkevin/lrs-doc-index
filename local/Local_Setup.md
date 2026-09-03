@@ -388,6 +388,19 @@ Each is behavior-equivalent; all are exercised by the gate:
   image-only PDFs then index via OCR (lane `"ocr"`), and previously
   Skipped `plaintext`-lane PDFs rescue automatically. No PATH
   auto-detection — explicitly opt in.
+- **msg lane** (v1.37): Outlook .msg files index automatically —
+  nothing to enable; previously Skipped rows rescue on the next run.
+- **Embedding relatedness** (v1.38, optional): `sweep.embedRelated:
+  true` + `llm.embeddings {baseUrl, apiKey, model}` adds
+  paraphrase-level related-doc matching via a Voyage/OpenAI-
+  compatible embeddings endpoint (hash-cached; fail-open to BM25).
+  DATA EGRESS: document text leaves the tenant when this is on —
+  §8's decision class.
+- **Remote-files mode / hosted runner** (v1.39, optional):
+  `sweep.remoteFiles: true` runs the whole sweep with NO OneDrive —
+  see `local/Hosted_Runner.md` for the mode's behavior, the
+  disabled-by-default GitHub Actions nightly, and the two decisions
+  (app auth; where tenant credentials live) that come first.
 - **Rollback**: re-enable the cloud flow in the portal; both read the
   same PromptVersion stamps, so the handover back is seamless. Keep
   the flow import packages (`flow/*.zip`) as the durable fallback.

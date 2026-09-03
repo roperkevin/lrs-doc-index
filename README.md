@@ -109,7 +109,8 @@ keeps the old yaml-on-top layout).
 | local/CHANGES.md | Local sweep release notes | v1.0 |
 | local/svg2pptx.mjs | Figure SVGs → editable PowerPoint shapes (pull sweep figures into review decks: one native, grouped, restyleable figure per slide, titled with its case heading + source document, the case's tables as native editable tables, sidecar metadata line; zero dependencies) | v1.3 |
 | local/harness/check_svg2pptx.py | svg2pptx gate (full SlideFigures vocabulary fixture; package/shape/style/label/title-band/case-table contract + sidecar lookup legs + python-pptx open leg; CI) | v1.3 |
-| local/lib/*.mjs | The sweep's shared modules (v1.31 split): util, doclinks, presentation, bodyindex, statuspage, indexpages, alerts, config | — |
+| local/lib/*.mjs | The sweep's shared modules: util, doclinks, presentation, bodyindex, statuspage, indexpages, alerts, config (v1.31 split) + msg (CFB/.msg parser, v1.37), embedindex (embedding relatedness, v1.38), remotefs (no-OneDrive mode, v1.39) | — |
+| local/Hosted_Runner.md | Remote-files mode + hosted GitHub Actions sweep — setup, prerequisites, and the credentials policy decision | v1.39 |
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
 | review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |
@@ -454,8 +455,12 @@ image-only PDFs OCR when `sweep.tesseractPath` is set (v1.36), Flow
 #2 ships as `local/gantt.mjs` (first live run pending — STATUS
 action 13c), and the librarian DocKeywords re-point is
 `curate.mjs --repoint` (run it after approved merges, then
-`sweep --rerank`). Still queued: the msg lane (Skipped rows await
-it), and the librarian pass's retro-illustration piece
+`sweep --rerank`). The phase-4 round (same day) added the msg lane
+(Outlook messages index via a zero-dep CFB parser; old Skipped rows
+rescue automatically), opt-in embedding-assisted relatedness
+(`sweep.embedRelated`), and remote-files mode + a disabled-by-default
+hosted GitHub Actions sweep (`local/Hosted_Runner.md`). Still
+queued: the librarian pass's retro-illustration piece
 (`curation/Curation_Setup.md`). Test-plan generation's own deferred work — docx
 conversion of drafts and the IssueRefs-driven coverage matrix — is
 specified in `testplangen/TestPlanGen_Setup.md`'s Queued follow-ons

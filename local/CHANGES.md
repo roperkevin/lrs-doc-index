@@ -1,5 +1,34 @@
 # Local sweep — release notes
 
+## v1.39 (2026-09-03)
+
+**Remote-files mode — the sweep without OneDrive** (review r7 phase
+4, owner-approved; `sweep.remoteFiles: true`). The last
+single-machine dependency falls: `paths.sidecarLibrary` becomes a
+plain local workspace — every .md in the sidecar drive MIRRORS DOWN
+before ranking needs it (one Graph delta listing per run; the eTag
+manifest in workDir skips unchanged files and remembers this run's
+own uploads; remotely-deleted .md files prune locally), every Writer
+file write/delete WRITES THROUGH the drive API (flushed per document
+— an upload failure lands that doc in the Error lane; status/browse
+pages ride along best-effort), and source docs download on demand
+(remote mode forces the v1.33 fallback). `lib/remotefs.mjs` +
+drive APIs in graph.mjs (list drives, delta, get/put/delete by
+path; simple upload ≤4 MB — all corpus writes fit).
+`sweep.remoteDriveName` overrides the drive lookup (default: the
+textsFolder's last segment). With the flag off, nothing changes.
+
+Ships with `.github/workflows/hosted-sweep.yml` — a nightly
+GitHub-hosted run, DISABLED until the `HOSTED_SWEEP_ENABLED`
+repository variable is set — and `local/Hosted_Runner.md`, which
+walks the two prerequisites (app-registration auth; the org-policy
+decision of tenant credentials living in GitHub secrets) and the
+config secret's shape. Gate legs: empty local dirs stand in for a
+hosted runner — the pre-existing remote sidecar mirrors down, the
+source doc rides the Graph fallback, the new sidecar + status +
+index pages upload, and a second run re-downloads nothing and
+reprocesses nothing. 201/201.
+
 ## v1.38 (2026-09-03)
 
 **Embedding-assisted relatedness** (review r7 phase 4,

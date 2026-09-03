@@ -30,6 +30,21 @@ each change belongs to the component CHANGES files.
   pages and the trend table activate on the first nightly run after
   this lands on `deploy`; alerts/heartbeat/fallback/OCR/gantt are
   config- or invocation-gated (see "New ops pieces" in open action 13).
+- **2026-09-03r (review r7 PHASE 4, owner-approved):** sweep
+  v1.37–v1.39 — the **msg lane** (Outlook .msg indexes via a
+  zero-dependency CFB parser; previously Skipped rows rescue
+  automatically on the next run — no enable step),
+  **embedding-assisted relatedness** (opt-in `sweep.embedRelated` +
+  `llm.embeddings`; Voyage/OpenAI-compatible endpoint, content-hash
+  cached, RelatedRank untouched, fail-open to BM25 — note document
+  text leaves the tenant when on), and **remote-files mode**
+  (`sweep.remoteFiles`: the sweep with NO OneDrive — sidecars mirror
+  down and write through Graph) with a DISABLED-by-default hosted
+  GitHub Actions sweep (`hosted-sweep.yml`, gated on the
+  `HOSTED_SWEEP_ENABLED` repo variable; prerequisites + the
+  credentials policy decision in `local/Hosted_Runner.md`). Gates:
+  `check_local_sweep.py` **201/201**; standing suites + typecheck
+  green.
 
 ## Core sweep
 
@@ -213,7 +228,17 @@ v1.2 describes them — paste with the window, step 6).
     (sync-lag nights become Graph downloads) and
     `sweep.tesseractPath` (OCR lane; install Tesseract).
     Auto-on with the next deploy: list backups, `_Index.md` browse
-    pages, the status-page trend table. NOTE: the machine's
-    self-update now tracks the `deploy` branch (CI promotes it from
-    main when all suites are green) — no action needed, the first
-    `git fetch origin deploy` just works.
+    pages, the status-page trend table, **and the msg lane** (phase 4
+    — previously Skipped .msg rows rescue by themselves). NOTE: the
+    machine's self-update now tracks the `deploy` branch (CI promotes
+    it from main when all suites are green) — no action needed, the
+    first `git fetch origin deploy` just works.
+    **Phase-4 opt-ins** (each needs an owner decision recorded here):
+    (f) embeddings — provision a Voyage (or compatible) key, set
+    `sweep.embedRelated: true` + `llm.embeddings` in config, run
+    `sweep --rerank` once; DATA EGRESS: document text goes to the
+    embeddings endpoint (Local_Setup §8's decision class);
+    (g) hosted runner — work `local/Hosted_Runner.md` top to bottom:
+    app-registration auth first, then the org-policy call on tenant
+    credentials in GitHub secrets, then the `HOSTED_SWEEP_ENABLED`
+    variable; never both the hosted run and the desktop task live.

@@ -10,7 +10,7 @@
 | `check_figures.py` | **live** (CI full-format) | SlideFigures |
 | `check_typecheck.py` | **live** (CI, own job) | every `scripts/*.ts` type-checks at ES2017 |
 | `../../pad/harness/check_pad_runner.py` | **live** (CI fixture-free) | PAD runner + ops.mjs loader |
-| `../../local/harness/check_local_sweep.py` | **live** (CI fixture-free) | the whole local pipeline: sweep, curate (+`--repoint`), gantt, auth, alerts |
+| `../../local/harness/check_local_sweep.py` | **live** (CI fixture-free) | the whole local pipeline: sweep (all lanes incl. msg/OCR), curate (+`--repoint`), gantt, auth, alerts, embeddings, remote-files mode |
 | `../../local/harness/check_svg2pptx.py` | **live** (CI full-format) | svg2pptx |
 | `check_batch_v2_2.py` | **live** | ZipTextExtract v2.2 / DL-1 promotion |
 | `check_batch.py`, `check_batch_r2..r6.py` | historical — self-skip as superseded | the v1.9/r2–r6 promotion rounds (records below) |
