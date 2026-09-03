@@ -1,5 +1,5 @@
 /**
- * SlideFigures v1.7 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v1.8 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
@@ -7,12 +7,31 @@
  * figure to its slide table; DF-5 (2026-09-03) fixes label collisions and
  * arrowhead layering; DF-6 (2026-09-03) snaps arrowheads to line tips;
  * DF-7 (2026-09-03) redraws spanning events as route chains; DF-8
- * (2026-09-03) puts the route on top as a dash and hashes labelled anchors.
+ * (2026-09-03) puts the route on top as a dash and hashes labelled anchors;
+ * DF-9 (2026-09-03) cases the dash in white and two-tones the palette.
  * Companion to ZipTextExtract, same input (the
  * file's bytes as base64). Returns one SVG per DIAGRAM (a slide can carry
  * several):
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped }
+ *
+ * v1.8 (DF-9):
+ *   - THE DASH RIDES A WHITE CASING. DF-8's ink dash sat directly on the
+ *     extent colours, and ink over the cool teal was mud. Every route
+ *     dash (and its arrow carrier) now draws over a white casing line of
+ *     the same geometry and rhythm — the map-cartography move — so the
+ *     ink separates crisply from ANY bar colour; on the white plate the
+ *     casing is invisible. Arrowheads get the same treatment as a thin
+ *     white outline on the marker triangle.
+ *   - TWO-TONE PALETTE. One hex per hue had to serve colour FIELDS (the
+ *     6.5px extent bars) and thin marks/text alike, and satisfied
+ *     neither. Event bars and legend swatches now take a brighter field
+ *     variant per hue (compound .event.s-hue / .swatch.s-hue rules —
+ *     class names unchanged), validated for adjacent-pair CVD (dE >= 8) and
+ *     normal-vision separation (dE >= 20); node outlines, graph edges,
+ *     freeforms and entity text keep the deep variant (f-warm deepens to
+ *     clear 4.5:1 as text). Structural ink/muted are untouched, so the
+ *     route reads as structure and the extents as content.
  *
  * v1.7 (DF-8):
  *   - THE ROUTE RIDES ON TOP, AS A DASH. A solid route drawn first
@@ -376,8 +395,13 @@ function figStyle(): string {
     ".plate{fill:#FFFFFF;stroke:#D7DFDF;stroke-width:1}" +
     ".ln{fill:none;stroke-linecap:round;stroke-linejoin:round}" +
     // the route is a DASH over the extents, not a bar under them (DF-8):
-    // drawn last in every lane, its gaps let the extent colour read through
+    // drawn last in every lane, its gaps let the extent colour read through.
+    // Each dash rides a white CASING (DF-9) — the map-cartography move — so
+    // the ink separates crisply from ANY extent colour beneath it; on the
+    // white plate the casing is invisible. Same dash rhythm, so the gaps
+    // still show the bar untouched.
     ".route{stroke:#16302F;stroke-width:3;stroke-dasharray:8 5;stroke-linecap:butt}" +
+    ".routecase{stroke:#FFFFFF;stroke-width:5;stroke-dasharray:8 5;stroke-linecap:butt}" +
     ".ctx{stroke:#B9C6C6;stroke-width:2.4}" +
     ".event{stroke-width:6.5}.flat{stroke-linecap:butt}" +
     ".tick{stroke:#6E8285;stroke-width:1.15}" +
@@ -399,10 +423,21 @@ function figStyle(): string {
     ".s-ink{stroke:#16302F}.f-ink{fill:#16302F}" +
     ".s-muted{stroke:#6E8285}.f-muted{fill:#6E8285}" +
     ".s-cool{stroke:#1B6E8C}.f-cool{fill:#1B6E8C}" +
-    ".s-warm{stroke:#C2701A}.f-warm{fill:#C2701A}" +
+    ".s-warm{stroke:#C2701A}.f-warm{fill:#9C5A12}" +
     ".s-green{stroke:#2E7D5B}.f-green{fill:#2E7D5B}" +
     ".s-violet{stroke:#7A5AA6}.f-violet{fill:#7A5AA6}" +
     ".s-red{stroke:#B2442F}.f-red{fill:#B2442F}" +
+    // two-tone palette (DF-9): event BARS and legend swatches take a
+    // brighter field variant of each hue — a colour field wants light, and
+    // the ink dash riding it wants the field light for contrast — while
+    // node outlines, graph edges, freeforms and text keep the deep variant
+    // (a thin line or a glyph wants dark). Validated: adjacent-pair CVD
+    // dE >= 8, normal-vision dE >= 20; every bar directly labelled.
+    ".event.s-cool,.swatch.s-cool{stroke:#3A97C4}" +
+    ".event.s-warm,.swatch.s-warm{stroke:#DE8A26}" +
+    ".event.s-green,.swatch.s-green{stroke:#3FA173}" +
+    ".event.s-violet,.swatch.s-violet{stroke:#9678CC}" +
+    ".event.s-red,.swatch.s-red{stroke:#D96A50}" +
     "text{font-family:'Segoe UI',system-ui,Roboto,'Helvetica Neue',Arial,sans-serif}" +
     ".measure{font-size:11px;fill:#6E8285;font-variant-numeric:tabular-nums}" +
     ".id{font-size:12.5px;font-weight:600}.note{font-size:12px;fill:#16302F}" +
@@ -413,12 +448,15 @@ function figStyle(): string {
     // line, so the cap can't poke out sideways near the point. 4.4 marker
     // units at route weight is a ~13px head (DF-8 — the 5.2 head outweighed
     // the slimmer dashed route).
+    // DF-9: heads carry a thin white outline (and overflow so it isn't
+    // clipped at the viewBox edge) — an ink triangle sitting directly on an
+    // extent bar needs the same separation the route's casing gives its dash
     '<defs><marker id="ar" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" ' +
-    'markerHeight="4.4" orient="auto-start-reverse">' +
-    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F"/></marker>' +
+    'markerHeight="4.4" orient="auto-start-reverse" overflow="visible">' +
+    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#16302F" stroke="#FFFFFF" stroke-width="0.9"/></marker>' +
     '<marker id="ae" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="4.4" ' +
-    'markerHeight="4.4" orient="auto-start-reverse">' +
-    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265"/></marker></defs>';
+    'markerHeight="4.4" orient="auto-start-reverse" overflow="visible">' +
+    '<path d="M0 0.7 L8 4 L0 7.3 z" fill="#4E6265" stroke="#FFFFFF" stroke-width="0.9"/></marker></defs>';
 }
 
 function svgWrap(no: number, w: number, h: number, title: string, desc: string, body: string): string {
@@ -1298,6 +1336,12 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
   };
   const sorted = lines.slice().sort((a, b) => order(a) - order(b));
   for (const l of sorted) {
+    // each route dash rides its white casing (DF-9) — same geometry, same
+    // rhythm, drawn just beneath, so the ink separates from any bar colour
+    if (l.cls === "route") {
+      p.push('<line class="ln routecase" x1="' + fnum(l.x1) + '" y1="' + fnum(l.y1) +
+        '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"/>');
+    }
     p.push('<line class="ln ' + l.cls + l.extra + '" x1="' + fnum(l.x1) + '" y1="' + fnum(l.y1) +
       '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"/>');
   }
@@ -1310,6 +1354,8 @@ function emitVector(lines: FLine[], texts: FText[], splits: number[][], rulers: 
     const dx = l.x2 - l.x1, dy = l.y2 - l.y1;
     const L = Math.sqrt(dx * dx + dy * dy) || 1;
     const f = Math.min(8, L) / L;
+    p.push('<line class="ln routecase" x1="' + fnum(l.x2 - dx * f) + '" y1="' + fnum(l.y2 - dy * f) +
+      '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '"/>');
     p.push('<line class="ln route" x1="' + fnum(l.x2 - dx * f) + '" y1="' + fnum(l.y2 - dy * f) +
       '" x2="' + fnum(l.x2) + '" y2="' + fnum(l.y2) + '" marker-end="url(#ar)"/>');
   }
@@ -1757,18 +1803,22 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
       body.push('<line class="ln tick maj" x1="' + fnum(mv[0]) + '" y1="' + fnum(ry - TICK_MAJOR / 2) +
         '" x2="' + fnum(mv[0]) + '" y2="' + fnum(ry + TICK_MAJOR / 2) + '"/>');
     }
-    // route segments over the extents (each route is its own dashed line;
-    // the last overshoots for its arrowhead like every ruler)
+    // route segments over the extents (each route is its own dashed line on
+    // its white casing; the last overshoots for its arrowhead like every ruler)
     for (let i = 0; i < chain.length; i++) {
       const a = ox + i * segW, b = ox + (i + 1) * segW;
+      const bx = i === chain.length - 1 ? b + ARROW_EXT : b;
+      body.push('<line class="ln routecase" x1="' + fnum(a) + '" y1="' + fnum(ry) +
+        '" x2="' + fnum(bx) + '" y2="' + fnum(ry) + '"/>');
       body.push('<line class="ln route" x1="' + fnum(a) + '" y1="' + fnum(ry) +
-        '" x2="' + fnum(i === chain.length - 1 ? b + ARROW_EXT : b) +
-        '" y2="' + fnum(ry) + '"/>');
+        '" x2="' + fnum(bx) + '" y2="' + fnum(ry) + '"/>');
     }
     // arrowheads LAST — every route ends in its own arrow, on top of the
     // extent running through the joint (the slide's own vocabulary)
     for (let i = 0; i < chain.length; i++) {
       const tip = ox + (i + 1) * segW + (i === chain.length - 1 ? ARROW_EXT : 0);
+      body.push('<line class="ln routecase" x1="' + fnum(tip - 8) + '" y1="' + fnum(ry) +
+        '" x2="' + fnum(tip) + '" y2="' + fnum(ry) + '"/>');
       body.push('<line class="ln route" x1="' + fnum(tip - 8) + '" y1="' + fnum(ry) +
         '" x2="' + fnum(tip) + '" y2="' + fnum(ry) + '" marker-end="url(#ar)"/>');
     }
@@ -1957,7 +2007,9 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       const ux = (pb[0] - pa[0]) / seg, uy = (pb[1] - pa[1]) / seg;
       const tx = pb[0] + ux * ARROW_EXT, ty = pb[1] + uy * ARROW_EXT;
       d += " L " + fnum(tx) + " " + fnum(ty);
-      headSvg = '<line class="ln route" x1="' + fnum(tx - ux * 8) + '" y1="' +
+      headSvg = '<line class="ln routecase" x1="' + fnum(tx - ux * 8) + '" y1="' +
+        fnum(ty - uy * 8) + '" x2="' + fnum(tx) + '" y2="' + fnum(ty) + '"/>' +
+        '<line class="ln route" x1="' + fnum(tx - ux * 8) + '" y1="' +
         fnum(ty - uy * 8) + '" x2="' + fnum(tx) + '" y2="' + fnum(ty) +
         '" marker-end="url(#ar)"/>';
     }
@@ -2021,7 +2073,8 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
     }
     // the dashed route draws OVER the extents and ticks (DF-8) — it used to
     // draw first and vanish under any bar covering it; now its dash gaps let
-    // the extent colour read through instead
+    // the extent colour read through instead, each dash on its casing (DF-9)
+    body.push('<path class="ln routecase" d="' + d + '"/>');
     body.push('<path class="ln route" d="' + d + '"/>');
     if (headSvg) body.push(headSvg);
     if (!isNaN(row.sp) && row.sp > m0 && row.sp < m1) {

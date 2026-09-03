@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * svg2pptx v1.0 — SlideFigures SVG figures → editable PowerPoint shapes
+ * svg2pptx v1.1 — SlideFigures SVG figures → editable PowerPoint shapes
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the sweep machine already
  * has Node). Takes the figure SVGs the local sweep writes into the
@@ -93,20 +93,35 @@ function natCmp(a, b) {
 // ------------------------------------------------------ SVG parsing
 // The stylesheet is flat `.cls{prop:val;...}` rules plus one `text{...}`
 // element rule — parse it into a class → props map so palette values are
-// read from the figure itself, never hardcoded here.
+// read from the figure itself, never hardcoded here. v1.1: compound
+// selectors (.event.s-cool) and comma groups, which the v1.8 two-tone
+// stylesheet uses to give bars a brighter hue than thin marks, are kept
+// as class SETS applied after the single-class rules — the same "more
+// specific wins" order the browser gives them.
 function parseStyle(svg) {
   const m = svg.match(/<style>([\s\S]*?)<\/style>/);
-  const rules = {};
+  const rules = { "@compound": [] };
   if (!m) return rules;
-  const rre = /([.\w][-\w]*)\{([^}]*)\}/g;
+  const rre = /([^{}]+)\{([^}]*)\}/g;
   let r;
   while ((r = rre.exec(m[1])) !== null) {
-    const sel = r[1].replace(/^\./, "");
-    const props = rules[sel] || (rules[sel] = {});
+    const props = {};
     for (const decl of r[2].split(";")) {
       const c = decl.indexOf(":");
       if (c < 0) continue;
       props[decl.slice(0, c).trim()] = decl.slice(c + 1).trim();
+    }
+    for (const one of r[1].split(",")) {
+      const sel = one.trim();
+      if (!sel) continue;
+      const classes = sel.split(".").filter((c) => c);
+      if (sel[0] === "." && classes.length > 1) {
+        rules["@compound"].push({ classes, props });
+        continue;
+      }
+      const key = classes[0] || sel;
+      const dst = rules[key] || (rules[key] = {});
+      for (const k in props) dst[k] = props[k];
     }
   }
   return rules;
@@ -115,8 +130,12 @@ function parseStyle(svg) {
 function resolveStyle(rules, cls, isText) {
   const p = {};
   const apply = (src) => { if (src) for (const k in src) p[k] = src[k]; };
+  const have = (cls || "").split(/\s+/).filter((c) => c);
   if (isText) apply(rules["text"]);
-  for (const c of (cls || "").split(/\s+/)) if (c) apply(rules[c]);
+  for (const c of have) apply(rules[c]);
+  for (const cr of rules["@compound"] || []) {
+    if (cr.classes.every((c) => have.indexOf(c) >= 0)) apply(cr.props);
+  }
   return p;
 }
 
