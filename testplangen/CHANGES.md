@@ -1,3 +1,43 @@
+# TestPlanGen v2.24 — progress output (testplangen.mjs v1.5, llm.mjs v1.5)
+
+Motivated by the 2026-09-04 pinned-lane run that sat silent for 10+
+minutes: for a `--story` run the job printed NOTHING between
+startup and the final summary, so a stale-token auth wait, a
+legitimately long generation (five source plans, maxTokens 32000),
+and a silent 408/429 retry loop were indistinguishable from a hang.
+
+**testplangen.mjs v1.5** — stderr `progress:` lines on MANUAL
+single-story runs only: Doc Index snapshot size; story sidecar
+size; lane sizes with the pinned ids; "calling the model" with
+provider and input size; a 30s heartbeat while the one model call
+is in flight; the reply size and elapsed seconds; the verifier
+verdict. stdout keeps its JSON + `Gen_summary` contract
+byte-for-byte, and the auto and gap-report modes stay quiet so
+their scheduled-task logs don't grow.
+
+**llm.mjs v1.5** — retry visibility, both providers: every backoff
+retry prints one stderr line naming the cause and the delay
+(`llm: retry 2/4 in 4s — AI Builder 408: ...`). The AI Builder
+gateway's 408-on-long-generation and 429 storms were previously
+retried in total silence. Backoff arithmetic unchanged; the sweep's
+nightly log gains these lines only when retries actually happen.
+
+**Harness** — `check_testplangen.py` 116 → **118**: manual run
+prints the progress lines on stderr with stdout untouched; auto
+runs stay progress-silent. 118/118 PASS.
+
+**Docs** — Local_Setup §11 note; README/STATUS rows. Flows,
+packages, prompt (v1.9), draftlint (v1.2), schemas: **unchanged**.
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job (progress lines, heartbeat) | **v1.5** | `local/testplangen.mjs` |
+| LLM client (retry visibility) | **v1.5** | `local/llm.mjs` |
+| Generation-job gate | **118 checks** | `local/harness/check_testplangen.py` |
+
+| Date | Machine | check_testplangen |
+|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 118/118 PASS |
 # TestPlanGen v2.23 — review deck: draft → pptx (draft2pptx.mjs v1.0)
 
 Owner-requested (2026-09-04): a way to generate a designed slide

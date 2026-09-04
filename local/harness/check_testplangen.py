@@ -41,6 +41,9 @@ verifier the cloud flow could not have
                      exactly one reference form enforced
   leg 7 notify       --notify posts ONE webhook line per WRITTEN
                      draft; default and dry runs stay silent
+                     (leg 2/9 also pin the v1.5 progress posture:
+                     manual runs print stderr "progress:" lines with
+                     stdout untouched, auto runs stay silent)
   leg 8 grounding    the phase-2 verifier layer: an invented Coverage
                      Map requirement, a story-less tool name, a
                      dropped enumeration item, and an exemplar-only
@@ -615,6 +618,12 @@ def main():
     check("draft body present, clean draft unannotated",
           GOOD_DRAFT.strip() in draft and "[!IMPORTANT]" not in draft
           and "<!-- verify:" not in draft, draft[:600])
+    check("manual run prints progress lines on stderr, stdout contract intact",
+          "progress: Doc Index snapshot" in r.stderr
+          and "progress: calling the model" in r.stderr
+          and "progress: model replied" in r.stderr
+          and "progress: verifier — ok" in r.stderr
+          and "progress:" not in r.stdout, r.stderr[:600])
 
     # ---- leg 2b: exemplar fallback + (none) + dry run --------------
     print("== leg 2b: exemplar fallback, (none), dry run")
@@ -941,6 +950,9 @@ def main():
     check("auto live: per-story lines in the run output",
           "auto: story 13" in r.stdout and "REFUSED by the verifier" in r.stdout,
           r.stdout)
+    check("auto runs stay progress-silent (task-log posture)",
+          "progress:" not in r.stdout and "progress:" not in r.stderr,
+          r.stderr[:400])
     texts = [a.get("text", "") for a in state.alerts]
     check("auto live: notify for the draft AND an alert for the refusal",
           len(texts) == 2

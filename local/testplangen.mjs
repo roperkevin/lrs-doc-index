@@ -1,12 +1,24 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.4 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.5 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
  * lanes: v2.22).
+ *
+ * v1.5 (progress output — with llm.mjs v1.5's retry visibility)
+ * adds stderr `progress:` lines to MANUAL single-story runs only —
+ * snapshot size, story sidecar size, lane sizes (pins included), a
+ * "calling the model" line with input size, a 30s heartbeat while
+ * the one model call is in flight, the reply size/elapsed, and the
+ * verifier verdict. stdout keeps its JSON + Gen_summary contract
+ * byte-for-byte; the auto and gap-report modes stay quiet so their
+ * scheduled-task logs don't grow. Motivated by the 2026-09-04 run
+ * that sat silent for 10+ minutes: a stale-token auth wait, a slow
+ * generation, and a silent 408/429 retry loop were previously
+ * indistinguishable.
  *
  * v1.4 (pinned lanes — the v2.20 queued follow-on) adds:
  *   - `--exemplar <docId>` / `--reference <docId>` (repeatable;
@@ -187,7 +199,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.4";
+const JOB_VERSION = "v1.5";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -460,6 +472,13 @@ async function run(cfg) {
   const ctx = { cfg, graph, siteId, rows, byId, sw, tp, dry, plan: [] };
 
   if (cfg._auto) return runAuto(ctx);
+  if (!cfg._gapReport) {
+    // progress lines (v1.5) — manual single-story runs only, stderr
+    // only (stdout keeps its JSON + Gen_summary contract; the auto
+    // and gap-report modes stay quiet for their task logs)
+    ctx.progress = (m) => process.stderr.write(`progress: ${m}\n`);
+    ctx.progress(`Doc Index snapshot — ${rows.length} rows`);
+  }
   if (cfg._gapReport) return runGapReport(ctx);
 
   // ---- lookup front door (v1.1) — StoryLookupFlow's deterministic
@@ -745,6 +764,8 @@ async function generateOne(ctx, story) {
     );
   }
   const storyMd = fs.readFileSync(storyLocal, "utf8");
+  const prog = ctx.progress || (() => {});
+  prog(`story ${story.ID} "${stripQuotes(story.Title)}" — sidecar ${storyMd.length} chars`);
 
   // G4 — score-ordered related entries, capped (parseRelated above)
   const relEntries = parseRelated(storyMd).slice(0, Number(tp.neighborCap));
@@ -856,6 +877,15 @@ async function generateOne(ctx, story) {
     referenceCount++;
   }
 
+  prog(
+    `lanes — exemplars ${exemplarCount} (${exemplarText.length} chars), ` +
+    `references ${referenceCount} (${referenceText.length} chars), ` +
+    `digest ${digest.length} chars` +
+    (pins.ex.length || pins.ref.length
+      ? ` — pinned ex [${pins.ex.map((r) => r.ID).join(",")}] ref [${pins.ref.map((r) => r.ID).join(",")}]`
+      : "")
+  );
+
   // G8 — the prompt call (values verbatim from the row, the
   // semi-trusted lane: quotes stripped where a value lands mid-line)
   const storyMeta = [
@@ -880,7 +910,22 @@ async function generateOne(ctx, story) {
   // while the sweep's classify step stays on AI Builder, or vice versa
   const provider =
     tp.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
+  const inChars = Object.values(inputs).reduce((n, v) => n + String(v).length, 0);
+  prog(
+    `calling the model — provider ${provider}, ~${inChars} chars in` +
+    (provider === "anthropic" ? `, maxTokens ${tp.maxTokens}` : "") +
+    " (a long wait here is generation, not a hang; retries print their own llm: lines)"
+  );
+  const genT0 = Date.now();
+  const beat = ctx.progress
+    ? setInterval(
+        () => prog(`still waiting on the model — ${Math.round((Date.now() - genT0) / 1000)}s elapsed`),
+        30000
+      )
+    : null;
+  beat?.unref?.();
   let genRaw;
+  try {
   if (provider === "aibuilder") {
     if (!cfg.llm.testPlanModelId) {
       throw new Error(
@@ -913,6 +958,10 @@ async function generateOne(ctx, story) {
   } else {
     throw new Error(`unknown llm.provider "${provider}" (aibuilder | anthropic)`);
   }
+  } finally {
+    if (beat) clearInterval(beat);
+  }
+  prog(`model replied — ${genRaw.length} chars in ${Math.round((Date.now() - genT0) / 1000)}s`);
 
   // G9 — marker slice, fail closed (lastIndexOf so an echoed marker
   // inside the body cannot truncate it; strict > begin+17)
@@ -936,6 +985,7 @@ async function generateOne(ctx, story) {
       findings.push(...groundDraft(draftBody, `${storyTextCapped}\n${storyMeta}`));
     }
     verify = findings.length ? `${findings.length}-findings` : "ok";
+    prog(`verifier — ${verify}`);
     if (tp.verify === "strict" && findings.length) {
       for (const f of findings) process.stderr.write(`verifier: ${f}\n`);
       const err = new Error(
