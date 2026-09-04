@@ -1,3 +1,91 @@
+# TestPlanGen v2.17 — local job phase 2: lookup, grounding, notify (testplangen.mjs v1.1)
+
+Phase 2 of `testplangen/Local_TestPlanGen_Plan.md` — the front door
+and the verifier layer the plan deferred from v2.16.
+
+**Lookup front door** (`local/testplangen.mjs` v1.1) — the CLI now
+takes any of the agent's three reference forms, resolved by
+StoryLookupFlow's deterministic queries IN-PROCESS (v2.3's
+mechanics, zero Copilot Studio): `--story <docId>` (unchanged),
+`--issue <n>` (`#`-prefix tolerated; the Doc IDs list filtered on
+IssueNumber in memory — no user value in OData — deduped by
+document, kind-filtered to Indexed User Stories; requires
+`sharePoint.lists.docIds` in config), `--title "<words>"`
+(contains-match over indexed User Story titles, newest first).
+Exactly one form per run; the v2.3 bare-number rule holds
+structurally — a bare number is only ever a doc id, issue numbers
+need the flag, nothing is guessed. Ambiguity goes back to the human
+exactly as the agent does it: several matches print a capped
+candidate list (`- doc NN — "Title" (surface …, release …)`, first
+8, flagged past the cap) and refuse; zero matches coach (issue: the
+sweep must have indexed the story and minted its Doc IDs row;
+title: narrow the words or use the id). Generation is NOT invoked
+on any refusal.
+
+**Grounding spot-checks** (`local/lib/draftlint.mjs` v1.1, new
+`groundDraft`) — the verifier's second layer, possible only locally
+because the job holds the story it just sent. Three conservative
+heuristics, findings prefixed `grounding: `, run under the same
+verify policy as the contract lint (`testplangen.grounding: false`
+disables just this layer): (a) every Coverage Map requirement cell
+must trace to the story — a quoted span found verbatim passes;
+otherwise ≥ half its content-word stems must appear in the story
+(probable-invention flag); (b) tool-shaped names (multi-word Title
+Case) in Steps / Expected Result lines must appear in the story —
+the prompt's tools rule made checkable; section/terminology phrases
+allowlisted, Trace lines and the Source Case Sweep deliberately NOT
+scanned (they cite source-plan titles). NOTE: the plan sketched a
+cites-a-reference exception; dropped deliberately — the prompt
+admits no tool names from reference documents at all; (c)
+enumeration echo — every item of a 3+-item comma/and list in a
+workflow-shaped story sentence must be mentioned somewhere in the
+draft (a cheap ENUMERATION COVERAGE screen). The heuristics WILL
+flag some legitimate paraphrases — which is why `annotate` stays
+the default and `strict` remains the unattended-run posture; the
+verifier still never edits draft content. `lintDraft` (the contract
+port) is byte-untouched — the Python agreement leg still passes
+label-for-label, and grounding stays excluded from it by design.
+
+**Notification** (`--notify` / `testplangen.notify: false`) — one
+webhook line per WRITTEN draft (story id/title, draft URL,
+`Gen_summary`) via the sweep's `alerts.webhookUrl` (`lib/alerts.mjs`
+— best-effort by its design, a down webhook never fails a run).
+Default off: whoever runs a manual generation is already watching,
+and dry runs never notify — nothing was written. Phase 3's auto
+mode forces it on and closes the Setup guide's "no notification"
+known limit for the unattended case.
+
+**Harness** — `check_testplangen.py` 62 → **82** checks: leg 6
+(lookup: dedup resolve, `#` form, ambiguity candidates, miss
+coaching, kind filtering, no model call on refusal, title
+unique/multi/none, exactly-one-form and non-numeric-issue
+rejection), leg 7 (notify: one alert with story/draft/summary;
+default and dry runs silent), leg 8 (grounding: an invented
+Coverage Map row, a story-less tool name, and a dropped enumeration
+item each flagged; an echoed enumeration not; `verify=` counts
+grounding findings; the grounding knob isolates the layer). The
+good-draft fixtures are now genuinely story-grounded (the clean
+draft stays unannotated with grounding ON — the leg-2 regression
+pin).
+
+**Docs** — Local_Setup §11 (lookup usage, the two verifier layers,
+notify), `config.sample.json` (grounding/notify knobs), README +
+STATUS rows, plan doc phase-2 status. Cloud flows, packages, agent
+file set, prompt, schemas: **unchanged**; NEVER bump
+`Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job (lookup + notify + grounding wiring) | **v1.1** | `local/testplangen.mjs` |
+| Draft verification (contract port untouched; + `groundDraft`) | **v1.1** | `local/lib/draftlint.mjs` |
+| Generation-job gate | 82 checks | `local/harness/check_testplangen.py` |
+| Setup + sample config | updated | `local/Local_Setup.md` §11, `local/config.sample.json` |
+| llm.mjs, flows, packages, prompt, agent file set, schemas | unchanged | — |
+
+| Date | Machine | check_testplangen | First live draft |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 82/82 PASS | — (pending sweep auth restore — STATUS action 12) |
+
 # TestPlanGen v2.16 — the local generation job, phase 1 (testplangen.mjs v1.0)
 
 Phase 1 of `testplangen/Local_TestPlanGen_Plan.md` (authored on the

@@ -555,7 +555,18 @@ sidecar library; the sidecars ARE the retrieval source):
      CLOSED, loudly.
 2. Dry run against a real story:
    `node --experimental-strip-types local\testplangen.mjs --config local\config.json --story <docId> --dry-run`
-   — nothing uploads; the would-be draft lands in workDir
+   — instead of a Doc Index row id, `--issue <n>` (a devtopia issue
+   number, `#`-prefix tolerated) or `--title "<words>"` resolve the
+   story for you (v1.1 — StoryLookupFlow's deterministic queries
+   in-process: issue via the Doc IDs list with
+   `sharePoint.lists.docIds` in config, title by contains-match over
+   indexed User Story titles). A bare number is ALWAYS a doc id —
+   issue numbers need `--issue`, nothing is guessed (the v2.3 rule).
+   Several matches print a capped candidate list and refuse; zero
+   matches coach (an issue resolves only after the sweep has indexed
+   the story and minted its Doc IDs row); generation is not invoked
+   either way. Nothing uploads on a dry run; the would-be draft lands
+   in workDir
    (`testplangen-draft-*.md`, lintable with
    `review/harness/check_draft_coverage.py`) and the summary line
    (`story= neighbors= exemplars= references= … verify=`) reads
@@ -570,14 +581,35 @@ sidecar library; the sidecars ARE the retrieval source):
    one is present), finalize, upload to the source library; the
    nightly sweep closes the loop.
 
-**`testplangen.verify`** — the phase-1 verifier policy: `"annotate"`
-(default) writes a draft that fails the contract lint WITH a
+**`testplangen.verify`** — the verifier policy: `"annotate"`
+(default) writes a draft that fails verification WITH a
 `> [!IMPORTANT]` findings block under the banner, so the reviewer
 starts where the machine already found smells; `"strict"` refuses to
 write such a draft at all (exit nonzero, findings on stderr — meant
 for unattended runs, phase 3); `"off"` gives byte-parity with the
 cloud flow's behavior. The verifier never edits draft content —
-annotate or refuse, whole-draft.
+annotate or refuse, whole-draft. Two layers feed it: the CONTRACT
+lint (phase 1 — the v1.7 draft-shape/coverage asserts, no
+ambiguity) and, since v1.1, the GROUNDING spot-checks (phase 2,
+`"grounding: "`-prefixed heuristics that hold the draft against the
+story it was sent): every Coverage Map requirement must trace to a
+story statement (quoted span or stem overlap), tool-shaped names in
+Steps / Expected Result lines must appear in the story (the prompt's
+tools rule made checkable — deliberately with NO reference-document
+exception, since the prompt admits no tool names from references),
+and every item of a 3+-item enumeration in a workflow-shaped story
+sentence must be mentioned somewhere in the draft. The heuristics
+WILL flag some legitimate paraphrases — that is exactly why annotate
+is the default and strict is reserved for unattended runs;
+`testplangen.grounding: false` disables just this layer.
+
+**`testplangen.notify`** (or `--notify` per run) — posts ONE line to
+`alerts.webhookUrl` (the sweep's §7 alerts webhook) when a draft is
+actually WRITTEN: story id/title, the draft's URL, and the
+`Gen_summary` line. Default off — whoever runs a manual generation
+is already watching; dry runs never notify (nothing was written),
+and delivery is best-effort (a down webhook never fails a run).
+Phase 3's automatic mode will force this on.
 
 Knobs (`testplangen` in config, defaults in parentheses) mirror the
 flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
@@ -585,7 +617,7 @@ flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 (400), exemplarSlots (2), referenceSlots (3), promptVersion (v1.7,
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
-maxTokens (16384), dryRun (true). Deliberate deviations from the
+grounding (true), notify (false), maxTokens (16384), dryRun (true). Deliberate deviations from the
 flow, all bounded: one run-start Doc Index snapshot replaces the
 per-item Get calls; the G6 fallback orders by SourceModified where
 the flow orders by list Modified (same newest-first intent); a story
