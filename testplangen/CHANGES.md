@@ -1,3 +1,87 @@
+# TestPlanGen v2.18 — local job phase 3: the automatic mode (testplangen.mjs v1.2)
+
+Phase 3 of `testplangen/Local_TestPlanGen_Plan.md` — generation
+becomes AUTOMATIC while the review gate stays human: a nightly
+`--auto` run drafts for freshly indexed User Stories that nothing
+in the catalog covers.
+
+**`--auto`** (`local/testplangen.mjs` v1.2; internals: the G3–G13
+body extracted into `generateOne`, byte-equivalent — the 82 phase-2
+checks pass unchanged — with `runAuto` looping it):
+
+- **Candidates**: Indexed User Story rows first indexed within
+  `autoLookbackDays` (7) — anchored on the row's CREATION time (the
+  moment the sweep minted it; Graph's item `createdDateTime`, with
+  SourceModified as fallback), freshest first.
+- **Gap test**: no Test Plan among the sidecar's `related:` entries
+  AND no Doc Links edge to a Test Plan row (the cheap local
+  realization of the Setup guide's queued "gap report" — needs
+  `sharePoint.lists.docLinks`, already in config for the sweep). An
+  unassessable story (missing sidecar, hand-mangled `related:`)
+  is counted and skipped — never spent on.
+- **Idempotency**: one draft per story — any existing
+  `TestPlanDraft__doc{ID}__*` in the drafts folder skips the story
+  (a PE deleting the draft after finalize, §4 housekeeping, is what
+  re-arms it); `--force` disables the skip for one run. The scan is
+  the new `graph.mjs` v1.3 `listFolder` (default-drive children;
+  404 = empty, anything else throws — a silently failed scan could
+  duplicate work).
+- **Budget**: `autoMaxPerRun` (3) caps model calls per run; the
+  rest defers to the next night (`deferred=`). A refused or failed
+  story retries on later runs under the same cap.
+- **Unattended posture, forced**: verify=strict (a draft with
+  verifier findings is NOT written — findings go to the run log and
+  the webhook via the refusal alert) and notify=on (every landed
+  draft posts its line — closing the Setup guide's
+  "no notification" known limit for the unattended case). The
+  owner switch is `testplangen.autoDraft: false` — the scheduled
+  task is INERT until it is set.
+- **Dry auto runs are selection-only**: what would draft, ZERO
+  model calls — deliberately unlike a single-story dry run (which
+  generates a local draft to read); an unattended plan must be
+  free. One failed story never kills the run: counted, alerted,
+  every candidate gets its chance, exit code nonzero at the end.
+- **Scheduling**: new `local/run_testplangen.cmd` (the
+  run_curate.cmd shape — self-updating from `deploy`,
+  log-rotating), registered daily AFTER the nightly sweep so fresh
+  stories carry tonight's `related:` lines.
+
+**`testplangen.provider`** (rider, owner request): overrides
+`llm.provider` for the GENERATION call only — e.g. drafts on the
+anthropic lane (the repo prompt verbatim, zero tenant paste) while
+the sweep's classify step stays on AI Builder credits, or the
+reverse. Empty (default) follows `llm.provider` exactly as before.
+
+**Harness** — `check_testplangen.py` 82 → **93** checks: the auto
+leg (owner-switch refusal, reference-form exclusion, dry selection
+over the lookback window with zero calls, live drafted+refused in
+one run with both webhook messages, idempotency skip + refusal
+retry, `--force` re-arm, `autoMaxPerRun` deferral) and the
+provider-override check (generation on /v1/messages while the
+Predict counter stands still). Mock gains per-story Predict routing
+(by StoryMeta's doc_id), a drafts-folder children endpoint, Doc
+Links rows, and time-RELATIVE row creation stamps so the lookback
+never goes stale.
+
+**Docs** — Local_Setup §11 (auto subsection: guard rails, schtasks
+line, summary reading), `config.sample.json` (provider + the three
+auto knobs), README/STATUS rows, plan doc phase-3 status. Cloud
+flows, packages, agent file set, prompt, schemas: **unchanged**;
+NEVER bump `Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job (`--auto`, `generateOne`/`runAuto` split, provider override) | **v1.2** | `local/testplangen.mjs` |
+| Graph client (`listFolder`) | **v1.3** | `local/graph.mjs` |
+| Scheduled-task wrapper | new | `local/run_testplangen.cmd` |
+| Generation-job gate | 93 checks | `local/harness/check_testplangen.py` |
+| Setup + sample config | updated | `local/Local_Setup.md` §11, `local/config.sample.json` |
+| draftlint.mjs, llm.mjs, flows, packages, prompt, agent file set, schemas | unchanged | — |
+
+| Date | Machine | check_testplangen | First live auto run |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 93/93 PASS | — (pending sweep auth restore — STATUS action 12 — and the autoDraft owner switch) |
+
 # TestPlanGen v2.17 — local job phase 2: lookup, grounding, notify (testplangen.mjs v1.1)
 
 Phase 2 of `testplangen/Local_TestPlanGen_Plan.md` — the front door

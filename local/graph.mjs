@@ -1,8 +1,10 @@
 /**
- * graph.mjs v1.0 — minimal Microsoft Graph client for the local Doc
+ * graph.mjs v1.3 — minimal Microsoft Graph client for the local Doc
  * Index sweep. List rows only: document content and sidecars move
  * through the OneDrive-synced library (plain file I/O), so Graph is
- * needed solely for the six SharePoint lists.
+ * needed solely for the six SharePoint lists. (v1.3: `listFolder` —
+ * default-drive folder children, for testplangen.mjs's auto-mode
+ * idempotency scan of the drafts folder.)
  *
  * Auth — two modes (config.graph.auth, default "device"):
  *   "device" — delegated sign-in as the user via the OAuth device
@@ -298,6 +300,30 @@ export class GraphClient {
     } catch (e) {
       if (!/: 404 /.test(String(e.message)) && !String(e.message).endsWith(": 404")) throw e;
     }
+  }
+
+  /** Children of a folder in the site's DEFAULT drive by root-relative
+   *  path (e.g. "/Test Plan Drafts"): name + id per child, paged. A
+   *  missing folder returns [] — the caller treats "not created yet"
+   *  as "empty", exactly like an empty folder; any other failure
+   *  throws (an idempotency scan that silently fails could duplicate
+   *  work, so only 404 degrades). */
+  async listFolder(siteId, drivePath) {
+    const enc = String(drivePath).split("/").map(encodeURIComponent).join("/");
+    let url = `/sites/${siteId}/drive/root:${enc}:/children?$select=name,id`;
+    const out = [];
+    while (url) {
+      let page;
+      try {
+        page = await this.request("GET", url);
+      } catch (e) {
+        if (/: 404( |$)/.test(String(e.message))) return [];
+        throw e;
+      }
+      for (const it of page.value || []) out.push(it);
+      url = page["@odata.nextLink"] || null;
+    }
+    return out;
   }
 
   /** Create/overwrite a file in the site's DEFAULT drive (the
