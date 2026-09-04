@@ -104,7 +104,7 @@ keeps the old yaml-on-top layout).
 | local/auth.mjs | Delegated device-code sign-in (Microsoft pre-registered public clients — no Azure app registration) | v1.0 |
 | local/graph.mjs | Microsoft Graph list client + SPO REST fallback for hyperlink columns (device sign-in default, client-credentials optional; list GUIDs from config; v1.3 adds default-drive folder listing for the auto-draft idempotency scan) | v1.3 |
 | local/probe.mjs | Per-field Graph write probe (diagnostic) | v1.0 |
-| local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API; since v1.4 also `generateText` (raw-markdown generation for testplangen.mjs); v1.5 prints one stderr line per backoff retry | v1.5 |
+| local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API; since v1.4 also `generateText` (raw-markdown generation for testplangen.mjs); v1.5 prints one stderr line per backoff retry; v1.6 streams the generation call (SSE, idle-gap timeout — long drafts no longer die at Node's 5-minute silent-connection wall) | v1.6 |
 | local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock Dataverse Predict + mock Anthropic + mock device-code auth; dry/live/idempotency/provider/auth legs; CI) | v1.3 |
 | local/config.sample.json | Machine config template (copy to git-ignored local/config.json) | — |
 | local/CHANGES.md | Local sweep release notes | v1.0 |

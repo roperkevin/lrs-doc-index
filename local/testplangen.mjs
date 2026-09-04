@@ -949,8 +949,9 @@ async function generateOne(ctx, story) {
       if (/max_tokens/.test(String(e.message))) {
         throw new Error(
           `${e.message} — for this job the knob is testplangen.maxTokens ` +
-          `(currently ${tp.maxTokens}; the model allows up to 128000, and very ` +
-          "long generations may also need llm.timeoutMs raised)"
+          `(currently ${tp.maxTokens}; the model allows up to 128000; the ` +
+          "generation streams, so llm.timeoutMs is only the max silent gap " +
+          "between chunks and rarely needs raising)"
         );
       }
       throw e;

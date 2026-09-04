@@ -1,3 +1,58 @@
+# TestPlanGen v2.25 — the generation call streams (llm.mjs v1.6)
+
+The v2.24 progress output exposed the real failure chain on the
+first full pinned-lane run (2026-09-04): the generation died at
+exactly 300s per attempt, first as our own `llm.timeoutMs` abort,
+then — with that raised to 900000 — as a bare
+`LLM request failed: fetch failed` still at 300s. The second wall
+is Node's own HTTP client (undici): a NON-streaming Messages call
+emits nothing — not even response headers — until the entire draft
+is generated, and undici aborts a headerless connection after 5
+minutes by default, below anything `llm.timeoutMs` can reach. A
+five-source-plan draft at maxTokens 32000 legitimately generates
+longer than that, so every attempt hit the wall and the retries
+re-billed partial generations into the same cliff.
+
+**llm.mjs v1.6** — `generateText` STREAMS (`stream: true`, SSE
+parsed and accumulated; new `postMessagesStream` beside the
+non-streaming `postMessages`): headers and a continuous trickle of
+text deltas arrive from the first second, so no silent-connection
+timeout in the path — ours, undici's, or an intermediary's — ever
+fires, which is also the vendor-recommended posture for long
+generations. Semantics:
+
+- `llm.timeoutMs` becomes an IDLE timeout for the generation call —
+  the longest allowed gap between chunks (default unchanged,
+  300000) — instead of a total-call ceiling: a 20-minute generation
+  with steady deltas never times out, a wedged socket still dies
+  fast. Total time is naturally bounded by maxTokens.
+- Retry semantics unchanged: 401 re-mints the bearer, 429/5xx and
+  transport failures back off (visibly, v2.24) and retry; a
+  MID-STREAM cut (idle timeout, reset, SSE `error` event) also
+  rides the retry path — partial text is discarded, exactly as the
+  marker slice would have failed closed on it; other 4xx throw.
+- `stop_reason` handling (refusal, max_tokens truncation) is
+  preserved via the stream's `message_delta`; the truncation hint
+  in testplangen.mjs now says timeoutMs is a silent-gap knob.
+- The classify/keyword call stays non-streaming: small replies,
+  JSON-schema pin.
+
+**Harness** — the mock `/v1/messages` serves SSE when the request
+carries `stream: true` (text split across two deltas so client-side
+accumulation is exercised); new check pins that the generation
+request streams. `check_testplangen.py` **119/119 PASS**;
+`check_local_sweep.py` 211/211 PASS (classify lane untouched).
+
+| Piece | Version | Where |
+|---|---|---|
+| LLM client (streamed generation, idle-gap timeout) | **v1.6** | `local/llm.mjs` |
+| Generation-job gate | **119 checks** | `local/harness/check_testplangen.py` |
+| testplangen.mjs (truncation-hint wording only) | v1.5 | `local/testplangen.mjs` |
+
+| Date | Machine | check_testplangen | check_local_sweep |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 119/119 PASS | 211/211 PASS |
+
 # TestPlanGen v2.24 — progress output (testplangen.mjs v1.5, llm.mjs v1.5)
 
 Motivated by the 2026-09-04 pinned-lane run that sat silent for 10+

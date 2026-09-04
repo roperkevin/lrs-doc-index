@@ -290,6 +290,35 @@ def make_handler(state):
                 body = json.loads(self._read())
                 state.ant_calls += 1
                 state.ant_last_body = body
+                if body.get("stream"):
+                    # llm.mjs v1.6: generateText streams — serve SSE.
+                    # Text goes out in two deltas so the client's
+                    # accumulation across chunks is actually exercised.
+                    text = state.gen_text
+                    half = len(text) // 2
+                    events = [
+                        {"type": "message_start", "message": {"id": "msg_mock"}},
+                        {"type": "content_block_start", "index": 0,
+                         "content_block": {"type": "text", "text": ""}},
+                        {"type": "content_block_delta", "index": 0,
+                         "delta": {"type": "text_delta", "text": text[:half]}},
+                        {"type": "content_block_delta", "index": 0,
+                         "delta": {"type": "text_delta", "text": text[half:]}},
+                        {"type": "content_block_stop", "index": 0},
+                        {"type": "message_delta",
+                         "delta": {"stop_reason": "end_turn"},
+                         "usage": {"output_tokens": 1}},
+                        {"type": "message_stop"},
+                    ]
+                    payload = "".join(
+                        f"event: {e['type']}\ndata: {json.dumps(e)}\n\n"
+                        for e in events).encode()
+                    self.send_response(200)
+                    self.send_header("content-type", "text/event-stream")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
                 return self._json({
                     "stop_reason": "end_turn",
                     "content": [{"type": "text", "text": state.gen_text}],
@@ -1007,6 +1036,8 @@ def main():
           and state.gen_calls == gen_calls
           and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
           r.stdout + r.stderr)
+    check("generation request streams (llm.mjs v1.6 — SSE, not one long silent call)",
+          state.ant_last_body.get("stream") is True, str(state.ant_last_body)[:200])
 
     # ---- leg 10: issue trace addendum ------------------------------
     print("== leg 10: issue trace addendum")
