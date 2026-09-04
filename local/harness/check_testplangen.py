@@ -50,6 +50,22 @@ verifier the cloud flow could not have
                      source-plan title inside a [VERIFY] item do
                      not; testplangen.grounding false disables
                      just that layer
+  leg 9 auto         the phase-3 unattended mode: owner-switch
+                     refusal, reference-form exclusion, dry
+                     selection with zero model calls, drafted +
+                     refused in one live run with both webhook
+                     messages, idempotency skip and refusal retry,
+                     --force re-arm, autoMaxPerRun deferral, and
+                     the provider override
+  leg 10 pins        pinned lanes (v1.3): --exemplar/--reference are
+                     refused with --auto and on kind/lane-conflict
+                     violations (no model call spent); a pinned doc
+                     leads its lane ahead of the automatic related
+                     routing (cross-surface exemplars allowed), an
+                     unrelated reference pin lands with its
+                     title+surface header, a pin duplicated in
+                     related: is deduped, and the banner carries the
+                     pinned ids; Gen_summary gains pinnedEx=/pinnedRef=
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -955,6 +971,55 @@ def main():
           and state.gen_calls == gen_calls
           and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
           r.stdout + r.stderr)
+
+    # ---- leg 10: pinned lanes (v1.3) -------------------------------
+    print("== leg 10: pinned lanes")
+    state.gen_by_doc = {}
+    state.gen_text = wrap(GOOD_DRAFT)
+    calls = state.gen_calls
+    r = run_job(cfg_auto, ["--auto", "--exemplar", "21"])
+    check("pins refused with --auto, no model call",
+          r.returncode != 0 and "MANUAL" in r.stderr
+          and state.gen_calls == calls, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "26", "--dry-run"])
+    check("pin kind guard refuses a User Story, no model call",
+          r.returncode != 0 and "DocKind User Story" in r.stderr
+          and "--exemplar takes Test Plan rows only" in r.stderr
+          and state.gen_calls == calls, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "21",
+                           "--reference", "21", "--dry-run"])
+    check("a doc pinned to both lanes is refused, no model call",
+          r.returncode != 0 and "pinned to both lanes" in r.stderr
+          and state.gen_calls == calls, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "24", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    ref = state.gen_last_inputs.get("ReferenceText", "")
+    check("cross-surface exemplar pin leads the lane, auto fills the rest",
+          r.returncode == 0 and summ.get("pinnedEx") == "1"
+          and summ.get("exemplars") == "2"
+          and ex.startswith("--- EXEMPLAR: plan-d__doc24.md ---")
+          and "plan-a__doc21.md" in ex
+          and "--- REFERENCE: Plan D" not in ref, r.stdout + ex[:200])
+    r = run_job(cfg_main, ["--story", "12", "--reference", "14", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ref = state.gen_last_inputs.get("ReferenceText", "")
+    check("unrelated reference pin leads the lane with title+surface header",
+          r.returncode == 0 and summ.get("pinnedRef") == "1"
+          and summ.get("references") == "3"
+          and ref.startswith("--- REFERENCE: Some Plan — surface Pro ---"),
+          r.stdout + ref[:200])
+    state.drafts.clear()
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "21", "--live"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("pin duplicated in related: deduped, banner carries the pin stamp",
+          r.returncode == 0 and summ.get("pinnedEx") == "1"
+          and summ.get("exemplars") == "2"
+          and ex.count("--- EXEMPLAR: plan-a__doc21.md ---") == 1
+          and "pinned exemplars [21]" in draft.splitlines()[0],
+          r.stdout + draft[:200])
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

@@ -1,3 +1,71 @@
+# TestPlanGen v2.21 — pinned lanes (testplangen.mjs v1.3)
+
+The v2.19 queued follow-on, owner-requested (2026-09-04): let the
+person running a generation PIN documents into the prompt's lanes
+in addition to the sidecar's `related:` selection. The doc 1 run is
+the motivating case — the data-rich exemplar that would have
+grounded its Split/Merge cases ("Splitting Events in Pro", a Pro
+plan) is not RelatedRank-linked to the story, so the lanes never
+saw it. The reference lane's no-fallback rule is untouched in
+spirit: it exists to bar MACHINE-chosen unlinked documents; an
+explicit human choice is stronger grounding than the automatic
+linkage.
+
+**`--exemplar <docId>` / `--reference <docId>`**
+(`local/testplangen.mjs` v1.3; repeatable, comma-separated ids
+accepted; Doc Index row ids ONLY — no issue/title resolution on
+pins, the v2.3 bare-number rule):
+
+- **Lane order**: pinned docs fill their lane FIRST, in the order
+  given; the automatic `related:` routing fills remaining slots and
+  skips docs already pinned (their digest lines are kept). Pins may
+  exceed the slot counts — a human choice beats the slot default —
+  while the character caps stay the hard budget, pins served first.
+  The G6 exemplar fallback is naturally bypassed (it fires only on
+  an empty lane).
+- **Hard guards, refused BEFORE the model call** (a human asked for
+  these exact documents — the lanes' Try_* silent-degrade posture
+  is for automatic picks): row exists, Indexed, sidecar present in
+  the synced library, not the story itself, not pinned to both
+  lanes; `--exemplar` takes Test Plans on ANY surface (a deliberate
+  human override of the same-surface routing — style/coverage only,
+  and prompt v1.9's story-first rules keep content from leaking
+  into cases), `--reference` takes Test Plans and Design Spikes.
+- **Provenance**: the banner's HTML comment carries the pinned ids
+  (`· pinned exemplars [251] references [459]`); `Gen_summary`
+  gains `pinnedEx=` / `pinnedRef=`.
+- **Manual runs only**: refused with `--auto` (and `--models`) —
+  the unattended mode must stay deterministic from catalog state
+  alone.
+
+**Harness** — `check_testplangen.py` 95 → **101** checks: new leg
+10 (pins refused with --auto and on kind/lane-conflict violations
+with no model call spent; a cross-surface exemplar pin leads its
+lane with auto filling the rest; an unrelated reference pin lands
+with its title+surface header; a pin duplicated in `related:` is
+deduped; the banner pin stamp). Docstring gains the missing leg 9
+entry (a v2.18 oversight) alongside leg 10. 101/101 PASS.
+
+**Docs** — Local_Setup §11 (pinned-lanes block; the stale
+promptVersion default in the knobs line corrected to v1.9);
+`STATUS.md` row; v2.19's queued-follow-on note marked implemented.
+Cloud flows, packages, prompt, contract lints, schemas:
+**unchanged** — this is a local-job feature (the cloud flow's
+list-menu front door has no argument surface for pins; a Copilot
+Studio pin flow would be its own change). NEVER bump
+`Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job (pinned lanes) | **v1.3** | `local/testplangen.mjs` |
+| Generation-job gate | **101 checks** | `local/harness/check_testplangen.py` |
+| Setup guide | §11 updated | `local/Local_Setup.md` |
+| Flows, packages, prompt (v1.9), draftlint (v1.2), schemas | unchanged | — |
+
+| Date | Machine | check_testplangen |
+|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 101/101 PASS |
+
 # TestPlanGen v2.20 — story-first trace (prompt v1.9, draftlint v1.2)
 
 Motivated by the owner review of the doc 1 draft (2026-09-04,
@@ -164,7 +232,8 @@ one draft's cases for named fixtures and after-state tables. NEVER
 bump `Config.PromptVersion` — nothing here changes the sidecar
 format or reindexes the corpus.
 
-Queued follow-on (owner question, 2026-09-04, not in this change):
+Queued follow-on (owner question, 2026-09-04 — IMPLEMENTED in
+v2.21, `--exemplar`/`--reference` on the local job):
 let the person running a generation PIN documents into the lanes —
 e.g. `--exemplar <docId>` / `--reference <docId>` on the local job —
 in addition to the sidecar's `related:` selection, for the case
