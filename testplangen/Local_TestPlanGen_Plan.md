@@ -1,13 +1,15 @@
 # Plan — TestPlanGen as a local job (`local/testplangen.mjs`)
 
-Status: **phases 1–2 BUILT** (2026-09-04, TestPlanGen **v2.16** /
-**v2.17** — see `testplangen/CHANGES.md`): `local/testplangen.mjs`
-v1.1 with both prompt transports, the two-layer verifier
+Status: **phases 1–3 BUILT** (2026-09-04, TestPlanGen **v2.16** /
+**v2.17** / **v2.18** — see `testplangen/CHANGES.md`):
+`local/testplangen.mjs` v1.2 with both prompt transports (per-lane
+via `testplangen.provider`), the two-layer verifier
 (`local/lib/draftlint.mjs` — contract lint + grounding
-spot-checks), the `--issue`/`--title` lookup front door, opt-in
-webhook notification, and the `check_testplangen.py` gate (82/82,
-CI). Phases 3–4 remain design only. This document stays the design
-record and the build order.
+spot-checks), the `--issue`/`--title` lookup front door, webhook
+notification, the `--auto` nightly gap-drafting mode
+(`run_testplangen.cmd`), and the `check_testplangen.py` gate
+(93/93, CI). Phase 4 items remain deferred by design. This document
+stays the design record and the build order.
 
 ## Why now
 
@@ -259,8 +261,16 @@ alongside the others. Legs:
    cites-a-reference exception — the prompt's tools rule admits no
    tool names from reference documents at all, so the check is
    strictly story-only (see `testplangen/CHANGES.md` v2.17).
-3. **Phase 3 — automatic mode**: `--auto`, gap detection,
-   idempotency, harness leg 6, scheduled-task doc.
+3. **Phase 3 — automatic mode** — ✅ SHIPPED (v2.18, 2026-09-04):
+   `--auto`, gap detection, idempotency, the auto harness leg, and
+   the scheduled-task wrapper (`local/run_testplangen.cmd`). Two
+   deliberate calls beyond the sketch above: an auto DRY run is
+   selection-only (zero model calls — an unattended plan must be
+   free; a single-story dry run still generates a local draft to
+   read), and `--force` disables the idempotency skip for the whole
+   run rather than per story (there is no story argument in auto
+   mode). A rider from the owner: `testplangen.provider` decouples
+   the generation transport from the sweep's `llm.provider`.
 4. **Deferred, unchanged**: docx handoff and the IssueRefs-driven
    coverage matrix stay queued exactly as the Setup guide records
    them (the matrix becomes cheap once `gantt.mjs` has its first

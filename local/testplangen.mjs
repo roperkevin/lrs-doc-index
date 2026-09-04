@@ -1,11 +1,24 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.1 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.2 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
- * documentation as reference. Phases 1–2 of
+ * documentation as reference. Phases 1–3 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
- * `testplangen/CHANGES.md` v2.16 / v2.17).
+ * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18).
+ *
+ * v1.2 (phase 3) adds:
+ *   - `--auto` — unattended gap-drafting (the runAuto docblock below
+ *     is the contract): freshly indexed User Stories nothing in the
+ *     catalog covers get a draft after the nightly sweep, gated on
+ *     `testplangen.autoDraft`, capped by `autoMaxPerRun`, idempotent
+ *     against existing drafts (`--force` overrides for one run),
+ *     verify=strict and notify forced on, dry runs selection-only
+ *     (zero model calls). Schedule via local/run_testplangen.cmd.
+ *   - `testplangen.provider` — overrides `llm.provider` for the
+ *     generation call ONLY, so generation can run the anthropic lane
+ *     while the sweep's classify step stays on AI Builder (or the
+ *     reverse).
  *
  * v1.1 (phase 2) adds:
  *   - the lookup front door — `--issue <n>` / `--title "<words>"`
@@ -102,6 +115,7 @@
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --story <docId> [--live|--dry-run] [--verify annotate|strict|off] [--notify]
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --issue <n> ...
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --title "<words>" ...
+ *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --auto [--force] [--live|--dry-run]
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --models
  *     (lists the environment's AI Builder models — copy the
  *      "LRS Test Plan Generation" GUID into llm.testPlanModelId)
@@ -117,7 +131,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.1";
+const JOB_VERSION = "v1.2";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -142,10 +156,12 @@ const VERIFY_MODES = ["annotate", "strict", "off"];
 
 const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
-  "(--story <docId> | --issue <n> | --title \"<words>\") " +
+  "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force]) " +
   "[--live|--dry-run] [--verify annotate|strict|off] [--notify] | --models\n" +
   "A bare number is always a Doc Index row id (--story); a devtopia " +
-  "issue number needs --issue — nothing is ever guessed (the v2.3 rule).";
+  "issue number needs --issue — nothing is ever guessed (the v2.3 rule). " +
+  "--auto drafts for freshly indexed, uncovered stories (needs " +
+  "testplangen.autoDraft: true; strict verification and notify are forced).";
 
 function loadConfig(argv) {
   const args = { flags: {} };
@@ -159,22 +175,22 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--models") args.flags.models = true;
     else if (a === "--notify") args.flags.notify = true;
+    else if (a === "--auto") args.flags.auto = true;
+    else if (a === "--force") args.flags.force = true;
     else if (a === "--verify") args.verify = argv[++i];
     else throw new Error(`unknown argument: ${a}\n${USAGE}`);
   }
   const refs = [args.story, args.issue, args.title].filter((v) => v !== undefined);
-  if (!args.config || (!args.flags.models && refs.length !== 1)) {
+  const wantRefs = args.flags.models || args.flags.auto ? 0 : 1;
+  if (!args.config || refs.length !== wantRefs) {
     throw new Error(USAGE);
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
-  validateConfig(
-    cfg,
-    args.issue !== undefined
-      ? [...TESTPLANGEN_REQUIRED, "sharePoint.lists.docIds"]
-      : TESTPLANGEN_REQUIRED,
-    args.config
-  );
+  const required = [...TESTPLANGEN_REQUIRED];
+  if (args.issue !== undefined) required.push("sharePoint.lists.docIds");
+  if (args.flags.auto) required.push("sharePoint.lists.docLinks");
+  validateConfig(cfg, required, args.config);
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   const authDir = path.join(cfg.paths?.workDir || ".", "auth");
@@ -207,7 +223,11 @@ function loadConfig(argv) {
     verify: "annotate",
     grounding: true,
     notify: false,
+    provider: "", // "" = follow llm.provider; "aibuilder"|"anthropic" overrides for generation only
     maxTokens: 16384,
+    autoDraft: false,
+    autoMaxPerRun: 3,
+    autoLookbackDays: 7,
     dryRun: true,
     ...(cfg.testplangen || {}),
   };
@@ -226,7 +246,9 @@ function loadConfig(argv) {
     textsFolder: cfg.sweep?.textsFolder || "/LRS Doc Index",
   };
   cfg._models = !!args.flags.models;
-  if (!cfg._models) {
+  cfg._auto = !!args.flags.auto;
+  cfg._force = !!args.flags.force;
+  if (!cfg._models && !cfg._auto) {
     if (args.story !== undefined) {
       cfg._storyId = num(args.story);
       if (cfg._storyId === undefined) {
@@ -274,6 +296,9 @@ function normalizeRow(it) {
     Title: f.Title || "",
     FileName: f.FileName || "",
     IndexStatus: f.IndexStatus || "",
+    // the list item's creation time = when the sweep first minted the
+    // row = "first indexed" (the auto mode's lookback anchor)
+    Created: it.createdDateTime || f.Created || "",
     SourceModified: f.SourceModified || "",
     TextFileUrl: hyperlink(f.TextFileUrl),
     DocKind: f.DocKind || "",
@@ -285,17 +310,33 @@ function normalizeRow(it) {
   };
 }
 
+// G4 — related-line parse (line-sliced; the label `related: ` is 9
+// characters). A missing or bracket-less line degrades to no
+// neighbors; a bracketed but internally invalid line throws and
+// fails the caller — the flow's accepted Catch residual (only
+// out-of-band sidecar edits produce it).
+function parseRelated(storyMd) {
+  const relStart = storyMd.indexOf("related: [");
+  let relLine = "[]";
+  if (relStart > -1) {
+    const tail = storyMd.slice(relStart + 9);
+    const nl = tail.indexOf("\n");
+    relLine = (nl > -1 ? tail.slice(0, nl) : tail).trim();
+  }
+  const relJsonSafe = relLine.startsWith("[") && relLine.endsWith("]") ? relLine : "[]";
+  return JSON.parse(relJsonSafe);
+}
+
 async function run(cfg) {
   const graph = new GraphClient(cfg.graph);
   const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
   const tp = cfg.testplangen;
   const sw = cfg._sw;
   const dry = !!tp.dryRun;
-  const plan = [];
 
   // run-start snapshot (the sweep pattern) — replaces the flow's
-  // per-item Get calls; neighbors and the G6 fallback query both read
-  // it, so the whole run is one list fetch
+  // per-item Get calls; neighbors, the G6 fallback query, and the
+  // auto mode's gap scan all read it, so the whole run is one fetch
   const rows = (
     await graph.listItems(siteId, cfg.sharePoint.lists.docIndex, {
       select: [
@@ -305,6 +346,9 @@ async function run(cfg) {
     })
   ).map(normalizeRow);
   const byId = new Map(rows.map((r) => [r.ID, r]));
+  const ctx = { cfg, graph, siteId, rows, byId, sw, tp, dry, plan: [] };
+
+  if (cfg._auto) return runAuto(ctx);
 
   // ---- lookup front door (v1.1) — StoryLookupFlow's deterministic
   // queries, in-process; ambiguity and misses go back to the human,
@@ -378,6 +422,47 @@ async function run(cfg) {
     throw new Error(`${GUARD_MSG} (${state})`);
   }
 
+  const res = await generateOne(ctx, story);
+
+  // run log + stdout, the curate.mjs mold
+  const logDir = cfg.paths?.workDir || ".";
+  fs.mkdirSync(logDir, { recursive: true });
+  // second resolution (not curate's minute cut): two on-demand runs
+  // in one minute are normal here and must not overwrite each other's
+  // log or dry-run draft copy
+  const logStamp = new Date().toISOString().replaceAll(":", "").slice(0, 17);
+  const logFile = path.join(logDir, `testplangen-${logStamp}.json`);
+  fs.writeFileSync(
+    logFile,
+    JSON.stringify(
+      {
+        line: res.line, dry_run: dry, draft: res.draftPath,
+        localDraft: res.localDraft, plan: dry ? ctx.plan : undefined,
+      },
+      null,
+      1
+    )
+  );
+  pruneRunLogs(logDir, 10, "testplangen-");
+
+  process.stdout.write(
+    JSON.stringify({ line: res.line, dry_run: dry, draft: res.draftPath, logFile }) + "\n"
+  );
+  process.stdout.write(res.line + "\n");
+  if (dry) {
+    process.stdout.write(
+      `dry run: nothing uploaded — the draft is at ${res.localDraft} ` +
+      `(would land as ${res.draftPath})\n`
+    );
+  }
+}
+
+// One story, G3–G13 + verifier + notify. The auto mode calls this per
+// gap story; the single-story path calls it once. The only writes are
+// the draft (live) or its workDir copy (dry).
+async function generateOne(ctx, story) {
+  const { cfg, graph, siteId, rows, byId, sw, tp, dry, plan } = ctx;
+
   // G3 — story sidecar from the synced library
   const storyUrl = story.TextFileUrl;
   const storyLocal = urlToLocal(storyUrl, sw, cfg);
@@ -390,20 +475,8 @@ async function run(cfg) {
   }
   const storyMd = fs.readFileSync(storyLocal, "utf8");
 
-  // G4 — related-line parse (line-sliced; the label `related: ` is 9
-  // characters). A missing or bracket-less line degrades to no
-  // neighbors; a bracketed but internally invalid line throws and
-  // fails the run — the flow's accepted Catch residual (only
-  // out-of-band sidecar edits produce it).
-  const relStart = storyMd.indexOf("related: [");
-  let relLine = "[]";
-  if (relStart > -1) {
-    const tail = storyMd.slice(relStart + 9);
-    const nl = tail.indexOf("\n");
-    relLine = (nl > -1 ? tail.slice(0, nl) : tail).trim();
-  }
-  const relJsonSafe = relLine.startsWith("[") && relLine.endsWith("]") ? relLine : "[]";
-  const relEntries = JSON.parse(relJsonSafe).slice(0, Number(tp.neighborCap));
+  // G4 — score-ordered related entries, capped (parseRelated above)
+  const relEntries = parseRelated(storyMd).slice(0, Number(tp.neighborCap));
 
   // G5 — lanes over the score-ordered entries (concurrency 1)
   let digest = "";
@@ -511,7 +584,11 @@ async function run(cfg) {
     ReferenceText: referenceText === "" ? "(none)" : referenceText,
   };
 
-  const provider = cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
+  // testplangen.provider overrides llm.provider for the generation
+  // call ONLY (v1.2) — so generation can run on the anthropic lane
+  // while the sweep's classify step stays on AI Builder, or vice versa
+  const provider =
+    tp.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
   let genRaw;
   if (provider === "aibuilder") {
     if (!cfg.llm.testPlanModelId) {
@@ -559,12 +636,14 @@ async function run(cfg) {
     verify = findings.length ? `${findings.length}-findings` : "ok";
     if (tp.verify === "strict" && findings.length) {
       for (const f of findings) process.stderr.write(`verifier: ${f}\n`);
-      throw new Error(
+      const err = new Error(
         `draft verifier (strict): ${findings.length} finding(s) — ` +
         "nothing was written. Findings are listed above; re-run, or use " +
         "--verify annotate to write the draft with the findings flagged " +
         "for the §4 review."
       );
+      err.verifierFindings = findings; // runAuto reads these for its alert
+      throw err;
     }
   }
   let verifyBlock = "";
@@ -633,38 +712,202 @@ async function run(cfg) {
       );
     }
   }
-  const logDir = cfg.paths?.workDir || ".";
-  fs.mkdirSync(logDir, { recursive: true });
-  // second resolution (not curate's minute cut): two on-demand runs
-  // in one minute are normal here and must not overwrite each other's
-  // log or dry-run draft copy
-  const logStamp = new Date().toISOString().replaceAll(":", "").slice(0, 17);
+
   let localDraft;
   if (dry) {
     // the would-be draft, locally inspectable (and lintable with
     // review/harness/check_draft_coverage.py) before any live run
-    localDraft = path.join(logDir, `testplangen-draft-${logStamp}.md`);
+    const logDir = cfg.paths?.workDir || ".";
+    fs.mkdirSync(logDir, { recursive: true });
+    localDraft = path.join(
+      logDir,
+      `testplangen-draft-${new Date().toISOString().replaceAll(":", "").slice(0, 17)}.md`
+    );
     fs.writeFileSync(localDraft, draft);
   }
-  const logFile = path.join(logDir, `testplangen-${logStamp}.json`);
-  fs.writeFileSync(
-    logFile,
-    JSON.stringify(
-      { line, dry_run: dry, draft: draftPath, localDraft, plan: dry ? plan : undefined },
-      null,
-      1
-    )
-  );
-  pruneRunLogs(logDir, 10, "testplangen-");
+  return { line, draftPath, draftName, localDraft, verify, findings };
+}
 
-  process.stdout.write(JSON.stringify({ line, dry_run: dry, draft: draftPath, logFile }) + "\n");
+/**
+ * --auto (v1.2, phase 3): unattended gap-drafting after the nightly
+ * sweep. Gated on testplangen.autoDraft (the owner switch — a
+ * scheduled task always passes --auto; the config decides whether it
+ * does anything). Candidates: Indexed User Story rows first indexed
+ * within autoLookbackDays (the row's created time; SourceModified is
+ * the fallback). A story is a GAP when nothing in the catalog covers
+ * it: no Test Plan among its sidecar's `related:` entries AND no Doc
+ * Links edge to a Test Plan row. Idempotency: a story with ANY
+ * existing `TestPlanDraft__doc{ID}__*` file in the drafts folder is
+ * skipped — a PE deleting the draft (the §4 housekeeping step) is
+ * what re-arms auto-drafting; --force disables the skip for one run.
+ * autoMaxPerRun caps model calls per run; refused/failed stories are
+ * retried on later runs under the same cap. Unattended posture is
+ * forced: verify=strict (a draft with findings is NOT written — the
+ * findings go to the run log and the webhook) and notify=on. A DRY
+ * auto run is selection-only: it reports what would draft and makes
+ * ZERO model calls (deliberately unlike single-story dry runs, which
+ * generate a local draft to read — an unattended plan must be free).
+ */
+async function runAuto(ctx) {
+  const { cfg, graph, siteId, rows, byId, sw } = ctx;
+  if (!cfg.testplangen.autoDraft) {
+    throw new Error(
+      "--auto requires testplangen.autoDraft: true in config — the owner " +
+      "switch for unattended drafting (Local_Setup.md §11)"
+    );
+  }
+  const tp = { ...cfg.testplangen, verify: "strict", notify: true };
+  const lookbackDays = Number(tp.autoLookbackDays) || 7;
+  const maxPerRun = Number(tp.autoMaxPerRun) || 3;
+  const dry = !!tp.dryRun;
+  const actx = { ...ctx, tp, dry };
+
+  const isPlanId = (id) => byId.get(id)?.DocKind === "Test Plan";
+
+  // gap test (b): stories already edge-linked to a Test Plan
+  const linkRows = await graph.listItems(siteId, cfg.sharePoint.lists.docLinks, {
+    select: ["DocALookupId", "DocBLookupId"],
+  });
+  const linkedToPlan = new Set();
+  for (const it of linkRows) {
+    const f = it.fields || {};
+    const a = num(f.DocALookupId) ?? num(f.DocAId);
+    const b = num(f.DocBLookupId) ?? num(f.DocBId);
+    if (a === undefined || b === undefined) continue;
+    if (isPlanId(b)) linkedToPlan.add(a);
+    if (isPlanId(a)) linkedToPlan.add(b);
+  }
+
+  // idempotency: existing auto/manual drafts, one listing per run
+  const existing = new Set();
+  for (const child of await graph.listFolder(siteId, tp.draftFolder)) {
+    const m = /^TestPlanDraft__doc(\d+)__/.exec(String(child.name || ""));
+    if (m) existing.add(Number(m[1]));
+  }
+
+  const cutoff = Date.now() - lookbackDays * 86400000;
+  const firstIndexed = (r) => Date.parse(r.Created || r.SourceModified || "") || 0;
+  const candidates = rows
+    .filter(
+      (r) =>
+        r.DocKind === "User Story" && r.IndexStatus === "Indexed" &&
+        r.TextFileUrl && firstIndexed(r) >= cutoff
+    )
+    .sort((a, b) => firstIndexed(b) - firstIndexed(a)); // freshest first
+
+  const sum = {
+    candidates: candidates.length, covered: 0, no_sidecar: 0,
+    skipped_existing: 0, gaps: 0, selected: 0, drafted: 0, refused: 0,
+    errors: 0, deferred: 0,
+  };
+  const detail = [];
+  const gapStories = [];
+  for (const story of candidates) {
+    if (!cfg._force && existing.has(story.ID)) {
+      sum.skipped_existing++;
+      detail.push({ story: story.ID, title: story.Title, action: "skipped-existing-draft" });
+      continue;
+    }
+    const local = urlToLocal(story.TextFileUrl, sw, cfg);
+    if (!local || !fs.existsSync(local)) {
+      sum.no_sidecar++;
+      detail.push({ story: story.ID, title: story.Title, action: "no-sidecar" });
+      continue;
+    }
+    let covered = linkedToPlan.has(story.ID);
+    if (!covered) {
+      try {
+        covered = parseRelated(fs.readFileSync(local, "utf8")).some((e) => isPlanId(num(e?.doc)));
+      } catch {
+        // a hand-mangled related: line — not assessable, never spend on it
+        sum.no_sidecar++;
+        detail.push({ story: story.ID, title: story.Title, action: "unparseable-related" });
+        continue;
+      }
+    }
+    if (covered) {
+      sum.covered++;
+      detail.push({ story: story.ID, title: story.Title, action: "covered" });
+      continue;
+    }
+    gapStories.push(story);
+  }
+  sum.gaps = gapStories.length;
+  const selected = gapStories.slice(0, maxPerRun);
+  sum.selected = selected.length;
+  sum.deferred = gapStories.length - selected.length;
+
+  for (const story of selected) {
+    const label = `story ${story.ID} "${story.Title}"`;
+    if (dry) {
+      detail.push({ story: story.ID, title: story.Title, action: "would-draft" });
+      process.stdout.write(`auto: ${label} — would draft (dry run, no model call)\n`);
+      continue;
+    }
+    try {
+      const res = await generateOne(actx, story);
+      sum.drafted++;
+      detail.push({
+        story: story.ID, title: story.Title, action: "drafted",
+        draft: res.draftPath, line: res.line,
+      });
+      process.stdout.write(`auto: ${label} — drafted ${res.draftName}\n`);
+    } catch (e) {
+      if (Array.isArray(e.verifierFindings)) {
+        sum.refused++;
+        detail.push({
+          story: story.ID, title: story.Title, action: "refused",
+          findings: e.verifierFindings,
+        });
+        process.stdout.write(
+          `auto: ${label} — REFUSED by the verifier (${e.verifierFindings.length} findings)\n`
+        );
+        await sendAlert(
+          cfg,
+          "TestPlanGen auto: draft refused by the verifier",
+          `${label}\n` +
+          e.verifierFindings.slice(0, 10).map((f) => `- ${f}`).join("\n") +
+          "\nNo draft was written; the next auto run retries under the nightly budget."
+        );
+      } else {
+        // one failed story never kills the run — count, alert, continue
+        sum.errors++;
+        detail.push({
+          story: story.ID, title: story.Title, action: "error",
+          error: String(e.message || e).slice(0, 500),
+        });
+        process.stderr.write(`auto: ${label} — FAILED: ${e.message}\n`);
+        await sendAlert(
+          cfg,
+          "TestPlanGen auto: generation failed",
+          `${label}\n${String(e.message || e).slice(0, 1000)}`
+        );
+      }
+    }
+  }
+
+  const line =
+    `mode=auto lookbackDays=${lookbackDays} candidates=${sum.candidates} ` +
+    `covered=${sum.covered} no_sidecar=${sum.no_sidecar} ` +
+    `skipped_existing=${sum.skipped_existing} gaps=${sum.gaps} ` +
+    `selected=${sum.selected} drafted=${sum.drafted} refused=${sum.refused} ` +
+    `errors=${sum.errors} deferred=${sum.deferred}`;
+  const logDir = cfg.paths?.workDir || ".";
+  fs.mkdirSync(logDir, { recursive: true });
+  const logStamp = new Date().toISOString().replaceAll(":", "").slice(0, 17);
+  const logFile = path.join(logDir, `testplangen-${logStamp}.json`);
+  fs.writeFileSync(logFile, JSON.stringify({ line, dry_run: dry, detail }, null, 1));
+  pruneRunLogs(logDir, 10, "testplangen-");
+  process.stdout.write(JSON.stringify({ line, dry_run: dry, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) {
     process.stdout.write(
-      `dry run: nothing uploaded — the draft is at ${localDraft} ` +
-      `(would land as ${draftPath})\n`
+      `dry run: selection only — ${sum.selected} would draft, no model calls made\n`
     );
   }
+  // partial failures surface in the exit code for the task log, after
+  // every candidate got its chance
+  if (sum.errors > 0) process.exitCode = 1;
 }
 
 async function main() {

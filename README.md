@@ -90,7 +90,7 @@ keeps the old yaml-on-top layout).
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/Local_TestPlanGen_Plan.md | Local generation job — design record + phased build order (phase 1 shipped as v2.16) | — |
-| testplangen/CHANGES.md | Test-plan generation release notes | v2.17 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.18 |
 | pad/PAD_Setup.md | PAD compute-offload build + deploy guide (Run-script quota workaround) | v2.1 |
 | pad/flow/DocIndexCompute.robin.txt | PAD desktop flow (paste-ready Robin; quick-run + batch modes) | v2.2 |
 | pad/runner/run_job.mjs | Node runner — executes `scripts/` verbatim, all nine Run-script contracts; batch job files + single-op CLI | v2.0 |
@@ -102,7 +102,7 @@ keeps the old yaml-on-top layout).
 | local/Local_Setup.md | Local sweep build + deploy guide — the whole sweep off Power Automate (SharePoint stays) | v1.0 |
 | local/sweep.mjs | Local sweep orchestrator — flow v2.8 reimplemented over Graph + direct LLM API + synced libraries | v1.0 |
 | local/auth.mjs | Delegated device-code sign-in (Microsoft pre-registered public clients — no Azure app registration) | v1.0 |
-| local/graph.mjs | Microsoft Graph list client + SPO REST fallback for hyperlink columns (device sign-in default, client-credentials optional; list GUIDs from config) | v1.2 |
+| local/graph.mjs | Microsoft Graph list client + SPO REST fallback for hyperlink columns (device sign-in default, client-credentials optional; list GUIDs from config; v1.3 adds default-drive folder listing for the auto-draft idempotency scan) | v1.3 |
 | local/probe.mjs | Per-field Graph write probe (diagnostic) | v1.0 |
 | local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API; since v1.4 also `generateText` (raw-markdown generation for testplangen.mjs) | v1.4 |
 | local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock Dataverse Predict + mock Anthropic + mock device-code auth; dry/live/idempotency/provider/auth legs; CI) | v1.3 |
@@ -111,8 +111,9 @@ keeps the old yaml-on-top layout).
 | local/svg2pptx.mjs | Figure SVGs → editable PowerPoint shapes (pull sweep figures into review decks: one native, grouped, restyleable figure per slide, titled with its case heading + source document, the case's tables as native editable tables, sidecar metadata line; zero dependencies) | v1.3 |
 | local/harness/check_svg2pptx.py | svg2pptx gate (full SlideFigures vocabulary fixture; package/shape/style/label/title-band/case-table contract + sidecar lookup legs + python-pptx open leg; CI) | v1.3 |
 | local/lib/*.mjs | The sweep's shared modules: util, doclinks, presentation, bodyindex, statuspage, indexpages, alerts, config (v1.31 split) + msg (CFB/.msg parser, v1.37), embedindex (embedding relatedness, v1.38), remotefs (no-OneDrive mode, v1.39), draftlint (in-process TestPlanGen draft-contract lint, testplangen v2.16) | — |
-| local/testplangen.mjs | **TestPlanGenCore as a local on-demand job**: story guard, related-line lanes, one model call (tenant AI Builder prompt via Dataverse Predict, or `prompts/TestPlanGen_Prompt.md` verbatim via Anthropic), fail-closed marker slice, two-layer verifier (contract lint + story-grounding heuristics), `--issue`/`--title` lookup (StoryLookupFlow's queries in-process), opt-in webhook notify, timestamped draft to Shared Documents/Test Plan Drafts (Local_Setup §11; `testplangen/CHANGES.md` v2.16–v2.17) | v1.1 |
-| local/harness/check_testplangen.py | Generation-job gate (mock Graph + mock Predict + mock Anthropic; guard/lanes/caps/fail-closed/verifier/lookup/notify/grounding legs incl. draftlint↔Python agreement; 82 checks; CI) | — |
+| local/testplangen.mjs | **TestPlanGenCore as a local job**: story guard, related-line lanes, one model call (tenant AI Builder prompt via Dataverse Predict, or `prompts/TestPlanGen_Prompt.md` verbatim via Anthropic — per-lane via `testplangen.provider`), fail-closed marker slice, two-layer verifier (contract lint + story-grounding heuristics), `--issue`/`--title` lookup (StoryLookupFlow's queries in-process), webhook notify, timestamped draft to Shared Documents/Test Plan Drafts — and `--auto`: nightly gap-drafting for freshly indexed uncovered stories (owner-switched, budget-capped, idempotent, strict-verified) (Local_Setup §11; `testplangen/CHANGES.md` v2.16–v2.18) | v1.2 |
+| local/run_testplangen.cmd | Scheduled-task wrapper for `--auto --live` (inert until `testplangen.autoDraft`; self-updates from `deploy`) | — |
+| local/harness/check_testplangen.py | Generation-job gate (mock Graph + mock Predict + mock Anthropic; guard/lanes/caps/fail-closed/verifier/lookup/notify/grounding/auto legs incl. draftlint↔Python agreement; 93 checks; CI) | — |
 | local/Hosted_Runner.md | Remote-files mode + hosted GitHub Actions sweep — setup, prerequisites, and the credentials policy decision | v1.39 |
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |

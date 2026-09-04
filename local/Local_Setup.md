@@ -539,7 +539,10 @@ unchanged and remains a REQUIRED control.
 Setup (after the sweep's §1–§4 — same config, sign-ins, and synced
 sidecar library; the sidecars ARE the retrieval source):
 
-1. Pick the prompt transport (`llm.provider`, shared with the sweep):
+1. Pick the prompt transport — `llm.provider`, shared with the
+   sweep, or `testplangen.provider` to override it for GENERATION
+   ONLY (v1.2: e.g. drafts on the anthropic lane while the nightly
+   classify step keeps burning AI Builder credits, or the reverse):
    - **aibuilder** (default): the tenant's `LRS Test Plan
      Generation` AI Builder prompt via Dataverse Predict. Find its
      GUID with
@@ -609,7 +612,52 @@ actually WRITTEN: story id/title, the draft's URL, and the
 `Gen_summary` line. Default off — whoever runs a manual generation
 is already watching; dry runs never notify (nothing was written),
 and delivery is best-effort (a down webhook never fails a run).
-Phase 3's automatic mode will force this on.
+The automatic mode below forces it on.
+
+**`--auto` — unattended gap-drafting** (v1.2, phase 3): after the
+nightly sweep, draft for freshly indexed User Stories that nothing
+in the catalog covers. Candidates are Indexed User Story rows first
+indexed (row creation time) within `autoLookbackDays` (7); a story
+is a GAP when its sidecar's `related:` line carries no Test Plan
+AND no Doc Links edge ties it to one (needs
+`sharePoint.lists.docLinks` in config — already there for the
+sweep). Guard rails, all forced or built in:
+
+- **Owner switch**: `testplangen.autoDraft: true` — without it the
+  run (and the scheduled task) refuses in one line and drafts
+  nothing.
+- **Budget**: `autoMaxPerRun` (3) caps model calls per run; further
+  gap stories defer to the next night (`deferred=` in the summary).
+- **Idempotency**: a story with ANY existing
+  `TestPlanDraft__doc{ID}__*` file in the drafts folder is skipped —
+  deleting the draft after finalize (§4 housekeeping) is what
+  re-arms auto-drafting for that story; `--force` disables the skip
+  for one run.
+- **Unattended posture**: verify is forced to `strict` (a draft
+  with verifier findings is NOT written — the findings go to the
+  run log and the webhook, and the story retries next night under
+  the budget) and notify is forced ON, so every landed draft and
+  every refusal reaches the webhook.
+- **Dry runs are selection-only**: `--auto --dry-run` reports what
+  would draft and makes ZERO model calls — deliberately unlike a
+  single-story dry run, which generates a local draft to read; an
+  unattended plan must be free. A failed story never kills the
+  run: it is counted (`errors=`), alerted, and the exit code goes
+  nonzero after every candidate got its chance.
+
+Schedule it: register a daily task for `local\run_testplangen.cmd`
+offset AFTER the nightly sweep (e.g. 18:30 — the sweep fires 17:00
+Mountain), e.g.
+`schtasks /create /tn "LRS Test Plan Auto Draft" /tr C:\Repos\lrs-doc-index\local\run_testplangen.cmd /sc daily /st 18:30`.
+The wrapper self-updates from `deploy` and logs to
+`work\testplangen-task.log`, like the sweep and curation tasks. It
+stays inert until `autoDraft` is set, so registering it early costs
+nothing. Auto summary reading: `covered=` should dominate over time
+(most stories get plans through the normal loop); a growing
+`deferred=` means the budget is too tight; `refused=` entries are
+the verifier holding the strict line — read the webhook findings
+and either fix the story's sidecar/coverage or draft that story
+manually with `--verify annotate`.
 
 Knobs (`testplangen` in config, defaults in parentheses) mirror the
 flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
@@ -617,7 +665,9 @@ flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 (400), exemplarSlots (2), referenceSlots (3), promptVersion (v1.7,
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
-grounding (true), notify (false), maxTokens (16384), dryRun (true). Deliberate deviations from the
+grounding (true), notify (false), provider ("" = follow
+llm.provider), maxTokens (16384), autoDraft (false), autoMaxPerRun
+(3), autoLookbackDays (7), dryRun (true). Deliberate deviations from the
 flow, all bounded: one run-start Doc Index snapshot replaces the
 per-item Get calls; the G6 fallback orders by SourceModified where
 the flow orders by list Modified (same newest-first intent); a story

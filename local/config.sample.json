@@ -54,7 +54,7 @@
   },
 
   "testplangen": {
-    "$comment": "On-demand test-plan generation (local/testplangen.mjs — Local_Setup.md §11). Optional; these are the defaults, mirroring the TestPlanGenCore flow's Config_gen name-for-name. promptVersion is the draft-banner stamp (TestPlanGenPromptVersion — NEVER Config.PromptVersion); draftFolder is drive-root-relative (the site default drive root = Shared Documents); verify is the draft-verifier policy: 'annotate' flags findings in the written draft, 'strict' refuses to write a draft with findings, 'off' = cloud-flow parity; grounding false disables just the heuristic story-grounding layer (the contract lint stays); notify true posts one webhook line per WRITTEN draft to alerts.webhookUrl (also per-run via --notify); maxTokens bounds the anthropic lane's reply (a truncated draft fails closed).",
+    "$comment": "On-demand test-plan generation (local/testplangen.mjs — Local_Setup.md §11). Optional; these are the defaults, mirroring the TestPlanGenCore flow's Config_gen name-for-name. promptVersion is the draft-banner stamp (TestPlanGenPromptVersion — NEVER Config.PromptVersion); draftFolder is drive-root-relative (the site default drive root = Shared Documents); verify is the draft-verifier policy: 'annotate' flags findings in the written draft, 'strict' refuses to write a draft with findings, 'off' = cloud-flow parity; grounding false disables just the heuristic story-grounding layer (the contract lint stays); notify true posts one webhook line per WRITTEN draft to alerts.webhookUrl (also per-run via --notify); provider '' follows llm.provider, or set 'anthropic'/'aibuilder' to override the transport for GENERATION ONLY (e.g. drafts on the Anthropic lane while the sweep's classify step stays on AI Builder); maxTokens bounds the anthropic lane's reply (a truncated draft fails closed). The auto knobs gate `--auto` (unattended gap-drafting after the nightly sweep, schedule local\\run_testplangen.cmd): autoDraft is the owner switch — the scheduled task is INERT until it is true; autoMaxPerRun caps model calls per night; autoLookbackDays bounds which freshly indexed stories are candidates.",
     "storyCap": 45000,
     "exemplarCap": 20000,
     "referenceCap": 12000,
@@ -67,7 +67,11 @@
     "verify": "annotate",
     "grounding": true,
     "notify": false,
+    "provider": "",
     "maxTokens": 16384,
+    "autoDraft": false,
+    "autoMaxPerRun": 3,
+    "autoLookbackDays": 7,
     "dryRun": true
   },
 

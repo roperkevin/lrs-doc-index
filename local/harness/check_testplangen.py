@@ -51,6 +51,7 @@ verifier the cloud flow could not have
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
 """
+import datetime
 import json
 import os
 import re
@@ -161,6 +162,57 @@ BAD_DRAFT = GOOD_DRAFT.replace(
 
 wrap = lambda body: "Here is your draft.\n[[[DRAFT BEGIN]]]\n" + body + "\n[[[DRAFT END]]]\nDone."
 
+# a strict-clean draft for the auto leg's "Lonely Story" (doc 13,
+# body "As an editor, I need to realign a route."): contract-valid AND
+# grounded — coverage rows quote the story, no tool-shaped phrases
+DRAFT_13 = """# Test Plan — Route Realignment
+
+## Overview
+
+| Surface | Target release | PE |
+| --- | --- | --- |
+| Pro | 3.8 |  |
+
+Verifies realignment of a route.
+
+## Setup / Prerequisites
+- [ ] 1. An LRS network with one editable route. [VERIFY: minimum configuration]
+
+## Positive Tests
+
+### TC-P1 — Realign updates the route shape
+**Steps:**
+- [ ] 1. Realign the route along a new path.
+
+**Expected Result:** The route follows the new path.
+
+**Trace:** "realign a route" — story statement.
+
+## Negative Tests
+
+> [!CAUTION]
+> A pass below is the described denial or error — never the edit
+> succeeding.
+
+### TC-N1 — Realign denied without an editable route
+**Steps:**
+- [ ] 1. Attempt to realign a route that is not editable.
+
+**Expected Result:** The realign is denied.
+
+**Trace:** "realign a route" — denial variant of the story statement.
+
+## Open Questions
+- [ ] [VERIFY: minimum configuration for setup]
+
+## Coverage Map
+
+| # | Requirement (source) | Covered by |
+| --- | --- | --- |
+| 1 | "realign a route" (story) | TC-P1 |
+| 2 | "realign a route" denial handling (story) | TC-N1 |
+"""
+
 
 # ---- mock Graph + Dataverse Predict + Anthropic ---------------------
 
@@ -168,6 +220,7 @@ class MockState:
     def __init__(self):
         self.lists = {}           # list guid -> items ([{id, fields}])
         self.gen_text = ""        # the model reply, both providers
+        self.gen_by_doc = {}      # doc id -> reply (routed by StoryMeta's doc_id)
         self.gen_calls = 0
         self.gen_last_inputs = {}     # Predict requestv2
         self.ant_calls = 0
@@ -218,7 +271,10 @@ def make_handler(state):
                 rv = dict(body.get("requestv2", {}))
                 rv.pop("@odata.type", None)
                 state.gen_last_inputs = rv
-                return self._json({"responsev2": {"predictionOutput": {"text": state.gen_text}}})
+                dm = re.search(r"doc_id: (\d+)", rv.get("StoryMeta", ""))
+                text = state.gen_by_doc.get(int(dm.group(1)) if dm else -1,
+                                            state.gen_text)
+                return self._json({"responsev2": {"predictionOutput": {"text": text}}})
             return self._json({"error": "unhandled POST " + p}, 500)
 
         def do_PUT(self):
@@ -231,6 +287,14 @@ def make_handler(state):
 
         def do_GET(self):
             p = unquote(urlparse(self.path).path)
+            # drafts-folder children (the auto mode's idempotency scan)
+            m = re.match(r"^/v1\.0/sites/[^/]+/drive/root:(/.+):/children$", p)
+            if m:
+                prefix = m.group(1) + "/"
+                kids = [{"name": k[len(prefix):], "id": f"c{i}"}
+                        for i, k in enumerate(sorted(state.drafts))
+                        if k.startswith(prefix)]
+                return self._json({"value": kids})
             m = re.match(r"^/v1\.0/sites/([^/]+):(/.+)$", p)
             if m:
                 return self._json({"id": "site-1"})
@@ -257,14 +321,23 @@ def sidecar(sidecar_dir, folder, name, body, related=None):
     return f"{SITE_URL}/LRS Doc Index/{folder}/{name}"
 
 
-def doc_row(iid, title, kind, status, surface, url, release="", pe="", summary=""):
+def iso_ago(days):
+    t = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=days)
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def doc_row(iid, title, kind, status, surface, url, release="", pe="",
+            summary="", created=None):
     fields = {"Title": title, "FileName": title, "DocKind": kind,
               "IndexStatus": status, "Surface": surface,
               "TargetRelease": release, "PE": pe, "Summary": summary,
               "SourceModified": f"2026-08-{iid:02d}T10:00:00Z"}
     if url:
         fields["TextFileUrl"] = {"Url": url, "Description": url.rsplit("/", 1)[-1]}
-    return {"id": str(iid), "fields": fields}
+    # createdDateTime = when the sweep first minted the row (the auto
+    # mode's lookback anchor); relative so the gate never goes stale
+    return {"id": str(iid), "createdDateTime": created or iso_ago(1),
+            "fields": fields}
 
 
 def run_job(cfg_path, extra):
@@ -298,6 +371,13 @@ def run_py_lint(md_path):
 def summary_of(stdout):
     for line in stdout.splitlines():
         if line.startswith("story="):
+            return dict(kv.split("=", 1) for kv in line.split())
+    return {}
+
+
+def auto_summary(stdout):
+    for line in stdout.splitlines():
+        if line.startswith("mode=auto"):
             return dict(kv.split("=", 1) for kv in line.split())
     return {}
 
@@ -348,6 +428,8 @@ def main():
                  "and Realign Route. Test each pathway.")
     url_enum = sidecar(sidecar_dir, "User Stories", "enum__doc16.md",
                        enum_body, [])
+    url_edge = sidecar(sidecar_dir, "User Stories", "edge__doc17.md",
+                       "A tale with an edge-linked plan.", [])
 
     state.lists["list-docindex"] = [
         doc_row(12, "Route Merge", "User Story", "Indexed", "Pro", url_story,
@@ -364,8 +446,20 @@ def main():
         doc_row(23, "Plan C", "Test Plan", "Indexed", "Pro", url_c),
         doc_row(24, "Plan D", "Test Plan", "Indexed", "Server", url_d),
         doc_row(25, "Spike E", "Design Spike", "Indexed", "Pro", url_e),
-        doc_row(26, "Adjacent Story", "User Story", "Indexed", "Pro", url_adj),
+        # OLD row: outside the auto lookback, so never an auto candidate
+        # (its "Story" title still counts in the leg-6 title lane)
+        doc_row(26, "Adjacent Story", "User Story", "Indexed", "Pro", url_adj,
+                created=iso_ago(30)),
         doc_row(16, "Enum Story", "User Story", "Indexed", "Pro", url_enum),
+        # covered by a Doc Links edge to Plan A, not by its related: line
+        # (title deliberately avoids "story" — the leg-6 count stands)
+        doc_row(17, "Edge Linked", "User Story", "Indexed", "Pro", url_edge),
+    ]
+    # Doc Links edges (the auto gap test's (b) source): 17<->21 covers
+    # Edge Linked via Plan A; 12<->13 links two stories — no coverage
+    state.lists["list-doclinks"] = [
+        {"id": "600", "fields": {"DocALookupId": 17, "DocBLookupId": 21}},
+        {"id": "601", "fields": {"DocALookupId": 12, "DocBLookupId": 13}},
     ]
     # Doc IDs rows (the issue lane's source, minted by the sweep):
     # 4855 -> doc 12 twice (dedup); 7777 -> two stories (ambiguous);
@@ -383,7 +477,8 @@ def main():
             "sharePoint": {
                 "hostname": "mock.example",
                 "sitePath": "/sites/lrsworkspace",
-                "lists": {"docIndex": "list-docindex", "docIds": "list-docids"},
+                "lists": {"docIndex": "list-docindex", "docIds": "list-docids",
+                          "docLinks": "list-doclinks"},
             },
             "paths": {"sidecarLibrary": sidecar_dir, "workDir": work_dir},
             "alerts": {"webhookUrl": base + "/alert"},
@@ -739,6 +834,101 @@ def main():
     r = run_job(cfg_noground, ["--story", "16", "--dry-run"])
     check("testplangen.grounding false disables just that layer",
           summary_of(r.stdout).get("verify") == "ok", r.stdout)
+
+    # ---- leg 9: auto mode ------------------------------------------
+    print("== leg 9: auto mode")
+    state.gen_text = wrap(GOOD_DRAFT)
+    r = run_job(cfg_main, ["--auto", "--live"])
+    check("auto requires the autoDraft owner switch",
+          r.returncode != 0 and "autoDraft" in r.stderr, r.stderr)
+    r = run_job(cfg_main, ["--auto", "--story", "12"])
+    check("auto excludes story references",
+          r.returncode != 0 and "usage:" in r.stderr, r.stderr)
+
+    cfg_auto = write_cfg("config-auto.json",
+                         testplangen={"neighborCap": 8, "autoDraft": True})
+    state.drafts.clear()
+    calls = state.gen_calls
+    r = run_job(cfg_auto, ["--auto", "--dry-run"])
+    summ = auto_summary(r.stdout)
+    check("auto dry: gap selection over the lookback window",
+          r.returncode == 0 and summ.get("candidates") == "4"
+          and summ.get("covered") == "2" and summ.get("gaps") == "2"
+          and summ.get("selected") == "2" and summ.get("drafted") == "0",
+          r.stdout + r.stderr)
+    check("auto dry: selection only — zero model calls, nothing written",
+          state.gen_calls == calls and state.drafts == {}
+          and r.stdout.count("— would draft") == 2, r.stdout)
+
+    # live: story 13 gets a strict-clean draft, story 16's reply fails
+    # grounding -> refused (no draft, one alert), both under one run
+    state.gen_by_doc = {13: wrap(DRAFT_13)}
+    state.alerts.clear()
+    r = run_job(cfg_auto, ["--auto", "--live"])
+    summ = auto_summary(r.stdout)
+    doc13 = [p for p in state.drafts if "TestPlanDraft__doc13__" in p]
+    check("auto live: gap story drafted, bad draft refused",
+          r.returncode == 0 and summ.get("drafted") == "1"
+          and summ.get("refused") == "1" and summ.get("errors") == "0"
+          and len(doc13) == 1 and not any("doc16" in p for p in state.drafts),
+          r.stdout + r.stderr)
+    check("auto live: per-story lines in the run output",
+          "auto: story 13" in r.stdout and "REFUSED by the verifier" in r.stdout,
+          r.stdout)
+    texts = [a.get("text", "") for a in state.alerts]
+    check("auto live: notify for the draft AND an alert for the refusal",
+          len(texts) == 2
+          and any("draft ready" in t and "doc13" in t.replace("Story 13", "doc13")
+                  for t in texts)
+          and any("refused by the verifier" in t and "grounding:" in t for t in texts),
+          str(texts))
+
+    # idempotency: the doc13 draft now exists -> skipped; the refused
+    # story is still a gap and retries under the budget
+    state.alerts.clear()
+    r = run_job(cfg_auto, ["--auto", "--live"])
+    summ = auto_summary(r.stdout)
+    check("auto idempotency: existing draft skips, refusal retries",
+          summ.get("skipped_existing") == "1" and summ.get("drafted") == "0"
+          and summ.get("refused") == "1"
+          and len([p for p in state.drafts if "doc13" in p]) == 1, r.stdout)
+
+    # --force re-arms the skipped story for one run (drafted=1 with
+    # skipped_existing=0 is the contract; the re-draft's timestamped
+    # name may collide with the first within one second in this mock,
+    # so the draft COUNT is deliberately not asserted)
+    r = run_job(cfg_auto, ["--auto", "--live", "--force"])
+    summ = auto_summary(r.stdout)
+    check("auto --force overrides the idempotency skip",
+          summ.get("drafted") == "1" and summ.get("skipped_existing") == "0"
+          and len([p for p in state.drafts if "doc13" in p]) >= 1, r.stdout)
+
+    # budget: cap 1 with --force -> one selected, one deferred (dry)
+    cfg_auto1 = write_cfg("config-auto1.json",
+                          testplangen={"neighborCap": 8, "autoDraft": True,
+                                       "autoMaxPerRun": 1})
+    r = run_job(cfg_auto1, ["--auto", "--dry-run", "--force"])
+    summ = auto_summary(r.stdout)
+    check("autoMaxPerRun caps the run, the rest defers",
+          summ.get("gaps") == "2" and summ.get("selected") == "1"
+          and summ.get("deferred") == "1", r.stdout)
+
+    # testplangen.provider override: generation on anthropic while the
+    # llm section stays aibuilder-shaped
+    cfg_prov = write_cfg("config-prov.json",
+                         testplangen={"neighborCap": 8, "provider": "anthropic"},
+                         llm={"provider": "aibuilder", "environmentUrl": base,
+                              "testPlanModelId": GEN_MODEL, "maxRetries": 0,
+                              "apiKey": "mock-key", "baseUrl": base})
+    ant_calls = state.ant_calls
+    gen_calls = state.gen_calls
+    state.drafts.clear()
+    r = run_job(cfg_prov, ["--story", "12", "--live"])
+    check("testplangen.provider overrides llm.provider for generation only",
+          r.returncode == 0 and state.ant_calls == ant_calls + 1
+          and state.gen_calls == gen_calls
+          and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
+          r.stdout + r.stderr)
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
