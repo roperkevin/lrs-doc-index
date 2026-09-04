@@ -702,6 +702,16 @@ output is an unstyled fresh document: apply the team template on
 top; what it saves is the transcription, not the branding. Gate:
 `local/harness/check_draft2docx.py` (CI).
 
+**pptx review deck** (v2.23): for walking the §4 review as slides —
+`node local\draft2pptx.mjs "<draft>.md"` (zero dependencies) writes
+a sibling .pptx: title + at-a-glance slides, one slide per TC case
+(steps checklist, Expected Result and Trace cards, `[VERIFY:` flags
+in amber), Coverage Map and Issue Trace as native editable tables,
+all on the Diagram Style Framework palette so svg2pptx figure
+slides drop in beside it. The docx stays the document of record;
+the deck is the review surface. Gate:
+`local/harness/check_draft2pptx.py` (CI).
+
 Schedule it: register a daily task for `local\run_testplangen.cmd`
 offset AFTER the nightly sweep (e.g. 18:30 — the sweep fires 17:00
 Mountain), e.g.

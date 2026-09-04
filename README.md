@@ -116,6 +116,8 @@ keeps the old yaml-on-top layout).
 | local/draft2docx.mjs | Reviewed draft .md → editable Word file (zero dependencies — real heading styles, Word tables, checkbox task lists, machine comments dropped; the docx-handoff follow-on closed locally) | v1.0 |
 | local/harness/check_testplangen.py | Generation-job gate (mock Graph + mock Predict + mock Anthropic; guard/lanes/caps/fail-closed/verifier/lookup/notify/grounding/auto/issue-trace/gap-report/pinned-lane legs incl. draftlint↔Python agreement; 116 checks; CI) | — |
 | local/harness/check_draft2docx.py | Converter gate (python-docx read-back: headings, tables, checkboxes, alerts, comment dropping, CLI contract; CI) | — |
+| local/draft2pptx.mjs | Draft .md → designed pptx review deck (zero dependencies — title/at-a-glance/divider slides, one slide per TC case with Expected Result + Trace cards, checkbox setup rows, native Coverage Map / Issue Trace tables, Diagram Style Framework palette; machine comments dropped) | v1.0 |
+| local/harness/check_draft2pptx.py | Deck gate (python-pptx read-back: slide walk, glance counts, case-slide contract, amber VERIFY runs, native tables, provenance, CLI contract; CI) | — |
 | local/Hosted_Runner.md | Remote-files mode + hosted GitHub Actions sweep — setup, prerequisites, and the credentials policy decision | v1.39 |
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
