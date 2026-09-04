@@ -19,7 +19,7 @@ history; `flow/v2_8/definition.json` carries the current ones):
 | Doc Index | `b98fb2a1-1c91-48f9-9b9b-323656557171` |
 | Keywords | `a7bd004b-84e0-408f-b32d-3f1d791e2af6` |
 | Doc IDs | `6263eeac-471a-489e-96c7-1448f45378d4` |
-| Issue Refs | not referenced by the flow — verify on the tenant before building flow #2 |
+| Issue Refs | `4d0e6561-80e3-49f4-aa20-e5889cc88414` (owner-verified on the tenant 2026-09-04 — never referenced by any flow; its feeder is the local job `local/gantt.mjs`) |
 | Doc Keywords | `4eabc799-c856-49ea-bf25-65942b363ec6` |
 | Doc Links | `c49367dc-c267-4f5b-8935-4fad47fb0d34` |
 

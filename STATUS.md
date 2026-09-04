@@ -282,8 +282,11 @@ v1.2 describes them — paste with the window, step 6).
     (a) alerts — set `alerts.webhookUrl` (Teams incoming webhook) in
     `local/config.json`; (b) dead-man — register a second scheduled
     task for `local\run_heartbeat.cmd` (e.g. daily 09:00);
-    (c) gantt — verify the Issue Refs list GUID on tenant, add
-    `sharePoint.lists.issueRefs` to config, run
+    (c) gantt — the Issue Refs list GUID is VERIFIED
+    (`4d0e6561-80e3-49f4-aa20-e5889cc88414`, owner-provided
+    2026-09-04; recorded in `docs/SP_Adaptation_Notes.md` and
+    `local/config.sample.json`) — remaining: add
+    `sharePoint.lists.issueRefs` to the machine's config, run
     `gantt.mjs --config ... [--dry-run]` then `--live` and record the
     first run here; (d) repoint — after the next approved keyword
     merges, run `curate.mjs --repoint --live` then `sweep.mjs

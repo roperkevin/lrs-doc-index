@@ -493,9 +493,11 @@ The long-queued feeder for the (deliberately empty) Issue Refs list,
 as an on-demand local job (`local/gantt.mjs` v1.0 — details in
 `local/CHANGES.md` "gantt v1.0"). Prerequisites: the sweep set up
 (§1–§4; same config and sign-ins), and `sharePoint.lists.issueRefs`
-added to config — **verify the list GUID on the tenant first**: no
-flow ever referenced Issue Refs, so it is the one list whose GUID the
-live exports never confirmed (`docs/SP_Adaptation_Notes.md`).
+added to config. The list GUID is owner-verified on the tenant
+(2026-09-04): `4d0e6561-80e3-49f4-aa20-e5889cc88414` — it is in
+`config.sample.json` and the `docs/SP_Adaptation_Notes.md` GUID
+table (no flow ever referenced Issue Refs, so the live exports never
+confirmed it; the owner's verification closed that gap).
 
 1. Make sure the schedule workbooks are indexed (DocKind
    **Schedule**) and present in the synced source library.
