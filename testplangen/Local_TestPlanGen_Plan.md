@@ -1,11 +1,13 @@
 # Plan — TestPlanGen as a local job (`local/testplangen.mjs`)
 
-Status: **phase 1 BUILT** (2026-09-04, TestPlanGen **v2.16** — see
-`testplangen/CHANGES.md`): `local/testplangen.mjs` v1.0 with both
-prompt transports, the contract-lint verifier
-(`local/lib/draftlint.mjs`), and the `check_testplangen.py` gate
-(62/62, CI). Phases 2–4 remain design only. This document stays the
-design record and the build order.
+Status: **phases 1–2 BUILT** (2026-09-04, TestPlanGen **v2.16** /
+**v2.17** — see `testplangen/CHANGES.md`): `local/testplangen.mjs`
+v1.1 with both prompt transports, the two-layer verifier
+(`local/lib/draftlint.mjs` — contract lint + grounding
+spot-checks), the `--issue`/`--title` lookup front door, opt-in
+webhook notification, and the `check_testplangen.py` gate (82/82,
+CI). Phases 3–4 remain design only. This document stays the design
+record and the build order.
 
 ## Why now
 
@@ -249,11 +251,14 @@ alongside the others. Legs:
    summary) + `lib/draftlint.mjs` + harness legs 1–5 (plus an early
    slice of leg 7: both providers against mocks) + config +
    `Local_Setup.md` §11. Manual CLI only, `--story <docId>`.
-2. **Phase 2 — front door + telemetry**: `--issue` / `--title`
-   lookup (StoryLookupFlow queries in-process, same
-   bare-number-is-a-doc-id rule), webhook notification, grounding
-   spot-checks (phase 1 ships the contract lint; the heuristics
-   follow once fixtures exist).
+2. **Phase 2 — front door + telemetry** — ✅ SHIPPED (v2.17,
+   2026-09-04): `--issue` / `--title` lookup (StoryLookupFlow
+   queries in-process, same bare-number-is-a-doc-id rule), opt-in
+   webhook notification, grounding spot-checks. One deliberate
+   change from the sketch above: the tools check carries NO
+   cites-a-reference exception — the prompt's tools rule admits no
+   tool names from reference documents at all, so the check is
+   strictly story-only (see `testplangen/CHANGES.md` v2.17).
 3. **Phase 3 — automatic mode**: `--auto`, gap detection,
    idempotency, harness leg 6, scheduled-task doc.
 4. **Deferred, unchanged**: docx handoff and the IssueRefs-driven

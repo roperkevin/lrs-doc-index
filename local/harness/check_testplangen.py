@@ -33,6 +33,20 @@ verifier the cloud flow could not have
                      shared fixtures; strict refuses a bad draft;
                      annotate writes it with the [!IMPORTANT]
                      findings block; off stamps verify=off
+  leg 6 lookup       the phase-2 front door: --issue resolves through
+                     Doc IDs (dedup, kind-filtered), --title
+                     contains-matches indexed User Story titles;
+                     ambiguity refuses with a capped candidate list,
+                     misses coach, refusals never call the model;
+                     exactly one reference form enforced
+  leg 7 notify       --notify posts ONE webhook line per WRITTEN
+                     draft; default and dry runs stay silent
+  leg 8 grounding    the phase-2 verifier layer: an invented Coverage
+                     Map requirement, a story-less tool name, and a
+                     dropped enumeration item each surface as
+                     "grounding:" findings; an echoed enumeration
+                     does not; testplangen.grounding false disables
+                     just that layer
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -131,7 +145,7 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 | --- | --- | --- |
 | 1 | "merge two routes" (workflow section) | TC-P2 |
 | 2 | "the merge must preserve measures" (requirement) | TC-P1 |
-| 3 | denial on locked routes (conflict statement) | TC-N1 |
+| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |
 """
 
 # GOOD_DRAFT with two seeded violations: TC-N1 loses its Trace line,
@@ -141,8 +155,8 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 BAD_DRAFT = GOOD_DRAFT.replace(
     "**Trace:** exemplar pattern — multi-user denial case (Plan A).\n", ""
 ).replace(
-    "| 3 | denial on locked routes (conflict statement) | TC-N1 |",
-    "| 3 | denial on locked routes (conflict statement) | |",
+    "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |",
+    "| 3 | route edits denied on a locked route (conflict statement) | |",
 )
 
 wrap = lambda body: "Here is your draft.\n[[[DRAFT BEGIN]]]\n" + body + "\n[[[DRAFT END]]]\nDone."
@@ -152,13 +166,14 @@ wrap = lambda body: "Here is your draft.\n[[[DRAFT BEGIN]]]\n" + body + "\n[[[DR
 
 class MockState:
     def __init__(self):
-        self.rows = []            # docIndex items ({id, fields})
+        self.lists = {}           # list guid -> items ([{id, fields}])
         self.gen_text = ""        # the model reply, both providers
         self.gen_calls = 0
         self.gen_last_inputs = {}     # Predict requestv2
         self.ant_calls = 0
         self.ant_last_body = {}       # /v1/messages request body
         self.drafts = {}          # drive path -> content
+        self.alerts = []          # webhook payloads
 
 
 def make_handler(state):
@@ -183,6 +198,9 @@ def make_handler(state):
             if p == "/token":
                 self._read()
                 return self._json({"access_token": "tok", "expires_in": 3600})
+            if p == "/alert":
+                state.alerts.append(json.loads(self._read() or b"{}"))
+                return self._json({"ok": True})
             if p == "/v1/messages":
                 body = json.loads(self._read())
                 state.ant_calls += 1
@@ -218,7 +236,7 @@ def make_handler(state):
                 return self._json({"id": "site-1"})
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items$", p)
             if m:
-                return self._json({"value": state.rows})
+                return self._json({"value": state.lists.get(m.group(1), [])})
             return self._json({"error": "unhandled GET " + p}, 500)
 
     return Handler
@@ -309,8 +327,10 @@ def main():
                     "Spike describing merge field semantics.")
     url_adj = sidecar(sidecar_dir, "User Stories", "adjacent__doc26.md",
                       "Adjacent story body.")
-    story_body = ("As an editor, I need to merge two routes. The merge must "
-                  "preserve measures on point and line events.")
+    story_body = ("As an editor, I need to merge two routes with the "
+                  "Merge Routes tool. The merge must preserve measures on "
+                  "point and line events. Edits to a locked route must be "
+                  "denied with a conflict message.")
     related = [
         {"doc": 21, "file": "plan-a__doc21.md", "s": 1000},
         {"doc": 22, "file": "plan-b__doc22.md", "s": 900},
@@ -324,8 +344,12 @@ def main():
                         story_body, related)
     url_lonely = sidecar(sidecar_dir, "User Stories", "lonely__doc13.md",
                          "As an editor, I need to realign a route.", [])
+    enum_body = ("The route can be created via Create Route, Extend Route, "
+                 "and Realign Route. Test each pathway.")
+    url_enum = sidecar(sidecar_dir, "User Stories", "enum__doc16.md",
+                       enum_body, [])
 
-    state.rows = [
+    state.lists["list-docindex"] = [
         doc_row(12, "Route Merge", "User Story", "Indexed", "Pro", url_story,
                 release="3.8", pe="Claire Wang", summary="Merge two routes."),
         doc_row(13, "Lonely Story", "User Story", "Indexed", "Pro", url_lonely,
@@ -341,6 +365,17 @@ def main():
         doc_row(24, "Plan D", "Test Plan", "Indexed", "Server", url_d),
         doc_row(25, "Spike E", "Design Spike", "Indexed", "Pro", url_e),
         doc_row(26, "Adjacent Story", "User Story", "Indexed", "Pro", url_adj),
+        doc_row(16, "Enum Story", "User Story", "Indexed", "Pro", url_enum),
+    ]
+    # Doc IDs rows (the issue lane's source, minted by the sweep):
+    # 4855 -> doc 12 twice (dedup); 7777 -> two stories (ambiguous);
+    # 8888 -> a Test Plan (kind-filtered out); 9999 absent
+    state.lists["list-docids"] = [
+        {"id": "500", "fields": {"IssueNumber": 4855, "DocumentLookupId": 12}},
+        {"id": "501", "fields": {"IssueNumber": 4855, "DocumentLookupId": 12}},
+        {"id": "502", "fields": {"IssueNumber": 7777, "DocumentLookupId": 12}},
+        {"id": "503", "fields": {"IssueNumber": 7777, "DocumentLookupId": 13}},
+        {"id": "504", "fields": {"IssueNumber": 8888, "DocumentLookupId": 14}},
     ]
 
     def write_cfg(name, testplangen=None, llm=None):
@@ -348,9 +383,10 @@ def main():
             "sharePoint": {
                 "hostname": "mock.example",
                 "sitePath": "/sites/lrsworkspace",
-                "lists": {"docIndex": "list-docindex"},
+                "lists": {"docIndex": "list-docindex", "docIds": "list-docids"},
             },
             "paths": {"sidecarLibrary": sidecar_dir, "workDir": work_dir},
+            "alerts": {"webhookUrl": base + "/alert"},
             "graph": {
                 "tenantId": "mock", "clientId": "mock", "clientSecret": "mock-secret",
                 "baseUrl": base + "/v1.0", "tokenUrl": base + "/token",
@@ -590,6 +626,119 @@ def main():
           r.stdout)
     check("bad verify mode rejected",
           run_job(cfg_main, ["--story", "12", "--verify", "bogus"]).returncode != 0, "")
+
+    # ---- leg 6: lookup front door ----------------------------------
+    print("== leg 6: lookup front door (--issue / --title)")
+    state.gen_text = wrap(GOOD_DRAFT)
+    r = run_job(cfg_main, ["--issue", "4855", "--dry-run"])
+    check("issue lane: unique issue resolves (dedup) and generates",
+          r.returncode == 0 and summary_of(r.stdout).get("story") == "12"
+          and 'resolved issue #4855 -> doc 12 — "Route Merge"' in r.stdout,
+          r.stdout + r.stderr)
+    r = run_job(cfg_main, ["--issue", "#4855", "--dry-run"])
+    check("issue lane: leading # accepted",
+          r.returncode == 0 and summary_of(r.stdout).get("story") == "12", r.stderr)
+    calls = state.gen_calls
+    r = run_job(cfg_main, ["--issue", "7777", "--dry-run"])
+    check("issue lane: ambiguous issue refuses with candidates",
+          r.returncode != 0 and '- doc 12 — "Route Merge"' in r.stderr
+          and '- doc 13 — "Lonely Story"' in r.stderr
+          and "Re-run with --story" in r.stderr, r.stderr)
+    r = run_job(cfg_main, ["--issue", "9999", "--dry-run"])
+    check("issue lane: unknown issue coaches",
+          r.returncode != 0 and "minted at sweep time" in r.stderr, r.stderr)
+    r = run_job(cfg_main, ["--issue", "8888", "--dry-run"])
+    check("issue lane: non-story document filtered out",
+          r.returncode != 0 and "no indexed User Story matches issue #8888" in r.stderr,
+          r.stderr)
+    check("lookup refusals never call the model", state.gen_calls == calls,
+          f"{calls} -> {state.gen_calls}")
+    r = run_job(cfg_main, ["--title", "route merge", "--dry-run"])
+    check("title lane: unique contains-match resolves",
+          r.returncode == 0 and summary_of(r.stdout).get("story") == "12"
+          and 'resolved title "route merge" -> doc 12' in r.stdout, r.stdout + r.stderr)
+    r = run_job(cfg_main, ["--title", "story", "--dry-run"])
+    check("title lane: multi-match refuses with candidates",
+          r.returncode != 0 and r.stderr.count("- doc ") == 3, r.stderr)
+    r = run_job(cfg_main, ["--title", "zebra", "--dry-run"])
+    check("title lane: no match coaches",
+          r.returncode != 0 and "narrow the words" in r.stderr, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--issue", "5"])
+    check("exactly one reference form required",
+          r.returncode != 0 and "--issue" in r.stderr and "usage:" in r.stderr, r.stderr)
+    r = run_job(cfg_main, ["--issue", "abc"])
+    check("issue lane: non-numeric reference rejected",
+          r.returncode != 0 and "must be a devtopia issue number" in r.stderr, r.stderr)
+
+    # ---- leg 7: webhook notification -------------------------------
+    print("== leg 7: notification")
+    state.alerts.clear()
+    state.drafts.clear()
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    check("no --notify, no alert", r.returncode == 0 and state.alerts == [],
+          str(state.alerts))
+    r = run_job(cfg_main, ["--story", "12", "--live", "--notify"])
+    text = (state.alerts[0].get("text", "") if state.alerts else "")
+    check("--notify posts one webhook line for the written draft",
+          r.returncode == 0 and len(state.alerts) == 1
+          and 'Story 12 — "Route Merge"' in text
+          and "TestPlanDraft__doc12__" in text
+          and "verify=ok" in text, str(state.alerts))
+    state.alerts.clear()
+    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--notify"])
+    check("dry run never notifies (nothing was written)",
+          r.returncode == 0 and state.alerts == [], str(state.alerts))
+
+    # ---- leg 8: grounding spot-checks ------------------------------
+    print("== leg 8: grounding")
+    state.drafts.clear()
+    invented = GOOD_DRAFT + (
+        '| 4 | "the system shall notify the supervisor by email" '
+        "(invented) | TC-P1 |\n")
+    state.gen_text = wrap(invented)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("invented Coverage Map requirement flagged",
+          r.returncode == 0
+          and "Coverage Map row 4 requirement not traceable" in draft, draft[:800])
+    state.drafts.clear()
+    tooled = GOOD_DRAFT.replace(
+        "- [ ] 1. Run Merge Routes on route A and route B.\n\n"
+        "**Expected Result:** Exactly one route remains after the merge.",
+        "- [ ] 1. Run Merge Routes on route A and route B.\n"
+        "- [ ] 2. Run Quantum Route Wizard on the merged route.\n\n"
+        "**Expected Result:** Exactly one route remains after the merge.")
+    state.gen_text = wrap(tooled)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("story-less tool name flagged (the tools rule)",
+          r.returncode == 0
+          and 'tool-like name "Quantum Route Wizard"' in draft, draft[:900])
+    state.drafts.clear()
+    state.gen_text = wrap(GOOD_DRAFT)
+    r = run_job(cfg_main, ["--story", "16", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("dropped enumeration item flagged",
+          r.returncode == 0
+          and 'enumerated item "Realign Route"' in draft
+          and 'enumerated item "Create Route"' in draft, draft[:900])
+    state.drafts.clear()
+    state.gen_text = wrap(
+        GOOD_DRAFT +
+        "\nRepeat each pathway for Create Route, Extend Route, and Realign Route.\n")
+    r = run_job(cfg_main, ["--story", "16", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("echoed enumeration not flagged",
+          r.returncode == 0 and "enumerated item" not in draft, draft[:900])
+    r = run_job(cfg_main, ["--story", "16", "--dry-run"])
+    check("grounding findings counted in verify=",
+          re.match(r"^\d+-findings$", summary_of(r.stdout).get("verify", "")),
+          r.stdout)
+    cfg_noground = write_cfg("config-noground.json",
+                             testplangen={"neighborCap": 8, "grounding": False})
+    r = run_job(cfg_noground, ["--story", "16", "--dry-run"])
+    check("testplangen.grounding false disables just that layer",
+          summary_of(r.stdout).get("verify") == "ok", r.stdout)
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

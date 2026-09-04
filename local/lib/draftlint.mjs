@@ -1,13 +1,16 @@
 /**
- * draftlint.mjs v1.0 — in-process port of the TestPlanGen draft
+ * draftlint.mjs v1.1 — in-process draft verification for
+ * local/testplangen.mjs, two layers:
+ *
+ * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
  * coverage lint (review/harness/check_draft_coverage.py, v1.7
- * contract) for local/testplangen.mjs. The Python lint stays the
- * harness AUTHORITY; this port exists so the generation job can
- * verify a draft BEFORE writing it without a Python dependency at
- * run time. check_testplangen.py's agreement leg runs both over
- * shared fixtures and fails on any verdict or failure-label
- * divergence — keep the two in lockstep: a contract change edits the
- * Python first, then mirrors here (labels verbatim).
+ * contract). The Python lint stays the harness AUTHORITY; this port
+ * exists so the generation job can verify a draft BEFORE writing it
+ * without a Python dependency at run time. check_testplangen.py's
+ * agreement leg runs both over shared fixtures and fails on any
+ * verdict or failure-label divergence — keep the two in lockstep: a
+ * contract change edits the Python first, then mirrors here (labels
+ * verbatim).
  *
  * Asserts (v1.7 contract; see the Python docstring for prose):
  *   1 section presence + order (+ non-empty conditionals)
@@ -24,6 +27,31 @@
  * failed assertion labels (empty = PASS), counters mirrors the
  * Python COUNTS line, warn is the under-floor warning (never a
  * failure, exactly as the Python never gates on it).
+ *
+ * `groundDraft` (v1.1, phase 2 of Local_TestPlanGen_Plan.md) — the
+ * GROUNDING layer, possible only locally because the job holds the
+ * story it just sent: heuristic spot-checks of the draft against
+ * STORY TEXT + StoryMeta. Deliberately NOT part of the Python
+ * contract and excluded from the agreement leg; findings carry a
+ * "grounding: " prefix so a reviewer can tell the layers apart.
+ * Three checks, each conservative by design (they WILL flag some
+ * legitimate paraphrases — which is why the job's default verify
+ * policy annotates rather than refuses):
+ *   a) every Coverage Map requirement cell must trace to the story —
+ *      a quoted span found verbatim passes outright; otherwise at
+ *      least half the cell's content-word stems must appear in the
+ *      story (probable-invention flag otherwise);
+ *   b) tool-shaped names (multi-word Title Case phrases) in Steps /
+ *      Expected Result lines must appear in the story — the prompt's
+ *      tools rule, made checkable. Section/terminology phrases are
+ *      allowlisted; Trace lines and the Source Case Sweep are NOT
+ *      scanned (they legitimately cite source-plan titles). Note:
+ *      the plan sketched a cites-a-reference exception, dropped here
+ *      deliberately — the prompt's tools rule admits no tool names
+ *      from reference documents at all;
+ *   c) enumeration echo: a comma/and list of 3+ short items in a
+ *      workflow-shaped story sentence must have every item mentioned
+ *      somewhere in the draft (a cheap ENUMERATION COVERAGE screen).
  */
 
 const CORE_SECTIONS = [
@@ -215,4 +243,183 @@ export function lintDraft(text, { baseline = false } = {}) {
     chars: text.length,
   };
   return { failures, counters, warn: nPos < 4 || nNeg < 3 };
+}
+
+// ---- grounding layer (v1.1) -----------------------------------------
+
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with",
+  "from", "its", "is", "are", "was", "were", "be", "been", "must",
+  "shall", "should", "that", "this", "these", "those", "when", "where",
+  "each", "per", "via", "as", "by", "at", "it", "not", "no", "any",
+  "all", "one", "two", "section", "slide", "statement", "requirement",
+  "criterion", "workflow", "story",
+]);
+
+function normText(s) {
+  return String(s)
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/[–—]/g, "-")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// crude, shared stemmer — only strong enough for overlap counting
+function stem(w) {
+  for (const suf of ["ing", "ion", "ed", "es", "s"]) {
+    if (w.length > suf.length + 2 && w.endsWith(suf)) return w.slice(0, -suf.length);
+  }
+  return w;
+}
+
+function contentStems(s) {
+  const out = new Set();
+  for (const w of normText(s).split(" ")) {
+    if (w.length >= 3 && !STOPWORDS.has(w)) out.add(stem(w));
+  }
+  return out;
+}
+
+// a stem matches when present, or when it prefixes / is prefixed by a
+// story stem (>= 4 chars both ways — "route"/"routes", "lock"/"locked")
+function stemMatches(t, storyStems) {
+  if (storyStems.has(t)) return true;
+  if (t.length < 4) return false;
+  for (const s of storyStems) {
+    if (s.length >= 4 && (s.startsWith(t) || t.startsWith(s))) return true;
+  }
+  return false;
+}
+
+// phrases the tools check must never flag: draft-shape terms + the
+// prompt's ESRI terminology (official product casing)
+const TOOL_ALLOW = new Set([
+  "arcgis pro", "arcgis server", "experience builder",
+  "roads and highways", "pipeline referencing", "utility network",
+  "location referencing", "linear referencing", "lrs network",
+  "stay put", "dynamic seg", "dynamic segmentation", "attribute table",
+  "test plan", "user story", "design spike", "coverage map",
+  "open questions", "source case sweep", "expected result",
+  "negative tests", "positive tests", "automation notes",
+  "documentation impacts", "target release", "related digest",
+  "reference functionality", "story text",
+].map(normText));
+
+// leading function/verb words trimmed off a matched Title Case phrase
+// ("Run Merge Routes" -> "Merge Routes")
+const LEAD_TRIM = new Set([
+  "The", "A", "An", "As", "Run", "Use", "Using", "Open", "In", "On",
+  "At", "For", "With", "From", "To", "And", "Or", "Inspect", "Attempt",
+  "Select", "Click", "Do", "Verify", "Confirm", "Then", "Repeat",
+]);
+
+/**
+ * Heuristic grounding spot-checks of a draft against its own story
+ * (storyCorpus = the capped STORY TEXT + the composed StoryMeta).
+ * Returns "grounding: ..."-prefixed finding strings; never throws on
+ * content, never edits anything.
+ */
+export function groundDraft(draftText, storyCorpus) {
+  const findings = [];
+  const draft = String(draftText);
+  const normDraft = " " + normText(draft) + " ";
+  const normStory = " " + normText(storyCorpus) + " ";
+  const storyStems = contentStems(storyCorpus);
+
+  // a) Coverage Map requirements must trace to the story
+  const cmAt = draft.indexOf("## Coverage Map");
+  if (cmAt >= 0) {
+    const cm = untilNextH2(draft.slice(cmAt + "## Coverage Map".length));
+    tableDataRows(cm, 3).forEach((row, idx) => {
+      const cs = cells(row);
+      const reqCell = (cs.length >= 3 ? cs[1] : cs.join(" ")).replace(/\([^)]*\)/g, " ");
+      const quoted = [...reqCell.matchAll(/"([^"]{4,})"/g)].map((m) => m[1]);
+      if (quoted.some((q) => normStory.includes(normText(q)))) return;
+      const stems = [...contentStems(reqCell)];
+      if (stems.length === 0) return; // nothing checkable
+      const hit = stems.filter((t) => stemMatches(t, storyStems)).length;
+      if (hit / stems.length < 0.5) {
+        findings.push(
+          `grounding: Coverage Map row ${idx + 1} requirement not traceable to the story (probable invention)`
+        );
+      }
+    });
+  }
+
+  // b) tool-shaped names in Steps / Expected Result lines must appear
+  // in the story (the tools rule). Trace lines and the Source Case
+  // Sweep legitimately cite source-plan titles, so only tester-facing
+  // lines are scanned.
+  const scanLines = draft
+    .split("\n")
+    .filter((l) => /^\s*- \[[ x]\]/.test(l) || l.trimStart().startsWith("**Expected Result:**"));
+  const flaggedTools = new Set();
+  for (const line of scanLines) {
+    for (const m of line.matchAll(/\b[A-Z][a-z]+(?: [A-Z][a-z]+)+\b/g)) {
+      const parts = m[0].split(" ");
+      while (parts.length > 2 && LEAD_TRIM.has(parts[0])) parts.shift();
+      if (parts.length >= 2 && LEAD_TRIM.has(parts[0])) parts.shift();
+      if (parts.length < 2) continue;
+      const phrase = parts.join(" ");
+      const key = normText(phrase);
+      if (TOOL_ALLOW.has(key) || flaggedTools.has(key)) continue;
+      if (normStory.includes(" " + key + " ")) continue;
+      flaggedTools.add(key);
+      if (flaggedTools.size <= 10) {
+        findings.push(
+          `grounding: tool-like name "${phrase}" appears in no story statement (the tools rule)`
+        );
+      }
+    }
+  }
+
+  // c) enumeration echo: 3+-item lists in workflow-shaped story
+  // sentences must each be mentioned somewhere in the draft
+  const CUES = /via|workflow|pathway|edit|method|event|type|tool|using|route/;
+  const storyBody = String(storyCorpus)
+    .replace(/<!--\s*metadata[\s\S]*?-->/g, " ")
+    .replace(/```yaml[\s\S]*?```/g, " ");
+  const seenItems = new Set();
+  for (const rawLine of storyBody.split("\n")) {
+    const line = rawLine.trim();
+    if (line === "" || line.startsWith("|") || line.includes("](")) continue;
+    if (/^[a-z_]+:\s/.test(line)) continue; // yaml-ish metadata lines
+    if (!CUES.test(line.toLowerCase())) continue;
+    for (const sentence of line.split(/(?<=[.!?])\s+/)) {
+      const scope = sentence.includes(":") ? sentence.slice(sentence.indexOf(":") + 1) : sentence;
+      let items = scope
+        .split(/\s*,\s*(?:and\s+|&\s+)?|\s+and\s+|\s+&\s+/)
+        .map((it) => it.trim().replace(/[.!?]+$/, ""))
+        .filter((it) => it !== "");
+      if (items.length >= 3 && items[0].split(" ").length > 4) {
+        // the first item usually carries the sentence's leading
+        // clause — keep only what follows the last cue-ish word
+        const tail = items[0].match(/.*\b(?:via|using|through|include(?:s)?|are|of|for)\s+(.+)$/i);
+        if (tail && tail[1].split(" ").length <= 4) items[0] = tail[1];
+        else items = items.slice(1);
+      }
+      if (items.length < 3 || items.length > 8) continue;
+      const valid = items.every(
+        (it) =>
+          /^[A-Za-z]/.test(it) && !/[.!?]/.test(it) &&
+          it.split(" ").length <= 4 &&
+          it.split(" ").some((w) => w.length >= 3)
+      );
+      if (!valid) continue;
+      for (const it of items) {
+        const key = normText(it);
+        if (seenItems.has(key)) continue;
+        seenItems.add(key);
+        if (!normDraft.includes(" " + key + " ")) {
+          findings.push(
+            `grounding: enumerated item "${it}" appears nowhere in the draft (possible ENUMERATION COVERAGE miss)`
+          );
+        }
+      }
+    }
+  }
+
+  return findings;
 }

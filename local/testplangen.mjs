@@ -1,11 +1,37 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.0 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.1 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
- * documentation as reference. Phase 1 of
+ * documentation as reference. Phases 1–2 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
- * `testplangen/CHANGES.md` v2.16).
+ * `testplangen/CHANGES.md` v2.16 / v2.17).
+ *
+ * v1.1 (phase 2) adds:
+ *   - the lookup front door — `--issue <n>` / `--title "<words>"`
+ *     resolve to a Doc Index row id via StoryLookupFlow's
+ *     deterministic queries, in-process (`testplangen/CHANGES.md`
+ *     v2.3): the issue lane filters the Doc IDs list on IssueNumber
+ *     (dedup by document, kind-filtered to Indexed User Stories), the
+ *     title lane contains-matches indexed User Story titles, both
+ *     in-memory from the run-start snapshots (the curation §1 rule —
+ *     no user text in OData). Ambiguity goes back to the human: many
+ *     matches print a capped candidate list and refuse; zero matches
+ *     coach; generation is NOT invoked either way. The v2.3
+ *     bare-number rule holds structurally: `--story` takes only a
+ *     Doc Index row id and issue numbers need `--issue` — nothing is
+ *     ever guessed.
+ *   - opt-in webhook notification (`--notify` / testplangen.notify +
+ *     alerts.webhookUrl): one line per WRITTEN draft (story, title,
+ *     draft URL, Gen_summary). Default off — the person who ran a
+ *     manual generation is already watching; phase 3's auto mode
+ *     forces it on.
+ *   - the verifier's grounding layer (lib/draftlint.mjs
+ *     `groundDraft`, heuristics — Coverage Map requirements traced to
+ *     the story, the tools rule made checkable on Steps/Expected
+ *     Result lines, enumeration echo). Runs under the same verify
+ *     policy as the contract lint, findings prefixed "grounding: ";
+ *     testplangen.grounding: false disables just this layer.
  *
  * Faithful to `testplangen/TestPlanGen_Setup.md` §3 (G1–G13):
  *   G1–G2  story row + hard guard (DocKind = User Story,
@@ -73,7 +99,9 @@
  * config.sample.json / Local_Setup.md §10).
  *
  * Usage:
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --story <docId> [--live|--dry-run] [--verify annotate|strict|off]
+ *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --story <docId> [--live|--dry-run] [--verify annotate|strict|off] [--notify]
+ *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --issue <n> ...
+ *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --title "<words>" ...
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --models
  *     (lists the environment's AI Builder models — copy the
  *      "LRS Test Plan Generation" GUID into llm.testPlanModelId)
@@ -85,10 +113,11 @@ import { fileURLToPath } from "node:url";
 import { GraphClient } from "./graph.mjs";
 import { aiBuilderPredict, dataverseToken, generateText, loadPromptTemplate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
-import { cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
-import { lintDraft } from "./lib/draftlint.mjs";
+import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
+import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
+import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.0";
+const JOB_VERSION = "v1.1";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -111,27 +140,41 @@ const NO_DRAFT_MSG =
 
 const VERIFY_MODES = ["annotate", "strict", "off"];
 
+const USAGE =
+  "usage: testplangen.mjs --config <config.json> " +
+  "(--story <docId> | --issue <n> | --title \"<words>\") " +
+  "[--live|--dry-run] [--verify annotate|strict|off] [--notify] | --models\n" +
+  "A bare number is always a Doc Index row id (--story); a devtopia " +
+  "issue number needs --issue — nothing is ever guessed (the v2.3 rule).";
+
 function loadConfig(argv) {
   const args = { flags: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--config") args.config = argv[++i];
     else if (a === "--story") args.story = argv[++i];
+    else if (a === "--issue") args.issue = argv[++i];
+    else if (a === "--title") args.title = argv[++i];
     else if (a === "--live") args.flags.live = true;
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--models") args.flags.models = true;
+    else if (a === "--notify") args.flags.notify = true;
     else if (a === "--verify") args.verify = argv[++i];
-    else throw new Error(`unknown argument: ${a}`);
+    else throw new Error(`unknown argument: ${a}\n${USAGE}`);
   }
-  if (!args.config || (!args.flags.models && args.story === undefined)) {
-    throw new Error(
-      "usage: testplangen.mjs --config <config.json> --story <docId> " +
-      "[--live|--dry-run] [--verify annotate|strict|off] | --models"
-    );
+  const refs = [args.story, args.issue, args.title].filter((v) => v !== undefined);
+  if (!args.config || (!args.flags.models && refs.length !== 1)) {
+    throw new Error(USAGE);
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
-  validateConfig(cfg, TESTPLANGEN_REQUIRED, args.config);
+  validateConfig(
+    cfg,
+    args.issue !== undefined
+      ? [...TESTPLANGEN_REQUIRED, "sharePoint.lists.docIds"]
+      : TESTPLANGEN_REQUIRED,
+    args.config
+  );
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
   const authDir = path.join(cfg.paths?.workDir || ".", "auth");
@@ -162,12 +205,15 @@ function loadConfig(argv) {
     promptVersion: "v1.7",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
+    grounding: true,
+    notify: false,
     maxTokens: 16384,
     dryRun: true,
     ...(cfg.testplangen || {}),
   };
   if (args.flags.live) cfg.testplangen.dryRun = false;
   if (args.flags.dry) cfg.testplangen.dryRun = true;
+  if (args.flags.notify) cfg.testplangen.notify = true;
   if (args.verify !== undefined) cfg.testplangen.verify = args.verify;
   if (!VERIFY_MODES.includes(cfg.testplangen.verify)) {
     throw new Error(
@@ -181,9 +227,20 @@ function loadConfig(argv) {
   };
   cfg._models = !!args.flags.models;
   if (!cfg._models) {
-    cfg._storyId = num(args.story);
-    if (cfg._storyId === undefined) {
-      throw new Error(`--story must be a Doc Index row id (got "${args.story}")`);
+    if (args.story !== undefined) {
+      cfg._storyId = num(args.story);
+      if (cfg._storyId === undefined) {
+        throw new Error(`--story must be a Doc Index row id (got "${args.story}")\n${USAGE}`);
+      }
+    } else if (args.issue !== undefined) {
+      const bare = String(args.issue).trim().replace(/^#/, "");
+      if (!/^\d+$/.test(bare)) {
+        throw new Error(`--issue must be a devtopia issue number (got "${args.issue}")\n${USAGE}`);
+      }
+      cfg._issue = Number(bare);
+    } else {
+      cfg._title = String(args.title).trim();
+      if (cfg._title === "") throw new Error(`--title needs at least one word\n${USAGE}`);
     }
   }
   return cfg;
@@ -248,6 +305,62 @@ async function run(cfg) {
     })
   ).map(normalizeRow);
   const byId = new Map(rows.map((r) => [r.ID, r]));
+
+  // ---- lookup front door (v1.1) — StoryLookupFlow's deterministic
+  // queries, in-process; ambiguity and misses go back to the human,
+  // generation is NOT invoked (testplangen/CHANGES.md v2.3)
+  const isStoryRow = (r) => r && r.DocKind === "User Story" && r.IndexStatus === "Indexed";
+  const resolveOne = (candidates, refText, coaching) => {
+    if (candidates.length === 1) {
+      process.stdout.write(
+        `resolved ${refText} -> doc ${candidates[0].ID} — "${candidates[0].Title}"\n`
+      );
+      return candidates[0].ID;
+    }
+    if (candidates.length === 0) throw new Error(`no indexed User Story matches ${refText} — ${coaching}`);
+    const listed = candidates.slice(0, 8).map(
+      (r) =>
+        `- doc ${r.ID} — "${r.Title}" (surface ${r.Surface || ""}, release ${r.TargetRelease || ""})`
+    );
+    throw new Error(
+      `${candidates.length} indexed User Stories match ${refText}:\n` +
+      listed.join("\n") +
+      (candidates.length > 8 ? `\n…and ${candidates.length - 8} more — narrow the reference` : "") +
+      "\nRe-run with --story <docId>."
+    );
+  };
+  if (cfg._issue !== undefined) {
+    // issue lane: Doc IDs rows minted by the sweep's RegexExtract —
+    // filter in memory (no user value in OData), dedup by document
+    const idRows = await graph.listItems(siteId, cfg.sharePoint.lists.docIds, {
+      select: ["IssueNumber", "DocumentLookupId"],
+    });
+    const docIds = new Set();
+    for (const it of idRows) {
+      const f = it.fields || {};
+      if (num(f.IssueNumber) !== cfg._issue) continue;
+      const docId = num(f.DocumentLookupId) ?? num(f.DocumentId);
+      if (docId !== undefined) docIds.add(docId);
+    }
+    cfg._storyId = resolveOne(
+      [...docIds].map((id) => byId.get(id)).filter(isStoryRow),
+      `issue #${cfg._issue}`,
+      "the story's sidecar must already carry the devtopia reference " +
+      "(Doc IDs rows are minted at sweep time), and the story must be " +
+      "an Indexed User Story row"
+    );
+  } else if (cfg._title !== undefined) {
+    // title lane: contains-match over indexed User Story titles,
+    // newest first so the candidate list leads with the likely one
+    const q = lower(cfg._title);
+    cfg._storyId = resolveOne(
+      rows
+        .filter((r) => isStoryRow(r) && lower(r.Title).includes(q))
+        .sort((a, b) => String(b.SourceModified).localeCompare(String(a.SourceModified))),
+      `title "${cfg._title}"`,
+      "narrow the words, or use the Doc Index row id (--story)"
+    );
+  }
 
   // G1–G2 — story row + guard
   const story = byId.get(cfg._storyId);
@@ -432,17 +545,22 @@ async function run(cfg) {
       : "";
   if (draftBody === "") throw new Error(NO_DRAFT_MSG);
 
-  // the verifier (phase 1, contract lint) — annotate or refuse,
-  // whole-draft; never edits draft content
+  // the verifier — contract lint (phase 1) + grounding spot-checks
+  // (phase 2, "grounding: "-prefixed heuristics; testplangen.grounding
+  // false disables just that layer) — annotate or refuse, whole-draft;
+  // never edits draft content
   let findings = [];
   let verify = "off";
   if (tp.verify !== "off") {
     findings = lintDraft(draftBody).failures;
+    if (tp.grounding !== false) {
+      findings.push(...groundDraft(draftBody, `${storyTextCapped}\n${storyMeta}`));
+    }
     verify = findings.length ? `${findings.length}-findings` : "ok";
     if (tp.verify === "strict" && findings.length) {
       for (const f of findings) process.stderr.write(`verifier: ${f}\n`);
       throw new Error(
-        `draft verifier (strict): ${findings.length} contract finding(s) — ` +
+        `draft verifier (strict): ${findings.length} finding(s) — ` +
         "nothing was written. Findings are listed above; re-run, or use " +
         "--verify annotate to write the draft with the findings flagged " +
         "for the §4 review."
@@ -453,9 +571,9 @@ async function run(cfg) {
   if (tp.verify === "annotate" && findings.length) {
     const listed = findings.slice(0, 20);
     verifyBlock =
-      `<!-- verify: ${findings.length} finding(s) — lib/draftlint.mjs, prompt ${tp.promptVersion} contract -->\n` +
+      `<!-- verify: ${findings.length} finding(s) — lib/draftlint.mjs, prompt ${tp.promptVersion} contract + grounding -->\n` +
       "> [!IMPORTANT]\n" +
-      `> Draft verifier: ${findings.length} contract finding(s) — review these first:\n` +
+      `> Draft verifier: ${findings.length} finding(s) — review these first:\n` +
       listed.map((f) => `> - ${f}`).join("\n") +
       (findings.length > listed.length ? `\n> - … ${findings.length - listed.length} more` : "") +
       "\n\n";
@@ -488,7 +606,8 @@ async function run(cfg) {
   const draftName = `TestPlanDraft__doc${story.ID}__${stamp}.md`;
   const draftPath = `${tp.draftFolder}/${draftName}`;
   plan.push({ action: "putFile", path: draftPath, bytes: draft.length });
-  if (!dry) await graph.putFile(siteId, draftPath, draft);
+  let putRes = null;
+  if (!dry) putRes = await graph.putFile(siteId, draftPath, draft);
 
   // G13 — Gen_summary (+ verify=), run log in the curate.mjs mold
   const line =
@@ -496,6 +615,24 @@ async function run(cfg) {
     `references=${referenceCount} digestChars=${digest.length} ` +
     `storyChars=${storyTextCapped.length} draftChars=${draftBody.length} ` +
     `exChars=${exemplarText.length} refChars=${referenceText.length} verify=${verify}`;
+
+  // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
+  // best-effort by alerts.mjs design, a down webhook never fails a run
+  if (!dry && tp.notify) {
+    const webUrl =
+      putRes?.webUrl ||
+      `${sw.siteUrl}/Shared Documents${tp.draftFolder}/${encodeURIComponent(draftName)}`;
+    const delivered = await sendAlert(
+      cfg,
+      "TestPlanGen: draft ready for review",
+      `Story ${story.ID} — "${stripQuotes(story.Title)}"\n${webUrl}\n${line}`
+    );
+    if (!delivered && !cfg.alerts?.webhookUrl) {
+      process.stderr.write(
+        "notify requested but alerts.webhookUrl is not configured — no notification sent\n"
+      );
+    }
+  }
   const logDir = cfg.paths?.workDir || ".";
   fs.mkdirSync(logDir, { recursive: true });
   // second resolution (not curate's minute cut): two on-demand runs
