@@ -569,6 +569,28 @@ for _sl, _fmt in ((16, 'JPEG'), (17, 'GIF'), (18, 'BMP'),
 check(19 not in figs,
       'progressive JPEG (SOF2) stays a caption — refused by design')
 
+# ---- v2.3 (DF-14): large type survives, controls render as icons ----------
+# slide 21: a heading whose glyphs run 18px wide (over the old 14px run
+# cap — pre-DF-14 the heading vanished), two dense 16x16 control glyphs
+# (pre-DF-14 they vanished too), and a sparse arc-like blob that must
+# mint neither an icon nor a text bar.
+u21 = figs.get(21, {})
+w21 = u21.get('svg', '')
+check(bool(w21), 'controls slide produces a wireframe figure')
+nico = w21.count('class="wf-ico"')
+check(nico == 2,
+      f'DF-14: both dense control glyphs render as icon chips — and the '
+      f'sparse arc blob does NOT ({nico})')
+check('class="wf-gkh"' in w21,
+      'DF-14: the large-type heading survives as a heading-weight row')
+hb21 = re.findall(r'<rect class="wf-gkh" x="[\d.]+" y="[\d.]+" width="([\d.]+)"', w21)
+check(len(hb21) == 1 and float(hb21[0]) > 100,
+      f'DF-14: the heading bar spans the heading\'s true extent ({hb21})')
+check('2 icons' in u21.get('alt', '') and '4 text rows' in u21.get('alt', ''),
+      f'DF-14: alt counts icons apart from text rows ({u21.get("alt", "")[:120]})')
+check('button' not in u21.get('alt', ''),
+      'DF-14: a solid glyph inside the heading row mints NO phantom button block')
+
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
 for n, f in allfigs:

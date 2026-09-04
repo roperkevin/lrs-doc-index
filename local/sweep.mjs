@@ -128,6 +128,7 @@ const IMAGE_EXT = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"];
 function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, localPath, ext, srcItemId, modified, withMedia }) {
   let docText = "", relsText = "", lane = "none";
   let figureCount = 0, figureError = "";
+  let figureOcr = 0, figureOcrOff = 0;
   let srcAuthor = "", srcEditor = "", srcEdited = "";
   const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
   const oversize = size > sw.oversizeBytes && ext !== "xlsx";
@@ -173,13 +174,26 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
         // wireframes carry the screenshot's real text instead of greek
         // bars. No OCR tools, or OCR finding nothing, keeps the
         // placeholder render — an enhancement, never a failure.
-        if (fg && fg.ocrWanted && ocrTools) {
-          setStep("figures-ocr");
-          try {
-            const ocrJson = ocrFigureMedia(ocrTools, localPath, fg.ocrWanted);
-            if (ocrJson) fg = op({ op: "figures", zipFile: localPath, ocrJson });
-          } catch (e) {
-            process.stderr.write(`FIGOCR ${path.basename(localPath)}: ${e.message}\n`);
+        if (fg && fg.ocrWanted) {
+          const wantedN = fg.ocrWanted.split(",").filter(Boolean).length;
+          if (ocrTools && ocrTools.tess) {
+            setStep("figures-ocr");
+            try {
+              const ocrJson = ocrFigureMedia(ocrTools, localPath, fg.ocrWanted);
+              if (ocrJson) {
+                fg = op({ op: "figures", zipFile: localPath, ocrJson });
+                const left = fg && fg.ocrWanted
+                  ? fg.ocrWanted.split(",").filter(Boolean).length : 0;
+                figureOcr = Math.max(0, wantedN - left);
+              }
+            } catch (e) {
+              process.stderr.write(`FIGOCR ${path.basename(localPath)}: ${e.message}\n`);
+            }
+          } else {
+            // v1.41: never silent — a wireframe rendered with greek bars
+            // because OCR is not configured is a per-run note + counter,
+            // not an invisible degradation
+            figureOcrOff = wantedN;
           }
         }
         const figs = (fg && fg.figures) || [];
@@ -255,7 +269,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     // Skipped at lane "plaintext" re-enter once OCR exists (the PDF
     // rescue pattern). An OCR crash degrades to the Skip lane — an
     // enhancement must not put a doc in the Error lane.
-    if (docText === "" && ocrTools) {
+    if (docText === "" && ocrTools && ocrTools.ppm) {
       setStep("ocr");
       try {
         docText = ocrPdf(ocrTools, localPath, sw);
@@ -269,7 +283,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   // pdf(no tool)/image/other/oversize (and empty html/msg): DocText
   // stays empty → Skip lane.
   return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-           figureCount, figureError };
+           figureCount, figureError, figureOcr, figureOcrOff };
 }
 
 // ---- config ---------------------------------------------------------
@@ -768,7 +782,7 @@ async function main() {
   const rfsum = {
     mode: "reformat", dry_run: dry, eligible: 0, rewritten: 0,
     unchanged: 0, no_sidecar: 0, no_seam: 0, no_text: 0, errors: 0,
-    figures: 0, figure_errors: 0,
+    figures: 0, figure_errors: 0, figures_ocr: 0, figures_ocr_off: 0,
   };
   const summary = {
     library_items_seen: files.length,
@@ -784,6 +798,8 @@ async function main() {
     archived: 0,
     figures: 0,
     figure_errors: 0,
+    figures_ocr: 0,
+    figures_ocr_off: 0,
     graph_downloads: 0,
     list_backup: listBackup ? path.basename(listBackup) : "",
   };
@@ -841,12 +857,14 @@ async function main() {
           rfsum.no_seam++;
           continue;
         }
-        const { docText, figureCount, figureError } = extractDocText({
+        const { docText, figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath, ext, srcItemId, modified, withMedia: false,
         });
         rfsum.figures += figureCount || 0;
         if (figureError) rfsum.figure_errors++;
+        rfsum.figures_ocr += figureOcr || 0;
+        rfsum.figures_ocr_off += figureOcrOff || 0;
         if (!docText) {
           rfsum.no_text++;
           continue;
@@ -882,7 +900,7 @@ async function main() {
     // pdftotext attempt (lane "plaintext") re-enter once OCR tools
     // exist; the attempt restamps lane "ocr", so this fires once.
     const ocrRescue =
-      ext === "pdf" && !!ocrTools && !!pdfTool && inScope &&
+      ext === "pdf" && !!(ocrTools && ocrTools.ppm) && !!pdfTool && inScope &&
       existing?.IndexStatus === "Skipped" &&
       existing?.ExtractionLane === "plaintext";
     // msg rescue (v1.37): rows stamped Skipped before the msg lane
@@ -1011,6 +1029,7 @@ async function main() {
     const rLog = path.join(rDir, `sweep-${rStamp}.json`);
     fs.writeFileSync(rLog, JSON.stringify({ summary: rfsum, plan: dry ? writer.plan : undefined }, null, 1));
     pruneRunLogs(rDir);
+    ocrOffNote(rfsum.figures_ocr_off);
     process.stdout.write(JSON.stringify({ ...rfsum, logFile: rLog }) + "\n");
     if (dry) process.stdout.write(`dry run: ${writer.plan.length} planned writes recorded in ${rLog}\n`);
     return;
@@ -1134,6 +1153,7 @@ async function main() {
     }
   }
 
+  ocrOffNote(summary.figures_ocr_off);
   process.stdout.write(JSON.stringify({ ...summary, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) {
@@ -1184,12 +1204,14 @@ async function indexDoc(ctx) {
 
   // Switch_ext lane dispatch (shared with the --reformat pass)
   const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-          figureCount, figureError } = extractDocText({
+          figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
     sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
   summary.figures = (summary.figures || 0) + (figureCount || 0);
   if (figureError) summary.figure_errors = (summary.figure_errors || 0) + 1;
+  summary.figures_ocr = (summary.figures_ocr || 0) + (figureOcr || 0);
+  summary.figures_ocr_off = (summary.figures_ocr_off || 0) + (figureOcrOff || 0);
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
@@ -1535,22 +1557,41 @@ function detectPdfTool(sw) {
   return r.error ? null : p;
 }
 
+const ocrOffNote = (n) => {
+  if (n > 0) {
+    process.stderr.write(
+      `note: ${n} screenshot(s) wireframed with PLACEHOLDER text this run — ` +
+      `set sweep.tesseractPath (install Tesseract) to transcribe them, ` +
+      `then re-run with --reformat\n`
+    );
+  }
+};
+
 /** OCR tools (v1.36) — OPT-IN by explicit config: OCR runs only when
  *  sweep.tesseractPath is set (no PATH auto-detection, so machines
  *  that happen to have Tesseract don't silently change lanes).
- *  pdftoppm defaults to Poppler's, next to pdftotext on PATH. A
- *  configured-but-unrunnable tool warns loudly and disables OCR. */
+ *  pdftoppm defaults to Poppler's, next to pdftotext on PATH.
+ *  v1.41: pdftoppm is only the PDF lane's page renderer — the
+ *  wireframe-OCR loop (v1.40) needs tesseract alone, so a machine
+ *  without Poppler still transcribes screenshots. An unrunnable
+ *  tesseract still disables all OCR loudly; an unrunnable pdftoppm
+ *  now disables only the scanned-PDF lane, and says so. */
 function detectOcrTools(sw) {
   if (!sw.tesseractPath) return null;
   const tess = sw.tesseractPath;
+  if (spawnSync(tess, ["--version"], { encoding: "utf8" }).error) {
+    process.stderr.write(
+      `note: sweep.tesseractPath is set but tesseract ("${tess}") is not runnable — OCR lane disabled\n`
+    );
+    return null;
+  }
   const ppm = sw.pdftoppmPath || "pdftoppm";
-  for (const [name, cmd, arg] of [["tesseract", tess, "--version"], ["pdftoppm", ppm, "-v"]]) {
-    if (spawnSync(cmd, [arg], { encoding: "utf8" }).error) {
-      process.stderr.write(
-        `note: sweep.tesseractPath is set but ${name} ("${cmd}") is not runnable — OCR lane disabled\n`
-      );
-      return null;
-    }
+  if (spawnSync(ppm, ["-v"], { encoding: "utf8" }).error) {
+    process.stderr.write(
+      `note: pdftoppm ("${ppm}") is not runnable — the scanned-PDF OCR lane is disabled ` +
+      `(wireframe OCR still runs; install Poppler to OCR image-only PDFs)\n`
+    );
+    return { tess, ppm: null };
   }
   return { tess, ppm };
 }

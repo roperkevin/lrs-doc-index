@@ -2240,9 +2240,10 @@ def main():
     make_ui_pptx(os.path.join(ui_dir, "Panel UI.pptx"),
                  "Panel UI deck describing the search panel.")
     src_files.append(src_item(21, "Panel UI.pptx", "2026-08-22T10:00:00Z"))
-    ppm2 = os.path.join(tmp, "pdftoppm2")
-    with open(ppm2, "w") as f:
-        f.write("#!/bin/sh\nexit 0\n")
+    # v1.41: pdftoppm deliberately points NOWHERE — the wireframe OCR
+    # loop must run on tesseract alone (pdftoppm is only the PDF lane's
+    # renderer), with a note saying only the PDF lane is disabled
+    ppm2 = os.path.join(tmp, "no-such-pdftoppm")
     tess2 = os.path.join(tmp, "tesseract2")
     with open(tess2, "w") as f:
         f.write(
@@ -2254,8 +2255,7 @@ def main():
             'printf "5\\t1\\t1\\t1\\t1\\t2\\t70\\t24\\t30\\t10\\t93\\tPanel\\n"\n'
             'printf "5\\t1\\t1\\t1\\t2\\t1\\t24\\t46\\t28\\t7\\t90\\tRoute\\n"\n'
             'printf "5\\t1\\t1\\t1\\t3\\t1\\t24\\t100\\t30\\t7\\t12\\tR1L3\\n"\n')
-    for s in (ppm2, tess2):
-        os.chmod(s, 0o755)
+    os.chmod(tess2, 0o755)
     cfg["sweep"]["tesseractPath"] = tess2
     cfg["sweep"]["pdftoppmPath"] = ppm2
     with open(cfg_path, "w") as f:
@@ -2277,10 +2277,31 @@ def main():
           "R1L3" not in wf and 'class="wf-gk' in wf, wf[:600])
     check("figure alt states the transcription",
           "transcribed" in wf, wf[:600])
+    check("v1.41: wireframe OCR ran on tesseract ALONE (no runnable pdftoppm)",
+          int(out.get("figures_ocr", 0)) == 1 and int(out.get("figures_ocr_off", 0)) == 0,
+          str(out))
+    check("v1.41: the missing pdftoppm disables ONLY the PDF lane, and says so",
+          "scanned-PDF OCR lane is disabled" in proc.stderr, proc.stderr[-400:])
     del cfg["sweep"]["tesseractPath"]
     del cfg["sweep"]["pdftoppmPath"]
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
+
+    # ---- leg: placeholder wireframes are never silent (v1.41) ------------
+    # With NO OCR configured, reformatting the screenshot deck must render
+    # its wireframe with greek bars, COUNT it (figures_ocr_off) and say so
+    # on stderr — the invisible degradation that left a corpus wondering
+    # where its text went.
+    print("== wireframe placeholder-note leg")
+    proc = run_sweep(cfg_path, ["--live", "--reformat", "--only", "Panel UI.pptx"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.stdout.strip() else {}
+    check("reformat without OCR counts the placeholder wireframe",
+          proc.returncode == 0 and int(out.get("figures_ocr_off", 0)) >= 1
+          and int(out.get("figures_ocr", 0)) == 0,
+          str(out) + " " + proc.stderr[-300:])
+    check("placeholder wireframes surface a loud note naming the fix",
+          "PLACEHOLDER text" in proc.stderr and "tesseractPath" in proc.stderr,
+          proc.stderr[-400:])
 
     server.shutdown()
     report()

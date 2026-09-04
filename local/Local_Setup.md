@@ -383,8 +383,10 @@ Each is behavior-equivalent; all are exercised by the gate:
 - **Sync-lag fallback** (v1.33, optional):
   `sweep.graphDownloadFallback: true` fetches an in-scope-but-
   unsynced source through Graph instead of erroring for the night.
-- **OCR lane** (v1.36, optional): install Tesseract (+ Poppler's
-  pdftoppm, usually already present) and set `sweep.tesseractPath`;
+- **OCR lane** (v1.36, optional): install Tesseract and set
+  `sweep.tesseractPath` (Poppler's pdftoppm is additionally needed
+  only for the scanned-PDF lane — since v1.41 wireframe OCR runs on
+  Tesseract alone);
   image-only PDFs then index via OCR (lane `"ocr"`), and previously
   Skipped `plaintext`-lane PDFs rescue automatically. No PATH
   auto-detection — explicitly opt in. Since v1.40 the same opt-in

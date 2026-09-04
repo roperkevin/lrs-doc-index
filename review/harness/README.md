@@ -786,3 +786,25 @@ check_svg2pptx PASS with all 22 fixture figures converting; PAD
 typecheck green alongside. The JPEG wireframe verified visually in
 Chromium — structure identical to the PNG render, no block-noise
 artifacts.
+
+### Last run (2026-09-04, Node 22.22.2) — v2.3 gate (DF-14)
+
+**PASS** — 23 figures. New fixture slide 21 (large type + controls): a
+dialog heading whose glyphs run 18px wide (over the old 14px glyph-run
+cap — pre-DF-14 the heading VANISHED from the wireframe), two dense
+16x16 control glyphs (pre-DF-14 they vanished too), and a sparse
+arc-like blob. New assertions: both controls render as `wf-ico` icon
+chips while the sparse blob mints neither an icon nor a bar (the
+density floor), the heading survives as a heading-weight bar spanning
+its true extent, the alt counts icons apart from text rows, and a
+solid glyph inside the heading row mints NO phantom button block
+(block-inside-row suppression). 5 of the 6 new assertions FAIL
+against the v2.2 script (fixture discriminates). Local sweep gate
+**211/211** with the v1.41 legs: the wireframe-OCR leg now runs with
+pdftoppm pointing NOWHERE (Tesseract alone transcribes; the note says
+only the scanned-PDF lane is disabled), and a placeholder-note leg
+(no OCR configured → `figures_ocr_off` counted and one loud stderr
+note naming the fix). PAD 27/27, check_svg2pptx PASS with all 23
+fixture figures converting, standing suites and the ES2017 typecheck
+green alongside. Slide 21 verified visually in Chromium — heading
+bar, two icon chips, no phantoms.

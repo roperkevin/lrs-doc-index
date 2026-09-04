@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v2.2)
+# Diagram style framework (SlideFigures v2.3)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -144,6 +144,7 @@ the corpus:
 | Flat colour region, button-proportioned | **Button** — palette *tint* fill + deep stroke, mapped from the source colour by the same hue-family rule as everything else |
 | Flat colour region spanning its container | **Header band** — same tinted treatment |
 | Full-width border inside a box | **Row separator** (table rows render this way); full-height ones are column rules |
+| Isolated square-ish, ink-dense box | **Icon chip** (v2.3) — a quiet outlined placeholder at the control's true box: calendar buttons, dropdown arrows, toolbar glyphs; a density floor keeps a rounded corner's sparse arc from minting phantoms |
 | Row of glyph-sized ink | **Text** — real transcribed text when the sweep's OCR lane covers the row (v2.1; heading rows in the ink weight, body rows slate, on-fill rows ink over the tint); otherwise a **placeholder bar** — a pill at the row's true position and extent, heading/body/on-fill weights |
 
 **How it reads the pixels.** The picture must first read as an interface

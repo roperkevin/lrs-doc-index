@@ -932,6 +932,33 @@ s_f20 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
 s_f20.shapes.add_picture('ui_p4t.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
                          Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
 
+# --- slide 21 (v2.3 / DF-14): large type + controls. A dialog title set
+# LARGE (18px-wide glyphs — over the old 14px run cap, so pre-DF-14 the
+# heading vanished from the wireframe entirely), two dense 16x16 control
+# glyphs (calendar-button shape — pre-DF-14 these rendered as stubs of
+# greek), and a sparse 16x16 corner-arc blob that must mint NEITHER an
+# icon nor a text bar (the density floor).
+_ui3 = []
+_ui3.extend([(24, 536, 20, 22, GRAY13), (24, 536, 398, 400, GRAY13),
+             (24, 26, 20, 400, GRAY13), (534, 536, 20, 400, GRAY13)])  # panel
+for _k in range(4):                                # the LARGE heading
+    _gx = 40 + _k * 26
+    _ui3.append((_gx, _gx + 18, 36, 50, DARK13))
+_ui3.extend([(40 + _k * 7, 44 + _k * 7, 74, 82, DARK13) for _k in range(6)])
+_ui3.extend([(40, 240, 90, 92, GRAY13), (40, 240, 114, 116, GRAY13),
+             (40, 42, 90, 116, GRAY13), (238, 240, 90, 116, GRAY13)])  # field
+for _iy in (90, 150):                              # two dense control glyphs
+    _ui3.append((300, 316, _iy, _iy + 16, DARK13))
+for _t in range(12):                               # a sparse arc-like blob
+    _ui3.append((330 + _t, 330 + _t + 1, 205 - _t, 207 - _t, GRAY13))
+for _ry in (260, 280):                             # body rows
+    _ui3.extend([(40 + _k * 7, 44 + _k * 7, _ry, _ry + 8, DARK13)
+                 for _k in range(10)])
+_png_write('ui_controls.png', 560, 420, _ui3)
+s_f21 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f21.shapes.add_picture('ui_controls.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
