@@ -78,7 +78,7 @@ parameters, exact names: **StoryMeta**, **StoryText**,
 new in v2.0 — an upgrade from a pre-v1.3 paste must CREATE the
 parameter, not just re-paste the text). Paste the delimited block from
 `prompts/TestPlanGen_Prompt.md` verbatim. Record
-`TestPlanGenPromptVersion: v1.7` in `testplangen/CHANGES.md`.
+`TestPlanGenPromptVersion: v1.8` in `testplangen/CHANGES.md`.
 
 This prompt versions independently: bumping it never touches
 `Config.PromptVersion` (nothing here changes the sidecar format or
@@ -169,7 +169,7 @@ selected row's id is `@{triggerBody()?['entity']?['ID']}` throughout.
   "DigestSummaryCap": 400,
   "ExemplarSlots": 2,
   "ReferenceSlots": 3,
-  "TestPlanGenPromptVersion": "v1.7"
+  "TestPlanGenPromptVersion": "v1.8"
 }
 ```
 

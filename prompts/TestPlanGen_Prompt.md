@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.7
+# Test Plan Generation Prompt — v1.8
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.7`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.8`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -11,6 +11,29 @@ FIVE item/requestv2 input keys, exact names: **StoryMeta**,
 **StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
 (the fifth added in v1.3 — the AI Builder prompt needs the parameter
 created, not just the text re-pasted).
+
+v1.8 (concrete test data — no input, section-order, sentinel, or
+structural-contract changes; the draft lint's asserts are untouched):
+drafts stop DESCRIBING data and start NAMING it, the way the team's
+own plans do (the 2026-09-04 review of the doc 1 draft against
+"Splitting Events in Pro": that plan pins every case to named
+fixtures — route R1, event E1 from measure 10 to 22, split at 16,
+dates — with before/after attribute tables, where the draft's cases
+said "a measure inside its extent" and "input method M"). A new
+CONCRETE TEST DATA grounding rule carves fixture VALUES out of the
+never-invent rule: route/event IDs, measures, dates, and attribute
+values are fixtures the drafter MUST invent, defined once as
+test-data tables closing Setup / Prerequisites and referenced by
+name from every case; Steps and Expected Result name concrete values
+("split event E1 on route R1 at measure 16"), never abstract
+stand-ins; a case that creates or changes records follows its
+Expected Result sentence with a GFM table of the affected records'
+expected field values after the edit — under CASE GRANULARITY that
+table is ONE outcome, the complete record state one edit produces,
+judged pass/fail as a whole. The carve-out covers values only:
+field names, domains, limits, precision, defaults, and error text
+stay under the never-invent rule — fixtures use simple values that
+dodge the unknown, and a fixture never resolves a [VERIFY] by fiat.
 
 v1.7 (source case sweep — no input or sentinel changes; one new
 CONDITIONAL section): every distinct test case or scenario described
@@ -188,6 +211,14 @@ and reference functionality; where the sources are silent on a needed
 precondition, include the step with a [VERIFY: ...] note rather than
 inventing specifics.
 
+Close the section with a `**Test data:**` line followed by GFM
+table(s) defining the named fixtures the cases reference: a routes
+table (Route ID, measure range, from/to dates) and — when the story
+edits events — an events table (Event ID, route, measures, dates,
+one or two business attributes with simple values). Fixture VALUES
+are yours to invent (the CONCRETE TEST DATA rule); every case's data
+comes from these tables, or the case states its own delta.
+
 ## Positive Tests
 Cases proving the story's workflow behaves as specified. Each case
 verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
@@ -198,8 +229,12 @@ verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
 - [ ] 2. <tester action>
 
 **Expected Result:** the single observable outcome this case
-verifies, specific enough to judge pass/fail as a whole — never two
-independent outcomes (split the case instead).
+verifies, stated with the case's concrete fixture values and
+specific enough to judge pass/fail as a whole — never two
+independent outcomes (split the case instead). When the case creates
+or changes records, follow the sentence with a GFM table of the
+affected record(s)' expected field values after the edit (the
+CONCRETE TEST DATA rule).
 
 **Trace:** the story statement this case verifies, quoted or closely
 paraphrased — or the exemplar pattern it applies (e.g. "exemplar
@@ -209,7 +244,8 @@ functionality statement it grounds on, cited by document title.
 Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
 (one checkbox per numbered action, each a SINGLE tester action);
 Expected Result and Trace are standalone bold-labeled lines, never
-checkboxes.
+checkboxes. Steps and Expected Result name concrete fixture data —
+never abstract stand-ins (the CONCRETE TEST DATA rule).
 
 ## Negative Tests
 Directly under the heading, before TC-N1, emit this fixed alert
@@ -336,6 +372,28 @@ GROUNDING RULES
 - Missing information becomes a [VERIFY: ...] item in Open Questions —
   never a fabricated specific (no invented field names, limits,
   defaults, or error text).
+- CONCRETE TEST DATA (the carve-out from the rule above): test DATA
+  values — route and event IDs (R1, E1), measures, dates, and
+  business-attribute values — are fixtures you MUST invent. Define
+  them in the Setup / Prerequisites test-data tables and write every
+  case against them: Steps and Expected Result name concrete values
+  ("split event E1 on route R1 at measure 16"), never abstract
+  stand-ins ("a measure inside its extent", "a new valid value",
+  "input method M" — name each method the sources support). A
+  parameterized case names the concrete value each variant uses.
+  When a case creates or changes event or route records, the
+  Expected Result carries a GFM table of the affected record(s) with
+  expected field values after the edit (the before-state lives in
+  the fixture tables, or in a small before table when the case needs
+  its own); under CASE GRANULARITY that table is ONE outcome — the
+  complete record state one edit produces — judged pass/fail as a
+  whole, and independent outcomes beyond that record state still
+  split into their own cases. The carve-out covers VALUES ONLY:
+  field names, domains, limits, precision, defaults, and error text
+  stay under the never-invent rule — pick simple values that dodge
+  the unknown (integer measures inside a stated range) and keep the
+  unknown a [VERIFY] item; a fixture never resolves an open
+  question by fiat.
 - RELATED DIGEST: evaluate EVERY entry. When an entry's feature
   plausibly interacts with this story's feature, add an
   interaction/regression case (e.g. this feature crossing the
@@ -412,9 +470,12 @@ correctly absent and no reference-grounded cases appear; the
 exemplar lane is non-empty, so the Source Case Sweep appears. A full
 draft would carry one lock-acquisition case per enumerated pathway —
 Create, Extend, Realign, Reassign — plus their denial counterparts,
-each asserting a single outcome per the granularity rule, and one
-sweep row per exemplar case; only the first of each is shown here,
-and the Source Case Sweep and Coverage Map are abbreviated to match)
+each asserting a single outcome per the granularity rule and naming
+its fixture data per the CONCRETE TEST DATA rule (an event-editing
+story's cases would also carry expected after-state record tables,
+abbreviated away here), and one sweep row per exemplar case; only
+the first of each is shown here, and the Source Case Sweep and
+Coverage Map are abbreviated to match)
 
 [[[DRAFT BEGIN]]]
 # Test Plan — Conflict Prevention: Acquire Locks for New Routes
@@ -431,17 +492,24 @@ via Create Route, Extend Route, Realign Route, and Reassign Route.
 ## Setup / Prerequisites
 - [ ] 1. LRS network with conflict prevention enabled. [VERIFY:
       minimum lock-root configuration]
-- [ ] 2. Two Pro sessions signed in as different users against the
-      same network.
+- [ ] 2. Two Pro sessions signed in as different users (user A,
+      user B) against the same network.
+
+**Test data:**
+
+| Route ID | From Date | To Date | Created by |
+| --- | --- | --- | --- |
+| R100 | 1/1/2000 | Null | the cases (does not pre-exist) |
 
 ## Positive Tests
 
 ### TC-P1 — Lock acquired on Create Route
 **Steps:**
-- [ ] 1. As user A, run Create Route on a new route name.
+- [ ] 1. As user A, run Create Route with Route ID R100 and from
+      date 1/1/2000.
 - [ ] 2. Inspect the lock table before saving edits.
 
-**Expected Result:** A lock for the new route is held by user A at
+**Expected Result:** A lock for route R100 is held by user A at
 creation time, not deferred to save.
 
 **Trace:** "acquire locks when creating a new route" — story
@@ -455,8 +523,8 @@ workflow section.
 
 ### TC-N1 — Second user blocked on locked new route
 **Steps:**
-- [ ] 1. As user A, create a route without saving.
-- [ ] 2. As user B, attempt Reassign Route onto the same route.
+- [ ] 1. As user A, create route R100 without saving.
+- [ ] 2. As user B, attempt Reassign Route onto route R100.
 
 **Expected Result:** User B is denied with a lock conflict; no edit
 is applied.

@@ -1,4 +1,6 @@
-"""Offline coverage lint for a TestPlanGen draft (prompt v1.7 contract).
+"""Offline coverage lint for a TestPlanGen draft (prompt v1.7
+contract — unchanged by prompt v1.8, which adds no structural
+asserts; fixture-data concreteness is a §4 reading check).
 
 Runs over a downloaded draft .md (from Shared Documents/Test Plan
 Drafts/) — no tenant access, no fixtures. Complements smoke rows 1

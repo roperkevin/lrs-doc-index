@@ -77,7 +77,7 @@
  *          tenant paste state applies, Coverage_Runbook.md step 2).
  *          Provider "anthropic": prompts/TestPlanGen_Prompt.md
  *          executed VERBATIM between its delimiters — zero tenant
- *          work, the v1.7 rules apply as authored; single-pass
+ *          work, the v1.8 rules apply as authored; single-pass
  *          placeholder substitution so document content can never
  *          inject a second substitution.
  *   G9     marker slice ([[[DRAFT BEGIN]]]/[[[DRAFT END]]],
@@ -93,7 +93,8 @@
  *
  * Beyond the flow (the plan's phase-1 verifier): before the draft is
  * written, lib/draftlint.mjs checks it against the v1.7 coverage
- * contract. testplangen.verify: "annotate" (default) prepends an
+ * contract (unchanged by prompt v1.8, which adds no structural
+ * asserts). testplangen.verify: "annotate" (default) prepends an
  * [!IMPORTANT] findings block so the §4 reviewer starts where the
  * machine already found smells; "strict" refuses to write a draft
  * with findings (for unattended runs); "off" for parity-with-cloud
@@ -218,7 +219,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.7",
+    promptVersion: "v1.8",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,

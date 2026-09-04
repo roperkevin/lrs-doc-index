@@ -1,3 +1,102 @@
+# TestPlanGen v2.19 — concrete test data (prompt v1.8)
+
+Motivated by the 2026-09-04 review of the doc 1 draft ("Auto-
+Populate Referents for Event Edits") against the team's own plans:
+structurally the draft honors every v1.5–v1.7 rule, but its cases
+are DATA-abstract — "a measure inside its extent", "a new valid
+value", "input method M" — where the team's plans ("Splitting
+Events in Pro" is the type specimen) pin every case to named
+fixtures: route R1 with dates, event E1 from measure 10 to 22,
+split at measure 16, current date 3/29/2022, attribute values
+`split`/`event`, and before/after tables showing every resulting
+record's field values. A tester cannot execute an abstract step
+without inventing the data themselves, and an abstract expected
+result cannot be judged against real records. The prompt itself
+pushed the model there: the never-invent grounding rule ("no
+invented field names, limits, defaults, or error text") reads as
+covering data values too, so the model abstracts them away. The
+fix is a carve-out with teeth, not a softened never-invent rule.
+
+**Prompt v1.8** (authored as
+`review/patches/TestPlanGen_Prompt_v1_8.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.7 in-repo BEFORE
+its pending paste; everything v1.1–v1.7 carries forward unchanged):
+
+- **New CONCRETE TEST DATA grounding rule** (placed directly after
+  the never-invent rule it carves out of): test DATA values —
+  route/event IDs, measures, dates, business-attribute values — are
+  fixtures the drafter MUST invent, defined once as test-data
+  tables closing Setup / Prerequisites and referenced by name from
+  every case. Steps and Expected Result name concrete values
+  ("split event E1 on route R1 at measure 16"), never abstract
+  stand-ins; parameterized cases name the concrete value per
+  variant. A case that creates or changes records follows its
+  Expected Result sentence with a GFM table of the affected
+  records' expected field values after the edit — under CASE
+  GRANULARITY that table is ONE outcome (the complete record state
+  one edit produces), judged pass/fail as a whole. The carve-out
+  covers VALUES ONLY: field names, domains, limits, precision,
+  defaults, and error text stay under the never-invent rule —
+  fixtures use simple values that dodge the unknown, and a fixture
+  never resolves a [VERIFY] by fiat.
+- **Setup / Prerequisites closes with `**Test data:**` fixture
+  tables** (routes; plus events for event-editing stories);
+  case-shape prose updated to match; worked example gains the R100
+  fixture table and concrete values in TC-P1/TC-N1.
+- Output markers, input keys, fences, section order: unchanged.
+
+**Contract/harness** — NO structural asserts added: `lintDraft` /
+`check_draft_coverage.py` stay on the v1.7 contract (docstrings
+note it); fixture-data concreteness is a §4 reading check, like
+sweep completeness — a parser cannot judge whether "measure 16" is
+concrete enough for the case around it. `check_testplangen.py`
+banner pin moved to v1.8; 93/93 still pass.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.8 in
+`flow/v1_0/` and `flow/core_v1_0/` (stamp only); both generation
+packages re-cut with the stamped definitions (byte-identical to
+their folder definitions, the provenance convention).
+
+**Local job** — `testplangen.promptVersion` default → v1.8
+(`local/testplangen.mjs`, `local/config.sample.json`); the
+anthropic lane picks the new rules up with ZERO tenant work.
+
+**Docs** — Setup §2/§3 stamps → v1.8; `Coverage_Runbook.md` step 2
+pastes v1.8; `prompts/README.md`, `STATUS.md`, and root `README.md`
+rows moved to v1.8 / v2.19.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 2): paste v1.8 into
+`LRS Test Plan Generation` (replaces the pending v1.7 paste), set
+both `Config_gen.TestPlanGenPromptVersion` stamps to v1.8 (or
+re-import the re-cut packages), run smoke rows 1, 3, 9, 10 and read
+one draft's cases for named fixtures and after-state tables. NEVER
+bump `Config.PromptVersion` — nothing here changes the sidecar
+format or reindexes the corpus.
+
+Queued follow-on (owner question, 2026-09-04, not in this change):
+let the person running a generation PIN documents into the lanes —
+e.g. `--exemplar <docId>` / `--reference <docId>` on the local job —
+in addition to the sidecar's `related:` selection, for the case
+where the best exemplar (a data-rich plan like "Splitting Events in
+Pro") is not RelatedRank-linked to the story. An explicit human
+choice is stronger grounding than the automatic linkage, so it fits
+the reference lane's no-fallback rationale; needs the same
+kind/status guards as the lanes, slots/caps honored, and the
+pinned docs recorded in the banner for provenance.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.8** | `review/patches/TestPlanGen_Prompt_v1_8.md` → `prompts/TestPlanGen_Prompt.md` |
+| Flow stamps + re-cut packages | v1.8 stamp | `testplangen/flow/{v1_0,core_v1_0}/definition.json`, `TestPlanGen_v1_0.zip`, `TestPlanGenCore_v1_0.zip` |
+| Local generation job (stamp default) | v1.2 (unchanged code) | `local/testplangen.mjs`, `local/config.sample.json` |
+| Generation-job gate (banner pin) | 93 checks | `local/harness/check_testplangen.py` |
+| Draft lints | v1.7 contract, unchanged | `review/harness/check_draft_coverage.py`, `local/lib/draftlint.mjs` |
+
+| Date | Machine | Tenant paste | Smoke rows |
+|---|---|---|---|
+| 2026-09-04 | authoring env | pending (replaces the pending v1.7 paste) | — |
+
 # TestPlanGen v2.18 — local job phase 3: the automatic mode (testplangen.mjs v1.2)
 
 Phase 3 of `testplangen/Local_TestPlanGen_Plan.md` — generation

@@ -12,7 +12,8 @@
  * contract change edits the Python first, then mirrors here (labels
  * verbatim).
  *
- * Asserts (v1.7 contract; see the Python docstring for prose):
+ * Asserts (v1.7 contract — unchanged by prompt v1.8, which adds no
+ * structural asserts; see the Python docstring for prose):
  *   1 section presence + order (+ non-empty conditionals)
  *   2 every TC case carries a **Trace:** line
  *   3 Negative Tests opens with the fixed CAUTION alert

@@ -1,87 +1,83 @@
-# TestPlanGen Prompt — v1.7 (source case sweep) — superseded in-repo by v1.8 before tenant paste
+# TestPlanGen Prompt — v1.8 (concrete test data) — CURRENT, awaiting tenant paste
 
-Motivated by the coverage-borrowing request (2026-08-14): make the
-generator go through each test case in each related test plan,
-decide whether it applies to the current user story, and when it
-does, create a case tailored to the story. The lanes already carry
-the material — same-surface plans as EXEMPLAR TEXT, cross-surface
-plans and design spikes as REFERENCE FUNCTIONALITY — but the rules
-around them are soft in exactly the pre-v1.5 way: exemplars say
-"mirror the kinds of cases they think to include" and references
-say you "MAY ground" on them, so a model can use two cases from a
-thirty-case plan and violate nothing. The fix is the mechanism that
-already works twice in this prompt (RELATED DIGEST v1.5, Coverage
-Map v1.5): make the per-item evaluation MANDATORY and make the
-model render the checklist so skips are visible. Corpus test plans
-are team-format sidecars (slide headings, bullets — not our TC
-template), so the sweep is defined over "every distinct test case
-or scenario, however the source formats it" — a judgment a model
-can make and a deterministic parser cannot, which is why this stays
-prompt-side and the ONE-AI-Builder-call design holds. Supersedes
-v1.6 IN-REPO (v1.6's case granularity, v1.5's requirement-driven
-coverage + Coverage Map, v1.4's GFM shape, v1.3's reference lane,
-v1.2's enumeration coverage + conditional sections, and v1.1's
-marker fix all carry forward unchanged — paste THIS version).
+Motivated by the 2026-09-04 review of the doc 1 draft ("Auto-
+Populate Referents for Event Edits") against the team's own plans:
+the drafts' cases are structurally right but DATA-abstract. The
+team's plans — "Splitting Events in Pro" is the type specimen — pin
+every case to named fixtures: route R1 with its dates, event E1
+from measure 10 to 22, split at measure 16, current date 3/29/2022,
+attribute values `split` / `event`, and a before table plus an
+after table showing every resulting record's field values. The
+v1.7 draft's cases said "a measure inside its extent", "a new valid
+value", "input method M" — steps a tester cannot execute without
+first inventing the data themselves, and expected results that
+cannot be judged pass/fail against real records. The prompt itself
+pushed the model there: the never-invent grounding rule ("no
+invented field names, limits, defaults, or error text") reads as
+covering data values too, so the model abstracts them away.
+Supersedes v1.7 IN-REPO (v1.7's source case sweep, v1.6's case
+granularity, v1.5's requirement-driven coverage + Coverage Map,
+v1.4's GFM shape, v1.3's reference lane, v1.2's enumeration
+coverage + conditional sections, and v1.1's marker fix all carry
+forward unchanged — paste THIS version).
 
-Changes against v1.6 (one new grounding rule + one new CONDITIONAL
-section — no input or sentinel changes):
+Changes against v1.7 (one new grounding rule + shape prose — no
+input, section-order, sentinel, or structural-contract changes; the
+draft lint's asserts are untouched):
 
-1. **New CASE SWEEP grounding rule** (one judgment per source
-   case): read EVERY distinct test case or scenario described in
-   EXEMPLAR TEXT and REFERENCE FUNCTIONALITY and judge whether the
-   behavior it verifies applies to this story. Applies → a case
-   tailored to THIS story's feature and surface (steps rewritten,
-   granularity in force), Trace citing the source plan by title AND
-   the story/reference statement the tailored case exercises —
-   never the source case's feature-specific content, tool names, or
-   data. Applies-but-unsupported → an Open Questions [VERIFY]
-   naming the source plan and case (a possible coverage gap in the
-   story, never an invented requirement). Doesn't apply → a stated
-   reason. A source case missing from the sweep table is a silent
-   skip — invalid output.
-2. **New `## Source Case Sweep` CONDITIONAL section** between Open
-   Questions and the Coverage Map, emitted whenever either lane is
-   non-empty (omitted only when both are "(none)"): a GFM table,
-   one row per source case —
-   `| Source plan | Source case | Applies? | Covered by / why not |`
-   — verdict exactly Yes / No / Verify; Yes rows cite the tailored
-   TC id(s), Verify rows cite the matching Open Questions entry, No
-   rows state why. Empty verdict or fourth cells are invalid. The
-   DRAFT SHAPE intro now counts three CONDITIONAL sections.
-3. **Lane descriptions note the sweep** (EXEMPLAR TEXT and
-   REFERENCE FUNCTIONALITY each gain "every case they describe is
-   swept case-by-case"); the exemplar-content, tools, surface, and
-   story-wins-conflicts guards extend to swept cases in full — the
-   sweep borrows COVERAGE IDEAS and (via the reference lane's
-   existing rules) behavior, never feature content.
-4. Worked example gains an abbreviated three-row Source Case Sweep
-   (one Yes → TC-N1, one Verify → Open Questions, one No with
-   reason) and a matching Open Questions [VERIFY]; preamble updated.
+1. **New CONCRETE TEST DATA grounding rule** (the carve-out from
+   the never-invent rule, placed directly after it): test DATA
+   values — route and event IDs, measures, dates, business-
+   attribute values — are fixtures the drafter MUST invent. They
+   are defined once in Setup / Prerequisites test-data tables and
+   every case writes against them: Steps and Expected Result name
+   concrete values ("split event E1 on route R1 at measure 16"),
+   never abstract stand-ins; a parameterized case names the
+   concrete value each variant uses. When a case creates or changes
+   event/route records, the Expected Result carries a GFM table of
+   the affected record(s) with expected field values after the edit
+   — under CASE GRANULARITY that table is ONE outcome (the complete
+   record state one edit produces), judged pass/fail as a whole,
+   and independent outcomes beyond that record state still split.
+   The carve-out covers VALUES ONLY: field names, domains, limits,
+   precision, defaults, and error text stay under the never-invent
+   rule — fixtures use simple values that dodge the unknown, and a
+   fixture never resolves a [VERIFY] item by fiat.
+2. **Setup / Prerequisites closes with `**Test data:**` fixture
+   tables** — a routes table (Route ID, measure range, from/to
+   dates) and, for event-editing stories, an events table (Event
+   ID, route, measures, dates, one or two business attributes).
+3. **Case-shape prose updated to match**: the Expected Result
+   description asks for the case's concrete fixture values and the
+   after-state table where records change; the Steps prose bans
+   abstract stand-ins.
+4. Worked example gains the Test data table (route R100) and
+   concrete values in TC-P1 / TC-N1; preamble notes an
+   event-editing story's cases would carry after-state tables.
 
 Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`,
 lengths 17/15 — G9 arithmetic untouched). Input keys unchanged,
 FIVE, exact names: **StoryMeta**, **StoryText**, **RelatedDigest**,
 **ExemplarText**, **ReferenceText**.
 
-Scope note: only plans whose BODIES reach the model are swept —
-the exemplar lane (`ExemplarSlots: 2`) and reference lane
-(`ReferenceSlots: 3`); digest-only neighbors have no cases to
-sweep, and the RELATED DIGEST rule still covers them at document
-granularity. Raising the slot counts in `Config_gen` widens the
-sweep; the caps bound the input. Length: the sweep table adds one
-line per source case within ExemplarCap 20000 / ReferenceCap 12000
-of source text; a truncated reply still fails CLOSED, and
-`Gen_summary`'s `draftChars` is the gauge to watch.
+Contract note: v1.8 adds NO structural asserts — the offline lints
+(`review/harness/check_draft_coverage.py`,
+`local/lib/draftlint.mjs`) stay on the v1.7 contract unchanged.
+Fixture-data concreteness is a reading check for the §4 review (and
+the smoke suite), like sweep completeness: a deterministic parser
+cannot judge whether "measure 16" is concrete enough for the case
+around it. Length: fixture tables and after-state tables add
+draft characters; `Gen_summary`'s `draftChars` is still the gauge,
+and truncation still fails CLOSED.
 
 Deploy (simple paste + one designer edit, both live flows): paste
 this text into the `LRS Test Plan Generation` AI Builder prompt
-(replaces the pending v1.6 paste — no parameter changes; a tenant
+(replaces the pending v1.7 paste — no parameter changes; a tenant
 still on the pre-v1.3 four-parameter contract does the v2.0
 ReferenceText window first, `Coverage_Runbook.md` step 2), set
-`Config_gen.TestPlanGenPromptVersion` to `v1.7`, then run smoke rows
-1, 3, 9 and 10 (`testplangen/TestPlanGen_Smoke.md` suite v1.6;
-`review/harness/check_draft_coverage.py` checks the sweep-table
-structure offline). NEVER bump `Config.PromptVersion` — nothing here
+`Config_gen.TestPlanGenPromptVersion` to `v1.8`, then run smoke rows
+1, 3, 9 and 10 and read one draft's cases for named fixtures and
+after-state tables. NEVER bump `Config.PromptVersion` — nothing here
 changes the sidecar format or reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
@@ -150,6 +146,14 @@ and reference functionality; where the sources are silent on a needed
 precondition, include the step with a [VERIFY: ...] note rather than
 inventing specifics.
 
+Close the section with a `**Test data:**` line followed by GFM
+table(s) defining the named fixtures the cases reference: a routes
+table (Route ID, measure range, from/to dates) and — when the story
+edits events — an events table (Event ID, route, measures, dates,
+one or two business attributes with simple values). Fixture VALUES
+are yours to invent (the CONCRETE TEST DATA rule); every case's data
+comes from these tables, or the case states its own delta.
+
 ## Positive Tests
 Cases proving the story's workflow behaves as specified. Each case
 verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
@@ -160,8 +164,12 @@ verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
 - [ ] 2. <tester action>
 
 **Expected Result:** the single observable outcome this case
-verifies, specific enough to judge pass/fail as a whole — never two
-independent outcomes (split the case instead).
+verifies, stated with the case's concrete fixture values and
+specific enough to judge pass/fail as a whole — never two
+independent outcomes (split the case instead). When the case creates
+or changes records, follow the sentence with a GFM table of the
+affected record(s)' expected field values after the edit (the
+CONCRETE TEST DATA rule).
 
 **Trace:** the story statement this case verifies, quoted or closely
 paraphrased — or the exemplar pattern it applies (e.g. "exemplar
@@ -171,7 +179,8 @@ functionality statement it grounds on, cited by document title.
 Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
 (one checkbox per numbered action, each a SINGLE tester action);
 Expected Result and Trace are standalone bold-labeled lines, never
-checkboxes.
+checkboxes. Steps and Expected Result name concrete fixture data —
+never abstract stand-ins (the CONCRETE TEST DATA rule).
 
 ## Negative Tests
 Directly under the heading, before TC-N1, emit this fixed alert
@@ -298,6 +307,28 @@ GROUNDING RULES
 - Missing information becomes a [VERIFY: ...] item in Open Questions —
   never a fabricated specific (no invented field names, limits,
   defaults, or error text).
+- CONCRETE TEST DATA (the carve-out from the rule above): test DATA
+  values — route and event IDs (R1, E1), measures, dates, and
+  business-attribute values — are fixtures you MUST invent. Define
+  them in the Setup / Prerequisites test-data tables and write every
+  case against them: Steps and Expected Result name concrete values
+  ("split event E1 on route R1 at measure 16"), never abstract
+  stand-ins ("a measure inside its extent", "a new valid value",
+  "input method M" — name each method the sources support). A
+  parameterized case names the concrete value each variant uses.
+  When a case creates or changes event or route records, the
+  Expected Result carries a GFM table of the affected record(s) with
+  expected field values after the edit (the before-state lives in
+  the fixture tables, or in a small before table when the case needs
+  its own); under CASE GRANULARITY that table is ONE outcome — the
+  complete record state one edit produces — judged pass/fail as a
+  whole, and independent outcomes beyond that record state still
+  split into their own cases. The carve-out covers VALUES ONLY:
+  field names, domains, limits, precision, defaults, and error text
+  stay under the never-invent rule — pick simple values that dodge
+  the unknown (integer measures inside a stated range) and keep the
+  unknown a [VERIFY] item; a fixture never resolves an open
+  question by fiat.
 - RELATED DIGEST: evaluate EVERY entry. When an entry's feature
   plausibly interacts with this story's feature, add an
   interaction/regression case (e.g. this feature crossing the
@@ -374,9 +405,12 @@ correctly absent and no reference-grounded cases appear; the
 exemplar lane is non-empty, so the Source Case Sweep appears. A full
 draft would carry one lock-acquisition case per enumerated pathway —
 Create, Extend, Realign, Reassign — plus their denial counterparts,
-each asserting a single outcome per the granularity rule, and one
-sweep row per exemplar case; only the first of each is shown here,
-and the Source Case Sweep and Coverage Map are abbreviated to match)
+each asserting a single outcome per the granularity rule and naming
+its fixture data per the CONCRETE TEST DATA rule (an event-editing
+story's cases would also carry expected after-state record tables,
+abbreviated away here), and one sweep row per exemplar case; only
+the first of each is shown here, and the Source Case Sweep and
+Coverage Map are abbreviated to match)
 
 [[[DRAFT BEGIN]]]
 # Test Plan — Conflict Prevention: Acquire Locks for New Routes
@@ -393,17 +427,24 @@ via Create Route, Extend Route, Realign Route, and Reassign Route.
 ## Setup / Prerequisites
 - [ ] 1. LRS network with conflict prevention enabled. [VERIFY:
       minimum lock-root configuration]
-- [ ] 2. Two Pro sessions signed in as different users against the
-      same network.
+- [ ] 2. Two Pro sessions signed in as different users (user A,
+      user B) against the same network.
+
+**Test data:**
+
+| Route ID | From Date | To Date | Created by |
+| --- | --- | --- | --- |
+| R100 | 1/1/2000 | Null | the cases (does not pre-exist) |
 
 ## Positive Tests
 
 ### TC-P1 — Lock acquired on Create Route
 **Steps:**
-- [ ] 1. As user A, run Create Route on a new route name.
+- [ ] 1. As user A, run Create Route with Route ID R100 and from
+      date 1/1/2000.
 - [ ] 2. Inspect the lock table before saving edits.
 
-**Expected Result:** A lock for the new route is held by user A at
+**Expected Result:** A lock for route R100 is held by user A at
 creation time, not deferred to save.
 
 **Trace:** "acquire locks when creating a new route" — story
@@ -417,8 +458,8 @@ workflow section.
 
 ### TC-N1 — Second user blocked on locked new route
 **Steps:**
-- [ ] 1. As user A, create a route without saving.
-- [ ] 2. As user B, attempt Reassign Route onto the same route.
+- [ ] 1. As user A, create route R100 without saving.
+- [ ] 2. As user B, attempt Reassign Route onto route R100.
 
 **Expected Result:** User B is denied with a lock conflict; no edit
 is applied.
