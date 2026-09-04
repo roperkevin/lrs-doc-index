@@ -78,6 +78,16 @@ verifier the cloud flow could not have
                      title+surface header, a pin duplicated in
                      related: is deduped, and the banner carries the
                      pinned ids; Gen_summary gains pinnedEx=/pinnedRef=
+  leg 13 figures     prompt v1.10's FIGURES rule, the local half: a
+                     Figure-line draft passes BOTH contract lints
+                     unchanged (no structural asserts); a story
+                     figure link copied verbatim passes grounding
+                     and lands in the written draft absolutized to
+                     the sidecar library's media URL (figures=
+                     counts the rewrites); an invented link
+                     surfaces as the "grounding: figure link"
+                     finding (draftlint v1.3 check e); a
+                     figure-less draft stamps figures=0
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -452,8 +462,12 @@ def main():
         {"doc": 26, "file": "adjacent__doc26.md", "s": 500},
         {"doc": 999, "file": "gone__doc999.md", "s": 400},
     ]
+    # the story carries one rendered SlideFigures diagram (leg 13 —
+    # the link shape the sweep's placeFigure writes into sidecars)
+    story_fig = ("![Routes R1 and R2 before the merge]"
+                 "(../media/doc12_slide2_fig1.svg)")
     url_story = sidecar(sidecar_dir, "User Stories", "route-merge__doc12.md",
-                        story_body, related)
+                        story_body + "\n\n" + story_fig, related)
     url_lonely = sidecar(sidecar_dir, "User Stories", "lonely__doc13.md",
                          "As an editor, I need to realign a route.", [])
     enum_body = ("The route can be created via Create Route, Extend Route, "
@@ -610,7 +624,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.9")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.10")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -1142,6 +1156,56 @@ def main():
           and ex.count("--- EXEMPLAR: plan-a__doc21.md ---") == 1
           and "pinned exemplars [21]" in draft.splitlines()[0],
           r.stdout + draft[:200])
+
+    # ---- leg 13: figures in cases (v1.6 / prompt v1.10) ------------
+    print("== leg 13: figures")
+    fig_draft = GOOD_DRAFT.replace(
+        "**Trace:** \"the merge must preserve measures\" — story requirement.",
+        "**Trace:** \"the merge must preserve measures\" — story requirement.\n"
+        "\n"
+        "**Figure:** " + story_fig)
+    # contract untouched: a Figure-line draft passes BOTH lints
+    fig_md = os.path.join(tmp, "fig.md")
+    with open(fig_md, "w") as f:
+        f.write(fig_draft)
+    py_rc_fig, py_labels_fig = run_py_lint(fig_md)
+    js_fig = run_draftlint(fig_md)
+    check("figure draft passes both contract lints (no structural asserts)",
+          py_rc_fig == 0 and js_fig["failures"] == [],
+          f"py={py_labels_fig} js={js_fig['failures']}")
+    state.drafts.clear()
+    state.gen_text = wrap(fig_draft)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    abs_link = SITE_URL + "/LRS%20Doc%20Index/media/doc12_slide2_fig1.svg"
+    check("verbatim story figure passes grounding",
+          r.returncode == 0 and "grounding: figure link" not in draft,
+          draft[:900])
+    check("cited link absolutized to the sidecar library media URL",
+          "**Figure:** ![Routes R1 and R2 before the merge](" + abs_link + ")"
+          in draft and "../media/" not in draft, draft[:1500])
+    check("Gen_summary counts the rewritten figure links",
+          summary_of(r.stdout).get("figures") == "1", r.stdout)
+    check("figures progress line on the manual run",
+          "progress: figures — 1 story figure link(s) absolutized" in r.stderr,
+          r.stderr[-400:])
+    state.drafts.clear()
+    invented_fig = fig_draft.replace(
+        "doc12_slide2_fig1.svg", "doc12_slide9_fig9.svg")
+    state.gen_text = wrap(invented_fig)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("invented figure link flagged (the FIGURES rule)",
+          r.returncode == 0
+          and 'figure link "../media/doc12_slide9_fig9.svg" is not in the '
+              "story sidecar" in draft, draft[:900])
+    state.drafts.clear()
+    state.gen_text = wrap(GOOD_DRAFT)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("no figure links: figures=0 and no figure finding",
+          r.returncode == 0 and summary_of(r.stdout).get("figures") == "0"
+          and "grounding: figure link" not in draft, r.stdout)
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

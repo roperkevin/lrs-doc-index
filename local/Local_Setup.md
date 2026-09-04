@@ -603,7 +603,15 @@ Steps / Expected Result lines must appear in the story (the prompt's
 tools rule made checkable — deliberately with NO reference-document
 exception, since the prompt admits no tool names from references),
 and every item of a 3+-item enumeration in a workflow-shaped story
-sentence must be mentioned somewhere in the draft. The heuristics
+sentence must be mentioned somewhere in the draft; since draftlint
+v1.2, every case's **Trace:** line must cite the story (prompt
+v1.9's story-first rule), and since v1.3, every markdown image link
+in the draft must appear in the story sidecar VERBATIM (prompt
+v1.10's FIGURES rule — a case may close with a `**Figure:**` line
+carrying a story diagram's link; the job then rewrites cited
+`../media/` links to absolute site URLs after verification so the
+figures render from the drafts folder, and `figures=` in
+Gen_summary counts the rewrites). The heuristics
 WILL flag some legitimate paraphrases — that is exactly why annotate
 is the default and strict is reserved for unattended runs;
 `testplangen.grounding: false` disables just this layer.
