@@ -89,7 +89,8 @@ keeps the old yaml-on-top layout).
 | testplangen/StoryLookupFlow_v1_0.zip | StoryLookupFlow import package (authored re-cut; agent-flow import caveat, Agent_Setup §1d) | v1.0 |
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
-| testplangen/CHANGES.md | Test-plan generation release notes | v2.15 |
+| testplangen/Local_TestPlanGen_Plan.md | Local generation job — design record + phased build order (phase 1 shipped as v2.16) | — |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.16 |
 | pad/PAD_Setup.md | PAD compute-offload build + deploy guide (Run-script quota workaround) | v2.1 |
 | pad/flow/DocIndexCompute.robin.txt | PAD desktop flow (paste-ready Robin; quick-run + batch modes) | v2.2 |
 | pad/runner/run_job.mjs | Node runner — executes `scripts/` verbatim, all nine Run-script contracts; batch job files + single-op CLI | v2.0 |
@@ -103,13 +104,15 @@ keeps the old yaml-on-top layout).
 | local/auth.mjs | Delegated device-code sign-in (Microsoft pre-registered public clients — no Azure app registration) | v1.0 |
 | local/graph.mjs | Microsoft Graph list client + SPO REST fallback for hyperlink columns (device sign-in default, client-credentials optional; list GUIDs from config) | v1.2 |
 | local/probe.mjs | Per-field Graph write probe (diagnostic) | v1.0 |
-| local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API | v1.3 |
+| local/llm.mjs | AI-step client — default: the cloud flow's own AI Builder prompt via the Dataverse Web API (same model/prompt/credits); alternative: direct Anthropic API; since v1.4 also `generateText` (raw-markdown generation for testplangen.mjs) | v1.4 |
 | local/harness/check_local_sweep.py | Local sweep gate (mock Graph + mock Dataverse Predict + mock Anthropic + mock device-code auth; dry/live/idempotency/provider/auth legs; CI) | v1.3 |
 | local/config.sample.json | Machine config template (copy to git-ignored local/config.json) | — |
 | local/CHANGES.md | Local sweep release notes | v1.0 |
 | local/svg2pptx.mjs | Figure SVGs → editable PowerPoint shapes (pull sweep figures into review decks: one native, grouped, restyleable figure per slide, titled with its case heading + source document, the case's tables as native editable tables, sidecar metadata line; zero dependencies) | v1.3 |
 | local/harness/check_svg2pptx.py | svg2pptx gate (full SlideFigures vocabulary fixture; package/shape/style/label/title-band/case-table contract + sidecar lookup legs + python-pptx open leg; CI) | v1.3 |
-| local/lib/*.mjs | The sweep's shared modules: util, doclinks, presentation, bodyindex, statuspage, indexpages, alerts, config (v1.31 split) + msg (CFB/.msg parser, v1.37), embedindex (embedding relatedness, v1.38), remotefs (no-OneDrive mode, v1.39) | — |
+| local/lib/*.mjs | The sweep's shared modules: util, doclinks, presentation, bodyindex, statuspage, indexpages, alerts, config (v1.31 split) + msg (CFB/.msg parser, v1.37), embedindex (embedding relatedness, v1.38), remotefs (no-OneDrive mode, v1.39), draftlint (in-process TestPlanGen draft-contract lint, testplangen v2.16) | — |
+| local/testplangen.mjs | **TestPlanGenCore as a local on-demand job**: story guard, related-line lanes, one model call (tenant AI Builder prompt via Dataverse Predict, or `prompts/TestPlanGen_Prompt.md` verbatim via Anthropic), fail-closed marker slice, contract-lint verifier, timestamped draft to Shared Documents/Test Plan Drafts (Local_Setup §11; `testplangen/CHANGES.md` v2.16) | v1.0 |
+| local/harness/check_testplangen.py | Generation-job gate (mock Graph + mock Predict + mock Anthropic; guard/lanes/caps/fail-closed/verifier legs incl. draftlint↔Python agreement; CI) | v1.0 |
 | local/Hosted_Runner.md | Remote-files mode + hosted GitHub Actions sweep — setup, prerequisites, and the credentials policy decision | v1.39 |
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
@@ -278,7 +281,14 @@ indexed User Story rows) — runs the flow, and relays the draft
 location; it has no knowledge sources and never drafts content
 itself — corpus questions stay with LRS Doc Index Q&A (optional and
 independent: nothing in test-plan generation requires the Q&A agent
-to be deployed).
+to be deployed). Since v2.16 generation also runs on the LOCAL stack:
+`local/testplangen.mjs` (Local_Setup.md §11) reimplements the core
+flow's semantics over Graph + the same AI Builder prompt (or the repo
+prompt verbatim via the Anthropic lane), machine-checks every draft
+against the prompt's coverage contract before writing it
+(`local/lib/draftlint.mjs`), and lands drafts in the same folder
+under the same human-review contract — the phased design is
+`testplangen/Local_TestPlanGen_Plan.md`.
 
 ## Fresh-tenant install order
 

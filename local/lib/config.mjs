@@ -1,7 +1,7 @@
 /**
- * config.mjs v1.0 — shared config guards for the local jobs
- * (sweep.mjs, curate.mjs, gantt.mjs). Two jobs and counting parse the
- * same config.json; a missing section used to die with a bare
+ * config.mjs v1.1 — shared config guards for the local jobs
+ * (sweep.mjs, curate.mjs, gantt.mjs, testplangen.mjs). The jobs parse
+ * the same config.json; a missing section used to die with a bare
  * TypeError deep inside loadConfig, and an old Node died with a
  * confusing "--experimental-strip-types" flag error before any code
  * ran. Both now fail with one plain-language message naming the fix.
@@ -66,4 +66,12 @@ export const CURATE_REQUIRED = [
   "sharePoint.hostname",
   "sharePoint.sitePath",
   "sharePoint.lists.keywords",
+];
+
+/** The config keys the test-plan generation job cannot run without. */
+export const TESTPLANGEN_REQUIRED = [
+  "sharePoint.hostname",
+  "sharePoint.sitePath",
+  "sharePoint.lists.docIndex",
+  "paths.sidecarLibrary",
 ];

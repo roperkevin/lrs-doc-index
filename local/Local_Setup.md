@@ -514,3 +514,83 @@ live exports never confirmed (`docs/SP_Adaptation_Notes.md`).
 RelatedRank already weights the minted `gantt` (60) and `titlematch`
 (40) edges; related lists pick them up as docs reindex or on one
 `sweep.mjs --rerank` pass.
+
+## 11. Test-plan generation (testplangen.mjs)
+
+The TestPlanGenCore cloud flow (v2.3) as an on-demand local job
+(`local/testplangen.mjs` v1.0 — design record
+`testplangen/Local_TestPlanGen_Plan.md`, component record
+`testplangen/CHANGES.md` v2.16): draft a test plan from one indexed
+**User Story** row, grounded strictly in that story with the
+catalog's related documentation as reference. It delivers the entire
+AUTHORED TestPlanGen state — prompt v1.7's coverage/granularity/
+source-sweep rules, the v2.2 lane routing, the v2.3 budget
+semantics — with zero tenant designer work, plus a verifier the
+cloud flow could not have: every draft is checked against the v1.7
+coverage contract (`local/lib/draftlint.mjs`, the in-process port of
+`review/harness/check_draft_coverage.py`) BEFORE it is written.
+Read-only over every list; the only write is the timestamped draft
+in **Shared Documents/Test Plan Drafts/** (outside the LRS Doc Index
+library so the Q&A agent never ingests unreviewed drafts — the
+curation-digest rule), via a Graph drive upload, never overwritten.
+The §4 human review loop in `testplangen/TestPlanGen_Setup.md` is
+unchanged and remains a REQUIRED control.
+
+Setup (after the sweep's §1–§4 — same config, sign-ins, and synced
+sidecar library; the sidecars ARE the retrieval source):
+
+1. Pick the prompt transport (`llm.provider`, shared with the sweep):
+   - **aibuilder** (default): the tenant's `LRS Test Plan
+     Generation` AI Builder prompt via Dataverse Predict. Find its
+     GUID with
+     `node --experimental-strip-types local\testplangen.mjs --config local\config.json --models`
+     and set `llm.testPlanModelId`. CAVEAT: the TENANT paste state
+     applies — the prompt must carry all FIVE input parameters
+     (ReferenceText) and the current v1.7 text
+     (`testplangen/Coverage_Runbook.md` step 2, one-time).
+   - **anthropic**: executes `prompts/TestPlanGen_Prompt.md`
+     VERBATIM — zero tenant prompt work, the v1.7 rules apply as
+     authored. `testplangen.maxTokens` (default 16384) bounds the
+     reply; a token-truncated draft loses its END marker and fails
+     CLOSED, loudly.
+2. Dry run against a real story:
+   `node --experimental-strip-types local\testplangen.mjs --config local\config.json --story <docId> --dry-run`
+   — nothing uploads; the would-be draft lands in workDir
+   (`testplangen-draft-*.md`, lintable with
+   `review/harness/check_draft_coverage.py`) and the summary line
+   (`story= neighbors= exemplars= references= … verify=`) reads
+   exactly like the flow's `Gen_summary`
+   (`TestPlanGen_Setup.md` §3 G13; `neighbors=0` on a story with
+   plain peers means its sidecar's `related:` line is stale — let
+   the nightly backfill converge, or reindex the story).
+3. `--live` writes the draft to
+   `Shared Documents/Test Plan Drafts/TestPlanDraft__doc<ID>__<stamp>.md`.
+   Review per `TestPlanGen_Setup.md` §4 (start from the Coverage
+   Map — and from the draft's own `[!IMPORTANT]` verifier block when
+   one is present), finalize, upload to the source library; the
+   nightly sweep closes the loop.
+
+**`testplangen.verify`** — the phase-1 verifier policy: `"annotate"`
+(default) writes a draft that fails the contract lint WITH a
+`> [!IMPORTANT]` findings block under the banner, so the reviewer
+starts where the machine already found smells; `"strict"` refuses to
+write such a draft at all (exit nonzero, findings on stderr — meant
+for unattended runs, phase 3); `"off"` gives byte-parity with the
+cloud flow's behavior. The verifier never edits draft content —
+annotate or refuse, whole-draft.
+
+Knobs (`testplangen` in config, defaults in parentheses) mirror the
+flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
+(20000), referenceCap (12000), neighborCap (5), digestSummaryCap
+(400), exemplarSlots (2), referenceSlots (3), promptVersion (v1.7,
+the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
+(`/Test Plan Drafts`, drive-root-relative), verify (annotate),
+maxTokens (16384), dryRun (true). Deliberate deviations from the
+flow, all bounded: one run-start Doc Index snapshot replaces the
+per-item Get calls; the G6 fallback orders by SourceModified where
+the flow orders by list Modified (same newest-first intent); a story
+sidecar missing from the synced library is a hard error naming the
+sync, not a silent degrade. Prompt promotion stays the
+`TestPlanGenPromptVersion` paste path (`testplangen/CHANGES.md`) —
+the anthropic lane picks a promoted prompt up on its next run
+automatically; the aibuilder lane still needs the tenant paste.

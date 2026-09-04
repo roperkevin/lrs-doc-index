@@ -1,9 +1,11 @@
 # Plan — TestPlanGen as a local job (`local/testplangen.mjs`)
 
-Status: **PLAN — nothing here is built.** When work starts it lands
-as TestPlanGen **v2.16** (component `CHANGES.md` entry, STATUS row
-update, harness registration) on the normal review path. This
-document is the design record and the build order.
+Status: **phase 1 BUILT** (2026-09-04, TestPlanGen **v2.16** — see
+`testplangen/CHANGES.md`): `local/testplangen.mjs` v1.0 with both
+prompt transports, the contract-lint verifier
+(`local/lib/draftlint.mjs`), and the `check_testplangen.py` gate
+(62/62, CI). Phases 2–4 remain design only. This document stays the
+design record and the build order.
 
 ## Why now
 
@@ -242,10 +244,11 @@ alongside the others. Legs:
 
 ## Build order
 
-1. **Phase 1 — the job**: `testplangen.mjs` (guard, lanes, call,
-   slice, banner, write, summary) + `lib/draftlint.mjs` + harness
-   legs 1–5 + config + `Local_Setup.md` section. Manual CLI only,
-   `--story <docId>`.
+1. **Phase 1 — the job** — ✅ SHIPPED (v2.16, 2026-09-04):
+   `testplangen.mjs` (guard, lanes, call, slice, banner, write,
+   summary) + `lib/draftlint.mjs` + harness legs 1–5 (plus an early
+   slice of leg 7: both providers against mocks) + config +
+   `Local_Setup.md` §11. Manual CLI only, `--story <docId>`.
 2. **Phase 2 — front door + telemetry**: `--issue` / `--title`
    lookup (StoryLookupFlow queries in-process, same
    bare-number-is-a-doc-id rule), webhook notification, grounding

@@ -12,6 +12,7 @@
 | `../../pad/harness/check_pad_runner.py` | **live** (CI fixture-free) | PAD runner + ops.mjs loader |
 | `../../local/harness/check_local_sweep.py` | **live** (CI fixture-free) | the whole local pipeline: sweep (all lanes incl. msg/OCR), curate (+`--repoint`), gantt, auth, alerts, embeddings, remote-files mode |
 | `../../local/harness/check_svg2pptx.py` | **live** (CI full-format) | svg2pptx |
+| `../../local/harness/check_testplangen.py` | **live** (CI fixture-free) | testplangen.mjs (guard, lanes, caps, fail-closed slice, verifier) + draftlint↔`check_draft_coverage.py` agreement |
 | `check_batch_v2_2.py` | **live** | ZipTextExtract v2.2 / DL-1 promotion |
 | `check_batch.py`, `check_batch_r2..r6.py` | historical — self-skip as superseded | the v1.9/r2–r6 promotion rounds (records below) |
 | `run_diff.py` | historical — skips unless wraps regenerated | the v1.5→v1.6 equivalence record |
@@ -76,7 +77,12 @@ when a batch is promoted:
    (`testplangen/Coverage_Runbook.md` step 5). `--baseline` scores a
    pre-v1.5/v1.6/v1.7 draft (skips the Coverage Map, granularity
    and sweep checks, keeps counters). Pure stdlib, no fixtures —
-   CI-friendly.
+   CI-friendly. This lint is the AUTHORITY for the contract:
+   `local/lib/draftlint.mjs` (the generation job's in-process
+   pre-write verifier, TestPlanGen v2.16) mirrors its asserts and
+   labels verbatim, and `check_testplangen.py`'s agreement leg fails
+   on any divergence — a contract change edits this file first, then
+   the port.
 
 Prereqs: Node 22+ (`--experimental-strip-types`) and
 `pip install -r requirements.txt` (python-pptx / python-docx for

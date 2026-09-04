@@ -45,6 +45,12 @@ certainly under-covered).
 of a comparison: section 1's Coverage Map requirement and checks 5,
 7 and 8 are skipped, counters still print.
 
+This file is the AUTHORITY for the contract: local/lib/draftlint.mjs
+(the local generation job's pre-write verifier, TestPlanGen v2.16)
+mirrors these asserts and label strings VERBATIM, and
+local/harness/check_testplangen.py's agreement leg fails on any
+divergence — change the contract here first, then mirror the port.
+
 Usage: python3 check_draft_coverage.py <draft.md> [--baseline]
 Exit code: non-zero on any failed assertion.
 """
