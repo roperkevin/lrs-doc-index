@@ -1,11 +1,33 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.2 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.3 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
- * documentation as reference. Phases 1–3 of
+ * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
- * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18).
+ * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19).
+ *
+ * v1.3 (phase 4 — the IssueRefs-driven coverage piece, unlocked by
+ * the owner-verified Issue Refs GUID) adds:
+ *   - the `## Issue Trace` addendum: every generated draft ends with
+ *     a DETERMINISTIC table of the story's devtopia issues — Doc IDs
+ *     rows for the story, enriched with the matching Issue Refs rows
+ *     (gantt.mjs's schedule feed: issue title, iteration, status) —
+ *     minted by this job from list rows, never by the model, and
+ *     appended AFTER verification so the verifier never judges
+ *     machine-minted content. Omitted when the story has no issue
+ *     rows; testplangen.issueTrace: false disables it. (The other
+ *     half of the queued "docx handoff" phase-4 item is the
+ *     standalone local/draft2docx.mjs converter.)
+ *   - `--gap-report`: the whole-catalog counterpart of the auto
+ *     mode's lookback scan — every Indexed User Story with no
+ *     covering Test Plan (no related-list plan, no Doc Links edge),
+ *     each with its issue numbers, written as a FIXED-NAME digest
+ *     (`TestPlan_Gap_Report.md`, overwritten per run — the
+ *     curation-digest snapshot rule, explicit empty state included)
+ *     into the Shared Documents root, outside the Q&A agent's
+ *     knowledge source. No AI spend; schedulable weekly beside
+ *     curation.
  *
  * v1.2 (phase 3) adds:
  *   - `--auto` — unattended gap-drafting (the runAuto docblock below
@@ -156,12 +178,13 @@ const VERIFY_MODES = ["annotate", "strict", "off"];
 
 const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
-  "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force]) " +
+  "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
   "[--live|--dry-run] [--verify annotate|strict|off] [--notify] | --models\n" +
   "A bare number is always a Doc Index row id (--story); a devtopia " +
   "issue number needs --issue — nothing is ever guessed (the v2.3 rule). " +
   "--auto drafts for freshly indexed, uncovered stories (needs " +
-  "testplangen.autoDraft: true; strict verification and notify are forced).";
+  "testplangen.autoDraft: true; strict verification and notify are forced). " +
+  "--gap-report writes the whole-catalog uncovered-stories digest (no AI spend).";
 
 function loadConfig(argv) {
   const args = { flags: {} };
@@ -177,19 +200,24 @@ function loadConfig(argv) {
     else if (a === "--notify") args.flags.notify = true;
     else if (a === "--auto") args.flags.auto = true;
     else if (a === "--force") args.flags.force = true;
+    else if (a === "--gap-report") args.flags.gapReport = true;
     else if (a === "--verify") args.verify = argv[++i];
     else throw new Error(`unknown argument: ${a}\n${USAGE}`);
   }
   const refs = [args.story, args.issue, args.title].filter((v) => v !== undefined);
-  const wantRefs = args.flags.models || args.flags.auto ? 0 : 1;
-  if (!args.config || refs.length !== wantRefs) {
+  const modeless = args.flags.models || args.flags.auto || args.flags.gapReport;
+  if (
+    !args.config ||
+    refs.length !== (modeless ? 0 : 1) ||
+    (args.flags.auto && args.flags.gapReport)
+  ) {
     throw new Error(USAGE);
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   const required = [...TESTPLANGEN_REQUIRED];
   if (args.issue !== undefined) required.push("sharePoint.lists.docIds");
-  if (args.flags.auto) required.push("sharePoint.lists.docLinks");
+  if (args.flags.auto || args.flags.gapReport) required.push("sharePoint.lists.docLinks");
   validateConfig(cfg, required, args.config);
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
@@ -224,10 +252,15 @@ function loadConfig(argv) {
     grounding: true,
     notify: false,
     provider: "", // "" = follow llm.provider; "aibuilder"|"anthropic" overrides for generation only
-    maxTokens: 16384,
+    // v1.6+ split-case drafts run long — the first live run blew a
+    // 16384 default (v1.3 raised it; claude-opus-5 allows up to 128k)
+    maxTokens: 32000,
+    issueTrace: true,
     autoDraft: false,
     autoMaxPerRun: 3,
     autoLookbackDays: 7,
+    gapReportName: "TestPlan_Gap_Report.md",
+    gapReportDrivePath: "", // site default drive root = Shared Documents
     dryRun: true,
     ...(cfg.testplangen || {}),
   };
@@ -248,7 +281,8 @@ function loadConfig(argv) {
   cfg._models = !!args.flags.models;
   cfg._auto = !!args.flags.auto;
   cfg._force = !!args.flags.force;
-  if (!cfg._models && !cfg._auto) {
+  cfg._gapReport = !!args.flags.gapReport;
+  if (!cfg._models && !cfg._auto && !cfg._gapReport) {
     if (args.story !== undefined) {
       cfg._storyId = num(args.story);
       if (cfg._storyId === undefined) {
@@ -349,6 +383,7 @@ async function run(cfg) {
   const ctx = { cfg, graph, siteId, rows, byId, sw, tp, dry, plan: [] };
 
   if (cfg._auto) return runAuto(ctx);
+  if (cfg._gapReport) return runGapReport(ctx);
 
   // ---- lookup front door (v1.1) — StoryLookupFlow's deterministic
   // queries, in-process; ambiguity and misses go back to the human,
@@ -455,6 +490,119 @@ async function run(cfg) {
       `(would land as ${res.draftPath})\n`
     );
   }
+}
+
+// Doc IDs (+ Issue Refs, when configured) — fetched once per process
+// and shared across an auto run's stories (the run-start-snapshot rule)
+async function issueRowsOf(ctx) {
+  if (ctx._issueRows) return ctx._issueRows;
+  const { cfg, graph, siteId } = ctx;
+  const out = { ids: [], refs: [] };
+  if (cfg.sharePoint.lists?.docIds) {
+    out.ids = (
+      await graph.listItems(siteId, cfg.sharePoint.lists.docIds, {
+        select: ["Repo", "IssueNumber", "Source", "DocumentLookupId"],
+      })
+    ).map((it) => {
+      const f = it.fields || {};
+      return {
+        Repo: f.Repo || "",
+        IssueNumber: num(f.IssueNumber),
+        Source: f.Source || "",
+        DocumentId: num(f.DocumentLookupId) ?? num(f.DocumentId),
+      };
+    });
+  }
+  if (cfg.sharePoint.lists?.issueRefs) {
+    out.refs = (
+      await graph.listItems(siteId, cfg.sharePoint.lists.issueRefs, {
+        select: ["IssueKey", "IssueTitle", "IterationLabel", "StatusSummary", "DoneFlag"],
+      })
+    ).map((it) => {
+      const f = it.fields || {};
+      return {
+        IssueKey: f.IssueKey || "",
+        IssueTitle: f.IssueTitle || "",
+        IterationLabel: f.IterationLabel || "",
+        StatusSummary: f.StatusSummary || "",
+        DoneFlag: f.DoneFlag === true || f.DoneFlag === "Yes",
+      };
+    });
+  }
+  ctx._issueRows = out;
+  return out;
+}
+
+// list-field text into a GFM table cell: pipes and quotes stripped,
+// length capped (the Why_capped treatment)
+const cellSafe = (s, cap = 120) => cut(stripQuotes(String(s ?? "").replaceAll("|", "/")), cap);
+
+/** The story's deterministic `## Issue Trace` addendum ("" when the
+ *  story carries no issue rows, or the lane is off/unconfigured).
+ *  Machine-minted from list rows, never model output — appended AFTER
+ *  verification, so the verifier only ever judges the model's draft. */
+async function issueTraceOf(ctx, story) {
+  const { cfg, tp } = ctx;
+  if (tp.issueTrace === false || !cfg.sharePoint.lists?.docIds) return { section: "", count: 0 };
+  try {
+    const { ids, refs } = await issueRowsOf(ctx);
+    const refByKey = new Map(refs.map((r) => [r.IssueKey, r]));
+    const seen = new Set();
+    const lines = [];
+    for (const r of ids) {
+      if (r.DocumentId !== story.ID || r.IssueNumber === undefined) continue;
+      const key = `${r.Repo}#${r.IssueNumber}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const ref = refByKey.get(key);
+      const status = ref
+        ? [ref.IterationLabel, ref.StatusSummary, ref.DoneFlag ? "done" : ""]
+            .filter(Boolean)
+            .map((v) => cellSafe(v, 80))
+            .join(" · ") || "—"
+        : "—";
+      lines.push(
+        `| ${cellSafe(key, 60)} | ${ref && ref.IssueTitle ? cellSafe(ref.IssueTitle) : "—"} ` +
+        `| ${status} | ${cellSafe(r.Source, 60) || "sidecar"} |`
+      );
+    }
+    if (lines.length === 0) return { section: "", count: 0 };
+    return {
+      count: lines.length,
+      section:
+        "\n## Issue Trace\n\n" +
+        "_Deterministic addendum — minted by local/testplangen.mjs from the " +
+        "Doc IDs and Issue Refs lists, not by the model. Cross-check against " +
+        "devtopia during the review pass._\n\n" +
+        "| Issue | Title (Issue Refs) | Schedule status | Found via |\n" +
+        "| --- | --- | --- | --- |\n" +
+        lines.join("\n") + "\n",
+    };
+  } catch (e) {
+    // the addendum is a convenience — its failure never fails a draft
+    process.stderr.write(`issue trace skipped: ${e.message}\n`);
+    return { section: "", count: 0 };
+  }
+}
+
+// gap test (b): stories already edge-linked to a Test Plan, one Doc
+// Links scan per run (shared by the auto mode and the gap report)
+async function linkedToPlanSet(ctx) {
+  const { cfg, graph, siteId, byId } = ctx;
+  const isPlanId = (id) => byId.get(id)?.DocKind === "Test Plan";
+  const linkRows = await graph.listItems(siteId, cfg.sharePoint.lists.docLinks, {
+    select: ["DocALookupId", "DocBLookupId"],
+  });
+  const linked = new Set();
+  for (const it of linkRows) {
+    const f = it.fields || {};
+    const a = num(f.DocALookupId) ?? num(f.DocAId);
+    const b = num(f.DocBLookupId) ?? num(f.DocBId);
+    if (a === undefined || b === undefined) continue;
+    if (isPlanId(b)) linked.add(a);
+    if (isPlanId(a)) linked.add(b);
+  }
+  return linked;
 }
 
 // One story, G3–G13 + verifier + notify. The auto mode calls this per
@@ -607,7 +755,18 @@ async function generateOne(ctx, story) {
     // document content stays literal — it can never trigger a second
     // substitution
     const prompt = template.replace(INPUTS_RE, (m, key) => inputs[key]);
-    genRaw = await generateText({ ...cfg.llm, maxTokens: Number(tp.maxTokens) }, prompt);
+    try {
+      genRaw = await generateText({ ...cfg.llm, maxTokens: Number(tp.maxTokens) }, prompt);
+    } catch (e) {
+      if (/max_tokens/.test(String(e.message))) {
+        throw new Error(
+          `${e.message} — for this job the knob is testplangen.maxTokens ` +
+          `(currently ${tp.maxTokens}; the model allows up to 128000, and very ` +
+          "long generations may also need llm.timeoutMs raised)"
+        );
+      }
+      throw e;
+    }
   } else {
     throw new Error(`unknown llm.provider "${provider}" (aibuilder | anthropic)`);
   }
@@ -673,7 +832,10 @@ async function generateOne(ctx, story) {
     "upload this file to the LocationReferencing Documents library or the " +
     "LRS Doc Index library — finalize into the team test-plan format first " +
     "(TestPlanGen_Setup.md §4).\n\n";
-  const draft = banner + verifyBlock + draftBody + "\n";
+  // the deterministic Issue Trace addendum (v1.3) rides AFTER the
+  // verified body — the verifier never judges machine-minted content
+  const trace = await issueTraceOf(ctx, story);
+  const draft = banner + verifyBlock + draftBody + "\n" + trace.section;
 
   // G11 — timestamped save, never overwritten (drafts are work
   // products a PE may be mid-edit on; stale ones are deleted by hand)
@@ -693,7 +855,8 @@ async function generateOne(ctx, story) {
     `story=${story.ID} neighbors=${relEntries.length} exemplars=${exemplarCount} ` +
     `references=${referenceCount} digestChars=${digest.length} ` +
     `storyChars=${storyTextCapped.length} draftChars=${draftBody.length} ` +
-    `exChars=${exemplarText.length} refChars=${referenceText.length} verify=${verify}`;
+    `exChars=${exemplarText.length} refChars=${referenceText.length} ` +
+    `verify=${verify} issues=${trace.count}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run
@@ -763,20 +926,7 @@ async function runAuto(ctx) {
   const actx = { ...ctx, tp, dry };
 
   const isPlanId = (id) => byId.get(id)?.DocKind === "Test Plan";
-
-  // gap test (b): stories already edge-linked to a Test Plan
-  const linkRows = await graph.listItems(siteId, cfg.sharePoint.lists.docLinks, {
-    select: ["DocALookupId", "DocBLookupId"],
-  });
-  const linkedToPlan = new Set();
-  for (const it of linkRows) {
-    const f = it.fields || {};
-    const a = num(f.DocALookupId) ?? num(f.DocAId);
-    const b = num(f.DocBLookupId) ?? num(f.DocBId);
-    if (a === undefined || b === undefined) continue;
-    if (isPlanId(b)) linkedToPlan.add(a);
-    if (isPlanId(a)) linkedToPlan.add(b);
-  }
+  const linkedToPlan = await linkedToPlanSet(ctx);
 
   // idempotency: existing auto/manual drafts, one listing per run
   const existing = new Set();
@@ -908,6 +1058,120 @@ async function runAuto(ctx) {
   // partial failures surface in the exit code for the task log, after
   // every candidate got its chance
   if (sum.errors > 0) process.exitCode = 1;
+}
+
+/**
+ * --gap-report (v1.3, phase 4): the whole-catalog counterpart of the
+ * auto mode's lookback scan, with no AI spend and no drafting — every
+ * Indexed User Story with NO covering Test Plan (no related-list
+ * plan, no Doc Links edge), each with its devtopia issue numbers, as
+ * a FIXED-NAME digest overwritten per run (the curation-digest
+ * snapshot rule: an emptied queue writes an explicit empty state,
+ * never last week's file). Lands in the Shared Documents root —
+ * outside the LRS Doc Index library, so the Q&A agent never ingests
+ * it. Schedulable weekly beside curation; also the "which stories
+ * would auto mode eventually reach" planning view.
+ */
+async function runGapReport(ctx) {
+  const { cfg, graph, siteId, rows, sw, tp, dry } = ctx;
+  const linkedToPlan = await linkedToPlanSet(ctx);
+  const { ids } = await issueRowsOf(ctx);
+  const issuesByDoc = new Map();
+  for (const r of ids) {
+    if (r.DocumentId === undefined || r.IssueNumber === undefined) continue;
+    const list = issuesByDoc.get(r.DocumentId) || [];
+    const key = `${r.Repo}#${r.IssueNumber}`;
+    if (!list.includes(key)) list.push(key);
+    issuesByDoc.set(r.DocumentId, list);
+  }
+
+  const isPlanId = (id) => ctx.byId.get(id)?.DocKind === "Test Plan";
+  const stories = rows.filter((r) => r.DocKind === "User Story" && r.IndexStatus === "Indexed");
+  const gaps = [];
+  const unassessable = [];
+  let covered = 0;
+  for (const story of stories) {
+    const local = story.TextFileUrl ? urlToLocal(story.TextFileUrl, sw, cfg) : null;
+    if (!local || !fs.existsSync(local)) {
+      unassessable.push(story);
+      continue;
+    }
+    let isCovered = linkedToPlan.has(story.ID);
+    if (!isCovered) {
+      try {
+        isCovered = parseRelated(fs.readFileSync(local, "utf8")).some((e) => isPlanId(num(e?.doc)));
+      } catch {
+        unassessable.push(story);
+        continue;
+      }
+    }
+    if (isCovered) covered++;
+    else gaps.push(story);
+  }
+
+  const storyLine = (s) => {
+    const issues = issuesByDoc.get(s.ID) || [];
+    return (
+      `- doc ${s.ID} — "${stripQuotes(s.Title)}" (surface ${s.Surface || ""}, ` +
+      `release ${s.TargetRelease || ""}` +
+      (issues.length ? `; issues ${issues.join(" ")}` : "") +
+      `)${s.TextFileUrl ? ` — sidecar: <${s.TextFileUrl}>` : ""}`
+    );
+  };
+  const head =
+    `# Test plan gap report\n\n` +
+    `Run: ${new Date().toISOString()}  ·  local/testplangen.mjs ${JOB_VERSION}  ·  ` +
+    `stories=${stories.length} covered=${covered} gaps=${gaps.length} ` +
+    `unassessable=${unassessable.length}\n\n`;
+  const body =
+    gaps.length === 0
+      ? "NO GAPS — every assessable indexed User Story has a covering Test " +
+        "Plan (a related-list plan or a Doc Links edge). New stories appear " +
+        "here as the sweep indexes them.\n"
+      : "Indexed User Stories with NO covering Test Plan (no related-list " +
+        "plan, no Doc Links edge) — draft with " +
+        "`testplangen.mjs --story <doc>` or let `--auto` reach them:\n\n" +
+        gaps.map(storyLine).join("\n") + "\n";
+  const tail =
+    unassessable.length === 0
+      ? ""
+      : "\nUnassessable (no sidecar in the local sync, or an unparseable " +
+        "related: line):\n\n" + unassessable.map(storyLine).join("\n") + "\n";
+  const report = head + body + tail;
+
+  const reportPath = `${tp.gapReportDrivePath}/${tp.gapReportName}`;
+  ctx.plan.push({ action: "putFile", path: reportPath, bytes: report.length });
+  if (!dry) await graph.putFile(siteId, reportPath, report);
+
+  const line =
+    `mode=gap-report stories=${stories.length} covered=${covered} ` +
+    `gaps=${gaps.length} unassessable=${unassessable.length}`;
+  const logDir = cfg.paths?.workDir || ".";
+  fs.mkdirSync(logDir, { recursive: true });
+  const logStamp = new Date().toISOString().replaceAll(":", "").slice(0, 17);
+  let localReport;
+  if (dry) {
+    localReport = path.join(logDir, `testplangen-gapreport-${logStamp}.md`);
+    fs.writeFileSync(localReport, report);
+  }
+  const logFile = path.join(logDir, `testplangen-${logStamp}.json`);
+  fs.writeFileSync(
+    logFile,
+    JSON.stringify(
+      { line, dry_run: dry, report: reportPath, localReport, plan: dry ? ctx.plan : undefined },
+      null,
+      1
+    )
+  );
+  pruneRunLogs(logDir, 10, "testplangen-");
+  process.stdout.write(JSON.stringify({ line, dry_run: dry, report: reportPath, logFile }) + "\n");
+  process.stdout.write(line + "\n");
+  if (dry) {
+    process.stdout.write(
+      `dry run: nothing uploaded — the report is at ${localReport} ` +
+      `(would land as ${reportPath})\n`
+    );
+  }
 }
 
 async function main() {
