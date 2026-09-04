@@ -6,7 +6,7 @@
  * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
- * lanes: v2.22; figures: v2.26).
+ * lanes: v2.22; figures: v2.26; web references: v2.28).
  *
  * v1.7 (web references — hyperlinks as pinned references): the
  * `--reference` pin also takes an http(s) URL — official product

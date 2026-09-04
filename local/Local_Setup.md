@@ -766,8 +766,14 @@ a sibling .pptx: title + at-a-glance slides, one slide per TC case
 (steps checklist, Expected Result and Trace cards, `[VERIFY:` flags
 in amber), Coverage Map and Issue Trace as native editable tables,
 all on the Diagram Style Framework palette so svg2pptx figure
-slides drop in beside it. The docx stays the document of record;
-the deck is the review surface. Gate:
+slides drop in beside it. Since v1.1, add
+`--media "<synced library>\media"` (the LRS Doc Index library's
+media folder) and each case's cited `**Figure:**` diagram (prompt
+v1.10) renders as a figure slide directly after the case — the same
+native, editable shape group svg2pptx emits; without the flag the
+deck still converts and the case slide carries a muted
+"Figure: … (not embedded)" note. The docx stays the document of
+record; the deck is the review surface. Gate:
 `local/harness/check_draft2pptx.py` (CI).
 
 Schedule it: register a daily task for `local\run_testplangen.cmd`

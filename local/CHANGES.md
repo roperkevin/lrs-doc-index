@@ -1,5 +1,21 @@
 # Local sweep — release notes
 
+## svg2pptx v1.4 (2026-09-04, with TestPlanGen v2.27)
+
+**The figure parser/emitter become importable.** `parseFigure`,
+`emitFigure`, and `EMU_PX` are exported, and the CLI body moved into
+a `main()` that runs only when the file is executed directly
+(`import.meta.url` vs `process.argv[1]`), so `draft2pptx.mjs` v1.1
+embeds a draft's cited story figures (prompt v1.10's `**Figure:**`
+lines) as the same native shape groups this converter puts on figure
+slides — one figure vocabulary, one emitter, no copy. CLI behavior
+and output are byte-for-byte unchanged; the review-deck side of the
+change is recorded in `testplangen/CHANGES.md` v2.27.
+
+Gate: `check_svg2pptx.py` PASS unchanged (the CLI contract is the
+same code path); the import surface is exercised by
+`check_draft2pptx.py`'s figure leg.
+
 ## v1.41 (2026-09-04)
 
 **Wireframe OCR needs Tesseract alone — and going without is never

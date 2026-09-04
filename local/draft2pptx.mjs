@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * draft2pptx v1.0 — TestPlanGen draft markdown → a designed review deck
+ * draft2pptx v1.1 — TestPlanGen draft markdown → a designed review deck
  * ---------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the svg2pptx precedent:
  * OOXML is a zip of XML parts, and Node's zlib does the rest). Takes a
@@ -10,6 +10,7 @@
  * palette so it sits next to svg2pptx figure slides without a seam.
  *
  *   node local/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx]
+ *                             [--media <dir>]
  *
  * Each input converts to a sibling .pptx (same name); `-o` names the
  * output for a SINGLE input. The deck is derived from the draft dialect
@@ -30,6 +31,15 @@
  *                      left; Expected Result and Trace as cards on the
  *                      right ([VERIFY: …] flags surfaced in amber);
  *                      long cases continue onto "(cont.)" slides
+ *   figure slides   <- v1.1: a case's **Figure:** line (prompt v1.10's
+ *                      FIGURES rule) becomes a slide directly after the
+ *                      case, the cited SVG rendered as the same native,
+ *                      editable shape group svg2pptx emits — pass
+ *                      `--media <dir>` (the synced sidecar library's
+ *                      media folder) so the cited links resolve to
+ *                      local files; without it (or when a file is
+ *                      missing) the case slide carries a muted
+ *                      "Figure: …" note instead, and the run says why
  *   tables          <- Coverage Map / Issue Trace as native, editable
  *                      PowerPoint tables (long ones paginate)
  *   bullet slides   <- Automation Notes, Documentation Impacts, and any
@@ -46,17 +56,22 @@
 import fs from "node:fs";
 import path from "node:path";
 import { deflateRawSync } from "node:zlib";
+// the figure vocabulary and shape emitter, shared with the figure deck
+// (svg2pptx v1.4 exports them; its CLI runs only when executed directly)
+import { parseFigure, emitFigure, EMU_PX } from "./svg2pptx.mjs";
 
 // -------------------------------------------------------------- CLI
 
 function collectInputs(argv) {
   const files = [];
   let out = null;
+  let mediaDir = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "-o") out = argv[++i];
+    else if (argv[i] === "--media") mediaDir = argv[++i];
     else files.push(argv[i]);
   }
-  return { files, out };
+  return { files, out, mediaDir };
 }
 
 // ----------------------------------------------------------- markdown
@@ -169,7 +184,7 @@ function parseDraft(md) {
     }
     if (!sec) { pre.push(b); continue; }
     if (b.kind === "h" && b.level === 3) {
-      cur = { title: b.text, steps: [], expected: "", trace: "", extra: [] };
+      cur = { title: b.text, steps: [], expected: "", trace: "", figures: [], extra: [] };
       sec.cases.push(cur);
       continue;
     }
@@ -179,6 +194,18 @@ function parseDraft(md) {
       if (m) { cur.expected = m[1]; continue; }
       m = /^\*\*Trace:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
       if (m) { cur.trace = m[1]; continue; }
+      // prompt v1.10's optional case-closing Figure line: image links
+      // copied verbatim from the story sidecar — lift alt + href out
+      m = /^\*\*Figure:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      if (m) {
+        let found = false;
+        for (const im of m[1].matchAll(/!\[([^\]]*)\]\(([^()\s]+)\)/g)) {
+          cur.figures.push({ alt: im[1], href: im[2] });
+          found = true;
+        }
+        if (!found && m[1].trim()) cur.figures.push({ alt: m[1].trim(), href: "" });
+        continue;
+      }
       if (b.kind === "task") { cur.steps.push(b); continue; }
       cur.extra.push(b);
       continue;
@@ -680,6 +707,64 @@ function caseSlides(model, sec, tc, pageRef) {
   return out;
 }
 
+// -------------------------------------------------- figure slides (v1.1)
+// A case's **Figure:** links point into the sidecar library's media
+// folder (absolute site URLs since testplangen.mjs v1.6 rewrites them;
+// sidecar-relative ../media/... on cloud-flow drafts) — either way the
+// FILE is the last path segment, and --media names the local folder
+// that holds it (the OneDrive-synced "LRS Doc Index/media"). A miss
+// never fails a conversion: it becomes a muted note on the case slide.
+function resolveFigure(href, mediaDir) {
+  if (!mediaDir || !href) return null;
+  let name = href.split("/").pop() || "";
+  try { name = decodeURIComponent(name); } catch { /* keep the raw name */ }
+  if (!/\.svg$/i.test(name)) return null;
+  const p = path.join(mediaDir, name);
+  return fs.existsSync(p) ? p : null;
+}
+
+// one cited figure → one slide directly after its case: the deck's
+// chrome (id pill + FIGURE tag + the story's own alt text as the
+// title) around the same native, editable shape group svg2pptx puts
+// on a figure slide — one figure vocabulary, one emitter
+const FIG_TOP = 1.9 * IN;
+
+function figureSlide(model, sec, tc, fig, alt, pageRef) {
+  const neg = /negative/i.test(sec.name);
+  const color = neg ? RED : GREEN;
+  const m = /^(TC-\S+)/.exec(tc.title);
+  const id = m ? m[1] : "";
+  let x = "";
+  let hx = MARGIN;
+  if (id) {
+    const iw = pillW(id, 13);
+    x += pill(id, hx, 0.55 * IN, iw, 0.42 * IN, color, PAPER, 13);
+    hx += iw + 0.18 * IN;
+  }
+  x += pill("FIGURE", hx, 0.585 * IN, pillW("FIGURE", 10.5), 0.35 * IN, TEAL_TINT, TEAL, 10.5);
+  const title = alt || fig.title || fig.name;
+  x += textbox("figure title", MARGIN, 1.12 * IN, CONTENT_W, 0.72 * IN,
+    [{ runs: [{ t: title, color: INK, sz: title.length > 60 ? 21 : 25, b: true }] }]);
+  // centre the group between the header and the footer, scaled down
+  // only when it would not fit (the svg2pptx slide rule)
+  const wEmu = fig.w * EMU_PX, hEmu = fig.h * EMU_PX;
+  const areaH = CASE_BOTTOM - FIG_TOP;
+  const s = Math.min(1, CONTENT_W / wEmu, areaH / hEmu);
+  const gw = Math.round(wEmu * s), gh = Math.round(hEmu * s);
+  const gx = Math.round((SLIDE_W - gw) / 2);
+  const gy = Math.round(FIG_TOP + Math.max(0, (areaH - gh) / 2));
+  const gid = SHAPE_ID++;
+  const { xml, nextId, skipped } = emitFigure(fig, s, SHAPE_ID);
+  SHAPE_ID = nextId;
+  const descr = [fig.title, fig.desc].filter(Boolean).join(" — ");
+  x += `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${gid}" name="${xesc(fig.title || fig.name)}"` +
+    (descr ? ` descr="${xesc(descr)}"` : "") + "/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
+    `<p:grpSpPr><a:xfrm><a:off x="${gx}" y="${gy}"/><a:ext cx="${gw}" cy="${gh}"/>` +
+    `<a:chOff x="0" y="0"/><a:chExt cx="${gw}" cy="${gh}"/></a:xfrm></p:grpSpPr>${xml}</p:grpSp>`;
+  if (skipped.length) console.error(`note: ${fig.name}: skipped ${skipped.length} shape(s)`);
+  return slide(x + footer(model.title, pageRef.n++), PAPER);
+}
+
 // table slide: Coverage Map / Issue Trace (long tables paginate)
 function tableSlides(model, sec, pageRef) {
   const out = [];
@@ -781,7 +866,7 @@ function closingSlide(model, stats) {
   });
   if (model.provenance) {
     x += textbox("prov", MARGIN, SLIDE_H - 0.75 * IN, CONTENT_W, 0.3 * IN,
-      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.0", color: MUTED, sz: 10.5 }] }]);
+      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.1", color: MUTED, sz: 10.5 }] }]);
   }
   return slide(x, INK);
 }
@@ -959,9 +1044,41 @@ function zip(files) {
 
 // ---------------------------------------------------------------- deck
 
-function buildDeck(md) {
+function buildDeck(md, opts) {
   SHAPE_ID = 2;
+  const o = opts || {};
   const model = parseDraft(md);
+  // v1.1: resolve each case's cited figures up front — a resolved link
+  // becomes a figure slide directly after the case; a miss becomes a
+  // muted note on the case slide (and a stderr line naming the fix),
+  // never a conversion error
+  for (const sec of model.sections) {
+    for (const tc of sec.cases) {
+      tc._figs = [];
+      for (const fg of tc.figures) {
+        const local = resolveFigure(fg.href, o.mediaDir);
+        if (local) {
+          try {
+            const fig = parseFigure(local);
+            if (fig.unknown.length) {
+              console.error(`note: ${path.basename(local)}: skipped unknown element(s): ${fig.unknown.join(", ")}`);
+            }
+            tc._figs.push({ fig, alt: fg.alt });
+            continue;
+          } catch (e) {
+            console.error(`figure skipped (${fg.href}): ${e.message}`);
+          }
+        } else {
+          console.error(
+            `figure not embedded (${fg.href || fg.alt}): ` +
+            (o.mediaDir
+              ? "no such file under --media"
+              : "run with --media <synced LRS Doc Index>/media to embed cited figures"));
+        }
+        tc.extra.push({ kind: "p", text: `Figure: ${fg.alt || fg.href} (not embedded)` });
+      }
+    }
+  }
   const pos = model.sections.find((s) => s.name === "Positive Tests");
   const neg = model.sections.find((s) => s.name === "Negative Tests");
   const cov = model.sections.find((s) => s.name === "Coverage Map");
@@ -976,15 +1093,16 @@ function buildDeck(md) {
   slides.push(glanceSlide(model, stats, pageRef.n++));
   for (const sec of model.sections) {
     if (sec.name === "Overview") continue; // folded into title + glance
-    if (TEST_SECTIONS.includes(sec.name)) {
+    if (TEST_SECTIONS.includes(sec.name) || sec.cases.length) {
+      // an unknown H2 that carries H3 cases still gets case slides;
+      // a case's resolved figures follow it as figure slides (v1.1)
       slides.push(dividerSlide(model, sec, pageRef.n++));
-      for (const tc of sec.cases) slides.push(...caseSlides(model, sec, tc, pageRef));
-      continue;
-    }
-    if (sec.cases.length) {
-      // an unknown H2 that carries H3 cases still gets case slides
-      slides.push(dividerSlide(model, sec, pageRef.n++));
-      for (const tc of sec.cases) slides.push(...caseSlides(model, sec, tc, pageRef));
+      for (const tc of sec.cases) {
+        slides.push(...caseSlides(model, sec, tc, pageRef));
+        for (const f of tc._figs) {
+          slides.push(figureSlide(model, sec, tc, f.fig, f.alt, pageRef));
+        }
+      }
       continue;
     }
     const hasTable = sec.blocks.some((b) => b.kind === "table");
@@ -1002,17 +1120,24 @@ function buildDeck(md) {
 }
 
 // ---------------------------------------------------------------- main
-const { files, out } = collectInputs(process.argv.slice(2));
+const { files, out, mediaDir } = collectInputs(process.argv.slice(2));
 if (files.length === 0 || (out && files.length > 1)) {
-  console.error('usage: node local/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx]');
-  console.error("       -o names the output for a SINGLE input");
+  console.error('usage: node local/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx] [--media <dir>]');
+  console.error("       -o names the output for a SINGLE input;");
+  console.error("       --media points at the synced sidecar library's media folder so cited **Figure:** links embed as native shapes");
+  process.exit(2);
+}
+// --media is an explicit human choice — a wrong path refuses loudly
+// (the pinned-lanes rule) instead of silently dropping every figure
+if (mediaDir && !(fs.existsSync(mediaDir) && fs.statSync(mediaDir).isDirectory())) {
+  console.error(`--media ${mediaDir}: not a directory`);
   process.exit(2);
 }
 let failed = 0;
 for (const f of files) {
   try {
     const md = fs.readFileSync(f, "utf8");
-    const { buf, slides, model } = buildDeck(md);
+    const { buf, slides, model } = buildDeck(md, { mediaDir });
     const dest = out || f.replace(/\.md$/i, "") + ".pptx";
     fs.writeFileSync(dest, buf);
     console.log(`${dest}: ${slides} slides — ${model.title}`);
