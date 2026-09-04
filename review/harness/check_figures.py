@@ -591,6 +591,44 @@ check('2 icons' in u21.get('alt', '') and '4 text rows' in u21.get('alt', ''),
 check('button' not in u21.get('alt', ''),
       'DF-14: a solid glyph inside the heading row mints NO phantom button block')
 
+# ---- v2.4 (DF-15): a screenshot NEXT TO a diagram renders too ------------
+# slides 22 (drawn ruler + screenshot) and 23 (redraw tables + screenshot):
+# the old waterfall emitted only the diagram lane's figures and the pasted
+# screenshot silently kept its caption.
+f22 = by_slide.get(22, [])
+check(len(f22) == 2,
+      f'DF-15: ruler + screenshot slide emits BOTH figures ({len(f22)})')
+if len(f22) == 2:
+    check(f22[0]['name'] == 'slide22_fig1.svg' and 'class="ln route"' in f22[0]['svg']
+          and 'class="wf-panel"' not in f22[0]['svg'],
+          'DF-15: fig1 is the ruler, numbered in one sibling sequence')
+    check(f22[1]['name'] == 'slide22_fig2.svg'
+          and 'interface wireframe (2 of 2)' in f22[1]['svg'],
+          'DF-15: fig2 is the wireframe, titled "(2 of 2)"')
+    check('(1 of 2)' in f22[0]['svg'],
+          'DF-15: the ruler title counts the wireframe sibling')
+f23 = by_slide.get(23, [])
+check(len(f23) == 3,
+      f'DF-15: redraw + screenshot slide emits the pair AND the wireframe ({len(f23)})')
+if len(f23) == 3:
+    check(f23[2]['name'] == 'slide23_fig3.svg'
+          and 'interface wireframe (3 of 3)' in f23[2]['svg']
+          and '(1 of 3)' in f23[0]['svg'],
+          'DF-15: redraw pair renumbers to (1..2 of 3), wireframe is fig3')
+    check(f23[0]['anchor'] and f23[2]['anchor'] != f23[0]['anchor'],
+          f'DF-15: the wireframe never steals the redraw pair\'s meaning anchor '
+      f'({f23[0]["anchor"][:2]} / {f23[2]["anchor"][:2]})')
+# slide 24: rounded-corner (mockup-style) fields must ASSEMBLE, not shatter
+# into stray full-width lines — the "form with no fields" symptom.
+w24 = figs.get(24, {}).get('svg', '')
+check(bool(w24), 'rounded-corner mockup produces a wireframe figure')
+nf24 = w24.count('class="wf-field"')
+nl24 = len(re.findall(r'<line class="ln wf-sep"', w24))
+check(nf24 == 3,
+      f'DF-15: all three rounded-corner fields assemble as fields ({nf24})')
+check(nl24 == 0,
+      f'DF-15: no shattered field borders left as stray lines ({nl24})')
+
 # ---- style invariants: one geometry across every lane ---------------------
 rads = set()
 for n, f in allfigs:

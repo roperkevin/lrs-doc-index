@@ -808,3 +808,22 @@ note naming the fix). PAD 27/27, check_svg2pptx PASS with all 23
 fixture figures converting, standing suites and the ES2017 typecheck
 green alongside. Slide 21 verified visually in Chromium — heading
 bar, two icon chips, no phantoms.
+
+### Last run (2026-09-04, Node 22.22.2) — v2.4 gate (DF-15)
+
+**PASS** — 29 figures. New fixtures: slide 22 (a drawn ruler AND a
+pasted screenshot on one slide), slide 23 (redraw key/value + result
+tables AND a screenshot), slide 24 (a mockup-style form whose panel
+and three input fields draw with ROUNDED corners — 5px radius,
+simulated by trimming border ends, which is exactly what the bar
+scanner sees of an arc). New assertions: both lanes emit — ruler
+fig1 + wireframe fig2 numbered as one sibling sequence with "(N of
+M)" titles counting each other, the redraw pair renumbering to
+(1..2 of 3) with the wireframe as fig3, wireframes never stealing a
+redraw figure's meaning anchor; and all three rounded fields
+assemble as wf-field with zero shattered borders left as stray
+lines. 3 of the new assertions FAIL against the v2.3 script (slides
+22/23 emitted only the diagram figures; slide 24 assembled 0
+fields). Local sweep 211/211, PAD 27/27, svg2pptx PASS, standing
+suites + ES2017 typecheck green. Slides 22/24 verified visually in
+Chromium.

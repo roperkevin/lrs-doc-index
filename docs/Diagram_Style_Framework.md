@@ -1,4 +1,4 @@
-# Diagram style framework (SlideFigures v2.3)
+# Diagram style framework (SlideFigures v2.4)
 
 How every slide diagram in the corpus is drawn. One visual language, so 500
 documents stop looking like 500 decks.
@@ -123,9 +123,15 @@ trace passes a gate *stricter* than the vector one (a route **and** 3+
 ticks); anything busier — photos, more than 48 strokes — stays silent,
 and the alt text says the figure is traced and approximate. Since v2.0
 screenshots no longer fall to this tier at all: the wireframe tier (see
-above) screens every pasted picture first, so the order of preference is
-real vectors, then the slide's own stated data, then the wireframe for
-interface screenshots, then tracing for what remains.
+above) screens every pasted picture, so the order of preference is real
+vectors, then the slide's own stated data, then the wireframe for
+interface screenshots, then tracing for what remains. Since v2.4 the
+wireframe tier is ADDITIVE, not a fallback: a screenshot pasted next to
+a drawn diagram (or beside the tables that drive a redraw) renders as
+its own sibling figure — numbered into one sequence with the diagram's
+figures — where it used to be silently skipped. Only the trace tier
+stays a last resort for picture-only slides, since tracing a picture on
+a slide that already drew its diagram would duplicate the diagram.
 
 ## UI screenshots: the wireframe tier (v2.0, fidelity v2.1)
 
@@ -139,7 +145,7 @@ the corpus:
 | Interface element | Rendering |
 |---|---|
 | Bordered region holding other elements | **Panel** — white fill, muted 1.4px stroke, the corpus corner radius (7px) |
-| Wide, short bordered box holding at most one text row | **Input field** — white fill, muted 1.1px stroke, 4px corners |
+| Wide, short bordered box holding at most one text row (rounded corners assemble since v2.4 — a 5px radius used to shatter a field into stray lines) | **Input field** — white fill, muted 1.1px stroke, 4px corners |
 | Other assembled rectangle | **Group box** — no fill, muted stroke |
 | Flat colour region, button-proportioned | **Button** — palette *tint* fill + deep stroke, mapped from the source colour by the same hue-family rule as everything else |
 | Flat colour region spanning its container | **Header band** — same tinted treatment |
