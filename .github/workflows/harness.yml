@@ -55,6 +55,7 @@ jobs:
       - run: python3 check_figures.py
       - run: python3 ../../local/harness/check_svg2pptx.py
       - run: python3 ../../local/harness/check_draft2docx.py
+      - run: python3 ../../local/harness/check_draft2pptx.py
       - run: python3 render_sample.py
 
   typecheck:

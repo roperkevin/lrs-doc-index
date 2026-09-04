@@ -1,3 +1,56 @@
+# TestPlanGen v2.23 — review deck: draft → pptx (draft2pptx.mjs v1.0)
+
+Owner-requested (2026-09-04): a way to generate a designed slide
+deck from a test-plan draft — the deck a PE walks the §4 review
+with, not another export of the markdown. The docx handoff's twin,
+on the same stack: **new `local/draft2pptx.mjs` (v1.0)**, ZERO
+dependencies and ZERO connectors
+(`node local/draft2pptx.mjs <draft.md> [-o out]`) — the svg2pptx
+zip writer and package skeleton verbatim, the draft2docx dialect
+parser verbatim in shape.
+
+The deck is DERIVED from the draft, not transcribed: a dark title
+slide (plan headline, the amber DRAFT — MACHINE-GENERATED pill, the
+WARNING banner's generated-when/story stamp, the Overview facts);
+an at-a-glance slide (positive/negative case counts, open
+`[VERIFY:` flags — colon-flags only, banner prose never inflates
+the count — and coverage rows as stat tiles, the Overview prose as
+scope, the verifier's IMPORTANT findings as an amber card); Setup
+and Open Questions as drawn checkbox rows; a divider per test
+section (Negative's CAUTION alert rides its divider); ONE SLIDE PER
+TC CASE — steps as a checklist left, Expected Result and Trace as
+cards right, `[VERIFY: …]` spans amber, long cases continue onto
+"(cont.)" slides; Coverage Map and Issue Trace as native, editable
+PowerPoint tables (long ones paginate, wrapped-row heights
+estimated so nothing under a table collides); Automation Notes /
+Documentation Impacts / unknown H2s as content slides (nothing in
+the draft is dropped); a closing review-ask slide carrying the
+machine banner's provenance. Styling is the Diagram Style Framework
+palette end to end, so these slides sit next to svg2pptx figure
+slides without a seam. Machine comments reach no slide; every
+element is a native shape, text box, or table — fully editable.
+
+**Harness** — new `local/harness/check_draft2pptx.py` (28 checks,
+CI full-format — python-pptx read-back: slide walk, banner
+suppression, glance counts incl. the colon-flag rule, case-slide
+contract, amber VERIFY runs, native tables with cells intact,
+provenance, CLI contract).
+
+**Docs** — Local_Setup §11 handoff note, README/STATUS rows,
+harness README. testplangen.mjs, draftlint, flows, packages,
+prompt, agent file set, schemas: **unchanged**; NEVER bump
+`Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Draft → review deck converter | **v1.0** (new) | `local/draft2pptx.mjs` |
+| Converter gate | **new** (CI full-format) | `local/harness/check_draft2pptx.py` |
+| testplangen.mjs, draft2docx.mjs, draftlint.mjs, flows, packages, prompt, agent file set, schemas | unchanged | — |
+
+| Date | Machine | check_draft2pptx |
+|---|---|---|
+| 2026-09-04 | authoring env | 28/28 PASS |
+
 # TestPlanGen v2.22 — pinned lanes (testplangen.mjs v1.4)
 
 (Merged after v2.19 landed independently on main — the v2.19/v1.3
