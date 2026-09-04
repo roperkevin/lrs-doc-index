@@ -555,7 +555,7 @@ sidecar library; the sidecars ARE the retrieval source):
      (`testplangen/Coverage_Runbook.md` step 2, one-time).
    - **anthropic**: executes `prompts/TestPlanGen_Prompt.md`
      VERBATIM — zero tenant prompt work, the v1.7 rules apply as
-     authored. `testplangen.maxTokens` (default 16384) bounds the
+     authored. `testplangen.maxTokens` (default 32000) bounds the
      reply; a token-truncated draft loses its END marker and fails
      CLOSED, loudly.
 2. Dry run against a real story:
@@ -647,6 +647,37 @@ sweep). Guard rails, all forced or built in:
   run: it is counted (`errors=`), alerted, and the exit code goes
   nonzero after every candidate got its chance.
 
+**`## Issue Trace`** (v1.3): every generated draft ends with a
+deterministic table of the story's devtopia issues — its Doc IDs
+rows, enriched with the matching Issue Refs rows once `gantt.mjs`
+feeds them (issue title, iteration, schedule status). Minted by the
+job from list rows, never by the model, appended AFTER verification
+(the verifier only ever judges the model's draft), and omitted when
+the story carries no issue rows. Needs nothing beyond the sweep's
+config; `sharePoint.lists.issueRefs` enriches it and
+`testplangen.issueTrace: false` turns it off. `issues=` in
+`Gen_summary` reports the row count.
+
+**`--gap-report`** (v1.3): the whole-catalog counterpart of the auto
+mode's lookback scan, with no AI spend and no drafting — every
+Indexed User Story with NO covering Test Plan, each with its issue
+keys and sidecar link, written as a FIXED-NAME digest
+(`TestPlan_Gap_Report.md`, overwritten per run, explicit empty
+state) into the Shared Documents root — outside the LRS Doc Index
+library, so the Q&A agent never ingests it (the curation-digest
+rule). Run it on demand or weekly beside curation; dry runs leave
+the report in workDir. It answers "what would auto mode eventually
+reach" and doubles as the PE's backlog view.
+
+**docx handoff** (v1.3): after the §4 review, convert the reviewed
+draft to Word without retyping —
+`node local\draft2docx.mjs "<draft>.md"` (zero dependencies) writes
+a sibling .docx with real heading styles, Word tables, checkbox
+task lists, and the machine banner/verify comments dropped. The
+output is an unstyled fresh document: apply the team template on
+top; what it saves is the transcription, not the branding. Gate:
+`local/harness/check_draft2docx.py` (CI).
+
 Schedule it: register a daily task for `local\run_testplangen.cmd`
 offset AFTER the nightly sweep (e.g. 18:30 — the sweep fires 17:00
 Mountain), e.g.
@@ -668,7 +699,7 @@ flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
 grounding (true), notify (false), provider ("" = follow
-llm.provider), maxTokens (16384), autoDraft (false), autoMaxPerRun
+llm.provider), maxTokens (32000), autoDraft (false), autoMaxPerRun
 (3), autoLookbackDays (7), dryRun (true). Deliberate deviations from the
 flow, all bounded: one run-start Doc Index snapshot replaces the
 per-item Get calls; the G6 fallback orders by SourceModified where
