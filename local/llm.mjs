@@ -1,5 +1,8 @@
 /**
- * llm.mjs v1.2 — LLM client for the Doc Index classify/keyword step.
+ * llm.mjs v1.4 — LLM client for the Doc Index classify/keyword step
+ * (and, since v1.4, a raw-text generation call — `generateText` — for
+ * local/testplangen.mjs's anthropic lane: same auth/retry plumbing,
+ * no JSON schema pin, caller-controlled maxTokens).
  *
  * Provider "aibuilder" (default) — the SAME model the cloud flow
  * uses: the AI Builder custom prompt (recordId in config.llm.modelId)
@@ -175,15 +178,10 @@ function authHeaders(cfg, forceRefresh) {
   };
 }
 
-async function requestJson(cfg, prompt) {
+async function postMessages(cfg, payload) {
   const baseUrl = cfg.baseUrl || "https://api.anthropic.com";
   const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
-  const body = JSON.stringify({
-    model: cfg.model || "claude-opus-5",
-    max_tokens: cfg.maxTokens === undefined ? 4096 : Number(cfg.maxTokens),
-    output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
-    messages: [{ role: "user", content: prompt }],
-  });
+  const body = JSON.stringify(payload);
 
   let lastErr;
   let refresh = false;
@@ -222,6 +220,41 @@ async function requestJson(cfg, prompt) {
     return res.json();
   }
   throw lastErr;
+}
+
+function requestJson(cfg, prompt) {
+  return postMessages(cfg, {
+    model: cfg.model || "claude-opus-5",
+    max_tokens: cfg.maxTokens === undefined ? 4096 : Number(cfg.maxTokens),
+    output_config: { format: { type: "json_schema", schema: OUTPUT_SCHEMA } },
+    messages: [{ role: "user", content: prompt }],
+  });
+}
+
+/**
+ * Raw text generation (v1.4): one prompt in, the reply's text out —
+ * no JSON schema pin, so the caller's own output contract applies
+ * (testplangen.mjs slices its DRAFT markers and fails closed).
+ * Throws on refusal and on max_tokens truncation: a truncated draft
+ * would lose its END marker anyway, so surfacing the real cause here
+ * beats a mystery no-markers failure downstream.
+ */
+export async function generateText(cfg, prompt) {
+  const response = await postMessages(cfg, {
+    model: cfg.model || "claude-opus-5",
+    max_tokens: cfg.maxTokens === undefined ? 4096 : Number(cfg.maxTokens),
+    messages: [{ role: "user", content: prompt }],
+  });
+  if (response.stop_reason === "refusal") {
+    throw new Error("LLM refused the generation request (stop_reason: refusal)");
+  }
+  if (response.stop_reason === "max_tokens") {
+    throw new Error("LLM output truncated (stop_reason: max_tokens) — raise the caller's maxTokens knob");
+  }
+  return (response.content || [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("");
 }
 
 // ---- provider: aibuilder (the cloud flow's model) -------------------

@@ -1,3 +1,108 @@
+# TestPlanGen v2.16 — the local generation job, phase 1 (testplangen.mjs v1.0)
+
+Phase 1 of `testplangen/Local_TestPlanGen_Plan.md` (authored on the
+plan's branch, 2026-09-04): TestPlanGenCore's G1–G13 semantics as a
+local Node job over the sweep's own stack — the sweep/curate/gantt
+migration precedent applied to the last still-cloud-only component.
+One promotion delivers the entire authored v2.15 state (prompt
+v1.7's coverage/granularity/source-sweep rules, the v2.2 two-lane
+router + slot config, the v2.3 remaining-budget takes) with ZERO
+tenant designer work, and adds the control the cloud flow
+architecturally could not have: every draft is machine-checked
+against the v1.7 coverage contract BEFORE it is written.
+
+**New `local/testplangen.mjs` (v1.0)** — on-demand CLI
+(`--story <docId>`, dry-run default), faithful to
+`TestPlanGen_Setup.md` §3 with each G-step cited in the header:
+the Terminate_not_story guard verbatim; the `related:` line-slice
+(never YAML-parsed; a bracketed-but-invalid line still fails the
+run, the accepted Catch residual); the G5b two-lane router over the
+score-ordered entries with per-neighbor silent degradation; the G6
+release-matched exemplar fallback (winner-takes-all only when the
+story HAS a release — DX-7 — and NO reference-lane fallback, the
+v2.0 rationale); G7/G7b remaining-budget appends; ONE model call;
+the G9 marker slice failing CLOSED with the flow's message; the
+Draft_banner (comment + `[!WARNING]`, now also stamping the job
+version and provider) and the timestamped never-overwritten draft in
+Shared Documents/Test Plan Drafts (via Graph drive upload, the
+curation-digest write); `Gen_summary` counters extended with
+`verify=`. Read-only over every list; the only write is the draft
+(plus workDir run logs, and a locally inspectable draft copy on dry
+runs). Bounded deviations, documented in the header and Local_Setup
+§11: one run-start Doc Index snapshot replaces per-item Gets; the G6
+fallback orders by SourceModified (the snapshot's field) for the
+flow's list-Modified; a story sidecar missing from the synced
+library is a loud error, not a degrade.
+
+**Prompt transport** — both `llm.mjs` providers: `aibuilder`
+(default; the tenant's `LRS Test Plan Generation` prompt via
+Dataverse Predict — new `llm.testPlanModelId`, discovered with
+`--models`; the TENANT paste state applies, so the five-parameter
+contract + v1.7 text remain that lane's prerequisite,
+`Coverage_Runbook.md` step 2) and `anthropic`
+(`prompts/TestPlanGen_Prompt.md` executed VERBATIM between its
+delimiters — zero tenant prompt work, v1.7 applies as authored;
+single-pass placeholder substitution so document content can never
+inject a second substitution; `testplangen.maxTokens` 16384 — a
+token-truncated reply loses `[[[DRAFT END]]]` and fails closed with
+the real cause named). `llm.mjs` → **v1.4**: shared `postMessages`
+core + new `generateText` export (no JSON-schema pin, throws on
+refusal/truncation); `classifyDoc` behavior unchanged
+(`check_local_sweep.py` still green). `lib/config.mjs` → v1.1
+(TESTPLANGEN_REQUIRED).
+
+**The verifier (phase 1: contract lint)** — new
+`local/lib/draftlint.mjs` (v1.0), the in-process port of
+`review/harness/check_draft_coverage.py`'s v1.7 asserts with labels
+mirrored VERBATIM; the Python stays the authority and the harness's
+agreement leg fails on any verdict or label divergence.
+`testplangen.verify`: `annotate` (default) writes a failing draft
+with a `> [!IMPORTANT]` findings block under the banner (+ a
+machine-readable `<!-- verify: N -->` line) so the §4 reviewer
+starts where the machine found smells; `strict` refuses to write
+(findings on stderr — the unattended-run posture, phase 3); `off` =
+cloud-flow parity. The verifier never edits draft content —
+annotate or refuse, whole-draft; grounding spot-checks stay phase 2.
+
+**Harness** — new `local/harness/check_testplangen.py` (62 checks,
+CI fixture-free job): guard leg (refusals verbatim, nothing called
+or written), lanes leg (every routing branch — same-surface
+exemplars in score order, overflow/cross-surface/spike references
+with surface headers, digest-only kinds, a broken neighbor degrading
+silently — plus the G6 fallback, `(none)` placeholders, live
+timestamped write, dry-run plan + local copy, and the anthropic
+transport with no leftover placeholders), caps leg (the v2.13
+remaining-budget semantics pinned), fail-closed leg (markerless and
+misordered replies write NOTHING), verifier leg (Python/JS
+agreement on shared good/bad fixtures, strict refusal, annotate
+block placement, off parity, bad-mode rejection).
+
+**Docs** — `Local_Setup.md` §11 (setup, transport choice, runbook,
+knobs, deviations); `config.sample.json` (`llm.testPlanModelId` +
+the `testplangen` section); README bundle rows + generation section
+note; STATUS component row + harness table;
+`Local_TestPlanGen_Plan.md` phase-1 status. Cloud flows, packages,
+agent file set, prompt, schemas: **unchanged** — the tenant path
+stays valid, `Coverage_Runbook.md` untouched, and drafts from
+either path land in the same folder under the same review contract
+(the banner's provider stamp tells them apart). NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus.
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job | **v1.0** (new) | `local/testplangen.mjs` |
+| Draft contract lint (in-process) | **v1.0** (new) | `local/lib/draftlint.mjs` |
+| LLM client (`generateText`) | **v1.4** | `local/llm.mjs` |
+| Config guards | v1.1 | `local/lib/config.mjs` |
+| Generation-job gate | **new** (CI) | `local/harness/check_testplangen.py` |
+| Setup + sample config | updated | `local/Local_Setup.md` §11, `local/config.sample.json` |
+| Flows, packages, prompt, agent file set, schemas | unchanged | — |
+
+| Date | Machine | check_testplangen | First live draft |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 62/62 PASS | — (pending sweep auth restore — STATUS action 12) |
+
 # TestPlanGen v2.15 — source case sweep (prompt v1.7)
 
 Motivated by the coverage-borrowing request (2026-08-14): go
