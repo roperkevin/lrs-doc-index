@@ -1,6 +1,10 @@
-# TestPlanGen v2.21 — pinned lanes (testplangen.mjs v1.3)
+# TestPlanGen v2.22 — pinned lanes (testplangen.mjs v1.4)
 
-The v2.19 queued follow-on, owner-requested (2026-09-04): let the
+(Merged after v2.19 landed independently on main — the v2.19/v1.3
+labels these three entries carried while in review were renumbered
+to v2.20–v2.22 / testplangen.mjs v1.4 at merge time.)
+
+The v2.20 queued follow-on, owner-requested (2026-09-04): let the
 person running a generation PIN documents into the prompt's lanes
 in addition to the sidecar's `related:` selection. The doc 1 run is
 the motivating case — the data-rich exemplar that would have
@@ -12,7 +16,7 @@ explicit human choice is stronger grounding than the automatic
 linkage.
 
 **`--exemplar <docId>` / `--reference <docId>`**
-(`local/testplangen.mjs` v1.3; repeatable, comma-separated ids
+(`local/testplangen.mjs` v1.4; repeatable, comma-separated ids
 accepted; Doc Index row ids ONLY — no issue/title resolution on
 pins, the v2.3 bare-number rule):
 
@@ -38,13 +42,15 @@ pins, the v2.3 bare-number rule):
   the unattended mode must stay deterministic from catalog state
   alone.
 
-**Harness** — `check_testplangen.py` 95 → **101** checks: new leg
-10 (pins refused with --auto and on kind/lane-conflict violations
-with no model call spent; a cross-surface exemplar pin leads its
-lane with auto filling the rest; an unrelated reference pin lands
-with its title+surface header; a pin duplicated in `related:` is
-deduped; the banner pin stamp). Docstring gains the missing leg 9
-entry (a v2.18 oversight) alongside leg 10. 101/101 PASS.
+**Harness** — `check_testplangen.py` 108 → **116** checks (the
+count includes v2.21's two leg-8 checks, folded in at merge time):
+new leg 12 (pins refused with --auto/--gap-report and on
+kind/lane-conflict violations with no model call spent; a
+cross-surface exemplar pin leads its lane with auto filling the
+rest; an unrelated reference pin lands with its title+surface
+header; a pin duplicated in `related:` is deduped; the banner pin
+stamp). Docstring gains the missing leg 9–11 entries (v2.18/v2.19
+oversights) alongside leg 12. 116/116 PASS on the merged tree.
 
 **Docs** — Local_Setup §11 (pinned-lanes block; the stale
 promptVersion default in the knobs line corrected to v1.9);
@@ -57,16 +63,16 @@ Studio pin flow would be its own change). NEVER bump
 
 | Piece | Version | Where |
 |---|---|---|
-| Local generation job (pinned lanes) | **v1.3** | `local/testplangen.mjs` |
-| Generation-job gate | **101 checks** | `local/harness/check_testplangen.py` |
+| Local generation job (pinned lanes) | **v1.4** | `local/testplangen.mjs` |
+| Generation-job gate | **116 checks** | `local/harness/check_testplangen.py` |
 | Setup guide | §11 updated | `local/Local_Setup.md` |
 | Flows, packages, prompt (v1.9), draftlint (v1.2), schemas | unchanged | — |
 
 | Date | Machine | check_testplangen |
 |---|---|---|
-| 2026-09-04 | authoring env (mocked) | 101/101 PASS |
+| 2026-09-04 | authoring env (mocked, post-merge with v2.19) | 116/116 PASS |
 
-# TestPlanGen v2.20 — story-first trace (prompt v1.9, draftlint v1.2)
+# TestPlanGen v2.21 — story-first trace (prompt v1.9, draftlint v1.2)
 
 Motivated by the owner review of the doc 1 draft (2026-09-04,
 second pass, following v2.19's first pass): test cases must
@@ -133,7 +139,7 @@ definitions (byte-identical to their folder definitions).
 
 **Docs** — Setup §2/§3 stamps → v1.9; `Coverage_Runbook.md` step 2
 pastes v1.9; `prompts/README.md`, `STATUS.md`, and root `README.md`
-rows moved to v1.9 / v2.20.
+rows moved to v1.9 / v2.21.
 
 Deploy (simple paste + one designer edit, both live flows —
 `Coverage_Runbook.md` step 2): paste v1.9 into
@@ -156,7 +162,7 @@ cited only in addition. NEVER bump `Config.PromptVersion`.
 |---|---|---|---|
 | 2026-09-04 | authoring env (mocked) | 95/95 PASS | pending (replaces the pending v1.8 paste) |
 
-# TestPlanGen v2.19 — concrete test data (prompt v1.8)
+# TestPlanGen v2.20 — concrete test data (prompt v1.8)
 
 Motivated by the 2026-09-04 review of the doc 1 draft ("Auto-
 Populate Referents for Event Edits") against the team's own plans:
@@ -221,7 +227,7 @@ anthropic lane picks the new rules up with ZERO tenant work.
 
 **Docs** — Setup §2/§3 stamps → v1.8; `Coverage_Runbook.md` step 2
 pastes v1.8; `prompts/README.md`, `STATUS.md`, and root `README.md`
-rows moved to v1.8 / v2.19.
+rows moved to v1.8 / v2.20.
 
 Deploy (simple paste + one designer edit, both live flows —
 `Coverage_Runbook.md` step 2): paste v1.8 into
@@ -233,7 +239,7 @@ bump `Config.PromptVersion` — nothing here changes the sidecar
 format or reindexes the corpus.
 
 Queued follow-on (owner question, 2026-09-04 — IMPLEMENTED in
-v2.21, `--exemplar`/`--reference` on the local job):
+v2.22, `--exemplar`/`--reference` on the local job):
 let the person running a generation PIN documents into the lanes —
 e.g. `--exemplar <docId>` / `--reference <docId>` on the local job —
 in addition to the sidecar's `related:` selection, for the case
@@ -255,6 +261,94 @@ pinned docs recorded in the banner for provenance.
 | Date | Machine | Tenant paste | Smoke rows |
 |---|---|---|---|
 | 2026-09-04 | authoring env | pending (replaces the pending v1.7 paste) | — |
+
+# TestPlanGen v2.19 — local job phase 4: docx handoff, issue trace, gap report (testplangen.mjs v1.3)
+
+Phase 4 of `testplangen/Local_TestPlanGen_Plan.md` — the two items
+every earlier round deferred by design, both closed on the LOCAL
+stack (the Setup guide's queued follow-ons carry closure notes; the
+cloud flow is untouched):
+
+**docx handoff — new `local/draft2docx.mjs` (v1.0)**: a reviewed
+draft converts to an editable Word file with ZERO dependencies and
+ZERO connectors (`node local/draft2docx.mjs <draft.md> [-o out]`) —
+the svg2pptx precedent applied to WordprocessingML, its zip writer
+verbatim. Shape-preserving for the draft dialect: real Heading 1/2/3
+styles (the navigation pane shows the plan and its TC cases), GFM
+tables as Word tables (header row bold), task lists as checkbox
+glyphs with the draft's numbering verbatim, `[!WARNING]`/`[!CAUTION]`
+blocks as bold label + Quote body, `**bold**` runs, wrapped prose
+joined, and every HTML comment (machine banner, verify stamp)
+DROPPED — no machine plumbing reaches the document of record. The
+output is deliberately an unstyled fresh document: the PE applies
+the team template; what it saves is the transcription. The premium
+Word connector / OneDrive convert-file tradeoff the original bullet
+deferred over is moot locally.
+
+**Issue Trace — the deterministic half of the "coverage matrix"
+follow-on** (`testplangen.mjs` v1.3), unlocked by the owner-verified
+Issue Refs GUID (2026-09-04): every generated draft ends with a
+`## Issue Trace` table — the story's Doc IDs rows (deduped by
+repo#number), enriched with matching Issue Refs rows once gantt.mjs
+feeds them (issue title, iteration, schedule status; em-dash cells
+until then). Minted by the job from list rows, NEVER by the model;
+appended AFTER verification so the verifier only ever judges the
+model's draft; omitted entirely for a story with no issue rows;
+`testplangen.issueTrace: false` disables; `issues=` joins
+Gen_summary. Cell text gets the semi-trusted treatment (pipes and
+quotes stripped, length-capped). List fetches are once-per-process
+and shared across an auto run's stories.
+
+**Gap report — the other half** (`--gap-report`): the whole-catalog
+counterpart of the auto mode's lookback scan, no AI spend, no
+drafting — every Indexed User Story with NO covering Test Plan (no
+related-list plan, no Doc Links edge), each line carrying title,
+surface, release, issue keys, and sidecar link, written as a
+FIXED-NAME digest (`TestPlan_Gap_Report.md`, overwritten per run —
+the curation-digest snapshot rule, with the DX-11 explicit empty
+state and an Unassessable section for stories whose sidecars the
+sync lacks) into the Shared Documents ROOT, outside the Q&A agent's
+knowledge source. Schedulable weekly beside curation; dry runs leave
+the report in workDir. Exclusive with the other modes; requires
+docLinks like `--auto`.
+
+**Rider (first live-run feedback, 2026-09-04)**: the maiden anthropic
+generation hit `stop_reason: max_tokens` at the 16384 default —
+v1.6+ split-case drafts run long. Default `testplangen.maxTokens`
+16384 → **32000** (the model allows up to 128000), and the error now
+names the actual knob and current value instead of "the caller's
+maxTokens knob".
+
+**Harness** — `check_testplangen.py` 93 → **108** checks (leg 10:
+trace placement after the verified body, dedup, Issue Refs
+enrichment + em-dash degradation, no-issues omission, the knob;
+leg 11: whole-catalog counts, zero model calls, gap-line content,
+covered exclusion, fixed-name overwrite, mode exclusivity, the
+NO-GAPS + unassessable branches) plus new
+`local/harness/check_draft2docx.py` (23 checks, CI full-format —
+python-docx read-back: heading order, tables incl. Issue Trace,
+checkbox glyphs, alert labels, bold runs, comment dropping, prose
+joining, CLI contract).
+
+**Docs** — Local_Setup §11 (three new subsections), Setup guide
+queued-follow-ons closure notes, `config.sample.json`
+(issueTrace/gapReport knobs, maxTokens 32000), README/STATUS rows,
+harness README, plan doc phase-4 status. Cloud flows, packages,
+prompt, agent file set, schemas: **unchanged**; NEVER bump
+`Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Draft → Word converter | **v1.0** (new) | `local/draft2docx.mjs` |
+| Local generation job (issue trace, `--gap-report`, maxTokens 32000) | **v1.3** | `local/testplangen.mjs` |
+| Converter gate | **new** (CI full-format) | `local/harness/check_draft2docx.py` |
+| Generation-job gate | 108 checks | `local/harness/check_testplangen.py` |
+| Setup + sample config + follow-on closures | updated | `local/Local_Setup.md` §11, `local/config.sample.json`, `TestPlanGen_Setup.md` |
+| draftlint.mjs, llm.mjs, graph.mjs, flows, packages, prompt, agent file set, schemas | unchanged | — |
+
+| Date | Machine | check_testplangen | check_draft2docx |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 108/108 PASS | 23/23 PASS |
 
 # TestPlanGen v2.18 — local job phase 3: the automatic mode (testplangen.mjs v1.2)
 

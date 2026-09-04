@@ -57,7 +57,16 @@ verifier the cloud flow could not have
                      messages, idempotency skip and refusal retry,
                      --force re-arm, autoMaxPerRun deferral, and
                      the provider override
-  leg 10 pins        pinned lanes (v1.3): --exemplar/--reference are
+  leg 10 issues      the phase-4 Issue Trace addendum: appended after
+                     the verified body, deduped per issue, Issue Refs
+                     enrichment with em-dash degrade, absent for a
+                     story with no issue rows, issueTrace false
+                     disables it
+  leg 11 gap report  --gap-report: whole-catalog uncovered-story scan
+                     with no lookback and no model calls; fixed-name
+                     digest with explicit empty state and the
+                     unassessable section
+  leg 12 pins        pinned lanes (v1.4): --exemplar/--reference are
                      refused with --auto and on kind/lane-conflict
                      violations (no model call spent); a pinned doc
                      leads its lane ahead of the automatic related
@@ -481,15 +490,30 @@ def main():
         {"id": "600", "fields": {"DocALookupId": 17, "DocBLookupId": 21}},
         {"id": "601", "fields": {"DocALookupId": 12, "DocBLookupId": 13}},
     ]
-    # Doc IDs rows (the issue lane's source, minted by the sweep):
-    # 4855 -> doc 12 twice (dedup); 7777 -> two stories (ambiguous);
-    # 8888 -> a Test Plan (kind-filtered out); 9999 absent
+    # Doc IDs rows (the issue lane's + issue trace's source, minted by
+    # the sweep): 4855 -> doc 12 twice (dedup); 7777 -> two stories
+    # (ambiguous for lookup, one trace row each); 8888 -> a Test Plan
+    # (kind-filtered out of lookup); 9999 absent
+    REPO_ID = "ArcGISPro/ps-location-referencing"
     state.lists["list-docids"] = [
-        {"id": "500", "fields": {"IssueNumber": 4855, "DocumentLookupId": 12}},
-        {"id": "501", "fields": {"IssueNumber": 4855, "DocumentLookupId": 12}},
-        {"id": "502", "fields": {"IssueNumber": 7777, "DocumentLookupId": 12}},
-        {"id": "503", "fields": {"IssueNumber": 7777, "DocumentLookupId": 13}},
-        {"id": "504", "fields": {"IssueNumber": 8888, "DocumentLookupId": 14}},
+        {"id": "500", "fields": {"IssueNumber": 4855, "DocumentLookupId": 12,
+                                 "Repo": REPO_ID, "Source": "sidecar"}},
+        {"id": "501", "fields": {"IssueNumber": 4855, "DocumentLookupId": 12,
+                                 "Repo": REPO_ID, "Source": "title"}},
+        {"id": "502", "fields": {"IssueNumber": 7777, "DocumentLookupId": 12,
+                                 "Repo": REPO_ID, "Source": "sidecar"}},
+        {"id": "503", "fields": {"IssueNumber": 7777, "DocumentLookupId": 13,
+                                 "Repo": REPO_ID, "Source": "sidecar"}},
+        {"id": "504", "fields": {"IssueNumber": 8888, "DocumentLookupId": 14,
+                                 "Repo": REPO_ID, "Source": "sidecar"}},
+    ]
+    # Issue Refs rows (gantt.mjs's schedule feed) — enrich the trace
+    state.lists["list-issuerefs"] = [
+        {"id": "700", "fields": {"IssueKey": f"{REPO_ID}#4855",
+                                 "IssueTitle": "Route merge epic",
+                                 "IterationLabel": "Iteration 2",
+                                 "StatusSummary": "Dev=Completed",
+                                 "DoneFlag": False}},
     ]
 
     def write_cfg(name, testplangen=None, llm=None):
@@ -498,7 +522,7 @@ def main():
                 "hostname": "mock.example",
                 "sitePath": "/sites/lrsworkspace",
                 "lists": {"docIndex": "list-docindex", "docIds": "list-docids",
-                          "docLinks": "list-doclinks"},
+                          "docLinks": "list-doclinks", "issueRefs": "list-issuerefs"},
             },
             "paths": {"sidecarLibrary": sidecar_dir, "workDir": work_dir},
             "alerts": {"webhookUrl": base + "/alert"},
@@ -640,8 +664,8 @@ def main():
     check("prompt: no leftover placeholders",
           not re.search(r"\{(StoryMeta|StoryText|RelatedDigest|ExemplarText|ReferenceText)\}",
                         prompt), prompt[-300:])
-    check("maxTokens honored (default 16384)",
-          state.ant_last_body.get("max_tokens") == 16384, str(state.ant_last_body.get("max_tokens")))
+    check("maxTokens honored (default 32000)",
+          state.ant_last_body.get("max_tokens") == 32000, str(state.ant_last_body.get("max_tokens")))
     check("anthropic draft written, provider stamped",
           len(state.drafts) == 1
           and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
@@ -972,8 +996,94 @@ def main():
           and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
           r.stdout + r.stderr)
 
-    # ---- leg 10: pinned lanes (v1.3) -------------------------------
-    print("== leg 10: pinned lanes")
+    # ---- leg 10: issue trace addendum ------------------------------
+    print("== leg 10: issue trace addendum")
+    state.gen_text = wrap(GOOD_DRAFT)
+    state.gen_by_doc = {}
+    state.drafts.clear()
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("Issue Trace appended after the verified body",
+          r.returncode == 0 and "## Issue Trace" in draft
+          and draft.index("## Coverage Map") < draft.index("## Issue Trace")
+          and "not by the model" in draft, draft[-600:])
+    check("one row per distinct issue (dedup across Doc IDs rows)",
+          draft.count(f"| {REPO_ID}#4855 |") == 1
+          and f"| {REPO_ID}#7777 |" in draft, draft[-600:])
+    check("Issue Refs enrichment lands; unmatched issue degrades to em-dash",
+          "Route merge epic" in draft and "Iteration 2 · Dev=Completed" in draft
+          and re.search(rf"\| {re.escape(REPO_ID)}#7777 \| — \| — \|", draft),
+          draft[-600:])
+    summ = summary_of(r.stdout)
+    check("issues counted, verifier untouched by the addendum",
+          summ.get("issues") == "2" and summ.get("verify") == "ok", str(summ))
+    r = run_job(cfg_main, ["--story", "16", "--dry-run"])
+    local_drafts = sorted(
+        (f for f in os.listdir(work_dir)
+         if f.startswith("testplangen-draft-") and f.endswith(".md")),
+        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+    latest = open(os.path.join(work_dir, local_drafts[-1]), encoding="utf-8").read()
+    check("a story with no issue rows gets no section",
+          summary_of(r.stdout).get("issues") == "0"
+          and "## Issue Trace" not in latest, latest[-300:])
+    cfg_notrace = write_cfg("config-notrace.json",
+                            testplangen={"neighborCap": 8, "issueTrace": False})
+    r = run_job(cfg_notrace, ["--story", "12", "--dry-run"])
+    check("testplangen.issueTrace false disables the addendum",
+          summary_of(r.stdout).get("issues") == "0", r.stdout)
+
+    # ---- leg 11: gap report ----------------------------------------
+    print("== leg 11: gap report")
+    gr_summary = lambda out: next(
+        (dict(kv.split("=", 1) for kv in l.split())
+         for l in out.splitlines() if l.startswith("mode=gap-report")), {})
+    state.drafts.clear()
+    calls = state.gen_calls
+    r = run_job(cfg_main, ["--gap-report", "--dry-run"])
+    summ = gr_summary(r.stdout)
+    check("gap report dry: whole-catalog scan, no lookback",
+          r.returncode == 0 and summ.get("stories") == "5"
+          and summ.get("covered") == "2" and summ.get("gaps") == "3"
+          and summ.get("unassessable") == "0", r.stdout + r.stderr)
+    check("gap report never calls the model, dry uploads nothing",
+          state.gen_calls == calls and state.drafts == {}, str(state.gen_calls))
+    reports = [f for f in os.listdir(work_dir) if f.startswith("testplangen-gapreport-")]
+    body = open(os.path.join(work_dir, sorted(reports)[-1]), encoding="utf-8").read()
+    check("gap lines carry title, surface and issue keys",
+          '- doc 13 — "Lonely Story"' in body and f"{REPO_ID}#7777" in body
+          and '- doc 16 — "Enum Story"' in body
+          and '- doc 26 — "Adjacent Story"' in body, body[:800])
+    check("covered stories stay out of the report",
+          "doc 12 —" not in body and "doc 17 —" not in body, body[:800])
+    r = run_job(cfg_main, ["--gap-report", "--live"])
+    check("gap report live: fixed-name digest in the drive root",
+          r.returncode == 0 and "/TestPlan_Gap_Report.md" in state.drafts
+          and state.drafts["/TestPlan_Gap_Report.md"].startswith("# Test plan gap report"),
+          str(list(state.drafts)))
+    n = len(state.drafts)
+    r = run_job(cfg_main, ["--gap-report", "--live"])
+    check("re-runs overwrite, never stack", len(state.drafts) == n, str(list(state.drafts)))
+    check("gap-report excludes reference forms",
+          run_job(cfg_main, ["--gap-report", "--story", "12"]).returncode != 0, "")
+    check("gap-report and auto are exclusive",
+          run_job(cfg_main, ["--gap-report", "--auto"]).returncode != 0, "")
+    # the NO-GAPS + unassessable branches: an empty sidecar library
+    # makes every story unassessable and the gap list empty
+    with open(cfg_main) as f:
+        cfg_empty = json.load(f)
+    cfg_empty["paths"]["sidecarLibrary"] = os.path.join(tmp, "empty-sidecars")
+    os.makedirs(cfg_empty["paths"]["sidecarLibrary"], exist_ok=True)
+    cfg_empty_path = os.path.join(tmp, "config-emptysc.json")
+    with open(cfg_empty_path, "w") as f:
+        json.dump(cfg_empty, f)
+    r = run_job(cfg_empty_path, ["--gap-report", "--live"])
+    body = state.drafts.get("/TestPlan_Gap_Report.md", "")
+    check("explicit empty state + unassessable section (DX-11 rule)",
+          r.returncode == 0 and gr_summary(r.stdout).get("unassessable") == "5"
+          and "NO GAPS" in body and "Unassessable" in body, body[:600])
+
+    # ---- leg 12: pinned lanes (v1.4) -------------------------------
+    print("== leg 12: pinned lanes")
     state.gen_by_doc = {}
     state.gen_text = wrap(GOOD_DRAFT)
     calls = state.gen_calls

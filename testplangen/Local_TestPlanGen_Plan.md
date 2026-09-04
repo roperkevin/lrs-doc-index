@@ -1,15 +1,17 @@
 # Plan — TestPlanGen as a local job (`local/testplangen.mjs`)
 
-Status: **phases 1–3 BUILT** (2026-09-04, TestPlanGen **v2.16** /
-**v2.17** / **v2.18** — see `testplangen/CHANGES.md`):
-`local/testplangen.mjs` v1.2 with both prompt transports (per-lane
-via `testplangen.provider`), the two-layer verifier
+Status: **ALL PHASES BUILT** (2026-09-04, TestPlanGen **v2.16** –
+**v2.19** — see `testplangen/CHANGES.md`): `local/testplangen.mjs`
+v1.3 with both prompt transports (per-lane via
+`testplangen.provider`), the two-layer verifier
 (`local/lib/draftlint.mjs` — contract lint + grounding
 spot-checks), the `--issue`/`--title` lookup front door, webhook
 notification, the `--auto` nightly gap-drafting mode
-(`run_testplangen.cmd`), and the `check_testplangen.py` gate
-(93/93, CI). Phase 4 items remain deferred by design. This document
-stays the design record and the build order.
+(`run_testplangen.cmd`), the deterministic `## Issue Trace`
+addendum, the `--gap-report` digest, and the `draft2docx.mjs` docx
+handoff — gated by `check_testplangen.py` (108/108) and
+`check_draft2docx.py` (23/23), both CI. This document stays the
+design record; what remains below it is history, not backlog.
 
 ## Why now
 
@@ -271,10 +273,14 @@ alongside the others. Legs:
    run rather than per story (there is no story argument in auto
    mode). A rider from the owner: `testplangen.provider` decouples
    the generation transport from the sweep's `llm.provider`.
-4. **Deferred, unchanged**: docx handoff and the IssueRefs-driven
-   coverage matrix stay queued exactly as the Setup guide records
-   them (the matrix becomes cheap once `gantt.mjs` has its first
-   live run — STATUS action 13c).
+4. **Phase 4 — the deferred pair** — ✅ SHIPPED (v2.19, 2026-09-04),
+   unlocked by the owner-verified Issue Refs GUID: the docx handoff
+   as `local/draft2docx.mjs` (zero-dep OOXML, the svg2pptx
+   precedent — no premium connector), and the IssueRefs-driven
+   coverage piece as the deterministic `## Issue Trace` draft
+   addendum plus `--gap-report` (the stories-without-plans digest
+   in the curation mold). Closure notes live in the Setup guide's
+   queued-follow-ons section; the cloud flow is untouched.
 
 ## Dependencies and risks
 

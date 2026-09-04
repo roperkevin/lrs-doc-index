@@ -12,7 +12,8 @@
 | `../../pad/harness/check_pad_runner.py` | **live** (CI fixture-free) | PAD runner + ops.mjs loader |
 | `../../local/harness/check_local_sweep.py` | **live** (CI fixture-free) | the whole local pipeline: sweep (all lanes incl. msg/OCR), curate (+`--repoint`), gantt, auth, alerts, embeddings, remote-files mode |
 | `../../local/harness/check_svg2pptx.py` | **live** (CI full-format) | svg2pptx |
-| `../../local/harness/check_testplangen.py` | **live** (CI fixture-free) | testplangen.mjs (guard, lanes, caps, fail-closed slice, verifier) + draftlint↔`check_draft_coverage.py` agreement |
+| `../../local/harness/check_testplangen.py` | **live** (CI fixture-free) | testplangen.mjs (guard, lanes, caps, fail-closed slice, verifier, lookup, notify, auto, issue trace, gap report) + draftlint↔`check_draft_coverage.py` agreement |
+| `../../local/harness/check_draft2docx.py` | **live** (CI full-format) | draft2docx.mjs (draft .md → Word, python-docx read-back) |
 | `check_batch_v2_2.py` | **live** | ZipTextExtract v2.2 / DL-1 promotion |
 | `check_batch.py`, `check_batch_r2..r6.py` | historical — self-skip as superseded | the v1.9/r2–r6 promotion rounds (records below) |
 | `run_diff.py` | historical — skips unless wraps regenerated | the v1.5→v1.6 equivalence record |

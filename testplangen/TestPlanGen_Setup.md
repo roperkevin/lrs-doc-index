@@ -643,13 +643,19 @@ pass/fail per row).
   authored source (the §3 Path A package carries it byte-identical);
   when the built flow next diverges, export and re-cut per the
   CHANGES v1.2 mechanics instead of re-authoring.
-- **docx handoff**: convert the reviewed draft to a Word file on the
-  team template (premium Word connector, or OneDrive convert-file)
-  to shave the finalize step — deliberately deferred until the
-  markdown loop beds in; it adds a connector and a template
-  dependency for a formatting convenience.
-- **Coverage matrix once flow #2 exists**: when Issue Refs has a
-  feeder, a story's issue ids can drive a deterministic
-  "requirements × cases" trace table appended to the draft, and a
-  gap report (story ids with no covering Test Plan) becomes a cheap
-  weekly digest in the curation mold.
+- **docx handoff** — CLOSED on the LOCAL stack in v2.19
+  (2026-09-04): `local/draft2docx.mjs` converts a reviewed draft to
+  Word with zero dependencies and zero connectors (Local_Setup.md
+  §11) — the premium-connector/convert-file route this bullet
+  deferred over is moot there. A CLOUD flow wanting the same still
+  faces the original connector/template tradeoff; this guide's flow
+  is unchanged.
+- **Coverage matrix once flow #2 exists** — CLOSED on the LOCAL
+  stack in v2.19 (2026-09-04), both halves, now that Issue Refs has
+  its feeder (`local/gantt.mjs`) and an owner-verified GUID:
+  `local/testplangen.mjs` appends the deterministic `## Issue Trace`
+  table (Doc IDs + Issue Refs rows) to every draft, and
+  `--gap-report` writes the stories-without-plans digest in the
+  curation mold (Local_Setup.md §11). The cloud flow is unchanged —
+  a tenant wanting these flow-side would add a Doc IDs query + a
+  compose to G10 and a fourth thin flow for the digest.
