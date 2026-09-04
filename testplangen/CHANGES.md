@@ -1,4 +1,8 @@
-# TestPlanGen v2.25 — figures in cases (prompt v1.10, testplangen.mjs v1.6, draftlint v1.3)
+# TestPlanGen v2.26 — figures in cases (prompt v1.10, testplangen.mjs v1.6, draftlint v1.3)
+
+(Merged after v2.25 landed independently on main — this entry
+carried the v2.25 label while in review and was renumbered to
+v2.26 at merge time, the v2.20–v2.22 precedent.)
 
 Owner-requested (2026-09-04): include diagrams in the output test
 plan drafts when they apply to a test case. The raw material already
@@ -56,12 +60,12 @@ converter is the queued follow-on). NEVER bump
 `Config.PromptVersion` — nothing here changes the sidecar format or
 reindexes the corpus.
 
-**Harness** — `check_testplangen.py` 118 → **125**: new leg 13 — a
+**Harness** — `check_testplangen.py` 119 → **126**: new leg 13 — a
 Figure-line draft passes BOTH contract lints; a verbatim story
 figure passes grounding and lands absolutized in the written draft;
 `figures=` counts the rewrites; an invented link is flagged; a
 figure-less draft stamps `figures=0`. The doc 12 story fixture now
-carries a placeFigure-shaped image link. 125/125 PASS; standing
+carries a placeFigure-shaped image link. 126/126 PASS; standing
 suites green (`check_local_sweep.py` 211/211, typecheck 7/7,
 `check_draft2docx.py` 23/23, `check_draft2pptx.py` 28/28).
 
@@ -71,11 +75,66 @@ suites green (`check_local_sweep.py` 211/211, typecheck 7/7,
 | Draft verifier (grounding check e) | **v1.3** | `local/lib/draftlint.mjs` |
 | Local generation job (link rewrite, figures=) | **v1.6** | `local/testplangen.mjs` |
 | Flow stamps + re-cut packages | v1.10 stamp | `testplangen/flow/{v1_0,core_v1_0}/definition.json`, `TestPlanGen_v1_0.zip`, `TestPlanGenCore_v1_0.zip` |
-| Generation-job gate | **125 checks** | `local/harness/check_testplangen.py` |
+| Generation-job gate | **126 checks** | `local/harness/check_testplangen.py` |
 
 | Date | Machine | check_testplangen |
 |---|---|---|
-| 2026-09-04 | authoring env (mocked) | 125/125 PASS |
+| 2026-09-04 | authoring env (mocked) | 126/126 PASS |
+# TestPlanGen v2.25 — the generation call streams (llm.mjs v1.6)
+
+The v2.24 progress output exposed the real failure chain on the
+first full pinned-lane run (2026-09-04): the generation died at
+exactly 300s per attempt, first as our own `llm.timeoutMs` abort,
+then — with that raised to 900000 — as a bare
+`LLM request failed: fetch failed` still at 300s. The second wall
+is Node's own HTTP client (undici): a NON-streaming Messages call
+emits nothing — not even response headers — until the entire draft
+is generated, and undici aborts a headerless connection after 5
+minutes by default, below anything `llm.timeoutMs` can reach. A
+five-source-plan draft at maxTokens 32000 legitimately generates
+longer than that, so every attempt hit the wall and the retries
+re-billed partial generations into the same cliff.
+
+**llm.mjs v1.6** — `generateText` STREAMS (`stream: true`, SSE
+parsed and accumulated; new `postMessagesStream` beside the
+non-streaming `postMessages`): headers and a continuous trickle of
+text deltas arrive from the first second, so no silent-connection
+timeout in the path — ours, undici's, or an intermediary's — ever
+fires, which is also the vendor-recommended posture for long
+generations. Semantics:
+
+- `llm.timeoutMs` becomes an IDLE timeout for the generation call —
+  the longest allowed gap between chunks (default unchanged,
+  300000) — instead of a total-call ceiling: a 20-minute generation
+  with steady deltas never times out, a wedged socket still dies
+  fast. Total time is naturally bounded by maxTokens.
+- Retry semantics unchanged: 401 re-mints the bearer, 429/5xx and
+  transport failures back off (visibly, v2.24) and retry; a
+  MID-STREAM cut (idle timeout, reset, SSE `error` event) also
+  rides the retry path — partial text is discarded, exactly as the
+  marker slice would have failed closed on it; other 4xx throw.
+- `stop_reason` handling (refusal, max_tokens truncation) is
+  preserved via the stream's `message_delta`; the truncation hint
+  in testplangen.mjs now says timeoutMs is a silent-gap knob.
+- The classify/keyword call stays non-streaming: small replies,
+  JSON-schema pin.
+
+**Harness** — the mock `/v1/messages` serves SSE when the request
+carries `stream: true` (text split across two deltas so client-side
+accumulation is exercised); new check pins that the generation
+request streams. `check_testplangen.py` **119/119 PASS**;
+`check_local_sweep.py` 211/211 PASS (classify lane untouched).
+
+| Piece | Version | Where |
+|---|---|---|
+| LLM client (streamed generation, idle-gap timeout) | **v1.6** | `local/llm.mjs` |
+| Generation-job gate | **119 checks** | `local/harness/check_testplangen.py` |
+| testplangen.mjs (truncation-hint wording only) | v1.5 | `local/testplangen.mjs` |
+
+| Date | Machine | check_testplangen | check_local_sweep |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 119/119 PASS | 211/211 PASS |
+
 # TestPlanGen v2.24 — progress output (testplangen.mjs v1.5, llm.mjs v1.5)
 
 Motivated by the 2026-09-04 pinned-lane run that sat silent for 10+

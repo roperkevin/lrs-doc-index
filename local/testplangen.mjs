@@ -6,7 +6,7 @@
  * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
- * lanes: v2.22; figures: v2.25).
+ * lanes: v2.22; figures: v2.26).
  *
  * v1.6 (figures in cases — prompt v1.10's FIGURES rule, the local
  * half): a draft case may close with a `**Figure:**` line carrying a
@@ -967,8 +967,9 @@ async function generateOne(ctx, story) {
       if (/max_tokens/.test(String(e.message))) {
         throw new Error(
           `${e.message} — for this job the knob is testplangen.maxTokens ` +
-          `(currently ${tp.maxTokens}; the model allows up to 128000, and very ` +
-          "long generations may also need llm.timeoutMs raised)"
+          `(currently ${tp.maxTokens}; the model allows up to 128000; the ` +
+          "generation streams, so llm.timeoutMs is only the max silent gap " +
+          "between chunks and rarely needs raising)"
         );
       }
       throw e;

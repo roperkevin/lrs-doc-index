@@ -1,8 +1,17 @@
 /**
- * llm.mjs v1.5 — LLM client for the Doc Index classify/keyword step
+ * llm.mjs v1.6 — LLM client for the Doc Index classify/keyword step
  * (and, since v1.4, a raw-text generation call — `generateText` — for
  * local/testplangen.mjs's anthropic lane: same auth/retry plumbing,
  * no JSON schema pin, caller-controlled maxTokens).
+ *
+ * v1.6: generateText STREAMS (SSE) — a non-streaming Messages call
+ * emits nothing, headers included, until the whole generation is
+ * done, so Node's own HTTP client kills long drafts at its 5-minute
+ * default no matter what llm.timeoutMs says. Streaming keeps bytes
+ * flowing from the first second; timeoutMs becomes the generation
+ * call's IDLE timeout (max silent gap between chunks). The
+ * classify/keyword call stays non-streaming (small replies,
+ * JSON-schema pin).
  *
  * v1.5: retry visibility — every backoff retry (both providers)
  * prints one stderr line naming the cause and the delay, so 429s and
@@ -256,23 +265,131 @@ function requestJson(cfg, prompt) {
  * Throws on refusal and on max_tokens truncation: a truncated draft
  * would lose its END marker anyway, so surfacing the real cause here
  * beats a mystery no-markers failure downstream.
+ *
+ * v1.6: STREAMS. A non-streaming request emits nothing — not even
+ * response headers — until the entire generation is done, so every
+ * silent-connection timeout between here and the API kills long
+ * drafts: Node's own HTTP client (undici) aborts a headerless
+ * connection after 5 minutes by default, surfacing as a bare
+ * "fetch failed" that no llm.timeoutMs setting can reach. With
+ * stream: true, headers and a continuous trickle of text deltas
+ * arrive from the first second — nothing in the path ever sees a
+ * silent connection — and cfg.timeoutMs becomes an IDLE timeout
+ * (the longest allowed gap between chunks) instead of a total-call
+ * ceiling: a 20-minute generation with steady deltas never times
+ * out, a wedged socket still dies fast. The classify/keyword call
+ * (requestJson) stays non-streaming: its replies are small and its
+ * JSON-schema pin has no streaming equivalent here.
  */
 export async function generateText(cfg, prompt) {
-  const response = await postMessages(cfg, {
+  const { text, stopReason } = await postMessagesStream(cfg, {
     model: cfg.model || "claude-opus-5",
     max_tokens: cfg.maxTokens === undefined ? 4096 : Number(cfg.maxTokens),
     messages: [{ role: "user", content: prompt }],
   });
-  if (response.stop_reason === "refusal") {
+  if (stopReason === "refusal") {
     throw new Error("LLM refused the generation request (stop_reason: refusal)");
   }
-  if (response.stop_reason === "max_tokens") {
+  if (stopReason === "max_tokens") {
     throw new Error("LLM output truncated (stop_reason: max_tokens) — raise the caller's maxTokens knob");
   }
-  return (response.content || [])
-    .filter((b) => b.type === "text")
-    .map((b) => b.text)
-    .join("");
+  return text;
+}
+
+// The streaming transport under generateText (v1.6): same retry
+// semantics as postMessages — 401 re-mints the bearer, 429/5xx and
+// transport failures back off and retry, other 4xx throw — with a
+// mid-stream cut (idle timeout, connection reset, an SSE error
+// event) also riding the retry path: the partial text is discarded,
+// exactly as the marker slice would have failed closed on it.
+async function postMessagesStream(cfg, payload) {
+  const baseUrl = cfg.baseUrl || "https://api.anthropic.com";
+  const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
+  const idleMs = cfg.timeoutMs === undefined ? LLM_TIMEOUT_MS : Number(cfg.timeoutMs);
+  const body = JSON.stringify({ ...payload, stream: true });
+  let lastErr;
+  let refresh = false;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) await retryNotice(lastErr, attempt, maxRetries);
+    const ac = new AbortController();
+    let idleTimer;
+    const armIdle = () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(
+        () => ac.abort(new Error(`no bytes from the API for ${idleMs}ms (idle timeout)`)),
+        idleMs
+      );
+    };
+    armIdle();
+    try {
+      const res = await fetch(baseUrl + "/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "anthropic-version": "2023-06-01",
+          accept: "text/event-stream",
+          ...authHeaders(cfg, refresh),
+        },
+        body,
+        signal: ac.signal,
+      });
+      refresh = false;
+      if (res.status === 401) {
+        lastErr = new Error(`LLM API 401: ${(await res.text()).slice(0, 300)}`);
+        refresh = true;
+        continue;
+      }
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new Error(`LLM API ${res.status}: ${(await res.text()).slice(0, 300)}`);
+        continue;
+      }
+      if (!res.ok) {
+        // non-retryable request error — rethrown past the catch below
+        throw new Error(`LLM API ${res.status}: ${(await res.text()).slice(0, 500)}`);
+      }
+      const dec = new TextDecoder();
+      let buf = "";
+      let text = "";
+      let stopReason = null;
+      let stopped = false;
+      for await (const chunk of res.body) {
+        armIdle();
+        buf += dec.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) > -1) {
+          const dataLine = buf.slice(0, i).split("\n").find((l) => l.startsWith("data:"));
+          buf = buf.slice(i + 2);
+          if (!dataLine) continue;
+          const ev = JSON.parse(dataLine.slice(5).trim());
+          if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+            text += ev.delta.text;
+          } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
+            stopReason = ev.delta.stop_reason;
+          } else if (ev.type === "message_stop") {
+            stopped = true;
+          } else if (ev.type === "error") {
+            throw new Error(
+              `LLM stream error: ${ev.error?.type || ""} ` +
+              String(ev.error?.message || "").slice(0, 300)
+            );
+          }
+        }
+      }
+      if (!stopped) {
+        throw new Error("LLM stream ended without message_stop (connection cut mid-generation)");
+      }
+      return { text, stopReason };
+    } catch (e) {
+      if (/^LLM API 4/.test(String(e.message))) throw e; // 4xx (non-401/429): not retryable
+      lastErr =
+        e instanceof Error && /^LLM /.test(e.message)
+          ? e
+          : new Error(`LLM request failed: ${e.message}`);
+    } finally {
+      clearTimeout(idleTimer);
+    }
+  }
+  throw lastErr;
 }
 
 // ---- provider: aibuilder (the cloud flow's model) -------------------

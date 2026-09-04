@@ -126,7 +126,7 @@ the FX-5 stall).
 3. **Import**: `testplangen/TestPlanGenCore_v1_0.zip` (Import
    package (Legacy)) — the payload carries the complete current
    core: reference lane (v2.0), GFM banner (v2.8), current list
-   bindings (v2.10), the v1.10 stamp (v2.25), and the v2.2 coverage
+   bindings (v2.10), the v1.10 stamp (v2.26), and the v2.2 coverage
    routing — design-doc references, same-surface overflow, slot
    config, budget fix (v2.12). Post-import clicks (each is a picker,
    not an expression):

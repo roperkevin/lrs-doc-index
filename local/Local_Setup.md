@@ -650,7 +650,11 @@ prints one line per backoff retry, e.g. `llm: retry 2/4 in 4s — AI
 Builder 408`). stdout keeps the JSON + `Gen_summary` contract; the
 auto and gap-report modes stay quiet for their task logs. A run with
 NO progress line moving and no retry lines is waiting on
-authentication — scroll up for a device-code prompt.
+authentication — scroll up for a device-code prompt. Since `llm.mjs`
+v1.6 the anthropic generation call STREAMS, so a long generation is
+safe at any length: `llm.timeoutMs` is the max silent gap between
+chunks (default 300000), not a total-call ceiling, and Node's own
+5-minute silent-connection default can no longer kill a slow draft.
 
 **`testplangen.notify`** (or `--notify` per run) — posts ONE line to
 `alerts.webhookUrl` (the sweep's §7 alerts webhook) when a draft is
