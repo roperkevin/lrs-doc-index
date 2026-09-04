@@ -1,8 +1,13 @@
 /**
- * llm.mjs v1.4 — LLM client for the Doc Index classify/keyword step
+ * llm.mjs v1.5 — LLM client for the Doc Index classify/keyword step
  * (and, since v1.4, a raw-text generation call — `generateText` — for
  * local/testplangen.mjs's anthropic lane: same auth/retry plumbing,
  * no JSON schema pin, caller-controlled maxTokens).
+ *
+ * v1.5: retry visibility — every backoff retry (both providers)
+ * prints one stderr line naming the cause and the delay, so 429s and
+ * the AI Builder gateway's 408-on-long-generation no longer look
+ * like a silent hang. Behavior otherwise unchanged.
  *
  * Provider "aibuilder" (default) — the SAME model the cloud flow
  * uses: the AI Builder custom prompt (recordId in config.llm.modelId)
@@ -120,6 +125,19 @@ function resolveSecret(v, what) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// v1.5: retries are no longer silent — one stderr line per retry
+// naming the cause and the backoff, so a struggling call (429s, the
+// AI Builder gateway's 408 on long generations) is visible instead
+// of looking like a hang. Same backoff arithmetic as before.
+async function retryNotice(lastErr, attempt, maxRetries) {
+  const delay = Math.min(2000 * 2 ** (attempt - 1), 30000);
+  process.stderr.write(
+    `llm: retry ${attempt}/${maxRetries} in ${delay / 1000}s — ` +
+    `${String(lastErr?.message || lastErr || "network error").slice(0, 160)}\n`
+  );
+  await sleep(delay);
+}
+
 // Generation calls get a long leash (AI Builder's gateway itself 408s
 // slow generations); token mints a short one. Both exist so one hung
 // socket can never stall a scheduled run — a timeout surfaces as a
@@ -186,7 +204,7 @@ async function postMessages(cfg, payload) {
   let lastErr;
   let refresh = false;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) await sleep(Math.min(2000 * 2 ** (attempt - 1), 30000));
+    if (attempt > 0) await retryNotice(lastErr, attempt, maxRetries);
     let res;
     try {
       res = await fetch(baseUrl + "/v1/messages", {
@@ -346,7 +364,7 @@ export async function aiBuilderPredict(cfg, requestv2, modelId) {
   });
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) await sleep(Math.min(2000 * 2 ** (attempt - 1), 30000));
+    if (attempt > 0) await retryNotice(lastErr, attempt, maxRetries);
     let res;
     try {
       res = await fetch(url, {

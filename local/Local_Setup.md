@@ -632,6 +632,18 @@ the pinned ids, and `Gen_summary` gains `pinnedEx=`/`pinnedRef=`.
 Manual runs only — refused with `--auto`, `--gap-report`, and
 `--models` (those modes work from catalog state alone).
 
+**Progress output** (v1.5): a manual single-story run prints stderr
+`progress:` lines — snapshot size, story/lane sizes with pinned ids,
+"calling the model" with the input size, a 30-second heartbeat while
+the one model call is in flight, the reply size/elapsed, and the
+verifier verdict — so an auth wait, a long generation, and a retry
+storm are distinguishable at a glance (`llm.mjs` v1.5 additionally
+prints one line per backoff retry, e.g. `llm: retry 2/4 in 4s — AI
+Builder 408`). stdout keeps the JSON + `Gen_summary` contract; the
+auto and gap-report modes stay quiet for their task logs. A run with
+NO progress line moving and no retry lines is waiting on
+authentication — scroll up for a device-code prompt.
+
 **`testplangen.notify`** (or `--notify` per run) — posts ONE line to
 `alerts.webhookUrl` (the sweep's §7 alerts webhook) when a draft is
 actually WRITTEN: story id/title, the draft's URL, and the
