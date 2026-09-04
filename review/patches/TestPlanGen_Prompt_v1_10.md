@@ -1,190 +1,78 @@
-# Test Plan Generation Prompt — v1.10
+# TestPlanGen Prompt — v1.10 (figures in cases) — CURRENT, awaiting tenant paste
 
-The AI Builder custom prompt for the on-demand **TestPlanGen** flow
-(build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
-from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.10`, recorded in `testplangen/CHANGES.md`,
-and bumping it NEVER touches `Config.PromptVersion` (nothing here
-changes the sidecar format or reindexes the corpus).
+Owner-requested (2026-09-04): include diagrams in the output test
+plan drafts when they apply to a test case. The raw material already
+exists — the sweep's SlideFigures lane renders every story deck's
+slide diagrams into standalone SVG figures in the sidecar library's
+`media/` folder, linked from the story sidecar as markdown images
+(`![alt](../media/doc{ID}_slideN_figM.svg)`), so STORY TEXT already
+shows the drafter every figure with its descriptive alt text. What
+was missing: a rule permitting a case to cite one, a guard against
+invented links, and a link rewrite for where drafts land. Supersedes
+v1.9 IN-REPO (v1.9's story-first trace, v1.8's concrete test data,
+v1.7's source case sweep, v1.6's case granularity, v1.5's
+requirement-driven coverage + Coverage Map, v1.4's GFM shape, v1.3's
+reference lane, v1.2's enumeration coverage + conditional sections,
+and v1.1's marker fix all carry forward unchanged — paste THIS
+version).
 
-FIVE item/requestv2 input keys, exact names: **StoryMeta**,
-**StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
-(the fifth added in v1.3 — the AI Builder prompt needs the parameter
-created, not just the text re-pasted).
+Changes against v1.9 (one additive rule + one optional case line —
+no input, section-order, sentinel, or structural-contract changes):
 
-v1.10 (figures in cases — no input, section-order, sentinel, or
-structural-contract changes; the draft lint's asserts are untouched):
-cases may carry the story's own diagrams. The sweep's SlideFigures
-lane renders each story deck's slide diagrams into standalone SVG
-figures, linked from the story sidecar as markdown images — so STORY
-TEXT already shows the drafter every figure with its descriptive alt
-text. A new FIGURES grounding rule (the never-invent rule extended
-to images) lets a case close with an OPTIONAL `**Figure:**` line
-carrying an applicable story figure's image link copied VERBATIM;
-figures are reading aids only — they never ground a case (the
-story-first Trace rule is unchanged), never substitute for concrete
-fixture values, and exemplar/reference figures never appear. The
-local job pairs this with a grounding spot-check (every image link
-in the draft must exist in the story sidecar — draftlint.mjs v1.3
-check e) and, AFTER verification, rewrites cited links to absolute
-site URLs, because drafts land outside the sidecar library where the
-sidecar-relative `../media/` paths resolve nowhere
-(local/testplangen.mjs v1.6).
+1. **FIGURES grounding rule** (the never-invent rule extended to
+   images): when a story figure's diagram depicts the state,
+   topology, or workflow a case exercises, the case MAY close with a
+   `**Figure:**` line carrying that image link copied VERBATIM — alt
+   text and path, character for character; never retyped, edited, or
+   invented, and never composed from a filename mentioned in prose.
+   A figure is a reading aid ONLY: it never grounds a case (the
+   STORY-FIRST TRACE rule is unchanged), never substitutes for
+   concrete fixture values, and never becomes a step or an outcome.
+   Figures from EXEMPLAR TEXT or REFERENCE FUNCTIONALITY never
+   appear — story figures only.
+2. **Case shape**: an OPTIONAL `**Figure:**` standalone bold-labeled
+   line closing a case, described in the DRAFT SHAPE template; most
+   cases have none and omit the line entirely. Nothing else in the
+   shape moves.
+3. Worked example's preamble notes the omission default (its story
+   carries no figure links, so no case carries a Figure line).
 
-v1.9 (story-first trace — no input, section-order, sentinel, or
-structural-contract changes): the owner review of the doc 1 draft
-(2026-09-04) found exemplar features drifting toward case status —
-the story states the Add workflow ("Add Point/Line: Honor all input
-methods") but names no Add Point/Add Line widgets, while the
-exemplar lane's "Add Point and Add Line Widgets Test Plan" supplied
-widget-flavored case material. The leak is the Trace rule's OR: a
-case could exist on exemplar or reference authority ALONE ("or the
-exemplar pattern it applies"). v1.9 closes it: every case's Trace
-MUST quote or closely paraphrase a STORY statement — exemplar
-patterns and reference-functionality statements REFINE a
-story-stated behavior (the concrete input methods behind the
-story's "all input methods", its validations, its field semantics)
-and are cited in addition, never instead; a workflow, pathway,
-tool, or behavior that appears only in an exemplar or reference
-becomes an Open Questions [VERIFY] entry (the CASE SWEEP rule's
-Verify lane), never a case. The sweep's Yes verdict now requires a
-story statement to anchor the tailored case (reference support
-alone is Verify); the tools rule extends explicitly to workflows,
-pathways, and edit types. The local verifier gains the matching
-per-case spot-check (draftlint.mjs groundDraft check d).
+Output markers unchanged (`[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]`,
+lengths 17/15 — G9 arithmetic untouched). Input keys unchanged,
+FIVE, exact names: **StoryMeta**, **StoryText**, **RelatedDigest**,
+**ExemplarText**, **ReferenceText**.
 
-v1.8 (concrete test data — no input, section-order, sentinel, or
-structural-contract changes; the draft lint's asserts are untouched):
-drafts stop DESCRIBING data and start NAMING it, the way the team's
-own plans do (the 2026-09-04 review of the doc 1 draft against
-"Splitting Events in Pro": that plan pins every case to named
-fixtures — route R1, event E1 from measure 10 to 22, split at 16,
-dates — with before/after attribute tables, where the draft's cases
-said "a measure inside its extent" and "input method M"). A new
-CONCRETE TEST DATA grounding rule carves fixture VALUES out of the
-never-invent rule: route/event IDs, measures, dates, and attribute
-values are fixtures the drafter MUST invent, defined once as
-test-data tables closing Setup / Prerequisites and referenced by
-name from every case; Steps and Expected Result name concrete values
-("split event E1 on route R1 at measure 16"), never abstract
-stand-ins; a case that creates or changes records follows its
-Expected Result sentence with a GFM table of the affected records'
-expected field values after the edit — under CASE GRANULARITY that
-table is ONE outcome, the complete record state one edit produces,
-judged pass/fail as a whole. The carve-out covers values only:
-field names, domains, limits, precision, defaults, and error text
-stay under the never-invent rule — fixtures use simple values that
-dodge the unknown, and a fixture never resolves a [VERIFY] by fiat.
+Contract note: NO structural asserts added — the offline lints stay
+on the v1.7 contract (a Figure line is invisible to every assert,
+verified by the harness's figure-draft agreement leg). The rule IS
+machine-checkable locally, where the job holds the story:
+`local/lib/draftlint.mjs` v1.3 adds grounding check (e) — every
+markdown image link in the draft must appear in the story sidecar
+verbatim, so an invented, edited, or exemplar-sourced link surfaces
+as a "grounding: figure link ... is not in the story sidecar"
+finding under the normal verify policy. And because a verbatim link
+is sidecar-relative (`../media/...`) while drafts land in
+`Shared Documents/Test Plan Drafts` — a different folder tree where
+that path resolves nowhere — `local/testplangen.mjs` v1.6 rewrites
+cited links to absolute site URLs AFTER verification (the verifier
+judges the model's links exactly as copied; the rewrite is
+deterministic, the banner/Issue Trace precedent). Gen_summary gains
+`figures=`.
 
-v1.7 (source case sweep — no input or sentinel changes; one new
-CONDITIONAL section): every distinct test case or scenario described
-in EXEMPLAR TEXT and REFERENCE FUNCTIONALITY — however the source
-plan formats it — must receive an explicit applies / doesn't-apply
-judgment against this story (the CASE SWEEP rule, the per-case
-generalization of v1.5's RELATED DIGEST mandate). An applying case
-becomes a case tailored to THIS story's feature and surface, its
-Trace citing the source plan by title plus the story or reference
-statement it exercises; a case that plausibly applies but has no
-story/reference support becomes an Open Questions [VERIFY] naming
-the source case — never an invented requirement, never a silent
-skip. The judgments render as a new `## Source Case Sweep` table
-(one row per source case, verdict Yes / No / Verify) between Open
-Questions and the Coverage Map, emitted whenever either lane is
-non-empty — the same render-the-checklist enforcement the Coverage
-Map applies to requirements. Tools, surface, story-wins-conflicts,
-and granularity rules extend to swept cases unchanged.
-
-v1.6 (case granularity — no input, shape-order, or sentinel
-changes): one behavior per case. A new CASE GRANULARITY grounding
-rule makes each case's Expected Result a SINGLE observable outcome
-judged pass/fail as a whole — a case that would assert two
-independently falsifiable outcomes splits into one case per outcome,
-each with its own Trace; each Steps checkbox is one tester action
-(no "and"/"then" compounds, no verification folded into a step); and
-parameterization ("repeat for point and line events") is legal only
-when the steps AND the expected result are identical modulo the
-substituted term, with every covered variant named explicitly (never
-"etc." or "all types") — a variant that changes any step or the
-outcome becomes its own case. The case-shape prose and the CASE
-COUNT rule state the same where cases are written; length is still
-controlled by terse steps and parameterization, never by bundling
-assertions into one case.
-
-v1.5 (requirement-driven coverage — no input, shape-order, or
-sentinel changes): case count stops being a target and becomes an
-output of coverage — the fixed "4–10 positive / 3–8 negative, prefer
-fewer" range (the RC-3 consolidation bias,
-`review/REVIEW_TestPlanGen_doc1_coverage.md`) is replaced by
-one-case-per-requirement rules with a floor and no ceiling; a new
-always-on final section, `## Coverage Map`, renders the
-requirement→case trace table the reviewer previously built by hand
-(the converse of the Trace rule, and the prompt-side realization of
-the Setup guide's queued "coverage matrix" follow-on); ENUMERATION
-COVERAGE gains a cross-product clause (two enumeration axes = every
-pairing exercised or explicitly parameterized); RELATED DIGEST
-entries must each be evaluated for interaction cases instead of "may
-inspire". Length is controlled by terse steps and parameterization,
-never by dropping or merging requirements.
-
-v1.4 (GFM draft shape — no input, grounding, or sentinel changes):
-drafts now target GitHub-style markdown viewers, matching the flow
-v2.7 sidecar upgrade. The Overview opens with a StoryMeta table;
-Setup / Prerequisites and per-case Steps render as GFM task lists
-(`- [ ] 1. ...`) so testers can check items off in the rendered view;
-Expected Result and Trace become standalone bold lines; Negative
-Tests opens with a fixed `> [!CAUTION]` alert; Open Questions items
-render as `- [ ] [VERIFY: ...]` checkboxes so resolution is
-trackable. Section names, order, the CONDITIONAL rules, all grounding
-rules, and the output sentinels are unchanged. No emojis. The paired
-flow edit (same window): Draft_banner gains a `> [!WARNING]` first
-line so the banner renders as a GFM alert.
-
-v1.3 (the reference-functionality input lane): `ReferenceText` carries
-test plans or design docs describing the expected behavior of this
-story's feature area, possibly on ANOTHER surface — the flow fills it
-with related Test Plans whose Surface differs from the story's (the
-same-surface ones remain style/coverage exemplars). Unlike exemplars,
-the model may ground expected functional behavior on these — input
-methods, field-population semantics, validations — within the story's
-scope, with three guards: every borrowed statement's Trace cites the
-reference document, a cross-surface reference forces a surface-parity
-[VERIFY] item, and the story wins every conflict. Reference docs
-supply behavior, never tool names.
-
-v1.2 (the doc 1 coverage-review fixes — see
-`review/REVIEW_TestPlanGen_doc1_coverage.md`): an ENUMERATION COVERAGE
-grounding rule — every workflow, pathway, input method, or
-event/geometry type the story enumerates must be exercised by at least
-one case, and this wins over the preferred case-count range — plus two
-CONDITIONAL draft sections, `## Automation Notes` and
-`## Documentation Impacts`, emitted between Negative Tests and Open
-Questions only when the story carries such content.
-
-Output is a MARKDOWN DOCUMENT between `[[[DRAFT BEGIN]]]` /
-`[[[DRAFT END]]]` markers — a deliberate, documented deviation from
-the F3 JSON brace-slice the other two prompts use. The payload here is
-a multi-page markdown draft; requiring the model to JSON-string-escape
-thousands of characters of quotes, newlines and backslashes would make
-escaping errors the dominant failure mode. The flow's marker slice is
-the same proven `indexOf`/`lastIndexOf`/degrade logic with different
-sentinels (guide §3, G9) — and it fails CLOSED: missing or misordered
-markers terminate the run with nothing written.
-
-The output sentinels are SQUARE-bracketed, not the `<<<...>>>` form
-the input fences use (the v1.0→v1.1 fix): AI Builder sanitizes
-HTML-tag-like sequences out of the prompt REPLY, and
-`<<<DRAFT BEGIN>>>` contains the tag-shaped `<DRAFT BEGIN>` — a live
-run returned it stripped to a bare `<<>>`, so the flow's slice found
-no markers and correctly failed closed. Square brackets survive the
-sanitizer, and `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` keep the exact
-lengths (17 / 15) of the old sentinels, so G9's arithmetic is
-unchanged. The angle-bracket INPUT fences below are fine as they are —
-they travel flow→model and are never sanitized.
-
-Paste everything between the delimiters into the AI Builder prompt,
-keep the input keys as written (create the fifth parameter,
-ReferenceText, when upgrading from a pre-v1.3 paste), then wire per
-the build guide §2.
+Deploy (simple paste + one designer edit, both live flows): paste
+this text into the `LRS Test Plan Generation` AI Builder prompt
+(replaces the pending v1.9 paste — no parameter changes; a tenant
+still on the pre-v1.3 four-parameter contract does the v2.0
+ReferenceText window first, `Coverage_Runbook.md` step 2), set
+`Config_gen.TestPlanGenPromptVersion` to `v1.10`, then run smoke
+rows 1, 3, 9 and 10 and read one draft: any Figure line's link must
+appear in the story sidecar character for character. NOTE the link
+rewrite is a LOCAL-JOB step — drafts written by the cloud flows keep
+the sidecar-relative links as the model copied them (correct
+grounding, broken rendering from the drafts folder); treat that as a
+known cloud-lane limitation until a flow-side rewrite exists. NEVER
+bump `Config.PromptVersion` — nothing here changes the sidecar
+format or reindexes the corpus.
 
 ---------------- PROMPT TEXT BEGINS ----------------
 

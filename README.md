@@ -66,7 +66,7 @@ keeps the old yaml-on-top layout).
 | review/patches/SidecarPatch_v1_6.ts | r6 patch (gated + promoted 2026-08-13; safe to paste any time before the v2.8 window) | v1.6 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
-| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.9 makes every case's Trace cite a story statement, exemplar/reference support additive only; v1.8 makes cases name concrete fixture data with after-state tables) | v1.9 |
+| prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.10 lets a case close with a story diagram's image link copied verbatim, the FIGURES rule; v1.9 makes every case's Trace cite a story statement, exemplar/reference support additive only; v1.8 makes cases name concrete fixture data with after-state tables) | v1.10 |
 | schemas/SPList_*.csv | The six list definitions (lrsworkspace) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | docs/Diagram_Style_Framework.md | The one visual language for slide diagrams: palette, hue-family colour mapping, geometry-led roles, component standardisation | v1.0 |

@@ -1,3 +1,85 @@
+# TestPlanGen v2.26 — figures in cases (prompt v1.10, testplangen.mjs v1.6, draftlint v1.3)
+
+(Merged after v2.25 landed independently on main — this entry
+carried the v2.25 label while in review and was renumbered to
+v2.26 at merge time, the v2.20–v2.22 precedent.)
+
+Owner-requested (2026-09-04): include diagrams in the output test
+plan drafts when they apply to a test case. The raw material already
+existed — the sweep's SlideFigures lane renders every story deck's
+slide diagrams into standalone SVG figures in the sidecar library's
+`media/` folder, linked from the story sidecar as markdown images —
+so STORY TEXT already showed the drafter every figure with its alt
+text. Three pieces close the gap:
+
+**Prompt v1.10** (`review/patches/TestPlanGen_Prompt_v1_10.md`; no
+input, section-order, sentinel, or structural-contract changes): a
+new **FIGURES** grounding rule — the never-invent rule extended to
+images. When a story figure's diagram depicts the state, topology,
+or workflow a case exercises, the case MAY close with an OPTIONAL
+`**Figure:**` line carrying that image link copied VERBATIM (alt
+text and path, character for character; never retyped, edited, or
+composed from prose). A figure is a reading aid ONLY: it never
+grounds a case (story-first Trace unchanged), never substitutes for
+concrete fixture values, and never becomes a step or an outcome;
+exemplar/reference figures never appear — story figures only. The
+"if they apply" judgment is the model's per-case call, the CASE
+SWEEP verdicts' mold; a story with no figure links keeps producing
+figure-less drafts.
+
+**draftlint.mjs v1.3** — grounding check (e), exact rather than
+heuristic: every markdown image link in the draft must appear in the
+story sidecar verbatim (`](path)` form), so an invented, retyped, or
+exemplar-sourced link surfaces as a `grounding: figure link ...`
+finding under the normal verify policy. Local-only by design — the
+Python contract authority and the agreement leg are untouched (a
+Figure line is invisible to every v1.7 assert, gate-proven).
+
+**testplangen.mjs v1.6** — the link rewrite: a verbatim link is
+sidecar-relative (`../media/...`), and drafts land in
+`Shared Documents/Test Plan Drafts`, a different folder tree where
+that path resolves nowhere. AFTER verification (the banner/Issue
+Trace precedent — the verifier judges the model's links exactly as
+copied) cited links are rewritten to absolute site URLs
+(`{siteUrl}{textsFolder}/media/...`, URI-encoded). Deterministic,
+model-free; `Gen_summary` gains `figures=` (links rewritten);
+`draftChars` still counts the model's own body. NOTE the rewrite is
+a LOCAL-JOB step — drafts written by the cloud flows keep the
+relative links as copied (correct grounding, broken rendering from
+the drafts folder) until a flow-side rewrite exists.
+
+**Stamps + packages** — `TestPlanGenPromptVersion` → v1.10 in
+`flow/{v1_0,core_v1_0}/definition.json` (stamp only); both
+generation packages re-cut with the stamped definitions
+(byte-identical otherwise, verified at cut time); Setup §2/§3 and
+`Coverage_Runbook.md` step 2 stamps; `local/config.sample.json`
+testplangen.promptVersion. Downstream converters unchanged: a
+`**Figure:**` line passes through `draft2docx`/`draft2pptx` as
+prose (embedding cited SVGs as native shapes via the svg2pptx
+converter is the queued follow-on). NEVER bump
+`Config.PromptVersion` — nothing here changes the sidecar format or
+reindexes the corpus.
+
+**Harness** — `check_testplangen.py` 119 → **126**: new leg 13 — a
+Figure-line draft passes BOTH contract lints; a verbatim story
+figure passes grounding and lands absolutized in the written draft;
+`figures=` counts the rewrites; an invented link is flagged; a
+figure-less draft stamps `figures=0`. The doc 12 story fixture now
+carries a placeFigure-shaped image link. 126/126 PASS; standing
+suites green (`check_local_sweep.py` 211/211, typecheck 7/7,
+`check_draft2docx.py` 23/23, `check_draft2pptx.py` 28/28).
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt (FIGURES rule, Figure case line) | **v1.10** | `prompts/TestPlanGen_Prompt.md` / `review/patches/TestPlanGen_Prompt_v1_10.md` |
+| Draft verifier (grounding check e) | **v1.3** | `local/lib/draftlint.mjs` |
+| Local generation job (link rewrite, figures=) | **v1.6** | `local/testplangen.mjs` |
+| Flow stamps + re-cut packages | v1.10 stamp | `testplangen/flow/{v1_0,core_v1_0}/definition.json`, `TestPlanGen_v1_0.zip`, `TestPlanGenCore_v1_0.zip` |
+| Generation-job gate | **126 checks** | `local/harness/check_testplangen.py` |
+
+| Date | Machine | check_testplangen |
+|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 126/126 PASS |
 # TestPlanGen v2.25 — the generation call streams (llm.mjs v1.6)
 
 The v2.24 progress output exposed the real failure chain on the

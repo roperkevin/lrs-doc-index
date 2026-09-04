@@ -1,5 +1,5 @@
 /**
- * draftlint.mjs v1.2 — in-process draft verification for
+ * draftlint.mjs v1.3 — in-process draft verification for
  * local/testplangen.mjs, two layers:
  *
  * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
@@ -31,13 +31,14 @@
  *
  * `groundDraft` (v1.1, phase 2 of Local_TestPlanGen_Plan.md; v1.2
  * adds check d and the [VERIFY-line exclusion in check b, prompt
- * v1.9's story-first trace) — the
+ * v1.9's story-first trace; v1.3 adds check e, prompt v1.10's
+ * FIGURES rule) — the
  * GROUNDING layer, possible only locally because the job holds the
  * story it just sent: heuristic spot-checks of the draft against
  * STORY TEXT + StoryMeta. Deliberately NOT part of the Python
  * contract and excluded from the agreement leg; findings carry a
  * "grounding: " prefix so a reviewer can tell the layers apart.
- * Four checks, each conservative by design (they WILL flag some
+ * Five checks, each conservative by design (they WILL flag some
  * legitimate paraphrases — which is why the job's default verify
  * policy annotates rather than refuses):
  *   a) every Coverage Map requirement cell must trace to the story —
@@ -62,7 +63,14 @@
  *      line's content-word stems must appear in the story. A case
  *      tracing only to an exemplar/reference title fails both and
  *      is flagged — the prompt says such a behavior belongs in Open
- *      Questions, not in a case.
+ *      Questions, not in a case;
+ *   e) FIGURES (prompt v1.10, the never-invent rule extended to
+ *      images): every markdown image link in the draft must appear
+ *      in the story sidecar VERBATIM — an invented, retyped, or
+ *      exemplar/reference-sourced link fails (its exact `](path)`
+ *      form is not in the story corpus). This check is exact, not
+ *      heuristic, and runs BEFORE the job's absolutizing rewrite,
+ *      so a copied story link matches character for character.
  */
 
 const CORE_SECTIONS = [
@@ -454,6 +462,27 @@ export function groundDraft(draftText, storyCorpus) {
     if (hit / stems.length < 0.5) {
       findings.push(
         `grounding: ${cid} Trace cites no story statement (the story-first rule — exemplar/reference support alone cannot ground a case)`
+      );
+    }
+  }
+
+  // e) FIGURES (prompt v1.10): every markdown image link in the
+  // draft must be copied verbatim from the story — the never-invent
+  // rule extended to figure paths. Exact match on the `](path)` form
+  // (alt text is the model's to carry; the PATH is what must never
+  // be invented). Runs before the job's absolutizing rewrite, so a
+  // story link matches character for character; a figure sourced
+  // from an exemplar or reference sidecar fails naturally — its
+  // link is not in the story corpus.
+  const flaggedFigs = new Set();
+  for (const m of draft.matchAll(/!\[[^\]\n]*\]\(([^()\s]+)\)/g)) {
+    const href = m[1];
+    if (flaggedFigs.has(href)) continue;
+    if (String(storyCorpus).includes(`](${href})`)) continue;
+    flaggedFigs.add(href);
+    if (flaggedFigs.size <= 10) {
+      findings.push(
+        `grounding: figure link "${href}" is not in the story sidecar (the FIGURES rule — image links are copied verbatim, never invented)`
       );
     }
   }

@@ -1,12 +1,30 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.5 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.6 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
- * lanes: v2.22).
+ * lanes: v2.22; figures: v2.26).
+ *
+ * v1.6 (figures in cases — prompt v1.10's FIGURES rule, the local
+ * half): a draft case may close with a `**Figure:**` line carrying a
+ * story figure's image link copied VERBATIM from the sidecar. Two
+ * job-side pieces:
+ *   - the verifier's grounding layer gains check e (draftlint.mjs
+ *     v1.3): every markdown image link in the draft must appear in
+ *     the story sidecar verbatim — the never-invent rule extended to
+ *     figure paths; an invented or exemplar-sourced link is a
+ *     "grounding: figure link ..." finding under the normal verify
+ *     policy.
+ *   - AFTER verification (the banner/Issue Trace precedent — the
+ *     verifier judges the model's links exactly as copied), cited
+ *     sidecar-relative links (../media/...) are rewritten to
+ *     absolute site URLs: drafts land in Shared Documents/Test Plan
+ *     Drafts, a different folder tree from the sidecar library, so
+ *     the relative form resolves nowhere there. Deterministic,
+ *     model-free; Gen_summary gains `figures=` (links rewritten).
  *
  * v1.5 (progress output — with llm.mjs v1.5's retry visibility)
  * adds stderr `progress:` lines to MANUAL single-story runs only —
@@ -199,7 +217,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.5";
+const JOB_VERSION = "v1.6";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -333,7 +351,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.9",
+    promptVersion: "v1.10",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,
@@ -999,6 +1017,25 @@ async function generateOne(ctx, story) {
       throw err;
     }
   }
+  // FIGURES (prompt v1.10) — a cited figure link is copied VERBATIM
+  // from the sidecar, so it is sidecar-relative (../media/...) and
+  // resolves nowhere from the drafts folder (a different folder tree
+  // from the sidecar library). Rewrite cited links to absolute site
+  // URLs AFTER verification — the grounding layer judged the model's
+  // links exactly as copied; this rewrite is deterministic and
+  // model-free, the banner/Issue Trace precedent. draftChars keeps
+  // counting the model's own body, so the flow-parity counter holds.
+  const mediaBase = encodeURI(`${sw.siteUrl}${sw.textsFolder}/media/`);
+  let figureCount = 0;
+  const draftOut = draftBody.replace(
+    /(!\[[^\]\n]*\]\()\.\.\/media\/([^()\s]+)(\))/g,
+    (m, pre, name, post) => {
+      figureCount++;
+      return pre + mediaBase + encodeURIComponent(name) + post;
+    }
+  );
+  if (figureCount) prog(`figures — ${figureCount} story figure link(s) absolutized`);
+
   let verifyBlock = "";
   if (tp.verify === "annotate" && findings.length) {
     const listed = findings.slice(0, 20);
@@ -1035,7 +1072,7 @@ async function generateOne(ctx, story) {
   // the deterministic Issue Trace addendum (v1.3) rides AFTER the
   // verified body — the verifier never judges machine-minted content
   const trace = await issueTraceOf(ctx, story);
-  const draft = banner + verifyBlock + draftBody + "\n" + trace.section;
+  const draft = banner + verifyBlock + draftOut + "\n" + trace.section;
 
   // G11 — timestamped save, never overwritten (drafts are work
   // products a PE may be mid-edit on; stale ones are deleted by hand)
@@ -1056,7 +1093,7 @@ async function generateOne(ctx, story) {
     `references=${referenceCount} digestChars=${digest.length} ` +
     `storyChars=${storyTextCapped.length} draftChars=${draftBody.length} ` +
     `exChars=${exemplarText.length} refChars=${referenceText.length} ` +
-    `verify=${verify} issues=${trace.count} ` +
+    `verify=${verify} issues=${trace.count} figures=${figureCount} ` +
     `pinnedEx=${pins.ex.length} pinnedRef=${pins.ref.length}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
