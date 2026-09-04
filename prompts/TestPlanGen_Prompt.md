@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.7
+# Test Plan Generation Prompt — v1.9
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.7`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.9`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -11,6 +11,51 @@ FIVE item/requestv2 input keys, exact names: **StoryMeta**,
 **StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
 (the fifth added in v1.3 — the AI Builder prompt needs the parameter
 created, not just the text re-pasted).
+
+v1.9 (story-first trace — no input, section-order, sentinel, or
+structural-contract changes): the owner review of the doc 1 draft
+(2026-09-04) found exemplar features drifting toward case status —
+the story states the Add workflow ("Add Point/Line: Honor all input
+methods") but names no Add Point/Add Line widgets, while the
+exemplar lane's "Add Point and Add Line Widgets Test Plan" supplied
+widget-flavored case material. The leak is the Trace rule's OR: a
+case could exist on exemplar or reference authority ALONE ("or the
+exemplar pattern it applies"). v1.9 closes it: every case's Trace
+MUST quote or closely paraphrase a STORY statement — exemplar
+patterns and reference-functionality statements REFINE a
+story-stated behavior (the concrete input methods behind the
+story's "all input methods", its validations, its field semantics)
+and are cited in addition, never instead; a workflow, pathway,
+tool, or behavior that appears only in an exemplar or reference
+becomes an Open Questions [VERIFY] entry (the CASE SWEEP rule's
+Verify lane), never a case. The sweep's Yes verdict now requires a
+story statement to anchor the tailored case (reference support
+alone is Verify); the tools rule extends explicitly to workflows,
+pathways, and edit types. The local verifier gains the matching
+per-case spot-check (draftlint.mjs groundDraft check d).
+
+v1.8 (concrete test data — no input, section-order, sentinel, or
+structural-contract changes; the draft lint's asserts are untouched):
+drafts stop DESCRIBING data and start NAMING it, the way the team's
+own plans do (the 2026-09-04 review of the doc 1 draft against
+"Splitting Events in Pro": that plan pins every case to named
+fixtures — route R1, event E1 from measure 10 to 22, split at 16,
+dates — with before/after attribute tables, where the draft's cases
+said "a measure inside its extent" and "input method M"). A new
+CONCRETE TEST DATA grounding rule carves fixture VALUES out of the
+never-invent rule: route/event IDs, measures, dates, and attribute
+values are fixtures the drafter MUST invent, defined once as
+test-data tables closing Setup / Prerequisites and referenced by
+name from every case; Steps and Expected Result name concrete values
+("split event E1 on route R1 at measure 16"), never abstract
+stand-ins; a case that creates or changes records follows its
+Expected Result sentence with a GFM table of the affected records'
+expected field values after the edit — under CASE GRANULARITY that
+table is ONE outcome, the complete record state one edit produces,
+judged pass/fail as a whole. The carve-out covers values only:
+field names, domains, limits, precision, defaults, and error text
+stay under the never-invent rule — fixtures use simple values that
+dodge the unknown, and a fixture never resolves a [VERIFY] by fiat.
 
 v1.7 (source case sweep — no input or sentinel changes; one new
 CONDITIONAL section): every distinct test case or scenario described
@@ -188,6 +233,14 @@ and reference functionality; where the sources are silent on a needed
 precondition, include the step with a [VERIFY: ...] note rather than
 inventing specifics.
 
+Close the section with a `**Test data:**` line followed by GFM
+table(s) defining the named fixtures the cases reference: a routes
+table (Route ID, measure range, from/to dates) and — when the story
+edits events — an events table (Event ID, route, measures, dates,
+one or two business attributes with simple values). Fixture VALUES
+are yours to invent (the CONCRETE TEST DATA rule); every case's data
+comes from these tables, or the case states its own delta.
+
 ## Positive Tests
 Cases proving the story's workflow behaves as specified. Each case
 verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
@@ -198,18 +251,25 @@ verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
 - [ ] 2. <tester action>
 
 **Expected Result:** the single observable outcome this case
-verifies, specific enough to judge pass/fail as a whole — never two
-independent outcomes (split the case instead).
+verifies, stated with the case's concrete fixture values and
+specific enough to judge pass/fail as a whole — never two
+independent outcomes (split the case instead). When the case creates
+or changes records, follow the sentence with a GFM table of the
+affected record(s)' expected field values after the edit (the
+CONCRETE TEST DATA rule).
 
 **Trace:** the story statement this case verifies, quoted or closely
-paraphrased — or the exemplar pattern it applies (e.g. "exemplar
-covers the multi-user variant of each edit"), or the reference-
-functionality statement it grounds on, cited by document title.
+paraphrased — ALWAYS, for every case (the STORY-FIRST TRACE rule).
+When an exemplar pattern shaped the case (e.g. "exemplar covers the
+multi-user variant of each edit") or a reference-functionality
+statement grounds its specifics, cite it by document title IN
+ADDITION to the story statement, never instead of it.
 
 Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
 (one checkbox per numbered action, each a SINGLE tester action);
 Expected Result and Trace are standalone bold-labeled lines, never
-checkboxes.
+checkboxes. Steps and Expected Result name concrete fixture data —
+never abstract stand-ins (the CONCRETE TEST DATA rule).
 
 ## Negative Tests
 Directly under the heading, before TC-N1, emit this fixed alert
@@ -259,11 +319,12 @@ the source formats it:
 Source plan names the document (title, with "(exemplar)" or
 "(reference)"); Source case names or closely paraphrases the case.
 Applies? is exactly one of **Yes** (the behavior applies to this
-story — Covered by cites the tailored TC id(s)), **No** (it does
-not — the cell states why, e.g. out of the story's scope, other
-feature, superseded), or **Verify** (it plausibly applies but the
-story and references don't support it — the cell cites the matching
-Open Questions entry). An empty Applies? or fourth cell is invalid
+story AND a story statement anchors the tailored case — Covered by
+cites the tailored TC id(s)), **No** (it does not — the cell states
+why, e.g. out of the story's scope, other feature, superseded), or
+**Verify** (it plausibly applies but no story statement supports it
+— reference support alone is not enough; the cell cites the
+matching Open Questions entry). An empty Applies? or fourth cell is invalid
 output. Rows never merge: one source case, one row, one judgment.
 
 ## Coverage Map
@@ -288,11 +349,19 @@ cell is invalid output: add the missing case or the Open Questions
 entry, then fill the cell.
 
 GROUNDING RULES
-- Every test case MUST trace to an explicit statement in STORY TEXT /
-  StoryMeta, to an exemplar pattern applied to this story's feature,
-  or to a REFERENCE FUNCTIONALITY statement applied within this
-  story's scope. Never invent requirements, behaviors, error
-  messages, or UI the sources don't support.
+- STORY-FIRST TRACE: every test case MUST trace to an explicit
+  statement in STORY TEXT / StoryMeta — no case exists on exemplar
+  or reference authority alone. Exemplar patterns applied to this
+  story's feature and REFERENCE FUNCTIONALITY statements applied
+  within this story's scope REFINE a story-stated behavior — the
+  concrete input methods behind the story's "all input methods",
+  its validations, its field semantics — and are cited in the Trace
+  IN ADDITION to the story statement, never instead of it. A
+  workflow, pathway, tool, or behavior that appears only in an
+  exemplar or reference document — nowhere in the story — never
+  becomes a case: it becomes an Open Questions [VERIFY] entry (the
+  CASE SWEEP rule's Verify lane). Never invent requirements,
+  behaviors, error messages, or UI the sources don't support.
 - ENUMERATION COVERAGE: when the story enumerates workflows, edit
   pathways, input methods, or event/geometry types (e.g. "point and
   line events"; "Add, Update, Split, Merge, Dynamic Seg, Table"),
@@ -318,8 +387,11 @@ GROUNDING RULES
   functionality for this story's feature area. You may derive
   expected behavior from them — input methods, field-population
   semantics, validation and error conditions — applied within THIS
-  story's scope and surface. Every reference-grounded statement's
-  Trace cites the reference document by title. When a reference
+  story's scope and surface, and always ANCHORED to a story
+  statement (STORY-FIRST TRACE): a reference behavior the story
+  states no home for becomes an Open Questions entry, never a case.
+  Every reference-grounded statement's Trace cites the reference
+  document by title in addition to the story statement. When a reference
   document's surface differs from the story's surface, add ONE Open
   Questions [VERIFY] item covering surface parity for the borrowed
   behaviors. Where a reference document conflicts with the story, the
@@ -330,12 +402,39 @@ GROUNDING RULES
 - Tools and widgets: name ONLY tools that appear in StoryMeta or
   STORY TEXT, in official casing. Never introduce a tool by analogy
   with the exemplars' features, and never carry a tool name over from
-  a reference document.
+  a reference document. The same discipline applies to workflows,
+  pathways, and edit types: exercise only those the story
+  enumerates. Where the story names a workflow but no tool for it
+  (e.g. "Add Point/Line" with no widget named), the case names the
+  workflow ("the Add point event pathway") and the missing tool name
+  is a Setup [VERIFY] item — never a guessed widget.
 - surface and target release: copy verbatim from StoryMeta. Never
   guess, never substitute a release the exemplars mention.
 - Missing information becomes a [VERIFY: ...] item in Open Questions —
   never a fabricated specific (no invented field names, limits,
   defaults, or error text).
+- CONCRETE TEST DATA (the carve-out from the rule above): test DATA
+  values — route and event IDs (R1, E1), measures, dates, and
+  business-attribute values — are fixtures you MUST invent. Define
+  them in the Setup / Prerequisites test-data tables and write every
+  case against them: Steps and Expected Result name concrete values
+  ("split event E1 on route R1 at measure 16"), never abstract
+  stand-ins ("a measure inside its extent", "a new valid value",
+  "input method M" — name each method the sources support). A
+  parameterized case names the concrete value each variant uses.
+  When a case creates or changes event or route records, the
+  Expected Result carries a GFM table of the affected record(s) with
+  expected field values after the edit (the before-state lives in
+  the fixture tables, or in a small before table when the case needs
+  its own); under CASE GRANULARITY that table is ONE outcome — the
+  complete record state one edit produces — judged pass/fail as a
+  whole, and independent outcomes beyond that record state still
+  split into their own cases. The carve-out covers VALUES ONLY:
+  field names, domains, limits, precision, defaults, and error text
+  stay under the never-invent rule — pick simple values that dodge
+  the unknown (integer measures inside a stated range) and keep the
+  unknown a [VERIFY] item; a fixture never resolves an open
+  question by fiat.
 - RELATED DIGEST: evaluate EVERY entry. When an entry's feature
   plausibly interacts with this story's feature, add an
   interaction/regression case (e.g. this feature crossing the
@@ -351,13 +450,14 @@ GROUNDING RULES
   verifies applies to this story. **Applies**: write a case tailored
   to THIS story's feature and surface — steps rewritten for the
   story's workflow, the granularity rule in force — whose Trace
-  cites the source plan by title AND the story or reference
-  statement the tailored case exercises; never copy the source
+  cites the source plan by title AND the story statement the
+  tailored case exercises (plus the reference statement, when one
+  grounds its specifics — STORY-FIRST TRACE); never copy the source
   case's feature-specific content, tool names, or data. **Applies
-  but unsupported** (the story and references say nothing that
-  grounds the behavior): add an Open Questions [VERIFY] naming the
-  source plan and case — a possible coverage gap in the story, never
-  an invented requirement. **Doesn't apply**: state why in the
+  but unsupported** (the story says nothing that grounds the
+  behavior — reference support alone is not enough): add an Open
+  Questions [VERIFY] naming the source plan and case — a possible
+  coverage gap in the story, never an invented requirement. **Doesn't apply**: state why in the
   sweep table. Every judgment renders as a Source Case Sweep row;
   a source case missing from the table is a silent skip, which is
   invalid output. The exemplar-content, tools, surface, and
@@ -412,9 +512,12 @@ correctly absent and no reference-grounded cases appear; the
 exemplar lane is non-empty, so the Source Case Sweep appears. A full
 draft would carry one lock-acquisition case per enumerated pathway —
 Create, Extend, Realign, Reassign — plus their denial counterparts,
-each asserting a single outcome per the granularity rule, and one
-sweep row per exemplar case; only the first of each is shown here,
-and the Source Case Sweep and Coverage Map are abbreviated to match)
+each asserting a single outcome per the granularity rule and naming
+its fixture data per the CONCRETE TEST DATA rule (an event-editing
+story's cases would also carry expected after-state record tables,
+abbreviated away here), and one sweep row per exemplar case; only
+the first of each is shown here, and the Source Case Sweep and
+Coverage Map are abbreviated to match)
 
 [[[DRAFT BEGIN]]]
 # Test Plan — Conflict Prevention: Acquire Locks for New Routes
@@ -431,17 +534,24 @@ via Create Route, Extend Route, Realign Route, and Reassign Route.
 ## Setup / Prerequisites
 - [ ] 1. LRS network with conflict prevention enabled. [VERIFY:
       minimum lock-root configuration]
-- [ ] 2. Two Pro sessions signed in as different users against the
-      same network.
+- [ ] 2. Two Pro sessions signed in as different users (user A,
+      user B) against the same network.
+
+**Test data:**
+
+| Route ID | From Date | To Date | Created by |
+| --- | --- | --- | --- |
+| R100 | 1/1/2000 | Null | the cases (does not pre-exist) |
 
 ## Positive Tests
 
 ### TC-P1 — Lock acquired on Create Route
 **Steps:**
-- [ ] 1. As user A, run Create Route on a new route name.
+- [ ] 1. As user A, run Create Route with Route ID R100 and from
+      date 1/1/2000.
 - [ ] 2. Inspect the lock table before saving edits.
 
-**Expected Result:** A lock for the new route is held by user A at
+**Expected Result:** A lock for route R100 is held by user A at
 creation time, not deferred to save.
 
 **Trace:** "acquire locks when creating a new route" — story
@@ -455,14 +565,16 @@ workflow section.
 
 ### TC-N1 — Second user blocked on locked new route
 **Steps:**
-- [ ] 1. As user A, create a route without saving.
-- [ ] 2. As user B, attempt Reassign Route onto the same route.
+- [ ] 1. As user A, create route R100 without saving.
+- [ ] 2. As user B, attempt Reassign Route onto route R100.
 
 **Expected Result:** User B is denied with a lock conflict; no edit
 is applied.
 
-**Trace:** exemplar pattern — multi-user denial case for each
-lock-acquiring edit.
+**Trace:** "a lock held by one user blocks another user's edit" —
+story conflict-prevention statement; exemplar pattern — multi-user
+denial case for each lock-acquiring edit (Edit Locks for Route
+Edits).
 
 ## Open Questions
 - [ ] [VERIFY: minimum lock-root configuration for setup]

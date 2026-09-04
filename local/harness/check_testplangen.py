@@ -42,11 +42,39 @@ verifier the cloud flow could not have
   leg 7 notify       --notify posts ONE webhook line per WRITTEN
                      draft; default and dry runs stay silent
   leg 8 grounding    the phase-2 verifier layer: an invented Coverage
-                     Map requirement, a story-less tool name, and a
-                     dropped enumeration item each surface as
-                     "grounding:" findings; an echoed enumeration
-                     does not; testplangen.grounding false disables
+                     Map requirement, a story-less tool name, a
+                     dropped enumeration item, and an exemplar-only
+                     Trace (draftlint v1.2, the prompt v1.9
+                     story-first rule) each surface as "grounding:"
+                     findings; an echoed enumeration and a
+                     source-plan title inside a [VERIFY] item do
+                     not; testplangen.grounding false disables
                      just that layer
+  leg 9 auto         the phase-3 unattended mode: owner-switch
+                     refusal, reference-form exclusion, dry
+                     selection with zero model calls, drafted +
+                     refused in one live run with both webhook
+                     messages, idempotency skip and refusal retry,
+                     --force re-arm, autoMaxPerRun deferral, and
+                     the provider override
+  leg 10 issues      the phase-4 Issue Trace addendum: appended after
+                     the verified body, deduped per issue, Issue Refs
+                     enrichment with em-dash degrade, absent for a
+                     story with no issue rows, issueTrace false
+                     disables it
+  leg 11 gap report  --gap-report: whole-catalog uncovered-story scan
+                     with no lookback and no model calls; fixed-name
+                     digest with explicit empty state and the
+                     unassessable section
+  leg 12 pins        pinned lanes (v1.4): --exemplar/--reference are
+                     refused with --auto and on kind/lane-conflict
+                     violations (no model call spent); a pinned doc
+                     leads its lane ahead of the automatic related
+                     routing (cross-surface exemplars allowed), an
+                     unrelated reference pin lands with its
+                     title+surface header, a pin duplicated in
+                     related: is deduped, and the banner carries the
+                     pinned ids; Gen_summary gains pinnedEx=/pinnedRef=
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -126,7 +154,7 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 
 **Expected Result:** The merge is denied with a lock conflict.
 
-**Trace:** exemplar pattern — multi-user denial case (Plan A).
+**Trace:** "Edits to a locked route must be denied" — story conflict statement; exemplar pattern — multi-user denial case (Plan A).
 
 ## Open Questions
 - [ ] [VERIFY: minimum network configuration for setup]
@@ -154,7 +182,8 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 # findings: the Trace check, the row-3 citation check, and TC-N1
 # uncited.
 BAD_DRAFT = GOOD_DRAFT.replace(
-    "**Trace:** exemplar pattern — multi-user denial case (Plan A).\n", ""
+    "**Trace:** \"Edits to a locked route must be denied\" — story conflict "
+    "statement; exemplar pattern — multi-user denial case (Plan A).\n", ""
 ).replace(
     "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |",
     "| 3 | route edits denied on a locked route (conflict statement) | |",
@@ -578,7 +607,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.7")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.9")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -840,6 +869,28 @@ def main():
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("echoed enumeration not flagged",
           r.returncode == 0 and "enumerated item" not in draft, draft[:900])
+    state.drafts.clear()
+    exemplar_only = GOOD_DRAFT.replace(
+        "**Trace:** \"Edits to a locked route must be denied\" — story conflict "
+        "statement; exemplar pattern — multi-user denial case (Plan A).",
+        "**Trace:** exemplar pattern — multi-user denial case (Plan A).")
+    state.gen_text = wrap(exemplar_only)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("exemplar-only Trace flagged (the story-first rule)",
+          r.returncode == 0
+          and "TC-N1 Trace cites no story statement" in draft, draft[:900])
+    state.drafts.clear()
+    verify_titled = GOOD_DRAFT.replace(
+        "- [ ] [VERIFY: minimum network configuration for setup]",
+        "- [ ] [VERIFY: exemplar \"Quantum Route Wizard Test Plan\" covers "
+        "cascading merges — the story is silent]")
+    state.gen_text = wrap(verify_titled)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("source-plan title inside a [VERIFY] item not flagged as a tool",
+          r.returncode == 0 and "tool-like name" not in draft, draft[:900])
+    state.gen_text = wrap(GOOD_DRAFT)
     r = run_job(cfg_main, ["--story", "16", "--dry-run"])
     check("grounding findings counted in verify=",
           re.match(r"^\d+-findings$", summary_of(r.stdout).get("verify", "")),
@@ -1030,6 +1081,55 @@ def main():
     check("explicit empty state + unassessable section (DX-11 rule)",
           r.returncode == 0 and gr_summary(r.stdout).get("unassessable") == "5"
           and "NO GAPS" in body and "Unassessable" in body, body[:600])
+
+    # ---- leg 12: pinned lanes (v1.4) -------------------------------
+    print("== leg 12: pinned lanes")
+    state.gen_by_doc = {}
+    state.gen_text = wrap(GOOD_DRAFT)
+    calls = state.gen_calls
+    r = run_job(cfg_auto, ["--auto", "--exemplar", "21"])
+    check("pins refused with --auto, no model call",
+          r.returncode != 0 and "MANUAL" in r.stderr
+          and state.gen_calls == calls, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "26", "--dry-run"])
+    check("pin kind guard refuses a User Story, no model call",
+          r.returncode != 0 and "DocKind User Story" in r.stderr
+          and "--exemplar takes Test Plan rows only" in r.stderr
+          and state.gen_calls == calls, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "21",
+                           "--reference", "21", "--dry-run"])
+    check("a doc pinned to both lanes is refused, no model call",
+          r.returncode != 0 and "pinned to both lanes" in r.stderr
+          and state.gen_calls == calls, r.stderr)
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "24", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    ref = state.gen_last_inputs.get("ReferenceText", "")
+    check("cross-surface exemplar pin leads the lane, auto fills the rest",
+          r.returncode == 0 and summ.get("pinnedEx") == "1"
+          and summ.get("exemplars") == "2"
+          and ex.startswith("--- EXEMPLAR: plan-d__doc24.md ---")
+          and "plan-a__doc21.md" in ex
+          and "--- REFERENCE: Plan D" not in ref, r.stdout + ex[:200])
+    r = run_job(cfg_main, ["--story", "12", "--reference", "14", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ref = state.gen_last_inputs.get("ReferenceText", "")
+    check("unrelated reference pin leads the lane with title+surface header",
+          r.returncode == 0 and summ.get("pinnedRef") == "1"
+          and summ.get("references") == "3"
+          and ref.startswith("--- REFERENCE: Some Plan — surface Pro ---"),
+          r.stdout + ref[:200])
+    state.drafts.clear()
+    r = run_job(cfg_main, ["--story", "12", "--exemplar", "21", "--live"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("pin duplicated in related: deduped, banner carries the pin stamp",
+          r.returncode == 0 and summ.get("pinnedEx") == "1"
+          and summ.get("exemplars") == "2"
+          and ex.count("--- EXEMPLAR: plan-a__doc21.md ---") == 1
+          and "pinned exemplars [21]" in draft.splitlines()[0],
+          r.stdout + draft[:200])
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

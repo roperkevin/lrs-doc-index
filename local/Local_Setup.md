@@ -551,10 +551,10 @@ sidecar library; the sidecars ARE the retrieval source):
      `node --experimental-strip-types local\testplangen.mjs --config local\config.json --models`
      and set `llm.testPlanModelId`. CAVEAT: the TENANT paste state
      applies — the prompt must carry all FIVE input parameters
-     (ReferenceText) and the current v1.7 text
+     (ReferenceText) and the current v1.9 text
      (`testplangen/Coverage_Runbook.md` step 2, one-time).
    - **anthropic**: executes `prompts/TestPlanGen_Prompt.md`
-     VERBATIM — zero tenant prompt work, the v1.7 rules apply as
+     VERBATIM — zero tenant prompt work, the v1.9 rules apply as
      authored. `testplangen.maxTokens` (default 32000) bounds the
      reply; a token-truncated draft loses its END marker and fails
      CLOSED, loudly.
@@ -607,6 +607,30 @@ sentence must be mentioned somewhere in the draft. The heuristics
 WILL flag some legitimate paraphrases — that is exactly why annotate
 is the default and strict is reserved for unattended runs;
 `testplangen.grounding: false` disables just this layer.
+
+**`--exemplar <docId>` / `--reference <docId>` — pinned lanes**
+(v1.4): pin documents into the prompt's lanes IN ADDITION to the
+sidecar's `related:` selection, for the run where the best exemplar
+or reference is not RelatedRank-linked to the story (e.g. a
+data-rich plan from another surface as the style exemplar). Both
+flags are repeatable (comma-separated ids accepted) and take Doc
+Index row ids ONLY — no issue/title resolution on pins, the v2.3
+bare-number rule. Pinned docs fill their lane first, in the order
+given; the automatic routing fills any remaining slots and skips
+docs already pinned; pins may exceed the slot counts (a human
+choice beats the slot default) while the character caps stay the
+hard budget, pins served first. Guards are HARD and refuse BEFORE
+the model call — a human asked for these exact documents, so the
+lanes' silent-degrade posture for automatic picks does not apply:
+the row must exist, be Indexed with its sidecar present in the
+synced library, and not be the story itself or in both lanes;
+`--exemplar` takes Test Plans (any surface — a deliberate human
+override of the same-surface routing, style/coverage only under
+the prompt's exemplar rules), `--reference` takes Test Plans and
+Design Spikes. Provenance: the draft banner's HTML comment carries
+the pinned ids, and `Gen_summary` gains `pinnedEx=`/`pinnedRef=`.
+Manual runs only — refused with `--auto`, `--gap-report`, and
+`--models` (those modes work from catalog state alone).
 
 **`testplangen.notify`** (or `--notify` per run) — posts ONE line to
 `alerts.webhookUrl` (the sweep's §7 alerts webhook) when a draft is
@@ -695,7 +719,7 @@ manually with `--verify annotate`.
 Knobs (`testplangen` in config, defaults in parentheses) mirror the
 flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 (20000), referenceCap (12000), neighborCap (5), digestSummaryCap
-(400), exemplarSlots (2), referenceSlots (3), promptVersion (v1.7,
+(400), exemplarSlots (2), referenceSlots (3), promptVersion (v1.9,
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
 grounding (true), notify (false), provider ("" = follow

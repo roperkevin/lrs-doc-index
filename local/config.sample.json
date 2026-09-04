@@ -63,7 +63,7 @@
     "digestSummaryCap": 400,
     "exemplarSlots": 2,
     "referenceSlots": 3,
-    "promptVersion": "v1.7",
+    "promptVersion": "v1.9",
     "draftFolder": "/Test Plan Drafts",
     "verify": "annotate",
     "grounding": true,

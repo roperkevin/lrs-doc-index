@@ -1,11 +1,42 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.3 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.4 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
- * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19).
+ * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
+ * lanes: v2.22).
+ *
+ * v1.4 (pinned lanes — the v2.20 queued follow-on) adds:
+ *   - `--exemplar <docId>` / `--reference <docId>` (repeatable;
+ *     comma-separated ids accepted) — the person running a MANUAL
+ *     generation pins documents into the prompt's lanes IN ADDITION
+ *     to the sidecar's `related:` selection, for the case where the
+ *     best exemplar or reference is not RelatedRank-linked to the
+ *     story. An explicit human choice is stronger grounding than the
+ *     automatic linkage, so it fits the reference lane's no-fallback
+ *     rationale (the fallback ban rules out MACHINE-chosen unlinked
+ *     documents; these are human-chosen). Semantics:
+ *     · a bare number is a Doc Index row id, nothing else (the v2.3
+ *       rule — no issue/title resolution on pins);
+ *     · guards are HARD (a human asked for these docs, so silent
+ *       degrade is wrong): the row must exist, be Indexed with a
+ *       sidecar present in the synced library, not be the story
+ *       itself, not sit in both lanes; --exemplar takes Test Plans
+ *       (any surface — a deliberate human override of the
+ *       same-surface routing, style/coverage only under the
+ *       prompt's exemplar rules), --reference takes Test Plans and
+ *       Design Spikes; any violation refuses BEFORE the model call;
+ *     · pinned docs fill their lane first, in the order given; the
+ *       automatic `related:` routing fills remaining slots and
+ *       skips docs already pinned; pins may exceed the slot counts
+ *       (a human choice beats the slot default) — the character
+ *       caps remain the hard budget, pins served first;
+ *     · provenance: the banner's HTML comment carries the pinned
+ *       ids, and Gen_summary gains `pinnedEx=`/`pinnedRef=`;
+ *     · manual runs only — refused with `--auto` (the unattended
+ *       mode must stay deterministic from catalog state alone).
  *
  * v1.3 (phase 4 — the IssueRefs-driven coverage piece, unlocked by
  * the owner-verified Issue Refs GUID) adds:
@@ -64,9 +95,11 @@
  *   - the verifier's grounding layer (lib/draftlint.mjs
  *     `groundDraft`, heuristics — Coverage Map requirements traced to
  *     the story, the tools rule made checkable on Steps/Expected
- *     Result lines, enumeration echo). Runs under the same verify
- *     policy as the contract lint, findings prefixed "grounding: ";
- *     testplangen.grounding: false disables just this layer.
+ *     Result lines, enumeration echo; draftlint v1.2 adds the
+ *     story-first Trace check, prompt v1.9). Runs under the same
+ *     verify policy as the contract lint, findings prefixed
+ *     "grounding: "; testplangen.grounding: false disables just
+ *     this layer.
  *
  * Faithful to `testplangen/TestPlanGen_Setup.md` §3 (G1–G13):
  *   G1–G2  story row + hard guard (DocKind = User Story,
@@ -99,7 +132,7 @@
  *          tenant paste state applies, Coverage_Runbook.md step 2).
  *          Provider "anthropic": prompts/TestPlanGen_Prompt.md
  *          executed VERBATIM between its delimiters — zero tenant
- *          work, the v1.7 rules apply as authored; single-pass
+ *          work, the v1.9 rules apply as authored; single-pass
  *          placeholder substitution so document content can never
  *          inject a second substitution.
  *   G9     marker slice ([[[DRAFT BEGIN]]]/[[[DRAFT END]]],
@@ -115,7 +148,8 @@
  *
  * Beyond the flow (the plan's phase-1 verifier): before the draft is
  * written, lib/draftlint.mjs checks it against the v1.7 coverage
- * contract. testplangen.verify: "annotate" (default) prepends an
+ * contract (unchanged by prompts v1.8/v1.9, which add no structural
+ * asserts). testplangen.verify: "annotate" (default) prepends an
  * [!IMPORTANT] findings block so the §4 reviewer starts where the
  * machine already found smells; "strict" refuses to write a draft
  * with findings (for unattended runs); "off" for parity-with-cloud
@@ -134,7 +168,7 @@
  * config.sample.json / Local_Setup.md §10).
  *
  * Usage:
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --story <docId> [--live|--dry-run] [--verify annotate|strict|off] [--notify]
+ *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --story <docId> [--exemplar <docId>]... [--reference <docId>]... [--live|--dry-run] [--verify annotate|strict|off] [--notify]
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --issue <n> ...
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --title "<words>" ...
  *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --auto [--force] [--live|--dry-run]
@@ -153,7 +187,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.2";
+const JOB_VERSION = "v1.4";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -179,9 +213,13 @@ const VERIFY_MODES = ["annotate", "strict", "off"];
 const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
+  "[--exemplar <docId>]... [--reference <docId>]... " +
   "[--live|--dry-run] [--verify annotate|strict|off] [--notify] | --models\n" +
   "A bare number is always a Doc Index row id (--story); a devtopia " +
   "issue number needs --issue — nothing is ever guessed (the v2.3 rule). " +
+  "--exemplar/--reference pin documents into the prompt's lanes ahead of " +
+  "the automatic related-document selection (repeatable; Doc Index row " +
+  "ids only; manual runs only — not with --auto). " +
   "--auto drafts for freshly indexed, uncovered stories (needs " +
   "testplangen.autoDraft: true; strict verification and notify are forced). " +
   "--gap-report writes the whole-catalog uncovered-stories digest (no AI spend).";
@@ -202,6 +240,8 @@ function loadConfig(argv) {
     else if (a === "--force") args.flags.force = true;
     else if (a === "--gap-report") args.flags.gapReport = true;
     else if (a === "--verify") args.verify = argv[++i];
+    else if (a === "--exemplar") (args.exemplar ??= []).push(argv[++i]);
+    else if (a === "--reference") (args.reference ??= []).push(argv[++i]);
     else throw new Error(`unknown argument: ${a}\n${USAGE}`);
   }
   const refs = [args.story, args.issue, args.title].filter((v) => v !== undefined);
@@ -212,6 +252,41 @@ function loadConfig(argv) {
     (args.flags.auto && args.flags.gapReport)
   ) {
     throw new Error(USAGE);
+  }
+  // pinned lanes (v1.4) — Doc Index row ids only (the v2.3 rule),
+  // comma-separated accepted, deduped in order; manual runs only
+  const parsePins = (vals, flag) => {
+    const out = [];
+    for (const v of vals || []) {
+      for (const part of String(v).split(",")) {
+        const id = num(part.trim());
+        if (id === undefined) {
+          throw new Error(
+            `${flag} takes a Doc Index row id (got "${part.trim()}") — ` +
+            `a bare number is always a doc id, nothing is ever guessed ` +
+            `(the v2.3 rule)\n${USAGE}`
+          );
+        }
+        if (!out.includes(id)) out.push(id);
+      }
+    }
+    return out;
+  };
+  const pinEx = parsePins(args.exemplar, "--exemplar");
+  const pinRef = parsePins(args.reference, "--reference");
+  if ((pinEx.length || pinRef.length) && modeless) {
+    throw new Error(
+      "--exemplar/--reference pin documents into a MANUAL generation's " +
+      "lanes — they cannot be combined with --auto, --gap-report, or " +
+      "--models (those modes work from catalog state alone)\n" + USAGE
+    );
+  }
+  const doubled = pinEx.filter((id) => pinRef.includes(id));
+  if (doubled.length) {
+    throw new Error(
+      `doc ${doubled.join(", ")} pinned to both lanes — pick --exemplar ` +
+      "(style/coverage) or --reference (expected behavior), not both"
+    );
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -246,7 +321,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.7",
+    promptVersion: "v1.9",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,
@@ -281,6 +356,8 @@ function loadConfig(argv) {
   cfg._models = !!args.flags.models;
   cfg._auto = !!args.flags.auto;
   cfg._force = !!args.flags.force;
+  cfg._pinEx = pinEx;
+  cfg._pinRef = pinRef;
   cfg._gapReport = !!args.flags.gapReport;
   if (!cfg._models && !cfg._auto && !cfg._gapReport) {
     if (args.story !== undefined) {
@@ -457,6 +534,11 @@ async function run(cfg) {
     throw new Error(`${GUARD_MSG} (${state})`);
   }
 
+  // pinned lanes (v1.3) — hard guards, checked BEFORE any model call:
+  // a human asked for these exact documents, so a silent degrade
+  // (the lanes' Try_* posture for automatic picks) is wrong here
+  ctx.pins = validatePins(ctx, story, cfg._pinEx, cfg._pinRef);
+
   const res = await generateOne(ctx, story);
 
   // run log + stdout, the curate.mjs mold
@@ -490,6 +572,47 @@ async function run(cfg) {
       `(would land as ${res.draftPath})\n`
     );
   }
+}
+
+// Pinned-lane guards (v1.4). Returns { ex, ref } as normalized rows,
+// in the order given. Every violation throws — before the model call,
+// naming the doc and the rule; nothing degrades silently.
+function validatePins(ctx, story, exIds, refIds) {
+  const { cfg, byId, sw } = ctx;
+  const KINDS = {
+    "--exemplar": ["Test Plan"],
+    "--reference": ["Test Plan", "Design Spike"],
+  };
+  const take = (ids, flag) =>
+    ids.map((id) => {
+      const nb = byId.get(id);
+      if (!nb) throw new Error(`${flag} ${id}: no Doc Index row with that id`);
+      if (id === story.ID) {
+        throw new Error(`${flag} ${id}: that is the story itself — its full text is already sent`);
+      }
+      if (!KINDS[flag].includes(nb.DocKind || "")) {
+        throw new Error(
+          `${flag} ${id} ("${nb.Title}") is DocKind ${nb.DocKind || "(empty)"} — ` +
+          `${flag} takes ${KINDS[flag].join(" or ")} rows only`
+        );
+      }
+      if (nb.IndexStatus !== "Indexed" || !nb.TextFileUrl) {
+        throw new Error(
+          `${flag} ${id} ("${nb.Title}") is not an Indexed row with a sidecar ` +
+          `(IndexStatus=${nb.IndexStatus || "(empty)"}${nb.TextFileUrl ? "" : ", no sidecar url"})`
+        );
+      }
+      const local = urlToLocal(nb.TextFileUrl, sw, cfg);
+      if (!local || !fs.existsSync(local)) {
+        throw new Error(
+          `${flag} ${id} ("${nb.Title}"): sidecar not found locally — ` +
+          `${nb.TextFileUrl} -> ${local ?? "(outside the sidecar library mapping)"}; ` +
+          "is the OneDrive sync current, and sweep.siteUrl/textsFolder correct?"
+        );
+      }
+      return nb;
+    });
+  return { ex: take(exIds || [], "--exemplar"), ref: take(refIds || [], "--reference") };
 }
 
 // Doc IDs (+ Issue Refs, when configured) — fetched once per process
@@ -626,7 +749,13 @@ async function generateOne(ctx, story) {
   // G4 — score-ordered related entries, capped (parseRelated above)
   const relEntries = parseRelated(storyMd).slice(0, Number(tp.neighborCap));
 
-  // G5 — lanes over the score-ordered entries (concurrency 1)
+  // G5 — lanes over the score-ordered entries (concurrency 1).
+  // Pinned docs (v1.3, validated up front) fill their lane FIRST, in
+  // the order given — they may exceed the slot counts (a human choice
+  // beats the slot default; the character caps stay the hard budget,
+  // served in lane order so pins take budget first). The automatic
+  // routing below fills any remaining slots and skips pinned docs.
+  const pins = ctx.pins || { ex: [], ref: [] };
   let digest = "";
   let exemplarText = "";
   let referenceText = "";
@@ -634,6 +763,19 @@ async function generateOne(ctx, story) {
   const referenceRefs = [];
   let exemplarCount = 0;
   let referenceCount = 0;
+  const pinnedIds = new Set();
+  for (const nb of pins.ex) {
+    exemplarUrls.push(nb.TextFileUrl);
+    pinnedIds.add(nb.ID);
+  }
+  for (const nb of pins.ref) {
+    referenceRefs.push({
+      url: nb.TextFileUrl,
+      surface: nb.Surface || "",
+      title: stripQuotes(nb.Title),
+    });
+    pinnedIds.add(nb.ID);
+  }
   for (const entry of relEntries) {
     const nb = byId.get(num(entry?.doc));
     if (!nb) continue; // Try_neighbor: a recycled/broken neighbor degrades silently
@@ -645,6 +787,7 @@ async function generateOne(ctx, story) {
       `- [${nb.DocKind || "Other"}] "${nb.Title}" — surface ${nb.Surface || ""}, ` +
       `release ${nb.TargetRelease || ""}, PE ${nb.PE || ""}: ${summary}\n`;
     const kind = nb.DocKind || "";
+    if (pinnedIds.has(nb.ID)) continue; // already in a lane by pin (digest line kept)
     if ((kind === "Test Plan" || kind === "Design Spike") && nb.TextFileUrl) {
       // G5b — two-lane router (v2.2): same-surface Test Plans win the
       // exemplar slots (score-ordered arrival = the best plans);
@@ -821,9 +964,15 @@ async function generateOne(ctx, story) {
   // provenance/provider stamp in the HTML comment)
   const truncFlag =
     storyMd.length > Number(tp.storyCap) ? " [story text truncated at StoryCap]" : "";
+  const pinStamp =
+    pins.ex.length || pins.ref.length
+      ? " · pinned" +
+        (pins.ex.length ? ` exemplars [${pins.ex.map((r) => r.ID).join(",")}]` : "") +
+        (pins.ref.length ? ` references [${pins.ref.map((r) => r.ID).join(",")}]` : "")
+      : "";
   const banner =
     `<!-- machine-generated test-plan draft — TestPlanGen prompt ${tp.promptVersion}` +
-    ` · local/testplangen.mjs ${JOB_VERSION} · provider ${provider} -->\n` +
+    ` · local/testplangen.mjs ${JOB_VERSION} · provider ${provider}${pinStamp} -->\n` +
     "> [!WARNING]\n" +
     `> **DRAFT — machine-generated, unreviewed.** Generated ${new Date().toISOString()} ` +
     `from user story doc ${story.ID} — "${stripQuotes(story.Title)}". ` +
@@ -856,7 +1005,8 @@ async function generateOne(ctx, story) {
     `references=${referenceCount} digestChars=${digest.length} ` +
     `storyChars=${storyTextCapped.length} draftChars=${draftBody.length} ` +
     `exChars=${exemplarText.length} refChars=${referenceText.length} ` +
-    `verify=${verify} issues=${trace.count}`;
+    `verify=${verify} issues=${trace.count} ` +
+    `pinnedEx=${pins.ex.length} pinnedRef=${pins.ref.length}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run

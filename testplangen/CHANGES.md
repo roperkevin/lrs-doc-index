@@ -1,3 +1,267 @@
+# TestPlanGen v2.22 — pinned lanes (testplangen.mjs v1.4)
+
+(Merged after v2.19 landed independently on main — the v2.19/v1.3
+labels these three entries carried while in review were renumbered
+to v2.20–v2.22 / testplangen.mjs v1.4 at merge time.)
+
+The v2.20 queued follow-on, owner-requested (2026-09-04): let the
+person running a generation PIN documents into the prompt's lanes
+in addition to the sidecar's `related:` selection. The doc 1 run is
+the motivating case — the data-rich exemplar that would have
+grounded its Split/Merge cases ("Splitting Events in Pro", a Pro
+plan) is not RelatedRank-linked to the story, so the lanes never
+saw it. The reference lane's no-fallback rule is untouched in
+spirit: it exists to bar MACHINE-chosen unlinked documents; an
+explicit human choice is stronger grounding than the automatic
+linkage.
+
+**`--exemplar <docId>` / `--reference <docId>`**
+(`local/testplangen.mjs` v1.4; repeatable, comma-separated ids
+accepted; Doc Index row ids ONLY — no issue/title resolution on
+pins, the v2.3 bare-number rule):
+
+- **Lane order**: pinned docs fill their lane FIRST, in the order
+  given; the automatic `related:` routing fills remaining slots and
+  skips docs already pinned (their digest lines are kept). Pins may
+  exceed the slot counts — a human choice beats the slot default —
+  while the character caps stay the hard budget, pins served first.
+  The G6 exemplar fallback is naturally bypassed (it fires only on
+  an empty lane).
+- **Hard guards, refused BEFORE the model call** (a human asked for
+  these exact documents — the lanes' Try_* silent-degrade posture
+  is for automatic picks): row exists, Indexed, sidecar present in
+  the synced library, not the story itself, not pinned to both
+  lanes; `--exemplar` takes Test Plans on ANY surface (a deliberate
+  human override of the same-surface routing — style/coverage only,
+  and prompt v1.9's story-first rules keep content from leaking
+  into cases), `--reference` takes Test Plans and Design Spikes.
+- **Provenance**: the banner's HTML comment carries the pinned ids
+  (`· pinned exemplars [251] references [459]`); `Gen_summary`
+  gains `pinnedEx=` / `pinnedRef=`.
+- **Manual runs only**: refused with `--auto` (and `--models`) —
+  the unattended mode must stay deterministic from catalog state
+  alone.
+
+**Harness** — `check_testplangen.py` 108 → **116** checks (the
+count includes v2.21's two leg-8 checks, folded in at merge time):
+new leg 12 (pins refused with --auto/--gap-report and on
+kind/lane-conflict violations with no model call spent; a
+cross-surface exemplar pin leads its lane with auto filling the
+rest; an unrelated reference pin lands with its title+surface
+header; a pin duplicated in `related:` is deduped; the banner pin
+stamp). Docstring gains the missing leg 9–11 entries (v2.18/v2.19
+oversights) alongside leg 12. 116/116 PASS on the merged tree.
+
+**Docs** — Local_Setup §11 (pinned-lanes block; the stale
+promptVersion default in the knobs line corrected to v1.9);
+`STATUS.md` row; v2.19's queued-follow-on note marked implemented.
+Cloud flows, packages, prompt, contract lints, schemas:
+**unchanged** — this is a local-job feature (the cloud flow's
+list-menu front door has no argument surface for pins; a Copilot
+Studio pin flow would be its own change). NEVER bump
+`Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job (pinned lanes) | **v1.4** | `local/testplangen.mjs` |
+| Generation-job gate | **116 checks** | `local/harness/check_testplangen.py` |
+| Setup guide | §11 updated | `local/Local_Setup.md` |
+| Flows, packages, prompt (v1.9), draftlint (v1.2), schemas | unchanged | — |
+
+| Date | Machine | check_testplangen |
+|---|---|---|
+| 2026-09-04 | authoring env (mocked, post-merge with v2.19) | 116/116 PASS |
+
+# TestPlanGen v2.21 — story-first trace (prompt v1.9, draftlint v1.2)
+
+Motivated by the owner review of the doc 1 draft (2026-09-04,
+second pass, following v2.19's first pass): test cases must
+STRICTLY follow the input user story. The doc 1 story states the
+Add workflow ("Add Point/Line: Honor all input methods") but names
+no Add Point / Add Line widgets — yet the exemplar lane's "Auto-
+Populate Referents for Add Point and Add Line Widgets Test Plan"
+supplied widget-flavored case material the draft leaned on. The
+structural leak is the Trace rule's OR, present since v1.0: a case
+could trace to a story statement, OR "an exemplar pattern applied
+to this story's feature", OR a reference-functionality statement —
+so a case could exist on exemplar or reference authority alone,
+with no story statement behind it.
+
+**Prompt v1.9** (authored as
+`review/patches/TestPlanGen_Prompt_v1_9.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.8 in-repo BEFORE
+its pending paste; everything v1.1–v1.8 carries forward unchanged):
+
+- **STORY-FIRST TRACE** replaces the first grounding rule's OR:
+  every case MUST trace to an explicit STORY TEXT / StoryMeta
+  statement — exemplar patterns and reference statements REFINE a
+  story-stated behavior (the concrete input methods behind the
+  story's "all input methods", its validations, its field
+  semantics) and are cited in addition, never instead. A workflow,
+  pathway, tool, or behavior appearing only in an exemplar or
+  reference becomes an Open Questions [VERIFY] entry, never a case.
+- **CASE SWEEP tightened**: a Yes verdict requires a story
+  statement to anchor the tailored case — reference support alone
+  is Verify.
+- **Tools rule extended** to workflows/pathways/edit types
+  (exercise only what the story enumerates; a story-stated workflow
+  with no tool named stays a workflow phrase + Setup [VERIFY],
+  never a guessed widget); the reference rule anchors derived
+  behavior to a story statement; Trace template and worked example
+  updated to model the rule.
+
+**Verifier** — `local/lib/draftlint.mjs` v1.2 (grounding layer
+only; the v1.7 structural contract and the Python lint are
+untouched):
+
+- new check (d), the story-first rule made checkable locally: every
+  case's **Trace:** line must cite the story — a quoted span found
+  verbatim passes, else ≥ half its content-word stems must appear
+  in the story; an exemplar-only Trace surfaces as
+  `grounding: TC-xx Trace cites no story statement`.
+- check (b) fix: the tool scan now skips lines carrying `[VERIFY` —
+  Open Questions items legitimately cite source-plan titles per the
+  CASE SWEEP rule, and those citations were false-positives on the
+  doc 1 draft (4 of its 13 findings).
+
+**Harness** — `check_testplangen.py` 95 checks (was 93): leg 8
+gains the exemplar-only-Trace flag and the [VERIFY]-title
+non-flag; GOOD_DRAFT's TC-N1 Trace updated to the story-first form
+(the fixture previously modeled the exact pattern v1.9 outlaws).
+95/95 PASS.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.9
+(stamp only); both generation packages re-cut with the stamped
+definitions (byte-identical to their folder definitions).
+
+**Local job** — `testplangen.promptVersion` default → v1.9
+(`local/testplangen.mjs`, `local/config.sample.json`).
+
+**Docs** — Setup §2/§3 stamps → v1.9; `Coverage_Runbook.md` step 2
+pastes v1.9; `prompts/README.md`, `STATUS.md`, and root `README.md`
+rows moved to v1.9 / v2.21.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 2): paste v1.9 into
+`LRS Test Plan Generation` (replaces the pending v1.8 paste), set
+both `Config_gen.TestPlanGenPromptVersion` stamps to v1.9 (or
+re-import the re-cut packages), run smoke rows 1, 3, 9, 10 and read
+one draft's Trace lines — every case quotes the story, source plans
+cited only in addition. NEVER bump `Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.9** | `review/patches/TestPlanGen_Prompt_v1_9.md` → `prompts/TestPlanGen_Prompt.md` |
+| Draft verifier (grounding layer: check d, [VERIFY exclusion) | **v1.2** | `local/lib/draftlint.mjs` |
+| Flow stamps + re-cut packages | v1.9 stamp | `testplangen/flow/{v1_0,core_v1_0}/definition.json`, `TestPlanGen_v1_0.zip`, `TestPlanGenCore_v1_0.zip` |
+| Local generation job (stamp default) | v1.2 (unchanged code) | `local/testplangen.mjs`, `local/config.sample.json` |
+| Generation-job gate | **95 checks** | `local/harness/check_testplangen.py` |
+| Contract lints | v1.7 contract, unchanged | `review/harness/check_draft_coverage.py`, `lintDraft` |
+
+| Date | Machine | check_testplangen | Tenant paste |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 95/95 PASS | pending (replaces the pending v1.8 paste) |
+
+# TestPlanGen v2.20 — concrete test data (prompt v1.8)
+
+Motivated by the 2026-09-04 review of the doc 1 draft ("Auto-
+Populate Referents for Event Edits") against the team's own plans:
+structurally the draft honors every v1.5–v1.7 rule, but its cases
+are DATA-abstract — "a measure inside its extent", "a new valid
+value", "input method M" — where the team's plans ("Splitting
+Events in Pro" is the type specimen) pin every case to named
+fixtures: route R1 with dates, event E1 from measure 10 to 22,
+split at measure 16, current date 3/29/2022, attribute values
+`split`/`event`, and before/after tables showing every resulting
+record's field values. A tester cannot execute an abstract step
+without inventing the data themselves, and an abstract expected
+result cannot be judged against real records. The prompt itself
+pushed the model there: the never-invent grounding rule ("no
+invented field names, limits, defaults, or error text") reads as
+covering data values too, so the model abstracts them away. The
+fix is a carve-out with teeth, not a softened never-invent rule.
+
+**Prompt v1.8** (authored as
+`review/patches/TestPlanGen_Prompt_v1_8.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.7 in-repo BEFORE
+its pending paste; everything v1.1–v1.7 carries forward unchanged):
+
+- **New CONCRETE TEST DATA grounding rule** (placed directly after
+  the never-invent rule it carves out of): test DATA values —
+  route/event IDs, measures, dates, business-attribute values — are
+  fixtures the drafter MUST invent, defined once as test-data
+  tables closing Setup / Prerequisites and referenced by name from
+  every case. Steps and Expected Result name concrete values
+  ("split event E1 on route R1 at measure 16"), never abstract
+  stand-ins; parameterized cases name the concrete value per
+  variant. A case that creates or changes records follows its
+  Expected Result sentence with a GFM table of the affected
+  records' expected field values after the edit — under CASE
+  GRANULARITY that table is ONE outcome (the complete record state
+  one edit produces), judged pass/fail as a whole. The carve-out
+  covers VALUES ONLY: field names, domains, limits, precision,
+  defaults, and error text stay under the never-invent rule —
+  fixtures use simple values that dodge the unknown, and a fixture
+  never resolves a [VERIFY] by fiat.
+- **Setup / Prerequisites closes with `**Test data:**` fixture
+  tables** (routes; plus events for event-editing stories);
+  case-shape prose updated to match; worked example gains the R100
+  fixture table and concrete values in TC-P1/TC-N1.
+- Output markers, input keys, fences, section order: unchanged.
+
+**Contract/harness** — NO structural asserts added: `lintDraft` /
+`check_draft_coverage.py` stay on the v1.7 contract (docstrings
+note it); fixture-data concreteness is a §4 reading check, like
+sweep completeness — a parser cannot judge whether "measure 16" is
+concrete enough for the case around it. `check_testplangen.py`
+banner pin moved to v1.8; 93/93 still pass.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.8 in
+`flow/v1_0/` and `flow/core_v1_0/` (stamp only); both generation
+packages re-cut with the stamped definitions (byte-identical to
+their folder definitions, the provenance convention).
+
+**Local job** — `testplangen.promptVersion` default → v1.8
+(`local/testplangen.mjs`, `local/config.sample.json`); the
+anthropic lane picks the new rules up with ZERO tenant work.
+
+**Docs** — Setup §2/§3 stamps → v1.8; `Coverage_Runbook.md` step 2
+pastes v1.8; `prompts/README.md`, `STATUS.md`, and root `README.md`
+rows moved to v1.8 / v2.20.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 2): paste v1.8 into
+`LRS Test Plan Generation` (replaces the pending v1.7 paste), set
+both `Config_gen.TestPlanGenPromptVersion` stamps to v1.8 (or
+re-import the re-cut packages), run smoke rows 1, 3, 9, 10 and read
+one draft's cases for named fixtures and after-state tables. NEVER
+bump `Config.PromptVersion` — nothing here changes the sidecar
+format or reindexes the corpus.
+
+Queued follow-on (owner question, 2026-09-04 — IMPLEMENTED in
+v2.22, `--exemplar`/`--reference` on the local job):
+let the person running a generation PIN documents into the lanes —
+e.g. `--exemplar <docId>` / `--reference <docId>` on the local job —
+in addition to the sidecar's `related:` selection, for the case
+where the best exemplar (a data-rich plan like "Splitting Events in
+Pro") is not RelatedRank-linked to the story. An explicit human
+choice is stronger grounding than the automatic linkage, so it fits
+the reference lane's no-fallback rationale; needs the same
+kind/status guards as the lanes, slots/caps honored, and the
+pinned docs recorded in the banner for provenance.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.8** | `review/patches/TestPlanGen_Prompt_v1_8.md` → `prompts/TestPlanGen_Prompt.md` |
+| Flow stamps + re-cut packages | v1.8 stamp | `testplangen/flow/{v1_0,core_v1_0}/definition.json`, `TestPlanGen_v1_0.zip`, `TestPlanGenCore_v1_0.zip` |
+| Local generation job (stamp default) | v1.2 (unchanged code) | `local/testplangen.mjs`, `local/config.sample.json` |
+| Generation-job gate (banner pin) | 93 checks | `local/harness/check_testplangen.py` |
+| Draft lints | v1.7 contract, unchanged | `review/harness/check_draft_coverage.py`, `local/lib/draftlint.mjs` |
+
+| Date | Machine | Tenant paste | Smoke rows |
+|---|---|---|---|
+| 2026-09-04 | authoring env | pending (replaces the pending v1.7 paste) | — |
+
 # TestPlanGen v2.19 — local job phase 4: docx handoff, issue trace, gap report (testplangen.mjs v1.3)
 
 Phase 4 of `testplangen/Local_TestPlanGen_Plan.md` — the two items
