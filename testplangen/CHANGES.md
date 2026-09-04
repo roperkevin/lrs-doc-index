@@ -1,3 +1,91 @@
+# TestPlanGen v2.28 — hyperlinks as references (testplangen.mjs v1.7)
+
+(Merged after v2.27 landed independently on main — this entry
+carried the v2.27 label while in review and was renumbered to
+v2.28 at merge time, the v2.25→v2.26 precedent.)
+
+Owner-requested (2026-09-04): "can we include hyperlinks as
+references like this?" — a link to an ArcGIS Pro tool-reference
+page. Yes: the `--reference` pin (v2.22's pinned lanes) now ALSO
+takes an **http(s) URL**, so official product documentation joins
+the REFERENCE FUNCTIONALITY lane beside the catalog's own Test
+Plans and Design Spikes:
+
+```
+node --experimental-strip-types local\testplangen.mjs --config local\config.json ^
+  --story 12 --reference "https://pro.arcgis.com/en/pro-app/latest/tool-reference/location-referencing/enable-referent-fields.htm" --live
+```
+
+**testplangen.mjs v1.7** — one URL per flag occurrence (URLs may
+contain commas, so a URL value is never comma-split; ids and URLs
+mix freely across repeats; `--exemplar` still refuses URLs — a web
+page is never a style/coverage exemplar). The page is fetched up
+front under the pin posture's HARD-guard rule: a fetch failure, a
+non-2xx status, a binary reply, or a page with no readable text (a
+script-rendered SPA) refuses the run BEFORE any model spend — a
+human asked for this exact page, so silent degrade is wrong; the
+coached fix is to save the page as a document, upload it to the
+source library, and pin its row. Fetch timeout is the new
+`testplangen.webRefTimeoutMs` knob (30000). The HTML is reduced to
+plain text by a zero-dependency tag strip — scripts/styles/nav/
+comments dropped, headings become `#`s, list items bullets, table
+cells pipe-separated, entities decoded AFTER the strip so
+`&lt;script&gt;` can never re-materialize as a tag — and injected
+with a `--- REFERENCE: <page title> — surface web documentation
+<url> ---` header. Because the fetched page is the lane's only
+PUBLIC-internet input, marker shapes in its text (`<<<` `>>>`
+`[[[` `]]]`) are defanged into lookalikes, so a hostile page can
+neither close a prompt block nor forge the G9 draft markers (the
+prompt's untrusted-data rule and the lastIndexOf slice already
+resist both — belt and braces).
+
+**Prompt: deliberately UNCHANGED (still v1.10, no
+TestPlanGenPromptVersion bump, no stamps, no package re-cuts).**
+The reference block's contract already fits: a documentation page
+is exactly a "document describing the expected behavior of this
+story's feature area", the model may ground behavior on it with the
+Trace citing the page BY TITLE (the story-first rule additive as
+ever), the surface-parity [VERIFY] fires naturally because the
+header's surface slot carries `web documentation <url>` — never the
+story's surface — and the tools rule still admits no tool names
+from references. Cloud flows are untouched (pins are a local-job
+feature; the flow's reference lane stays related-doc-driven).
+
+**Provenance + review handoff** — the banner's HTML comment carries
+the pinned URLs (`web references [<url>]`), `Gen_summary` gains
+`webRefs=` (pages actually injected into the lane; `pinnedRef=`
+keeps counting doc-row pins), and the written draft ends with a
+deterministic **`## Reference Documentation`** addendum — minted by
+the job AFTER verification (the Issue Trace precedent, so the
+verifier never judges machine-minted content) — hyperlinking each
+page the model saw, for the §4 reviewer to open. Web-reference
+budget stays under `referenceCap`, pins served first in the order
+given, exactly like doc pins.
+
+**Harness** — `check_testplangen.py` 126 → **136**: new leg 14 — a
+web pin leads the lane with the title + url header; the page
+reduces to readable text (tags/scripts/nav gone, headings and
+bullets kept); entity-encoded marker shapes are defanged; webRefs=
+counts apart from pinnedRef=; a 404, a no-text page, an `--exemplar`
+URL, and an `--auto` combination each refuse with zero model calls;
+the written draft carries the Reference Documentation addendum and
+the banner URL stamp; a pin-less run stamps `webRefs=0`. The mock
+server grows a `/webref/` HTML lane (real 404s included). 136/136
+PASS; draftlint untouched (no new checks — the addendum is plain
+links, invisible to check e's image-link scan).
+
+| Piece | Version | Where |
+|---|---|---|
+| Local generation job (web references, webRefs=, addendum) | **v1.7** | `local/testplangen.mjs` |
+| Machine config template (webRefTimeoutMs) | — | `local/config.sample.json` |
+| Generation prompt | v1.10 (unchanged — deliberate, see above) | `prompts/TestPlanGen_Prompt.md` |
+| Generation-job gate | **136 checks** | `local/harness/check_testplangen.py` |
+
+| Date | Machine | check_testplangen |
+|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 136/136 PASS |
+
+
 # TestPlanGen v2.27 — review deck embeds cited figures (draft2pptx.mjs v1.1, svg2pptx v1.4)
 
 The v2.26 queued follow-on: a draft case's `**Figure:**` line (prompt
