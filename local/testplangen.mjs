@@ -8,6 +8,37 @@
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
  * lanes: v2.22; figures: v2.26).
  *
+ * v1.7 (web references — hyperlinks as pinned references): the
+ * `--reference` pin also takes an http(s) URL — official product
+ * documentation (e.g. an ArcGIS Pro tool-reference page) pinned into
+ * the REFERENCE FUNCTIONALITY lane beside the catalog's own
+ * documents. The page is fetched up front under the pin posture's
+ * hard-guard rule (a fetch failure, a non-text reply, or a page with
+ * no readable text refuses BEFORE the model call — a human asked for
+ * this exact page, so silent degrade is wrong), reduced to plain
+ * text by a zero-dependency tag strip (scripts/styles/nav dropped,
+ * headings and list markers kept, entities decoded), and injected
+ * with a `--- REFERENCE: <page title> — surface web documentation
+ * <url> ---` header so the prompt's existing reference rules apply
+ * unchanged: behavior may ground on it with the Trace citing the
+ * page by title, the surface-parity [VERIFY] fires naturally (the
+ * header's surface is never the story's), and tool names still never
+ * carry over. The prompt text itself is UNCHANGED (still v1.10) —
+ * a documentation page is exactly a "document describing the
+ * expected behavior of this story's feature area", so no
+ * TestPlanGenPromptVersion bump. Web pages are the lane's only
+ * public-internet input, so beyond the tag strip the text is
+ * defanged: block/draft marker shapes (<<< >>> [[[ ]]]) are replaced
+ * with lookalikes a hostile page cannot use to close a prompt block
+ * or forge the G9 draft markers. Provenance: the banner comment
+ * carries the pinned URLs, `Gen_summary` gains `webRefs=`, and the
+ * written draft ends with a deterministic `## Reference
+ * Documentation` addendum (the Issue Trace precedent — machine-
+ * minted after verification) linking each pinned page so the
+ * reviewer can open what grounded the draft. `--exemplar` still
+ * takes row ids only — a web page is never a style/coverage
+ * exemplar. Manual runs only, like every pin.
+ *
  * v1.6 (figures in cases — prompt v1.10's FIGURES rule, the local
  * half): a draft case may close with a `**Figure:**` line carrying a
  * story figure's image link copied VERBATIM from the sidecar. Two
@@ -217,7 +248,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.6";
+const JOB_VERSION = "v1.7";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -243,13 +274,14 @@ const VERIFY_MODES = ["annotate", "strict", "off"];
 const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
-  "[--exemplar <docId>]... [--reference <docId>]... " +
+  "[--exemplar <docId>]... [--reference <docId>|<https-url>]... " +
   "[--live|--dry-run] [--verify annotate|strict|off] [--notify] | --models\n" +
   "A bare number is always a Doc Index row id (--story); a devtopia " +
   "issue number needs --issue — nothing is ever guessed (the v2.3 rule). " +
   "--exemplar/--reference pin documents into the prompt's lanes ahead of " +
   "the automatic related-document selection (repeatable; Doc Index row " +
-  "ids only; manual runs only — not with --auto). " +
+  "ids — --reference also takes an http(s) URL to a documentation page; " +
+  "manual runs only — not with --auto). " +
   "--auto drafts for freshly indexed, uncovered stories (needs " +
   "testplangen.autoDraft: true; strict verification and notify are forced). " +
   "--gap-report writes the whole-catalog uncovered-stories digest (no AI spend).";
@@ -283,27 +315,43 @@ function loadConfig(argv) {
   ) {
     throw new Error(USAGE);
   }
-  // pinned lanes (v1.4) — Doc Index row ids only (the v2.3 rule),
-  // comma-separated accepted, deduped in order; manual runs only
-  const parsePins = (vals, flag) => {
+  // pinned lanes (v1.4) — Doc Index row ids (the v2.3 rule),
+  // comma-separated accepted, deduped in order; since v1.7 --reference
+  // also takes an http(s) URL (one per flag occurrence — URLs may
+  // contain commas, so a URL value is never comma-split); manual runs
+  // only. Entries: {id} for a row pin, {web: true, url} for a page.
+  const parsePins = (vals, flag, urlsOk) => {
     const out = [];
     for (const v of vals || []) {
-      for (const part of String(v).split(",")) {
+      const raw = String(v).trim();
+      if (/^https?:\/\//i.test(raw)) {
+        if (!urlsOk) {
+          throw new Error(
+            `${flag} takes Doc Index row ids only (got "${raw}") — a web ` +
+            "documentation page grounds expected behavior, so pin it with " +
+            `--reference; a style/coverage exemplar is always a catalog ` +
+            `Test Plan row\n${USAGE}`
+          );
+        }
+        if (!out.some((e) => e.url === raw)) out.push({ web: true, url: raw });
+        continue;
+      }
+      for (const part of raw.split(",")) {
         const id = num(part.trim());
         if (id === undefined) {
           throw new Error(
-            `${flag} takes a Doc Index row id (got "${part.trim()}") — ` +
-            `a bare number is always a doc id, nothing is ever guessed ` +
-            `(the v2.3 rule)\n${USAGE}`
+            `${flag} takes a Doc Index row id${urlsOk ? " or an http(s) URL" : ""} ` +
+            `(got "${part.trim()}") — a bare number is always a doc id, ` +
+            `nothing is ever guessed (the v2.3 rule)\n${USAGE}`
           );
         }
-        if (!out.includes(id)) out.push(id);
+        if (!out.some((e) => e.id === id)) out.push({ id });
       }
     }
     return out;
   };
-  const pinEx = parsePins(args.exemplar, "--exemplar");
-  const pinRef = parsePins(args.reference, "--reference");
+  const pinEx = parsePins(args.exemplar, "--exemplar", false);
+  const pinRef = parsePins(args.reference, "--reference", true);
   if ((pinEx.length || pinRef.length) && modeless) {
     throw new Error(
       "--exemplar/--reference pin documents into a MANUAL generation's " +
@@ -311,7 +359,9 @@ function loadConfig(argv) {
       "--models (those modes work from catalog state alone)\n" + USAGE
     );
   }
-  const doubled = pinEx.filter((id) => pinRef.includes(id));
+  const doubled = pinEx
+    .filter((e) => e.id !== undefined && pinRef.some((r) => r.id === e.id))
+    .map((e) => e.id);
   if (doubled.length) {
     throw new Error(
       `doc ${doubled.join(", ")} pinned to both lanes — pick --exemplar ` +
@@ -360,6 +410,7 @@ function loadConfig(argv) {
     // v1.6+ split-case drafts run long — the first live run blew a
     // 16384 default (v1.3 raised it; claude-opus-5 allows up to 128k)
     maxTokens: 32000,
+    webRefTimeoutMs: 30000,
     issueTrace: true,
     autoDraft: false,
     autoMaxPerRun: 3,
@@ -575,6 +626,13 @@ async function run(cfg) {
   // a human asked for these exact documents, so a silent degrade
   // (the lanes' Try_* posture for automatic picks) is wrong here
   ctx.pins = validatePins(ctx, story, cfg._pinEx, cfg._pinRef);
+  // web reference pins (v1.7) fetch now, under the same hard-guard
+  // posture — any failure refuses the run with zero model spend
+  for (const pin of ctx.pins.ref) {
+    if (pin.web) {
+      await fetchWebRef(pin, ctx.progress || (() => {}), Number(cfg.testplangen.webRefTimeoutMs));
+    }
+  }
 
   const res = await generateOne(ctx, story);
 
@@ -611,17 +669,21 @@ async function run(cfg) {
   }
 }
 
-// Pinned-lane guards (v1.4). Returns { ex, ref } as normalized rows,
-// in the order given. Every violation throws — before the model call,
-// naming the doc and the rule; nothing degrades silently.
-function validatePins(ctx, story, exIds, refIds) {
+// Pinned-lane guards (v1.4). Returns { ex, ref } as normalized rows
+// — plus, since v1.7, {web: true, url} entries in ref, validated by
+// fetchWebRef — in the order given. Every violation throws — before
+// the model call, naming the doc and the rule; nothing degrades
+// silently.
+function validatePins(ctx, story, exPins, refPins) {
   const { cfg, byId, sw } = ctx;
   const KINDS = {
     "--exemplar": ["Test Plan"],
     "--reference": ["Test Plan", "Design Spike"],
   };
-  const take = (ids, flag) =>
-    ids.map((id) => {
+  const take = (pins, flag) =>
+    pins.map((pin) => {
+      if (pin.web) return pin; // fetched (and hard-guarded) by fetchWebRef
+      const id = pin.id;
       const nb = byId.get(id);
       if (!nb) throw new Error(`${flag} ${id}: no Doc Index row with that id`);
       if (id === story.ID) {
@@ -649,7 +711,108 @@ function validatePins(ctx, story, exIds, refIds) {
       }
       return nb;
     });
-  return { ex: take(exIds || [], "--exemplar"), ref: take(refIds || [], "--reference") };
+  return { ex: take(exPins || [], "--exemplar"), ref: take(refPins || [], "--reference") };
+}
+
+// ---- web references (v1.7) ------------------------------------------
+
+// Zero-dependency HTML → readable text: scripts/styles/nav dropped,
+// headings become markdown #s, list items bullets, table cells pipe-
+// separated; tags stripped THEN entities decoded (so &lt;script&gt;
+// can never re-materialize as a tag). Good enough for documentation
+// pages — a script-rendered page that yields no text refuses upstream.
+const ENTITIES = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  mdash: "—", ndash: "–", hellip: "…", copy: "©", reg: "®", trade: "™",
+  lsquo: "‘", rsquo: "’", ldquo: "“", rdquo: "”",
+};
+function decodeEntities(s) {
+  return s.replace(/&(#x?[0-9a-f]+|[a-z]+[0-9]*);/gi, (m, e) => {
+    if (e[0] === "#") {
+      const code = /^#x/i.test(e) ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+        ? String.fromCodePoint(code)
+        : m;
+    }
+    return ENTITIES[e.toLowerCase()] ?? m;
+  });
+}
+function htmlToText(html) {
+  const title = decodeEntities(
+    (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] || "").replace(/\s+/g, " ").trim()
+  );
+  let s = html
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<(script|style|noscript|template|svg|head|nav|iframe)\b[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<(h[1-6])[^>]*>/gi, (m, h) => `\n\n${"#".repeat(Number(h[1]))} `)
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<\/(td|th)>/gi, " | ")
+    .replace(/<(br|hr)\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|section|article|main|table|tr|ul|ol|li|dl|dd|blockquote|pre|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+  s = decodeEntities(s)
+    .replace(/[ \t]+/g, " ")
+    .replace(/ ?\n ?/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { title, text: s };
+}
+
+// Fetch one pinned web reference into its pin entry ({title, text}).
+// The pin posture's hard guard applied to the network: a fetch
+// failure, non-2xx status, binary reply, or a page with no readable
+// text refuses BEFORE the model call — a human asked for this exact
+// page. The fetched page is the lane's only public-internet input, so
+// beyond the tag strip its text is DEFANGED: block/draft marker
+// shapes (<<< >>> [[[ ]]]) become lookalikes, so a hostile page can
+// neither close a prompt block nor forge the G9 draft markers (the
+// prompt's untrusted-data rule and the lastIndexOf slice already
+// resist both — belt and braces).
+const WEBREF_FETCH_CAP = 2_000_000; // chars of raw page fed to the strip
+async function fetchWebRef(pin, prog, timeoutMs) {
+  let res;
+  try {
+    res = await fetch(pin.url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { accept: "text/html, application/xhtml+xml, text/plain;q=0.9, text/markdown;q=0.9" },
+    });
+  } catch (e) {
+    throw new Error(
+      `--reference ${pin.url}: fetch failed — ${e.cause?.message || e.message}`
+    );
+  }
+  if (!res.ok) {
+    throw new Error(`--reference ${pin.url}: HTTP ${res.status} ${res.statusText || ""}`.trim());
+  }
+  const ctype = String(res.headers.get("content-type") || "");
+  if (ctype && !/^(text\/|application\/(xhtml\+xml|xml|json))/i.test(ctype)) {
+    throw new Error(
+      `--reference ${pin.url}: content-type "${ctype}" is not a text page — ` +
+      "only readable documentation pages can join the reference lane " +
+      "(upload the file to the source library and pin its row instead)"
+    );
+  }
+  const raw = (await res.text()).slice(0, WEBREF_FETCH_CAP);
+  const looksHtml = /html/i.test(ctype) || /^\s*(<!doctype|<html|<head|<body)/i.test(raw);
+  const { title, text } = looksHtml ? htmlToText(raw) : { title: "", text: raw.trim() };
+  const defanged = text
+    .replaceAll("<<<", "‹‹‹")
+    .replaceAll(">>>", "›››")
+    .replaceAll("[[[", "⟦⟦⟦")
+    .replaceAll("]]]", "⟧⟧⟧");
+  if (defanged.length < 40) {
+    throw new Error(
+      `--reference ${pin.url}: the page yields no readable text ` +
+      `(${defanged.length} chars after the tag strip) — a script-rendered ` +
+      "page cannot ground a draft; save it as a document, upload it to the " +
+      "source library, and pin its row instead"
+    );
+  }
+  pin.title = title || pin.url.split("/").filter(Boolean).pop() || pin.url;
+  pin.text = defanged;
+  prog(`web reference — "${pin.title}" ${defanged.length} chars from ${pin.url}`);
+  return pin;
 }
 
 // Doc IDs (+ Issue Refs, when configured) — fetched once per process
@@ -808,6 +971,11 @@ async function generateOne(ctx, story) {
     pinnedIds.add(nb.ID);
   }
   for (const nb of pins.ref) {
+    if (nb.web) {
+      // a fetched web reference (v1.7) — text already in hand
+      referenceRefs.push({ web: true, url: nb.url, title: nb.title, text: nb.text });
+      continue;
+    }
     referenceRefs.push({
       url: nb.TextFileUrl,
       surface: nb.Surface || "",
@@ -882,12 +1050,24 @@ async function generateOne(ctx, story) {
   }
 
   // G7b — reference bodies (header carries title AND surface — the
-  // prompt's surface-parity rule keys on it)
+  // prompt's surface-parity rule keys on it; a web reference's header
+  // carries its URL in the surface slot, so the parity [VERIFY] fires
+  // naturally: a documentation page's surface is never the story's)
+  let webRefCount = 0;
   for (const ref of referenceRefs) {
-    const local = urlToLocal(ref.url, sw, cfg);
-    if (!local || !fs.existsSync(local)) continue; // Try_reference degrades silently
     if (referenceText.length >= Number(tp.referenceCap)) continue; // If_ref_budget
     const remaining = Number(tp.referenceCap) - referenceText.length; // Ref_remaining
+    if (ref.web) {
+      referenceText +=
+        `--- REFERENCE: ${ref.title} — surface web documentation <${ref.url}> ---\n` +
+        `${cut(ref.text, remaining)}\n\n`;
+      referenceCount++;
+      webRefCount++;
+      ref.injected = true; // the addendum lists only pages the model saw
+      continue;
+    }
+    const local = urlToLocal(ref.url, sw, cfg);
+    if (!local || !fs.existsSync(local)) continue; // Try_reference degrades silently
     const content = fs.readFileSync(local, "utf8");
     referenceText +=
       `--- REFERENCE: ${ref.title || path.basename(local)} — surface ${ref.surface} ---\n` +
@@ -895,12 +1075,16 @@ async function generateOne(ctx, story) {
     referenceCount++;
   }
 
+  const docRefPins = pins.ref.filter((r) => !r.web);
+  const webRefPins = pins.ref.filter((r) => r.web);
   prog(
     `lanes — exemplars ${exemplarCount} (${exemplarText.length} chars), ` +
-    `references ${referenceCount} (${referenceText.length} chars), ` +
-    `digest ${digest.length} chars` +
+    `references ${referenceCount} (${referenceText.length} chars, ` +
+    `${webRefCount} web), digest ${digest.length} chars` +
     (pins.ex.length || pins.ref.length
-      ? ` — pinned ex [${pins.ex.map((r) => r.ID).join(",")}] ref [${pins.ref.map((r) => r.ID).join(",")}]`
+      ? ` — pinned ex [${pins.ex.map((r) => r.ID).join(",")}] ` +
+        `ref [${docRefPins.map((r) => r.ID).join(",")}]` +
+        (webRefPins.length ? ` web [${webRefPins.map((r) => r.url).join(" ")}]` : "")
       : "")
   );
 
@@ -1056,7 +1240,10 @@ async function generateOne(ctx, story) {
     pins.ex.length || pins.ref.length
       ? " · pinned" +
         (pins.ex.length ? ` exemplars [${pins.ex.map((r) => r.ID).join(",")}]` : "") +
-        (pins.ref.length ? ` references [${pins.ref.map((r) => r.ID).join(",")}]` : "")
+        (docRefPins.length ? ` references [${docRefPins.map((r) => r.ID).join(",")}]` : "") +
+        (webRefPins.length
+          ? ` web references [${webRefPins.map((r) => `<${r.url}>`).join(" ")}]`
+          : "")
       : "";
   const banner =
     `<!-- machine-generated test-plan draft — TestPlanGen prompt ${tp.promptVersion}` +
@@ -1072,7 +1259,22 @@ async function generateOne(ctx, story) {
   // the deterministic Issue Trace addendum (v1.3) rides AFTER the
   // verified body — the verifier never judges machine-minted content
   const trace = await issueTraceOf(ctx, story);
-  const draft = banner + verifyBlock + draftOut + "\n" + trace.section;
+  // …and so does the web-reference addendum (v1.7): the pinned pages
+  // the model actually saw, as clickable links for the §4 reviewer.
+  // Machine-minted from the pins, never model output; titles lose
+  // bracket characters so the markdown link can never break.
+  const seenWebRefs = referenceRefs.filter((r) => r.web && r.injected);
+  const webRefSection = seenWebRefs.length
+    ? "\n## Reference Documentation\n\n" +
+      "_Deterministic addendum — minted by local/testplangen.mjs from the " +
+      "run's pinned `--reference` URLs, not by the model: the web " +
+      "documentation pages fed into the REFERENCE FUNCTIONALITY lane. " +
+      "Reference-grounded Traces cite these pages by title._\n\n" +
+      seenWebRefs
+        .map((r) => `- [${r.title.replace(/[\[\]]/g, "")}](${r.url})`)
+        .join("\n") + "\n"
+    : "";
+  const draft = banner + verifyBlock + draftOut + "\n" + trace.section + webRefSection;
 
   // G11 — timestamped save, never overwritten (drafts are work
   // products a PE may be mid-edit on; stale ones are deleted by hand)
@@ -1094,7 +1296,7 @@ async function generateOne(ctx, story) {
     `storyChars=${storyTextCapped.length} draftChars=${draftBody.length} ` +
     `exChars=${exemplarText.length} refChars=${referenceText.length} ` +
     `verify=${verify} issues=${trace.count} figures=${figureCount} ` +
-    `pinnedEx=${pins.ex.length} pinnedRef=${pins.ref.length}`;
+    `pinnedEx=${pins.ex.length} pinnedRef=${docRefPins.length} webRefs=${webRefCount}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run

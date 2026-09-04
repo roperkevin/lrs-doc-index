@@ -616,13 +616,13 @@ WILL flag some legitimate paraphrases — that is exactly why annotate
 is the default and strict is reserved for unattended runs;
 `testplangen.grounding: false` disables just this layer.
 
-**`--exemplar <docId>` / `--reference <docId>` — pinned lanes**
-(v1.4): pin documents into the prompt's lanes IN ADDITION to the
-sidecar's `related:` selection, for the run where the best exemplar
-or reference is not RelatedRank-linked to the story (e.g. a
+**`--exemplar <docId>` / `--reference <docId>|<https-url>` — pinned
+lanes** (v1.4): pin documents into the prompt's lanes IN ADDITION to
+the sidecar's `related:` selection, for the run where the best
+exemplar or reference is not RelatedRank-linked to the story (e.g. a
 data-rich plan from another surface as the style exemplar). Both
 flags are repeatable (comma-separated ids accepted) and take Doc
-Index row ids ONLY — no issue/title resolution on pins, the v2.3
+Index row ids — no issue/title resolution on pins, the v2.3
 bare-number rule. Pinned docs fill their lane first, in the order
 given; the automatic routing fills any remaining slots and skips
 docs already pinned; pins may exceed the slot counts (a human
@@ -639,6 +639,40 @@ Design Spikes. Provenance: the draft banner's HTML comment carries
 the pinned ids, and `Gen_summary` gains `pinnedEx=`/`pinnedRef=`.
 Manual runs only — refused with `--auto`, `--gap-report`, and
 `--models` (those modes work from catalog state alone).
+
+Since v1.7 `--reference` ALSO takes an **http(s) URL** — a
+hyperlink to official product documentation (e.g. an ArcGIS Pro
+tool-reference page) pinned into the REFERENCE FUNCTIONALITY lane
+beside the catalog's own documents:
+
+```
+node --experimental-strip-types local\testplangen.mjs --config local\config.json ^
+  --story 12 --reference "https://pro.arcgis.com/en/pro-app/latest/tool-reference/location-referencing/enable-referent-fields.htm" --live
+```
+
+One URL per flag occurrence (URLs may contain commas, so they are
+never comma-split); ids and URLs mix freely across repeats. The page
+is fetched up front (`testplangen.webRefTimeoutMs`, default 30000)
+under the same hard-guard posture — a fetch failure, a non-text
+reply, or a page with no readable text (a script-rendered SPA)
+refuses the run BEFORE any model spend; the fix for an unfetchable
+page is to save it as a document, upload it to the source library,
+and pin its row. The HTML is reduced to plain text by a
+zero-dependency tag strip (scripts/styles/nav dropped, headings and
+list markers kept, entities decoded) and injected with a
+`--- REFERENCE: <page title> — surface web documentation <url> ---`
+header, so the prompt's existing reference rules apply unchanged —
+behavior may ground on the page with the Trace citing it by title,
+the surface-parity [VERIFY] fires naturally, and tool names still
+never carry over (the prompt text is untouched: still v1.10, no
+TestPlanGenPromptVersion bump). Because a public page is the lane's
+only internet input, marker-shaped text in it is defanged before
+injection. `--exemplar` never takes a URL — a web page is not a
+style/coverage exemplar. Provenance: the banner comment carries the
+pinned URLs, `Gen_summary` gains `webRefs=`, and the written draft
+ends with a deterministic `## Reference Documentation` addendum
+(machine-minted after verification, the Issue Trace precedent)
+hyperlinking each pinned page for the §4 reviewer.
 
 **Progress output** (v1.5): a manual single-story run prints stderr
 `progress:` lines — snapshot size, story/lane sizes with pinned ids,
