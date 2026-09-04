@@ -75,7 +75,7 @@
             "DigestSummaryCap": 400,
             "ExemplarSlots": 2,
             "ReferenceSlots": 3,
-            "TestPlanGenPromptVersion": "v1.8"
+            "TestPlanGenPromptVersion": "v1.9"
           }
         },
         "Init_NeighborDigest": {

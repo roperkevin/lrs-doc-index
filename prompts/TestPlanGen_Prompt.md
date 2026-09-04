@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.8
+# Test Plan Generation Prompt — v1.9
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.8`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.9`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -11,6 +11,28 @@ FIVE item/requestv2 input keys, exact names: **StoryMeta**,
 **StoryText**, **RelatedDigest**, **ExemplarText**, **ReferenceText**
 (the fifth added in v1.3 — the AI Builder prompt needs the parameter
 created, not just the text re-pasted).
+
+v1.9 (story-first trace — no input, section-order, sentinel, or
+structural-contract changes): the owner review of the doc 1 draft
+(2026-09-04) found exemplar features drifting toward case status —
+the story states the Add workflow ("Add Point/Line: Honor all input
+methods") but names no Add Point/Add Line widgets, while the
+exemplar lane's "Add Point and Add Line Widgets Test Plan" supplied
+widget-flavored case material. The leak is the Trace rule's OR: a
+case could exist on exemplar or reference authority ALONE ("or the
+exemplar pattern it applies"). v1.9 closes it: every case's Trace
+MUST quote or closely paraphrase a STORY statement — exemplar
+patterns and reference-functionality statements REFINE a
+story-stated behavior (the concrete input methods behind the
+story's "all input methods", its validations, its field semantics)
+and are cited in addition, never instead; a workflow, pathway,
+tool, or behavior that appears only in an exemplar or reference
+becomes an Open Questions [VERIFY] entry (the CASE SWEEP rule's
+Verify lane), never a case. The sweep's Yes verdict now requires a
+story statement to anchor the tailored case (reference support
+alone is Verify); the tools rule extends explicitly to workflows,
+pathways, and edit types. The local verifier gains the matching
+per-case spot-check (draftlint.mjs groundDraft check d).
 
 v1.8 (concrete test data — no input, section-order, sentinel, or
 structural-contract changes; the draft lint's asserts are untouched):
@@ -237,9 +259,11 @@ affected record(s)' expected field values after the edit (the
 CONCRETE TEST DATA rule).
 
 **Trace:** the story statement this case verifies, quoted or closely
-paraphrased — or the exemplar pattern it applies (e.g. "exemplar
-covers the multi-user variant of each edit"), or the reference-
-functionality statement it grounds on, cited by document title.
+paraphrased — ALWAYS, for every case (the STORY-FIRST TRACE rule).
+When an exemplar pattern shaped the case (e.g. "exemplar covers the
+multi-user variant of each edit") or a reference-functionality
+statement grounds its specifics, cite it by document title IN
+ADDITION to the story statement, never instead of it.
 
 Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
 (one checkbox per numbered action, each a SINGLE tester action);
@@ -295,11 +319,12 @@ the source formats it:
 Source plan names the document (title, with "(exemplar)" or
 "(reference)"); Source case names or closely paraphrases the case.
 Applies? is exactly one of **Yes** (the behavior applies to this
-story — Covered by cites the tailored TC id(s)), **No** (it does
-not — the cell states why, e.g. out of the story's scope, other
-feature, superseded), or **Verify** (it plausibly applies but the
-story and references don't support it — the cell cites the matching
-Open Questions entry). An empty Applies? or fourth cell is invalid
+story AND a story statement anchors the tailored case — Covered by
+cites the tailored TC id(s)), **No** (it does not — the cell states
+why, e.g. out of the story's scope, other feature, superseded), or
+**Verify** (it plausibly applies but no story statement supports it
+— reference support alone is not enough; the cell cites the
+matching Open Questions entry). An empty Applies? or fourth cell is invalid
 output. Rows never merge: one source case, one row, one judgment.
 
 ## Coverage Map
@@ -324,11 +349,19 @@ cell is invalid output: add the missing case or the Open Questions
 entry, then fill the cell.
 
 GROUNDING RULES
-- Every test case MUST trace to an explicit statement in STORY TEXT /
-  StoryMeta, to an exemplar pattern applied to this story's feature,
-  or to a REFERENCE FUNCTIONALITY statement applied within this
-  story's scope. Never invent requirements, behaviors, error
-  messages, or UI the sources don't support.
+- STORY-FIRST TRACE: every test case MUST trace to an explicit
+  statement in STORY TEXT / StoryMeta — no case exists on exemplar
+  or reference authority alone. Exemplar patterns applied to this
+  story's feature and REFERENCE FUNCTIONALITY statements applied
+  within this story's scope REFINE a story-stated behavior — the
+  concrete input methods behind the story's "all input methods",
+  its validations, its field semantics — and are cited in the Trace
+  IN ADDITION to the story statement, never instead of it. A
+  workflow, pathway, tool, or behavior that appears only in an
+  exemplar or reference document — nowhere in the story — never
+  becomes a case: it becomes an Open Questions [VERIFY] entry (the
+  CASE SWEEP rule's Verify lane). Never invent requirements,
+  behaviors, error messages, or UI the sources don't support.
 - ENUMERATION COVERAGE: when the story enumerates workflows, edit
   pathways, input methods, or event/geometry types (e.g. "point and
   line events"; "Add, Update, Split, Merge, Dynamic Seg, Table"),
@@ -354,8 +387,11 @@ GROUNDING RULES
   functionality for this story's feature area. You may derive
   expected behavior from them — input methods, field-population
   semantics, validation and error conditions — applied within THIS
-  story's scope and surface. Every reference-grounded statement's
-  Trace cites the reference document by title. When a reference
+  story's scope and surface, and always ANCHORED to a story
+  statement (STORY-FIRST TRACE): a reference behavior the story
+  states no home for becomes an Open Questions entry, never a case.
+  Every reference-grounded statement's Trace cites the reference
+  document by title in addition to the story statement. When a reference
   document's surface differs from the story's surface, add ONE Open
   Questions [VERIFY] item covering surface parity for the borrowed
   behaviors. Where a reference document conflicts with the story, the
@@ -366,7 +402,12 @@ GROUNDING RULES
 - Tools and widgets: name ONLY tools that appear in StoryMeta or
   STORY TEXT, in official casing. Never introduce a tool by analogy
   with the exemplars' features, and never carry a tool name over from
-  a reference document.
+  a reference document. The same discipline applies to workflows,
+  pathways, and edit types: exercise only those the story
+  enumerates. Where the story names a workflow but no tool for it
+  (e.g. "Add Point/Line" with no widget named), the case names the
+  workflow ("the Add point event pathway") and the missing tool name
+  is a Setup [VERIFY] item — never a guessed widget.
 - surface and target release: copy verbatim from StoryMeta. Never
   guess, never substitute a release the exemplars mention.
 - Missing information becomes a [VERIFY: ...] item in Open Questions —
@@ -409,13 +450,14 @@ GROUNDING RULES
   verifies applies to this story. **Applies**: write a case tailored
   to THIS story's feature and surface — steps rewritten for the
   story's workflow, the granularity rule in force — whose Trace
-  cites the source plan by title AND the story or reference
-  statement the tailored case exercises; never copy the source
+  cites the source plan by title AND the story statement the
+  tailored case exercises (plus the reference statement, when one
+  grounds its specifics — STORY-FIRST TRACE); never copy the source
   case's feature-specific content, tool names, or data. **Applies
-  but unsupported** (the story and references say nothing that
-  grounds the behavior): add an Open Questions [VERIFY] naming the
-  source plan and case — a possible coverage gap in the story, never
-  an invented requirement. **Doesn't apply**: state why in the
+  but unsupported** (the story says nothing that grounds the
+  behavior — reference support alone is not enough): add an Open
+  Questions [VERIFY] naming the source plan and case — a possible
+  coverage gap in the story, never an invented requirement. **Doesn't apply**: state why in the
   sweep table. Every judgment renders as a Source Case Sweep row;
   a source case missing from the table is a silent skip, which is
   invalid output. The exemplar-content, tools, surface, and
@@ -529,8 +571,10 @@ workflow section.
 **Expected Result:** User B is denied with a lock conflict; no edit
 is applied.
 
-**Trace:** exemplar pattern — multi-user denial case for each
-lock-acquiring edit.
+**Trace:** "a lock held by one user blocks another user's edit" —
+story conflict-prevention statement; exemplar pattern — multi-user
+denial case for each lock-acquiring edit (Edit Locks for Route
+Edits).
 
 ## Open Questions
 - [ ] [VERIFY: minimum lock-root configuration for setup]

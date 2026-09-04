@@ -121,12 +121,12 @@ the FX-5 stall).
    add the fifth input parameter — exact name **`ReferenceText`**
    (skip if step 0 counted five).
 2. **Paste**: the delimited block from
-   `prompts/TestPlanGen_Prompt.md` (v1.8) into the same prompt —
+   `prompts/TestPlanGen_Prompt.md` (v1.9) into the same prompt —
    replaces every pending paste before it.
 3. **Import**: `testplangen/TestPlanGenCore_v1_0.zip` (Import
    package (Legacy)) — the payload carries the complete current
    core: reference lane (v2.0), GFM banner (v2.8), current list
-   bindings (v2.10), the v1.8 stamp (v2.19), and the v2.2 coverage
+   bindings (v2.10), the v1.9 stamp (v2.20), and the v2.2 coverage
    routing — design-doc references, same-surface overflow, slot
    config, budget fix (v2.12). Post-import clicks (each is a picker,
    not an expression):

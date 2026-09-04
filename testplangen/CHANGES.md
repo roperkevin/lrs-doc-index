@@ -1,3 +1,93 @@
+# TestPlanGen v2.20 — story-first trace (prompt v1.9, draftlint v1.2)
+
+Motivated by the owner review of the doc 1 draft (2026-09-04,
+second pass, following v2.19's first pass): test cases must
+STRICTLY follow the input user story. The doc 1 story states the
+Add workflow ("Add Point/Line: Honor all input methods") but names
+no Add Point / Add Line widgets — yet the exemplar lane's "Auto-
+Populate Referents for Add Point and Add Line Widgets Test Plan"
+supplied widget-flavored case material the draft leaned on. The
+structural leak is the Trace rule's OR, present since v1.0: a case
+could trace to a story statement, OR "an exemplar pattern applied
+to this story's feature", OR a reference-functionality statement —
+so a case could exist on exemplar or reference authority alone,
+with no story statement behind it.
+
+**Prompt v1.9** (authored as
+`review/patches/TestPlanGen_Prompt_v1_9.md`, promoted to
+`prompts/TestPlanGen_Prompt.md` — supersedes v1.8 in-repo BEFORE
+its pending paste; everything v1.1–v1.8 carries forward unchanged):
+
+- **STORY-FIRST TRACE** replaces the first grounding rule's OR:
+  every case MUST trace to an explicit STORY TEXT / StoryMeta
+  statement — exemplar patterns and reference statements REFINE a
+  story-stated behavior (the concrete input methods behind the
+  story's "all input methods", its validations, its field
+  semantics) and are cited in addition, never instead. A workflow,
+  pathway, tool, or behavior appearing only in an exemplar or
+  reference becomes an Open Questions [VERIFY] entry, never a case.
+- **CASE SWEEP tightened**: a Yes verdict requires a story
+  statement to anchor the tailored case — reference support alone
+  is Verify.
+- **Tools rule extended** to workflows/pathways/edit types
+  (exercise only what the story enumerates; a story-stated workflow
+  with no tool named stays a workflow phrase + Setup [VERIFY],
+  never a guessed widget); the reference rule anchors derived
+  behavior to a story statement; Trace template and worked example
+  updated to model the rule.
+
+**Verifier** — `local/lib/draftlint.mjs` v1.2 (grounding layer
+only; the v1.7 structural contract and the Python lint are
+untouched):
+
+- new check (d), the story-first rule made checkable locally: every
+  case's **Trace:** line must cite the story — a quoted span found
+  verbatim passes, else ≥ half its content-word stems must appear
+  in the story; an exemplar-only Trace surfaces as
+  `grounding: TC-xx Trace cites no story statement`.
+- check (b) fix: the tool scan now skips lines carrying `[VERIFY` —
+  Open Questions items legitimately cite source-plan titles per the
+  CASE SWEEP rule, and those citations were false-positives on the
+  doc 1 draft (4 of its 13 findings).
+
+**Harness** — `check_testplangen.py` 95 checks (was 93): leg 8
+gains the exemplar-only-Trace flag and the [VERIFY]-title
+non-flag; GOOD_DRAFT's TC-N1 Trace updated to the story-first form
+(the fixture previously modeled the exact pattern v1.9 outlaws).
+95/95 PASS.
+
+**Both flows** — `Config_gen.TestPlanGenPromptVersion` → v1.9
+(stamp only); both generation packages re-cut with the stamped
+definitions (byte-identical to their folder definitions).
+
+**Local job** — `testplangen.promptVersion` default → v1.9
+(`local/testplangen.mjs`, `local/config.sample.json`).
+
+**Docs** — Setup §2/§3 stamps → v1.9; `Coverage_Runbook.md` step 2
+pastes v1.9; `prompts/README.md`, `STATUS.md`, and root `README.md`
+rows moved to v1.9 / v2.20.
+
+Deploy (simple paste + one designer edit, both live flows —
+`Coverage_Runbook.md` step 2): paste v1.9 into
+`LRS Test Plan Generation` (replaces the pending v1.8 paste), set
+both `Config_gen.TestPlanGenPromptVersion` stamps to v1.9 (or
+re-import the re-cut packages), run smoke rows 1, 3, 9, 10 and read
+one draft's Trace lines — every case quotes the story, source plans
+cited only in addition. NEVER bump `Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Generation prompt | **v1.9** | `review/patches/TestPlanGen_Prompt_v1_9.md` → `prompts/TestPlanGen_Prompt.md` |
+| Draft verifier (grounding layer: check d, [VERIFY exclusion) | **v1.2** | `local/lib/draftlint.mjs` |
+| Flow stamps + re-cut packages | v1.9 stamp | `testplangen/flow/{v1_0,core_v1_0}/definition.json`, `TestPlanGen_v1_0.zip`, `TestPlanGenCore_v1_0.zip` |
+| Local generation job (stamp default) | v1.2 (unchanged code) | `local/testplangen.mjs`, `local/config.sample.json` |
+| Generation-job gate | **95 checks** | `local/harness/check_testplangen.py` |
+| Contract lints | v1.7 contract, unchanged | `review/harness/check_draft_coverage.py`, `lintDraft` |
+
+| Date | Machine | check_testplangen | Tenant paste |
+|---|---|---|---|
+| 2026-09-04 | authoring env (mocked) | 95/95 PASS | pending (replaces the pending v1.8 paste) |
+
 # TestPlanGen v2.19 — concrete test data (prompt v1.8)
 
 Motivated by the 2026-09-04 review of the doc 1 draft ("Auto-

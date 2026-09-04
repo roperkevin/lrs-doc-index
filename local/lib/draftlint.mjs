@@ -1,5 +1,5 @@
 /**
- * draftlint.mjs v1.1 — in-process draft verification for
+ * draftlint.mjs v1.2 — in-process draft verification for
  * local/testplangen.mjs, two layers:
  *
  * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
@@ -29,13 +29,15 @@
  * Python COUNTS line, warn is the under-floor warning (never a
  * failure, exactly as the Python never gates on it).
  *
- * `groundDraft` (v1.1, phase 2 of Local_TestPlanGen_Plan.md) — the
+ * `groundDraft` (v1.1, phase 2 of Local_TestPlanGen_Plan.md; v1.2
+ * adds check d and the [VERIFY-line exclusion in check b, prompt
+ * v1.9's story-first trace) — the
  * GROUNDING layer, possible only locally because the job holds the
  * story it just sent: heuristic spot-checks of the draft against
  * STORY TEXT + StoryMeta. Deliberately NOT part of the Python
  * contract and excluded from the agreement leg; findings carry a
  * "grounding: " prefix so a reviewer can tell the layers apart.
- * Three checks, each conservative by design (they WILL flag some
+ * Four checks, each conservative by design (they WILL flag some
  * legitimate paraphrases — which is why the job's default verify
  * policy annotates rather than refuses):
  *   a) every Coverage Map requirement cell must trace to the story —
@@ -45,14 +47,22 @@
  *   b) tool-shaped names (multi-word Title Case phrases) in Steps /
  *      Expected Result lines must appear in the story — the prompt's
  *      tools rule, made checkable. Section/terminology phrases are
- *      allowlisted; Trace lines and the Source Case Sweep are NOT
- *      scanned (they legitimately cite source-plan titles). Note:
+ *      allowlisted; Trace lines, [VERIFY items, and the Source Case
+ *      Sweep are NOT scanned (they legitimately cite source-plan
+ *      titles — the CASE SWEEP rule requires it). Note:
  *      the plan sketched a cites-a-reference exception, dropped here
  *      deliberately — the prompt's tools rule admits no tool names
  *      from reference documents at all;
  *   c) enumeration echo: a comma/and list of 3+ short items in a
  *      workflow-shaped story sentence must have every item mentioned
- *      somewhere in the draft (a cheap ENUMERATION COVERAGE screen).
+ *      somewhere in the draft (a cheap ENUMERATION COVERAGE screen);
+ *   d) STORY-FIRST TRACE (prompt v1.9): every TC case's **Trace:**
+ *      line must cite the story — a quoted span found verbatim in
+ *      the story passes outright; otherwise at least half the
+ *      line's content-word stems must appear in the story. A case
+ *      tracing only to an exemplar/reference title fails both and
+ *      is flagged — the prompt says such a behavior belongs in Open
+ *      Questions, not in a case.
  */
 
 const CORE_SECTIONS = [
@@ -350,12 +360,17 @@ export function groundDraft(draftText, storyCorpus) {
   }
 
   // b) tool-shaped names in Steps / Expected Result lines must appear
-  // in the story (the tools rule). Trace lines and the Source Case
-  // Sweep legitimately cite source-plan titles, so only tester-facing
-  // lines are scanned.
+  // in the story (the tools rule). Trace lines, [VERIFY items (Open
+  // Questions checkboxes and inline Setup notes), and the Source
+  // Case Sweep legitimately cite source-plan titles per the CASE
+  // SWEEP rule, so only tester-facing lines are scanned.
   const scanLines = draft
     .split("\n")
-    .filter((l) => /^\s*- \[[ x]\]/.test(l) || l.trimStart().startsWith("**Expected Result:**"));
+    .filter(
+      (l) =>
+        (/^\s*- \[[ x]\]/.test(l) || l.trimStart().startsWith("**Expected Result:**")) &&
+        !l.includes("[VERIFY")
+    );
   const flaggedTools = new Set();
   for (const line of scanLines) {
     for (const m of line.matchAll(/\b[A-Z][a-z]+(?: [A-Z][a-z]+)+\b/g)) {
@@ -419,6 +434,27 @@ export function groundDraft(draftText, storyCorpus) {
           );
         }
       }
+    }
+  }
+
+  // d) STORY-FIRST TRACE (prompt v1.9): every case's Trace must cite
+  // the story — a quoted span found verbatim passes outright;
+  // otherwise at least half the line's content-word stems must
+  // appear in the story. An exemplar/reference-only Trace fails
+  // both (the title's words are not the story's) and is flagged.
+  for (const [cid, body] of extractCases(draft)) {
+    const tm = body.match(/^\s*\*\*Trace:\*\*([\s\S]*?)(?=\n\s*\n|$)/m);
+    if (!tm) continue; // a missing Trace line is the contract lint's finding
+    const trace = tm[1];
+    const quoted = [...trace.matchAll(/"([^"]{4,})"/g)].map((m) => m[1]);
+    if (quoted.some((q) => normStory.includes(normText(q)))) continue;
+    const stems = [...contentStems(trace)];
+    if (stems.length === 0) continue; // nothing checkable
+    const hit = stems.filter((t) => stemMatches(t, storyStems)).length;
+    if (hit / stems.length < 0.5) {
+      findings.push(
+        `grounding: ${cid} Trace cites no story statement (the story-first rule — exemplar/reference support alone cannot ground a case)`
+      );
     }
   }
 

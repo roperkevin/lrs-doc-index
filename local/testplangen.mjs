@@ -42,9 +42,11 @@
  *   - the verifier's grounding layer (lib/draftlint.mjs
  *     `groundDraft`, heuristics — Coverage Map requirements traced to
  *     the story, the tools rule made checkable on Steps/Expected
- *     Result lines, enumeration echo). Runs under the same verify
- *     policy as the contract lint, findings prefixed "grounding: ";
- *     testplangen.grounding: false disables just this layer.
+ *     Result lines, enumeration echo; draftlint v1.2 adds the
+ *     story-first Trace check, prompt v1.9). Runs under the same
+ *     verify policy as the contract lint, findings prefixed
+ *     "grounding: "; testplangen.grounding: false disables just
+ *     this layer.
  *
  * Faithful to `testplangen/TestPlanGen_Setup.md` §3 (G1–G13):
  *   G1–G2  story row + hard guard (DocKind = User Story,
@@ -77,7 +79,7 @@
  *          tenant paste state applies, Coverage_Runbook.md step 2).
  *          Provider "anthropic": prompts/TestPlanGen_Prompt.md
  *          executed VERBATIM between its delimiters — zero tenant
- *          work, the v1.8 rules apply as authored; single-pass
+ *          work, the v1.9 rules apply as authored; single-pass
  *          placeholder substitution so document content can never
  *          inject a second substitution.
  *   G9     marker slice ([[[DRAFT BEGIN]]]/[[[DRAFT END]]],
@@ -93,7 +95,7 @@
  *
  * Beyond the flow (the plan's phase-1 verifier): before the draft is
  * written, lib/draftlint.mjs checks it against the v1.7 coverage
- * contract (unchanged by prompt v1.8, which adds no structural
+ * contract (unchanged by prompts v1.8/v1.9, which add no structural
  * asserts). testplangen.verify: "annotate" (default) prepends an
  * [!IMPORTANT] findings block so the §4 reviewer starts where the
  * machine already found smells; "strict" refuses to write a draft
@@ -219,7 +221,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.8",
+    promptVersion: "v1.9",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,

@@ -42,10 +42,13 @@ verifier the cloud flow could not have
   leg 7 notify       --notify posts ONE webhook line per WRITTEN
                      draft; default and dry runs stay silent
   leg 8 grounding    the phase-2 verifier layer: an invented Coverage
-                     Map requirement, a story-less tool name, and a
-                     dropped enumeration item each surface as
-                     "grounding:" findings; an echoed enumeration
-                     does not; testplangen.grounding false disables
+                     Map requirement, a story-less tool name, a
+                     dropped enumeration item, and an exemplar-only
+                     Trace (draftlint v1.2, the prompt v1.9
+                     story-first rule) each surface as "grounding:"
+                     findings; an echoed enumeration and a
+                     source-plan title inside a [VERIFY] item do
+                     not; testplangen.grounding false disables
                      just that layer
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
@@ -126,7 +129,7 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 
 **Expected Result:** The merge is denied with a lock conflict.
 
-**Trace:** exemplar pattern — multi-user denial case (Plan A).
+**Trace:** "Edits to a locked route must be denied" — story conflict statement; exemplar pattern — multi-user denial case (Plan A).
 
 ## Open Questions
 - [ ] [VERIFY: minimum network configuration for setup]
@@ -154,7 +157,8 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 # findings: the Trace check, the row-3 citation check, and TC-N1
 # uncited.
 BAD_DRAFT = GOOD_DRAFT.replace(
-    "**Trace:** exemplar pattern — multi-user denial case (Plan A).\n", ""
+    "**Trace:** \"Edits to a locked route must be denied\" — story conflict "
+    "statement; exemplar pattern — multi-user denial case (Plan A).\n", ""
 ).replace(
     "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |",
     "| 3 | route edits denied on a locked route (conflict statement) | |",
@@ -563,7 +567,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.8")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.9")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -825,6 +829,28 @@ def main():
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("echoed enumeration not flagged",
           r.returncode == 0 and "enumerated item" not in draft, draft[:900])
+    state.drafts.clear()
+    exemplar_only = GOOD_DRAFT.replace(
+        "**Trace:** \"Edits to a locked route must be denied\" — story conflict "
+        "statement; exemplar pattern — multi-user denial case (Plan A).",
+        "**Trace:** exemplar pattern — multi-user denial case (Plan A).")
+    state.gen_text = wrap(exemplar_only)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("exemplar-only Trace flagged (the story-first rule)",
+          r.returncode == 0
+          and "TC-N1 Trace cites no story statement" in draft, draft[:900])
+    state.drafts.clear()
+    verify_titled = GOOD_DRAFT.replace(
+        "- [ ] [VERIFY: minimum network configuration for setup]",
+        "- [ ] [VERIFY: exemplar \"Quantum Route Wizard Test Plan\" covers "
+        "cascading merges — the story is silent]")
+    state.gen_text = wrap(verify_titled)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("source-plan title inside a [VERIFY] item not flagged as a tool",
+          r.returncode == 0 and "tool-like name" not in draft, draft[:900])
+    state.gen_text = wrap(GOOD_DRAFT)
     r = run_job(cfg_main, ["--story", "16", "--dry-run"])
     check("grounding findings counted in verify=",
           re.match(r"^\d+-findings$", summary_of(r.stdout).get("verify", "")),
