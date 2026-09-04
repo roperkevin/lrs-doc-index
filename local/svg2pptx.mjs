@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * svg2pptx v1.3 — SlideFigures SVG figures → editable PowerPoint shapes
+ * svg2pptx v1.4 — SlideFigures SVG figures → editable PowerPoint shapes
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the sweep machine already
  * has Node). Takes the figure SVGs the local sweep writes into the
@@ -72,12 +72,19 @@
  *
  * Anything outside that vocabulary is reported per file and skipped,
  * never guessed at. Gate: local/harness/check_svg2pptx.py.
+ *
+ * v1.4: `parseFigure` / `emitFigure` (and EMU_PX) are exported and the
+ * CLI runs only when this file is executed directly, so draft2pptx.mjs
+ * can embed a draft's cited story figures as the same native shape
+ * groups (TestPlanGen v2.27) — one figure vocabulary, one emitter.
+ * CLI behavior and output are byte-for-byte unchanged.
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import { basename, dirname, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const EMU_PX = 9525;                 // 96 dpi
+export const EMU_PX = 9525;          // 96 dpi
 const SLIDE_W = 12192000;            // 13.33 in (16:9)
 const SLIDE_H = 6858000;             // 7.5 in
 const MARGIN = 457200;               // 0.5 in of slide edge kept clear
@@ -332,7 +339,7 @@ function parsePathD(d, ox, oy) {
   return cmds;
 }
 
-function parseFigure(file) {
+export function parseFigure(file) {
   const svg = readFileSync(file, "utf8");
   const vb = svg.match(/viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/);
   if (!vb) throw new Error(`${file}: no viewBox`);
@@ -504,7 +511,7 @@ function fontFamily(st) {
 }
 
 // build one figure's shapes in group child space (px * EMU * scale)
-function emitFigure(fig, s, idStart) {
+export function emitFigure(fig, s, idStart) {
   const E = (v) => Math.round(v * EMU_PX * s);
   const shapes = [];
   let id = idStart;
@@ -961,34 +968,42 @@ function zip(files) {
 }
 
 // ------------------------------------------------------------------ main
-const { files, out, docTitle, noTables } = collectInputs(process.argv.slice(2));
-if (files.length === 0) {
-  console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
-  process.exit(2);
-}
-const figures = [];
-const scCache = {};
-for (const f of files) {
-  try {
-    const fig = parseFigure(f);
-    if (fig.unknown.length) console.error(`note: ${f}: skipped unknown element(s): ${fig.unknown.join(", ")}`);
-    const sc = sidecarFor(f, scCache);
-    fig.docTitle = docTitle || (sc ? sc.title : "");
-    fig.meta = sc ? sc.meta : "";
-    const sec = noTables ? null : caseSection(sc, basename(f));
-    if (sec) {
-      if (sec.head) fig.caseTitle = sec.head;
-      fig.tables = sec.tables;
-    }
-    figures.push(fig);
-  } catch (e) {
-    console.error(`skip: ${e.message}`);
+// v1.4: run only when executed directly — an import (draft2pptx.mjs's
+// figure embedding) gets the parser/emitter with no CLI side effects
+function main() {
+  const { files, out, docTitle, noTables } = collectInputs(process.argv.slice(2));
+  if (files.length === 0) {
+    console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
+    process.exit(2);
   }
+  const figures = [];
+  const scCache = {};
+  for (const f of files) {
+    try {
+      const fig = parseFigure(f);
+      if (fig.unknown.length) console.error(`note: ${f}: skipped unknown element(s): ${fig.unknown.join(", ")}`);
+      const sc = sidecarFor(f, scCache);
+      fig.docTitle = docTitle || (sc ? sc.title : "");
+      fig.meta = sc ? sc.meta : "";
+      const sec = noTables ? null : caseSection(sc, basename(f));
+      if (sec) {
+        if (sec.head) fig.caseTitle = sec.head;
+        fig.tables = sec.tables;
+      }
+      figures.push(fig);
+    } catch (e) {
+      console.error(`skip: ${e.message}`);
+    }
+  }
+  if (figures.length === 0) {
+    console.error("no convertible figures");
+    process.exit(1);
+  }
+  writeFileSync(out, buildPptx(figures));
+  console.log(`${out}: ${figures.length} figure(s), one per slide` +
+    (files.length > figures.length ? ` (${files.length - figures.length} skipped)` : ""));
 }
-if (figures.length === 0) {
-  console.error("no convertible figures");
-  process.exit(1);
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  main();
 }
-writeFileSync(out, buildPptx(figures));
-console.log(`${out}: ${figures.length} figure(s), one per slide` +
-  (files.length > figures.length ? ` (${files.length - figures.length} skipped)` : ""));

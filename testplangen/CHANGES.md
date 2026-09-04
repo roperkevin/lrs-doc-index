@@ -1,3 +1,60 @@
+# TestPlanGen v2.27 — review deck embeds cited figures (draft2pptx.mjs v1.1, svg2pptx v1.4)
+
+The v2.26 queued follow-on: a draft case's `**Figure:**` line (prompt
+v1.10's FIGURES rule) used to pass through the review deck as prose —
+the raw markdown image link on the case slide. The deck now renders
+the cited diagram itself.
+
+**draft2pptx.mjs v1.1** — new `--media <dir>` flag (point it at the
+OneDrive-synced sidecar library's `media` folder):
+
+- Each case's `**Figure:**` image links are lifted out of the case
+  body at parse time (alt text + href; never rendered as raw
+  markdown). A cited link is absolute (testplangen.mjs v1.6's
+  rewrite) or sidecar-relative (a cloud-flow draft); either way the
+  FILE is the last path segment, resolved under `--media`.
+- A resolved figure becomes a FIGURE SLIDE directly after its case's
+  slides: the deck's chrome (TC id pill in the section colour, a
+  teal FIGURE tag, the story's own alt text as the slide title, the
+  footer of record) around the same native, editable shape group
+  svg2pptx puts on a figure slide — one figure vocabulary, one
+  emitter, via the new svg2pptx exports. The plate stays dropped,
+  the group scales down only when it would not fit, and the SVG's
+  title/desc ride along as the group's name and alt text.
+- Degrade, never fail: without `--media`, or when the file is
+  missing or unparseable, the deck still converts — the case slide
+  carries a muted `Figure: <alt> (not embedded)` note and stderr
+  names the fix (each reason distinctly). A `--media` path that is
+  not a directory is refused up front (the pinned-lanes rule: an
+  explicit human choice never degrades silently).
+
+**svg2pptx.mjs v1.4** — `parseFigure` / `emitFigure` / `EMU_PX`
+exported; the CLI runs only when executed directly. CLI behavior and
+output byte-for-byte unchanged (`local/CHANGES.md`).
+
+**Harness** — `check_draft2pptx.py` 28 → **37**: a figure-draft
+fixture (SlideFigures-vocabulary SVG in a media dir) proves the
+figure slide lands directly after its case with the id chip, FIGURE
+tag, alt-text title, and a native shape group (plate dropped, raw
+URL on no slide); the no-`--media` and missing-file degrades keep
+the deck converting with the muted note and the coaching stderr
+line; the non-directory `--media` refusal. 37/37 PASS;
+`check_svg2pptx.py` PASS post-refactor; `check_draft2docx.py` 23/23
+and `check_testplangen.py` 126/126 unchanged.
+
+**Docs** — Local_Setup §11 deck note gains `--media`; README/STATUS
+rows. testplangen.mjs, draftlint, prompt (v1.10), flows, packages,
+schemas: **unchanged**; NEVER bump `Config.PromptVersion`.
+
+| Piece | Version | Where |
+|---|---|---|
+| Draft → review deck converter (figure slides, --media) | **v1.1** | `local/draft2pptx.mjs` |
+| Figure converter (importable parser/emitter) | **v1.4** | `local/svg2pptx.mjs` |
+| Deck gate | **37 checks** | `local/harness/check_draft2pptx.py` |
+
+| Date | Machine | check_draft2pptx | check_svg2pptx |
+|---|---|---|---|
+| 2026-09-04 | authoring env | 37/37 PASS | PASS |
 # TestPlanGen v2.26 — figures in cases (prompt v1.10, testplangen.mjs v1.6, draftlint v1.3)
 
 (Merged after v2.25 landed independently on main — this entry
