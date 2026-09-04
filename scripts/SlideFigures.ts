@@ -1,5 +1,5 @@
 /**
- * SlideFigures v2.2 — pptx slide diagrams → standalone SVG figures
+ * SlideFigures v2.4 — pptx slide diagrams → standalone SVG figures
  * --------------------------------------------------------------------
  * DF-1 (2026-09-03); DF-2 widens coverage; DF-3 (2026-09-03) adds layout
  * normalisation, legends, rotation and the raster tracing tier; DF-4
@@ -13,7 +13,10 @@
  * DF-11 (2026-09-03) redraws UI screenshots as standardized wireframes;
  * DF-12 (2026-09-03) lifts wireframe fidelity — real OCR'd text and
  * anti-aliasing artifact suppression; DF-13 (2026-09-03) decodes every
- * raster the corpus pastes — full PNG, baseline JPEG, GIF, BMP.
+ * raster the corpus pastes — full PNG, baseline JPEG, GIF, BMP; DF-14
+ * (2026-09-04) keeps large-font text and renders controls as icons;
+ * DF-15 (2026-09-04) renders screenshots ALONGSIDE diagrams and
+ * assembles rounded-corner fields.
  * Companion to ZipTextExtract, same input (the
  * file's bytes as base64), plus an OPTIONAL third parameter (DF-12): a
  * JSON array of per-picture OCR transcriptions,
@@ -23,6 +26,44 @@
  *
  *   { figures: [{ slide, name, svg, alt, anchor }], count, skipped,
  *     ocrWanted }
+ *
+ * v2.4 (DF-15):
+ *   - A SCREENSHOT NEXT TO A DIAGRAM RENDERS TOO. The lanes were a
+ *     waterfall — the first one to produce figures returned, so a
+ *     screenshot pasted beside a drawn ruler (or beside the tables
+ *     that drive a redraw) silently kept its caption. The wireframe
+ *     tier now screens the slide's pictures ALWAYS and its figures
+ *     append after whatever the diagram lanes produced, numbered as
+ *     one sibling sequence ("route diagram (1 of 2)" + "interface
+ *     wireframe (2 of 2)"); redraw figures keep their meaning anchors
+ *     and appended wireframes anchor only against unclaimed tables.
+ *     The TRACE tier stays a last resort for picture-only slides —
+ *     tracing a picture on a slide that already drew its diagram
+ *     would duplicate the diagram.
+ *   - ROUNDED FIELDS ASSEMBLE. Mockup-style screenshots draw inputs
+ *     with rounded corners; a 5px radius on a ~26px field trims the
+ *     side verticals to ~62% of the box height, under the assembler's
+ *     70% coverage floor — so every field shattered into stray
+ *     full-width lines (a form with no fields). The floor drops to
+ *     55%: realistic radii assemble, a half-height fragment still
+ *     fails.
+ *
+ * v2.3 (DF-14):
+ *   - LARGE TYPE NO LONGER VANISHES. The glyph sweep accepted ink runs
+ *     up to 14px wide, so a dialog title set large enough that its
+ *     glyphs run wider simply disappeared from the wireframe — no bar,
+ *     no anything. Run acceptance widens to UI_RUN_WMAX (40px); the
+ *     existing height cap and sliver/aspect filters still keep borders
+ *     and chrome out of the text pool.
+ *   - CONTROLS BECOME ICONS. An isolated square-ish, ink-DENSE box —
+ *     a calendar button, a dropdown arrow, a cursor glyph — used to
+ *     render as a stub of greek (or vanish). It is now an "ico" row,
+ *     drawn as a quiet outlined chip at its true box. The density
+ *     floor (UI_ICO_DENSITY) keeps a rounded panel corner's sparse arc
+ *     from minting phantom icons — a sparse square blob is neither
+ *     text nor icon and is dropped. Icons never claim OCR words, never
+ *     count toward the 3-text-row gate, and drop when they sit ON a
+ *     colour block (the block already reads as the control).
  *
  * v2.2 (DF-13):
  *   - EVERY COMMON RASTER FORMAT REACHES THE RASTER TIERS. The
@@ -370,6 +411,11 @@ const UI_SNAP = 7;             // px of jitter that snaps to one shared edge
 const UI_RECT_TOL = 8;         // border ends this close assemble into a rectangle
 const UI_MAX_ELEMS = 260;      // busier than this is a photo mosaic, not a UI
 const UI_GLYPH_HMAX = 32;      // ink taller than this is chrome, not a glyph
+const UI_RUN_WMAX = 40;        // ink runs up to this wide are glyph/control ink
+                               // (DF-14 — 14 made large-font headings vanish)
+const UI_ICO_DENSITY = 0.3;    // an isolated square-ish box is an icon when
+                               // at least this fraction of it is ink; a
+                               // rounded corner's arc is sparser (DF-14)
 const UI_TEXT_GAP = 1.2;       // glyph gaps up to this x row-height chain a row
 const UI_PAR_GAP = 3;          // parallel thin bars this close are ONE
                                // anti-aliased stroke, not a stripe cluster
@@ -574,6 +620,10 @@ function figStyle(): string {
     ".wf-btn{stroke-width:1.2}" +
     ".wf-sep{stroke:#D7DFDF;stroke-width:1}" +
     ".wf-gk{fill:#B9C6C6}.wf-gkh{fill:#4E6265}.wf-gkp{fill:#FFFFFF}" +
+    // DF-14: icon/control placeholders — a quiet outlined chip at the
+    // control's true box, so calendar buttons and dropdown glyphs read
+    // as controls instead of stubs of greek
+    ".wf-ico{fill:#EFF2F2;stroke:#6E8285;stroke-width:1.1}" +
     // DF-12: transcribed rows render as real text in the same three
     // roles the bars used — body slate, heading ink, on-fill. The bars'
     // on-fill WHITE does not carry over: the source's saturated fill
@@ -1884,7 +1934,8 @@ interface SpanParams {
 // range with its routes — "E1 R1L3 10 → R2L3 52.5" — because a cross-route
 // range is meaningless without them. Segment widths are equal: a schematic
 // of the network's order, not a claim about route lengths.
-function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigure[] {
+function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams,
+                        extra: number): SlideFigure[] {
   const chain = routeChain(tables, p.fromRid, p.toRid);
   let sRid = splitRoute(tables, p.outputGi, p.split);
   let k = chain.indexOf(sRid);
@@ -1977,8 +2028,9 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
       body.push(leg.svg);
       hgt = ry + ID_OFF + LEGEND_GAP + 8 + FIG_PAD;
     }
-    const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " + rows.length + ")";
-    figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length),
+    const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " +
+      (rows.length + extra) + ")";
+    figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length + extra),
       svg: svgWrap(no, FIG_W, hgt, title, row.alt, body.join("")),
       alt: row.alt,
       anchor: row.gi >= 0 ? tables[row.gi].rows[0].slice() : [] });
@@ -1986,7 +2038,10 @@ function buildSpanRedraw(no: number, tables: FTable[], p: SpanParams): SlideFigu
   return figsOut;
 }
 
-function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
+// extra (DF-15): additional figures the slide will ALSO emit (its
+// wireframed screenshots) — counted into every name and "(N of M)" title
+function buildRedraw(xml: string, no: number, tables: FTable[],
+                     extra: number): SlideFigure[] {
   const cells: string[] = [];
   const tre = /<a:t>([^<]*)<\/a:t>/g;
   let m: RegExpExecArray | null;
@@ -2069,7 +2124,7 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
     return buildSpanRedraw(no, tables, {
       m0: m0, m1: m1, split: split, eventId: eventId,
       fromRid: fromRid, toRid: toRid, inputGi: inputGi, outputGi: outputGi,
-    });
+    }, extra);
   }
 
   const topo = topology(kind);
@@ -2229,8 +2284,9 @@ function buildRedraw(xml: string, no: number, tables: FTable[]): SlideFigure[] {
       body.push(leg.svg);
       hgt = oy + innerH + 42 + FIG_PAD;
     }
-    const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " + rows.length + ")";
-    figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length),
+    const title = "Slide " + no + " route diagram (" + (ri + 1) + " of " +
+      (rows.length + extra) + ")";
+    figsOut.push({ slide: no, name: figName(no, ri + 1, rows.length + extra),
       svg: svgWrap(no, FIG_W, hgt, title, row.alt, body.join("")),
       alt: row.alt,
       anchor: row.gi >= 0 ? tables[row.gi].rows[0].slice() : [] });
@@ -3272,9 +3328,15 @@ function uiBlocks(img: PngImg, bg: number[]): UBlock[] {
 // glyph-sized ink: short runs stack into glyph boxes (an active-set sweep,
 // so cost stays linear in the ink), then glyphs sharing a baseline chain
 // into text rows. Border verticals masquerading as strokes are rejected by
-// aspect; border horizontals never enter (their runs are long).
+// aspect; border horizontals never enter (their runs are long). DF-14
+// widens run acceptance 14 -> UI_RUN_WMAX: a heading set large enough that
+// its glyphs run wider than 14px used to vanish from the figure entirely.
+// An ISOLATED square-ish, ink-dense box is not a letter but a CONTROL — a
+// calendar button, a dropdown arrow, a toolbar glyph — and becomes an
+// "ico" row (rendered as an icon placeholder); the density floor keeps a
+// rounded panel corner's sparse arc from minting phantom icons.
 function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
-  interface Gly { x0: number; x1: number; y0: number; y1: number; last: number; }
+  interface Gly { x0: number; x1: number; y0: number; y1: number; last: number; n: number; }
   const open: Gly[] = [];
   const done: Gly[] = [];
   for (let y = 0; y < img.h; y++) {
@@ -3292,7 +3354,7 @@ function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
       if (ink) { if (a0 < 0) a0 = x; continue; }
       if (a0 < 0) continue;
       const a1 = x - 1;
-      if (a1 - a0 + 1 <= 14) {
+      if (a1 - a0 + 1 <= UI_RUN_WMAX) {
         let hit: Gly | null = null;
         for (const g of open) {
           if (a0 <= g.x1 + 2 && a1 >= g.x0 - 2) { hit = g; break; }
@@ -3300,8 +3362,9 @@ function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
         if (hit) {
           hit.x0 = Math.min(hit.x0, a0); hit.x1 = Math.max(hit.x1, a1);
           hit.y1 = y; hit.last = y;
+          hit.n += a1 - a0 + 1;
         } else {
-          open.push({ x0: a0, x1: a1, y0: y, y1: y, last: y });
+          open.push({ x0: a0, x1: a1, y0: y, y1: y, last: y, n: a1 - a0 + 1 });
         }
       }
       a0 = -1;
@@ -3311,7 +3374,7 @@ function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
   const glyphs: Gly[] = [];
   for (const g of done) {
     const w = g.x1 - g.x0 + 1, h = g.y1 - g.y0 + 1;
-    if (w > 40 || h < 4 || h > UI_GLYPH_HMAX) continue;
+    if (w > UI_RUN_WMAX || h < 4 || h > UI_GLYPH_HMAX) continue;
     if (w <= 3 && h > 6 * w) continue;   // a border sliver, not a stroke
     glyphs.push(g);
   }
@@ -3324,10 +3387,22 @@ function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
     const bh = hs[Math.floor(hs.length / 2)];
     band.sort((a, b) => a.x0 - b.x0);
     let cur: UTextRow | null = null;
-    let count = 0;
+    let count = 0, gn = 0;
     const emit = (): void => {
-      if (cur && (count >= 2 || cur.x1 - cur.x0 >= 12) && cur.x1 - cur.x0 >= 10) rows.push(cur);
-      cur = null; count = 0;
+      if (cur) {
+        const w = cur.x1 - cur.x0 + 1;
+        if (count === 1 && cur.h >= 10 && w >= 6 && w <= 2.2 * cur.h) {
+          // an isolated square-ish box: a control if the ink is dense,
+          // a rounded corner's sparse arc (or dither) if not — never text
+          if (gn >= UI_ICO_DENSITY * w * cur.h) {
+            cur.kind = "ico";
+            rows.push(cur);
+          }
+        } else if ((count >= 2 || w >= 13) && w >= 11) {
+          rows.push(cur);
+        }
+      }
+      cur = null; count = 0; gn = 0;
     };
     for (const g of band) {
       if (cur && g.x0 - cur.x1 <= Math.max(6, UI_TEXT_GAP * bh)) {
@@ -3338,7 +3413,7 @@ function uiTextRows(img: PngImg, bg: number[]): UTextRow[] {
       } else {
         emit();
         cur = { x0: g.x0, y0: g.y0, x1: g.x1, y1: g.y1, h: g.y1 - g.y0 + 1, kind: "gk" };
-        count = 1;
+        count = 1; gn = g.n;
       }
     }
     emit();
@@ -3448,12 +3523,17 @@ function uiAssemble(hb: TBar[], vb: TBar[]): {
   // its verticals first and a pair of interior row separators can no longer
   // borrow them to assemble a phantom rectangle between themselves — the
   // separators stay separators
+  // coverage floor 0.55 (was 0.7, DF-15): mockup-style fields draw with
+  // ROUNDED corners, and a 4-6px radius on a ~26px input field trims the
+  // side verticals to just under 70% of the box height — every such
+  // field shattered into stray full-width lines instead of assembling.
+  // 0.55 admits realistic radii while a half-height fragment still fails.
   const sideAt = (x: number, y0: number, y1: number): VB | null => {
     for (const v of vs) {
       if (v.side) continue;
       if (Math.abs(v.x - x) > UI_RECT_TOL) continue;
       const ov = Math.min(v.y1, y1) - Math.max(v.y0, y0);
-      if (ov >= (y1 - y0) * 0.7) return v;
+      if (ov >= (y1 - y0) * 0.55) return v;
     }
     return null;
   };
@@ -3537,12 +3617,15 @@ function uiScan(img: PngImg): UiParts | null {
     asm.hseps.length + asm.vseps.length + asm.rules.length;
   if (asm.rects.length < 1) return null;
   if (asm.rects.length + blocks.length < 2) return null;
-  if (texts.length < 3) return null;
+  // the "3+ text rows" gate means TEXT — icons are controls, not prose,
+  // and two calendar buttons must not turn a photo fragment into a UI
+  const textRows = texts.filter((t) => t.kind !== "ico");
+  if (textRows.length < 3) return null;
   if (total > UI_MAX_ELEMS) return null;
   // classification: panels hold things, fields are wide/short and hold at
   // most one text row, everything else stays a group box; blocks split by
   // proportion into buttons, header bands and tiles, tinted by hue family
-  const ths = texts.map((t) => t.h).sort((a, b) => a - b);
+  const ths = textRows.map((t) => t.h).sort((a, b) => a - b);
   const medH = ths.length ? ths[Math.floor(ths.length / 2)] : 10;
   const inside = (x: number, y: number, r: URect): boolean =>
     x > r.x0 && x < r.x1 && y > r.y0 && y < r.y1;
@@ -3574,15 +3657,35 @@ function uiScan(img: PngImg): UiParts | null {
     if (h <= Math.max(44, 3.2 * medH)) b.kind = w >= parentW * 0.55 ? "band" : "btn";
     else b.kind = "tile";
   }
+  // a colour block CONTAINED in a text row is the row's own ink (a solid
+  // glyph, a swatch inside the line), not a control behind it — a real
+  // button's padding makes it larger than its label row (DF-14; the
+  // block otherwise double-rendered as a chip under the row's bar)
+  const rowless = blocks.filter((b) => {
+    for (const t of texts) {
+      if (t.kind === "ico") continue;
+      if (b.x0 >= t.x0 - 3 && b.x1 <= t.x1 + 3 &&
+          b.y0 >= t.y0 - 3 && b.y1 <= t.y1 + 3) return false;
+    }
+    return true;
+  });
+  const kept: UTextRow[] = [];
   for (const t of texts) {
     let onfill = false;
-    for (const b of blocks) {
+    for (const b of rowless) {
       if ((t.x0 + t.x1) / 2 > b.x0 && (t.x0 + t.x1) / 2 < b.x1 &&
           (t.y0 + t.y1) / 2 > b.y0 && (t.y0 + t.y1) / 2 < b.y1) { onfill = true; break; }
     }
+    if (t.kind === "ico") {
+      // an icon ON a colour block is that control's own glyph — the
+      // block already reads as the control, so the icon is dropped
+      if (!onfill) kept.push(t);
+      continue;
+    }
     t.kind = onfill ? "gkp" : (t.h >= 1.35 * medH ? "gkh" : "gk");
+    kept.push(t);
   }
-  return { rects: asm.rects, blocks: blocks, texts: texts,
+  return { rects: asm.rects, blocks: rowless, texts: kept,
     hseps: asm.hseps, vseps: asm.vseps, rules: asm.rules };
 }
 
@@ -3650,10 +3753,16 @@ function uiRender(no: number, idx: number, total: number, p: UiParts,
   // text rows: real text where OCR covers the row (DF-12), placeholder
   // bars everywhere else. The row's scanned geometry stays the layout
   // authority — the transcription only replaces the greek, in the same
-  // three weights the bars used (heading / body / on-fill).
+  // three weights the bars used (heading / body / on-fill). Icon rows
+  // (DF-14) draw as small outlined placeholders at their true box — a
+  // calendar button reads as a control, never as a stub of greek.
   let txn = 0;
   for (const t of p.texts) {
     const yc = ((t.y0 + t.y1) / 2) * s;
+    if (t.kind === "ico") {
+      rect("wf-ico", t.x0, t.y0, t.x1 + 1, t.y1 + 1, 2.5);
+      continue;
+    }
     const label = words ? uiRowText(t, words) : "";
     if (label) {
       const fs = Math.min(15, Math.max(8, t.h * s * 0.9));
@@ -3682,14 +3791,17 @@ function uiRender(no: number, idx: number, total: number, p: UiParts,
     (p.blocks.length - nb === 1 ? "" : "s"));
   if (p.hseps.length) bits.push(p.hseps.length + " row separator" +
     (p.hseps.length === 1 ? "" : "s"));
-  bits.push(p.texts.length + " text row" + (p.texts.length === 1 ? "" : "s"));
+  const nico = p.texts.filter((t) => t.kind === "ico").length;
+  if (nico) bits.push(nico + " icon" + (nico === 1 ? "" : "s"));
+  const ntx = p.texts.length - nico;
+  bits.push(ntx + " text row" + (ntx === 1 ? "" : "s"));
   const title = "Slide " + no + " interface wireframe" +
     (total > 1 ? " (" + idx + " of " + total + ")" : "");
   const txt = txn === 0
     ? "Text inside a screenshot is pixels, so text rows render as placeholder bars"
-    : txn + " of " + p.texts.length + " text rows carry text transcribed from the " +
+    : txn + " of " + ntx + " text rows carry text transcribed from the " +
       "screenshot (OCR, approximate)" +
-      (txn === p.texts.length ? "" : "; the rest render as placeholder bars");
+      (txn === ntx ? "" : "; the rest render as placeholder bars");
   const desc = "Interface screenshot redrawn as a standardized wireframe: " +
     bits.join(", ") + ". " + txt + "; positions are approximate to the source " +
     "image and colours are mapped to the corpus palette.";
@@ -3698,28 +3810,27 @@ function uiRender(no: number, idx: number, total: number, p: UiParts,
     alt: desc, anchor: [] };
 }
 
-function uiFigures(no: number, pics: FPic[], tables: FTable[],
-                   ocr: { [entry: string]: UWord[] }, wanted: string[]): SlideFigure[] {
-  const qual: { pic: FPic; parts: UiParts; w: number }[] = [];
+// the pictures on a slide that pass the wireframe gate, scanned once —
+// DF-15 splits qualification from rendering so buildFigures can number
+// wireframes AFTER whatever diagram figures the slide also produced
+interface UiQual { pic: FPic; parts: UiParts; w: number; words: UWord[] | null; }
+
+function uiQualify(pics: FPic[], ocr: { [entry: string]: UWord[] },
+                   wanted: string[]): UiQual[] {
+  const qual: UiQual[] = [];
   for (const pic of pics) {
     const img = imgDecode(pic.data);
     if (!img) continue;
     const parts = uiScan(img);
-    if (parts) qual.push({ pic: pic, parts: parts, w: img.w });
-  }
-  const out: SlideFigure[] = [];
-  const spans: number[][] = [];
-  for (let i = 0; i < qual.length; i++) {
-    const words = ocr[qual[i].pic.entry] || null;
+    if (!parts) continue;
+    const words = ocr[pic.entry] || null;
     // a wireframe rendered without a transcription is the OCR worth
     // spending (DF-12): name its media entry so the caller can OCR
     // exactly these pictures and re-render once
-    if (!words && wanted.indexOf(qual[i].pic.entry) < 0) wanted.push(qual[i].pic.entry);
-    out.push(uiRender(no, i + 1, qual.length, qual[i].parts, qual[i].w, words));
-    spans.push([qual[i].pic.y, qual[i].pic.y + qual[i].pic.h]);
+    if (!words && wanted.indexOf(pic.entry) < 0) wanted.push(pic.entry);
+    qual.push({ pic: pic, parts: parts, w: img.w, words: words });
   }
-  assignAnchors(out, spans, tables);
-  return out;
+  return qual;
 }
 
 // vector clusters first (each qualifying cluster is its own figure); a slide
@@ -3740,23 +3851,59 @@ function buildFigures(xml: string, no: number, pics: () => FPic[],
     const mode = clusterMode(c);
     if (mode) qual.push({ c: c, mode: mode });
   }
-  const out: SlideFigure[] = [];
-  const spans: number[][] = [];
-  for (let i = 0; i < qual.length; i++) {
-    out.push(qual[i].mode === "ruler"
-      ? renderRuler(qual[i].c, no, i + 1, qual.length)
-      : renderGraph(qual[i].c, no, i + 1, qual.length));
-    spans.push([qual[i].c.y0, qual[i].c.y1]);
-  }
-  if (out.length) {
+  // DF-15: interface screenshots render REGARDLESS of what else the slide
+  // carries. The old waterfall stopped at the first lane that produced
+  // figures, so a screenshot pasted NEXT TO a drawn diagram (or beside
+  // the tables that drive a redraw) silently kept its caption. The
+  // wireframe tier's structural gate makes appending safe — it only ever
+  // fires on genuine interfaces, never on a photo of the diagram itself —
+  // while the TRACE tier stays a last resort for picture-only slides:
+  // tracing a picture on a slide that already drew its diagram would
+  // duplicate the diagram.
+  const pl = pics();
+  const uiq = uiQualify(pl, ocr, wanted);
+  const addUi = (out: SlideFigure[], spans: number[][], idxOff: number,
+                 total: number): void => {
+    for (let i = 0; i < uiq.length; i++) {
+      out.push(uiRender(no, idxOff + i + 1, total, uiq[i].parts, uiq[i].w, uiq[i].words));
+      spans.push([uiq[i].pic.y, uiq[i].pic.y + uiq[i].pic.h]);
+    }
+  };
+  if (qual.length) {
+    const total = qual.length + uiq.length;
+    const out: SlideFigure[] = [];
+    const spans: number[][] = [];
+    for (let i = 0; i < qual.length; i++) {
+      out.push(qual[i].mode === "ruler"
+        ? renderRuler(qual[i].c, no, i + 1, total)
+        : renderGraph(qual[i].c, no, i + 1, total));
+      spans.push([qual[i].c.y0, qual[i].c.y1]);
+    }
+    addUi(out, spans, qual.length, total);
     assignAnchors(out, spans, tables);
     return out;
   }
-  const r = buildRedraw(xml, no, tables);
-  if (r.length) return r;
-  const pl = pics();
-  const ui = uiFigures(no, pl, tables, ocr, wanted);
-  if (ui.length) return ui;
+  const r = buildRedraw(xml, no, tables, uiq.length);
+  if (r.length) {
+    // redraw figures carry MEANING anchors their own lane assigned; the
+    // appended wireframes anchor geometrically, against only the tables
+    // no redraw figure already claimed
+    const uiOut: SlideFigure[] = [];
+    const uiSpans: number[][] = [];
+    addUi(uiOut, uiSpans, r.length, r.length + uiq.length);
+    const taken: { [k: string]: boolean } = {};
+    for (const f of r) if (f.anchor.length) taken[f.anchor.join("\u0000")] = true;
+    assignAnchors(uiOut, uiSpans,
+      tables.filter((t) => !taken[t.rows[0].join("\u0000")]));
+    return r.concat(uiOut);
+  }
+  if (uiq.length) {
+    const out: SlideFigure[] = [];
+    const spans: number[][] = [];
+    addUi(out, spans, 0, uiq.length);
+    assignAnchors(out, spans, tables);
+    return out;
+  }
   return traceFigures(xml, no, pl, tables);
 }
 

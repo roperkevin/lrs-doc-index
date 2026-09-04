@@ -1,5 +1,29 @@
 # Local sweep — release notes
 
+## v1.41 (2026-09-04)
+
+**Wireframe OCR needs Tesseract alone — and going without is never
+silent.** Two serviceability fixes for "where is my wireframe text":
+
+- `detectOcrTools` no longer disables ALL OCR when `pdftoppm` is not
+  runnable: pdftoppm is only the scanned-PDF lane's page renderer, so
+  a machine with Tesseract but no Poppler now still transcribes
+  screenshots (the PDF lane alone is disabled, with a note saying
+  exactly that). An unrunnable tesseract still disables everything
+  loudly. The PDF OCR rescue re-entry gates on pdftoppm too, so a
+  Skipped scan can't rechurn against a missing renderer.
+- Placeholder wireframes are counted and announced: the run summary
+  gains `figures_ocr` (pictures transcribed this run) and
+  `figures_ocr_off` (wireframes rendered with greek bars because OCR
+  is not configured), and any nonzero `figures_ocr_off` prints one
+  stderr note naming the fix (`sweep.tesseractPath` + `--reformat`).
+  Both counters ride the reformat summary as well.
+
+Gate: the wireframe-OCR leg now runs with pdftoppm pointing NOWHERE
+(tesseract alone must transcribe, with the PDF-lane note), plus a
+placeholder-note leg (no OCR configured → `figures_ocr_off` counted,
+loud note). 211/211.
+
 ## v1.40 (2026-09-03)
 
 **Wireframe OCR — screenshots keep their words** (SlideFigures v2.1 /

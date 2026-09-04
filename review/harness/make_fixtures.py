@@ -932,6 +932,96 @@ s_f20 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
 s_f20.shapes.add_picture('ui_p4t.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
                          Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
 
+# --- slide 21 (v2.3 / DF-14): large type + controls. A dialog title set
+# LARGE (18px-wide glyphs — over the old 14px run cap, so pre-DF-14 the
+# heading vanished from the wireframe entirely), two dense 16x16 control
+# glyphs (calendar-button shape — pre-DF-14 these rendered as stubs of
+# greek), and a sparse 16x16 corner-arc blob that must mint NEITHER an
+# icon nor a text bar (the density floor).
+_ui3 = []
+_ui3.extend([(24, 536, 20, 22, GRAY13), (24, 536, 398, 400, GRAY13),
+             (24, 26, 20, 400, GRAY13), (534, 536, 20, 400, GRAY13)])  # panel
+for _k in range(4):                                # the LARGE heading
+    _gx = 40 + _k * 26
+    _ui3.append((_gx, _gx + 18, 36, 50, DARK13))
+_ui3.extend([(40 + _k * 7, 44 + _k * 7, 74, 82, DARK13) for _k in range(6)])
+_ui3.extend([(40, 240, 90, 92, GRAY13), (40, 240, 114, 116, GRAY13),
+             (40, 42, 90, 116, GRAY13), (238, 240, 90, 116, GRAY13)])  # field
+for _iy in (90, 150):                              # two dense control glyphs
+    _ui3.append((300, 316, _iy, _iy + 16, DARK13))
+for _t in range(12):                               # a sparse arc-like blob
+    _ui3.append((330 + _t, 330 + _t + 1, 205 - _t, 207 - _t, GRAY13))
+for _ry in (260, 280):                             # body rows
+    _ui3.extend([(40 + _k * 7, 44 + _k * 7, _ry, _ry + 8, DARK13)
+                 for _k in range(10)])
+_png_write('ui_controls.png', 560, 420, _ui3)
+s_f21 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f21.shapes.add_picture('ui_controls.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
+# --- slide 22 (v2.4 / DF-15): a drawn ruler AND a pasted screenshot on ONE
+# slide — the corpus's "here is the case, and here is the app doing it"
+# layout. The old waterfall emitted only the ruler and the screenshot
+# silently kept its caption; now BOTH render, numbered as one sibling
+# sequence (ruler fig1, wireframe fig2).
+s_f22 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+_line(s_f22, 1.0 * IN, 2.0 * IN, 4.0 * IN, 2.0 * IN)
+for k in range(7):
+    _line(s_f22, (1.0 + k * 0.5) * IN, 1.94 * IN, (1.0 + k * 0.5) * IN, 2.06 * IN)
+    _label(s_f22, (0.9 + k * 0.5) * IN, 1.55 * IN, str(10 + k))
+_line(s_f22, 1.0 * IN, 2.0 * IN, 2.5 * IN, 2.0 * IN, rgb='002060', w=int(0.05 * IN))
+_label(s_f22, 0.3 * IN, 1.95 * IN, 'R22', 12)
+s_f22.shapes.add_picture('ui_screenshot.png', Emu(int(4.6 * IN)), Emu(int(1.0 * IN)),
+                         Emu(int(4.2 * IN)), Emu(int(3.2 * IN)))
+
+# --- slide 23 (v2.4 / DF-15): the same combination through the REDRAW lane
+# — no drawing, a key/value case table plus a result table (the input/
+# output figure pair), and a pasted screenshot beside them. The pair keeps
+# its meaning anchors; the wireframe appends as fig3 and anchors only
+# against tables the pair did not claim.
+s_f23 = prs_f.slides.add_slide(prs_f.slide_layouts[5])
+s_f23.shapes.title.text = '23. Loop - Split measure : 20'
+t_f23 = s_f23.shapes.add_table(5, 2, Emu(IN), Emu(2 * IN), Emu(3 * IN), Emu(2 * IN)).table
+for r, (k, v) in enumerate([('Event ID', 'E23'), ('Route ID', 'R23'),
+                            ('Measure', '0'), ('To Measure', '40'),
+                            ('From Date', '1/1/2000')]):
+    t_f23.cell(r, 0).text = k
+    t_f23.cell(r, 1).text = v
+t_f23o = s_f23.shapes.add_table(3, 4, Emu(int(4.5 * IN)), Emu(2 * IN),
+                                Emu(int(4 * IN)), Emu(int(1.5 * IN))).table
+for r, row in enumerate([('Event ID', 'E23', 'E23', 'E23'),
+                         ('Measure', '0', '0', '20'),
+                         ('To Measure', '40', '20', '40')]):
+    for c, v in enumerate(row):
+        t_f23o.cell(r, c).text = v
+s_f23.shapes.add_picture('ui_screenshot.png', Emu(int(1.0 * IN)), Emu(int(4.2 * IN)),
+                         Emu(int(4.2 * IN)), Emu(int(3.2 * IN)))
+
+# --- slide 24 (v2.4 / DF-15): ROUNDED-corner fields, the mockup-tool style
+# the corpus screenshots actually use. A 5px radius trims each field's side
+# verticals to ~62% of the border-to-border span — under the old 70%
+# assembly floor, so every field shattered into stray full-width lines
+# (the "form with no fields" symptom). Corners are simulated by trimming
+# the border ends, which is exactly what the bar scanner sees of an arc.
+_ui5 = []
+
+
+def _ui5_rbox(x0, x1, y0, y1, r, t=2, rgb=GRAY13):
+    _ui5.extend([(x0 + r, x1 - r, y0, y0 + t, rgb), (x0 + r, x1 - r, y1 - t, y1, rgb),
+                 (x0, x0 + t, y0 + r, y1 - r, rgb), (x1 - t, x1, y0 + r, y1 - r, rgb)])
+
+
+_ui5_rbox(24, 536, 20, 400, 8)                 # rounded panel
+for _i, _fy in enumerate((90, 150, 210)):      # three rounded fields + labels
+    _ui5.extend([(40 + _k * 7, 44 + _k * 7, _fy - 16, _fy - 8, DARK13)
+                 for _k in range(6 + _i)])
+    _ui5_rbox(40, 240, _fy, _fy + 26, 5)
+_ui5.extend([(40 + _k * 7, 44 + _k * 7, 300, 308, DARK13) for _k in range(9)])
+_png_write('ui_rounded.png', 560, 420, _ui5)
+s_f24 = prs_f.slides.add_slide(prs_f.slide_layouts[6])
+s_f24.shapes.add_picture('ui_rounded.png', Emu(int(0.8 * IN)), Emu(int(1.2 * IN)),
+                         Emu(int(6.0 * IN)), Emu(int(4.5 * IN)))
+
 prs_f.save('figure_deck.pptx')
 _b64('figure_deck.pptx')
 print('figure fixtures:', {f: os.path.getsize(f) for f in ('figure_deck.pptx',)})
