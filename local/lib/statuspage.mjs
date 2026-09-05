@@ -85,6 +85,10 @@ export function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fat
       ? [`- **Test cases:** ${summary.cases_upserted ?? 0} row(s) upserted, ${summary.cases_removed ?? 0} removed` +
          (summary.case_errors ? ` — **${summary.case_errors} case-write error(s)**, see the run log` : "")]
       : []),
+    ...(summary.figures_upserted || summary.figures_removed || summary.figure_errors
+      ? [`- **Figures:** ${summary.figures_upserted ?? 0} row(s) upserted, ${summary.figures_removed ?? 0} removed` +
+         (summary.figure_errors ? ` — **${summary.figure_errors} figure-write error(s)**, see the run log` : "")]
+      : []),
     "",
     "## Action needed",
     "",

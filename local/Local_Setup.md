@@ -908,7 +908,8 @@ Before the first nightly run on the new code:
 3. `--rename-plan` (read the old → new table, nothing touched) then
    `--rename --live` (files, media/<stem>/, every inbound link,
    TextFileUrl, browse pages, `_Manifest.json`), then
-   `--recase --live` so Test Cases anchors and figure links follow.
+   `--recase --live` so Test Cases anchors and figure links follow
+   (and `--refigure --live` once the Figures list exists — §14).
 4. `--case-audit --live` and read `_Case Audit.md`. Optionally set
    `sweep.normalizeCases.enabled: true` and run
    `--normalize-cases --live` in batches (`maxPerRun`); LLM-shaped rows
@@ -920,3 +921,60 @@ Config knobs added: `sweep.slugAbbreviations` (extend the shipped
 `local/slug_abbreviations.json`), `sweep.storyProfile` (default on),
 `sweep.normalizeCases` (see `config.sample.json`), `llm.normalizeModelId`
 (aibuilder lane only).
+
+## 14. Figure indexing + standardized figure names (figureindex — the Figures list)
+
+Every indexed document's figures — pasted pictures in `media/<stem>/`
+and drawn diagrams ZipTextExtract collapsed into `[figure: …]` label
+lines — as rows in an eighth list, plus the standardized media file
+names `fig-NN[-slide-KK][-<slug>].<ext>` (design record:
+`local/Figure_Index_Plan.md`). Shipped (sweep v1.59): the pure
+module `local/lib/figureindex.mjs` (naming rule, body parser,
+replace-set planner) under its own CI gate
+(`local/harness/check_figureindex.py`), the sweep wiring (documents
+sync their figure rows at index time, on `--reformat` and on
+`--normalize-cases`; ghost reconciliation prunes an archived doc's
+rows; `--refigure` backfills the whole corpus from the sidecars on
+disk), the naming on both the index and reformat paths (a reformat
+MOVES a document's archive-named files to their standardized names
+and relinks the body — no re-extraction), and the consumer: live runs
+rebuild **"_Figure Catalog.md"** at the library root (every figure
+grouped by document, picture + section deep links; the Q&A agent
+grounds on it automatically).
+
+Setup, once:
+
+1. Create the **Figures** list on lrsworkspace per
+   `schemas/SPList_Figures.csv`. The `Document` lookup targets Doc
+   Index and MUST be created via CLASSIC list settings (the standing
+   modern-lookup quirk). `ImageLink` is a Hyperlink column (written
+   through the SPO route like `FigureLink`); everything else is
+   modern-settings-safe.
+2. Carry the GUID into the sweep machine's `config.json` as
+   `sharePoint.lists.figures`. Absent or empty GUID = feature off:
+   the sweep prints one loud note and indexes documents normally — a
+   figure-write failure never fails the document row. (The
+   standardized NAMES do not depend on the list: they apply from
+   v1.59 on regardless.)
+3. Knobs under `sweep.figureIndex`: `kinds` (default `[]` = every
+   DocKind gets figure rows; list kinds to narrow) and `contextCap`
+   (2000 — the per-figure skim-text bound).
+4. Rename the corpus's media once:
+   `node sweep.mjs --config config.json --reformat --live` (the same
+   pass §13 step 2 needs; counter `media_renamed` reports the files
+   moved; byte-idempotent on a second run). A corpus already on the
+   standardized names is untouched.
+5. Backfill: `node sweep.mjs --config config.json --refigure --live`
+   (dry-run default prints the planned create/update/delete counts;
+   no AI spend, no re-extraction, no sidecar writes). Run it AFTER
+   step 4 so rows carry the standardized names, again after any
+   `--rename --live` (ImageUrl carries the stem), and after any
+   figureindex.mjs parser bump (FigureIndexVersion). The nightly
+   sweep keeps the list converged after that.
+
+A column the tenant list lacks is dropped from the write and noted
+once per run (`figure_fields_dropped`; the v1.56 fail-soft, shared
+with the Test Cases list) — add it per the CSV and run `--refigure
+--live` once. Figure rows are a REPLACE-SET per document (`FigureKey
+= {docRowId}|{ordinal}`): derived state, safe to delete wholesale and
+rebuild with `--refigure`.

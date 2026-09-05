@@ -1,6 +1,6 @@
 /**
- * indexpages.mjs v1.2 (sweep v1.35; v1.43 adds the case catalog;
- * v1.44 adds its Tools column) —
+ * indexpages.mjs v1.3 (sweep v1.35; v1.43 adds the case catalog;
+ * v1.44 adds its Tools column; v1.59 adds the figure catalog) —
  * corpus browse pages: a root "_Index.md" in the sidecar library plus
  * one per kind folder, so a human can BROWSE the catalog (the Q&A
  * agent answers questions; these answer "what's in here?"), and —
@@ -208,5 +208,85 @@ export function writeManifest(cfg, rows, issueByDoc) {
     fs.writeFileSync(path.join(dir, "_Manifest.json"), JSON.stringify(out, null, 1));
   } catch (e) {
     process.stderr.write("manifest write failed: " + e.message + "\n");
+  }
+}
+
+/**
+ * "_Figure Catalog.md" — every indexed figure, grouped by document
+ * (newest first, figures in document order), each image linking its
+ * file in the media folder and its sidecar section through the anchor
+ * the figure row carries; diagram rows (collapsed label lines, no
+ * file) show their caption. Written by live runs when figure indexing
+ * is enabled (the caller gates on the list GUID); `rows` are the Doc
+ * Index rows the run holds, `figureRowsByDoc` the docRowId ->
+ * [{id, fields}] map the sweep maintains (indexpages v1.3).
+ */
+export function writeFigureCatalog(cfg, rows, figureRowsByDoc) {
+  const dir = cfg?.paths?.sidecarLibrary;
+  if (!dir || cfg?.sweep?.indexPages === false || !figureRowsByDoc) return;
+  const ordinalOf = (f) => {
+    const n = parseInt(String(f?.FigureKey || "").split("|")[1], 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const docs = rows
+    .filter((r) => r.ID && r.IndexStatus === "Indexed" && r.TextFileUrl &&
+                   (figureRowsByDoc.get(r.ID) || []).length > 0)
+    .sort((a, b) => String(b.SourceModified || "").localeCompare(String(a.SourceModified || "")));
+  const sections = [];
+  let total = 0, images = 0;
+  for (const doc of docs) {
+    const figs = (figureRowsByDoc.get(doc.ID) || [])
+      .map((c) => c.fields || {})
+      .sort((a, b) => ordinalOf(a) - ordinalOf(b));
+    total += figs.length;
+    const parts = String(doc.TextFileUrl).split("/");
+    const file = decodeURIComponent(parts[parts.length - 1] || "");
+    const folder = decodeURIComponent(parts[parts.length - 2] || "");
+    const target = folder ? `${folder}/${file}` : file;
+    const nImg = figs.filter((f) => f.Kind === "image").length;
+    images += nImg;
+    const nDia = figs.length - nImg;
+    const counts = [`${nImg} image${nImg === 1 ? "" : "s"}`];
+    if (nDia) counts.push(`${nDia} diagram${nDia === 1 ? "" : "s"}`);
+    sections.push(
+      `## ${clip(doc.Title || doc.FileName, 80)} (${figs.length}: ${counts.join(" / ")})`,
+      "",
+      `[Sidecar](<${target}>) · ${clip(doc.DocKind, 20) || "—"} · ${clip(doc.Products, 40) || "—"}`,
+      "",
+      "| Figure | Slide | Section | Case | Size | Caption |",
+      "|---|---|---|---|---|---|",
+      ...figs.map((f) => {
+        const url = String(f.ImageUrl || "");
+        const at = url.indexOf("/media/");
+        const rel = at >= 0 ? url.slice(at + 1) : "";
+        const name = clip(f.FileName, 60);
+        const label = f.Kind === "image"
+          ? (rel ? `[${name}](<${decodeURIComponent(rel)}>)` : name || `Figure ${ordinalOf(f)}`)
+          : `_diagram_ ${ordinalOf(f)}`;
+        const section = clip(f.Section, 50) || "—";
+        const sectionLink = f.Anchor ? `[${section}](<${target}#${f.Anchor}>)` : section;
+        const size = f.Width && f.Height ? `${f.Width}×${f.Height}` : "—";
+        return `| ${label} | ${f.SlideNo ?? "—"} | ${sectionLink} | ${clip(f.CaseNo, 12) || "—"} | ${size} | ${clip(f.Caption, 80) || "—"} |`;
+      }),
+      ""
+    );
+  }
+  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const md = [
+    "# Figures — catalog",
+    "",
+    "_Every indexed figure, grouped by document (newest first). Image",
+    "links open the picture in the media folder; section links open the",
+    "sidecar at the figure's section; see \"_Index.md\" for the document",
+    "catalog and \"_Case Catalog.md\" for the test cases._",
+    "",
+    ...(sections.length ? sections : ["_None yet._", ""]),
+    `_Rebuilt automatically by the local sweep · ${stamp}Z · ${total} figure(s) (${images} image(s)) across ${docs.length} document(s)._`,
+    "",
+  ].join("\n");
+  try {
+    fs.writeFileSync(path.join(dir, "_Figure Catalog.md"), md);
+  } catch (e) {
+    process.stderr.write("figure catalog write failed: " + e.message + "\n");
   }
 }

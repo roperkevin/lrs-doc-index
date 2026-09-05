@@ -23,8 +23,9 @@ on:
           What to run. nightly = the normal --live sweep. The others are
           the Sidecar_Format_Plan rollout steps (Local_Setup §13), in
           order: reformat, rename-plan (dry table), rename, recase,
-          case-audit, normalize-cases (needs sweep.normalizeCases.enabled
-          in the config secret). Each is a standalone --live mode.
+          refigure, case-audit, normalize-cases (needs
+          sweep.normalizeCases.enabled in the config secret). Each is a
+          standalone --live mode.
         type: choice
         default: nightly
         options:
@@ -33,6 +34,7 @@ on:
           - rename-plan
           - rename
           - recase
+          - refigure
           - case-audit
           - normalize-cases
 
@@ -84,6 +86,7 @@ jobs:
             rename-plan)     FLAGS="--rename-plan" ;;
             rename)          FLAGS="--rename --live" ;;
             recase)          FLAGS="--recase --live" ;;
+            refigure)        FLAGS="--refigure --live" ;;
             case-audit)      FLAGS="--case-audit --live" ;;
             normalize-cases) FLAGS="--normalize-cases --live" ;;
             *) echo "unknown mode: $MODE"; exit 1 ;;

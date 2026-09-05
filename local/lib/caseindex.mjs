@@ -99,7 +99,7 @@ const cap = (s, n) => String(s || "").slice(0, n);
  * they never reach the slug). Duplicate slugs take -1, -2, … suffixes
  * the way GitHub's renderer disambiguates them.
  */
-function slugger() {
+export function slugger() {
   const seen = new Map();
   return (heading) => {
     let s = String(heading)
@@ -553,8 +553,10 @@ export function toRowFields(docRowId, kase, nowIso) {
  * Matched by CaseKey; a matched row updates only when a field other
  * than SweptOn differs (so an unchanged plan writes NOTHING);
  * unmatched existing rows delete. Pure, so the gate table-tests it.
+ * `keyField` names the replace-set key (CaseKey; figureindex passes
+ * FigureKey — same planner, one place).
  */
-export function diffCaseRows(existing, fresh) {
+export function diffCaseRows(existing, fresh, keyField = "CaseKey") {
   // hyperlink values (FigureLink) compare by Url — Graph reads them
   // back as {Url, Description} objects; the description is derived
   // from the same links, so Url equality is field equality
@@ -564,17 +566,17 @@ export function diffCaseRows(existing, fresh) {
     : String(v);
   const byKey = new Map();
   for (const row of existing || []) {
-    const key = norm(row?.fields?.CaseKey);
+    const key = norm(row?.fields?.[keyField]);
     if (key) byKey.set(key, row);
   }
   const plan = { create: [], update: [], delete: [] };
   for (const f of fresh || []) {
-    const have = byKey.get(f.CaseKey);
+    const have = byKey.get(f[keyField]);
     if (!have) {
       plan.create.push(f);
       continue;
     }
-    byKey.delete(f.CaseKey);
+    byKey.delete(f[keyField]);
     const changed = Object.keys(f).some(
       (k) => k !== "SweptOn" && norm(f[k]) !== norm(have.fields[k])
     );

@@ -59,11 +59,12 @@ import {
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
+import { prettifyMedia, extractFigures, toFigureRowFields, diffFigureRows, imageSize } from "./lib/figureindex.mjs";
 import { auditBody, summarizeAudit, renderAuditPage, hasSignal } from "./lib/caseaudit.mjs";
 import { buildNormalizePrompt, unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
 import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
 import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
-import { writeIndexPages, writeCaseCatalog, writeManifest } from "./lib/indexpages.mjs";
+import { writeIndexPages, writeCaseCatalog, writeFigureCatalog, writeManifest } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
@@ -95,6 +96,10 @@ const FLOW_DEFAULTS = {
   // 350 KB pdf body is a very expensive call and a reply that size
   // would overrun any maxTokens; such plans stay on the audit list.
   normalizeCases: { enabled: false, maxPerRun: 10, provider: "", maxTokens: 32000, maxInputChars: 150000 },
+  // figure indexing (Figure_Index_Plan; sweep v1.59): enabled by
+  // sharePoint.lists.figures alone. kinds [] = every DocKind gets
+  // figure rows; contextCap bounds the per-figure skim text.
+  figureIndex: { kinds: [], contextCap: 2000 },
   textCap: 100000,
   previewCap: 5000,
   maxDocsPerRun: 150,
@@ -272,34 +277,51 @@ function renderBody(docText, docKind, cfg, sum) {
   return r.body;
 }
 
-/** Write a document's media into media/<stem>/ (phase 1b). */
-function writeMedia(cfg, writer, stem, mediaFiles) {
+/** Write a document's media into media/<stem>/ (phase 1b), under the
+ *  standardized names prettifyMedia minted (v1.59: `renames` maps the
+ *  archive's basename to `fig-NN-slide-KK-<slug>.<ext>`; a file the
+ *  text never linked keeps its own name). */
+function writeMedia(cfg, writer, stem, mediaFiles, renames) {
+  const to = new Map((renames || []).map((r) => [r.from, r.to]));
   for (const m of mediaFiles || []) {
-    writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", stem, m.name), m.data);
+    writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", stem, to.get(m.name) || m.name), m.data);
   }
 }
 
-/** Move a document's pre-1b flat media (`media/doc<srcItemId>_<name>`)
- *  into its media/<stem>/ folder — idempotent; nothing to do when the
- *  flat files are gone. Used by --reformat (images are not re-extracted
- *  there) and by --rename. */
-function placeLegacyMedia(cfg, writer, srcItemId, stem) {
+/** Move a document's media already on disk into place — idempotent;
+ *  nothing to do when the files are where the links point. Two
+ *  legacies converge here: the pre-1b flat files
+ *  (`media/doc<srcItemId>_<name>`) move into media/<stem>/, and
+ *  (v1.59) files still under their archive names (`image1.png`) take
+ *  the standardized names `renames` maps them to — both under
+ *  --reformat (images are not re-extracted there) and --rename. Moves
+ *  are per-document; a target that already exists is left alone. */
+function placeLegacyMedia(cfg, writer, srcItemId, stem, renames) {
   const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+  const to = new Map((renames || []).map((r) => [r.from, r.to]));
+  const out = { legacy: 0, renamed: 0 };
+  const move = (from, dest) => {
+    if (from === dest) return false;
+    try {
+      if (!fs.statSync(from).isFile()) return false;
+      if (fs.existsSync(dest)) { writer.deleteFile(from); return false; }
+      writer.writeFile(dest, fs.readFileSync(from));
+      writer.deleteFile(from);
+      return true;
+    } catch { return false; /* unreadable: leave it */ }
+  };
   let names = [];
-  try { names = fs.readdirSync(mdir); } catch { return 0; }
+  try { names = fs.readdirSync(mdir); } catch { return out; }
   const prefix = `doc${srcItemId}_`;
-  let moved = 0;
   for (const n of names) {
     if (!n.startsWith(prefix)) continue;
-    const from = path.join(mdir, n);
-    try {
-      if (!fs.statSync(from).isFile()) continue;
-      writer.writeFile(path.join(mdir, stem, n.slice(prefix.length)), fs.readFileSync(from));
-      writer.deleteFile(from);
-      moved++;
-    } catch { /* unreadable: leave it */ }
+    const base = n.slice(prefix.length);
+    if (move(path.join(mdir, n), path.join(mdir, stem, to.get(base) || base))) out.legacy++;
   }
-  return moved;
+  for (const [from, dest] of to) {
+    if (move(path.join(mdir, stem, from), path.join(mdir, stem, dest))) out.renamed++;
+  }
+  return out;
 }
 
 /** Map rowId -> primary issue number (0 = none), for the manifest. */
@@ -346,6 +368,7 @@ function loadConfig(argv) {
     else if (a === "--rerank") args.flags.rerank = true;
     else if (a === "--reformat") args.flags.reformat = true;
     else if (a === "--recase") args.flags.recase = true;
+    else if (a === "--refigure") args.flags.refigure = true;
     else if (a === "--case-audit") args.flags.caseAudit = true;
     else if (a === "--rename") args.flags.rename = true;
     else if (a === "--normalize-cases") args.flags.normalize = true;
@@ -353,7 +376,7 @@ function loadConfig(argv) {
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--refigure] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -371,17 +394,21 @@ function loadConfig(argv) {
   if (cfg.sweep.recase && (cfg.sweep.rerank || cfg.sweep.reformat)) {
     throw new Error("--recase is a standalone mode — do not combine it with --rerank or --reformat");
   }
+  if (args.flags.refigure) cfg.sweep.refigure = true;
+  if (cfg.sweep.refigure && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase)) {
+    throw new Error("--refigure is a standalone mode — do not combine it with --rerank, --reformat or --recase");
+  }
   if (args.flags.caseAudit) cfg.sweep.caseAudit = true;
   if (args.flags.rename) cfg.sweep.rename = true;
   if (args.flags.normalize) cfg.sweep.normalize = true;
-  if (cfg.sweep.normalize && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit || cfg.sweep.rename)) {
+  if (cfg.sweep.normalize && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure || cfg.sweep.caseAudit || cfg.sweep.rename)) {
     throw new Error("--normalize-cases is a standalone mode — do not combine it with other modes");
   }
-  if (cfg.sweep.rename && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit)) {
-    throw new Error("--rename is a standalone mode — do not combine it with --rerank, --reformat, --recase or --case-audit");
+  if (cfg.sweep.rename && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure || cfg.sweep.caseAudit)) {
+    throw new Error("--rename is a standalone mode — do not combine it with --rerank, --reformat, --recase, --refigure or --case-audit");
   }
-  if (cfg.sweep.caseAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase)) {
-    throw new Error("--case-audit is a standalone mode — do not combine it with --rerank, --reformat or --recase");
+  if (cfg.sweep.caseAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure)) {
+    throw new Error("--case-audit is a standalone mode — do not combine it with --rerank, --reformat, --recase or --refigure");
   }
   if (args.flags.checkHeartbeat) cfg.sweep.checkHeartbeat = true;
   cfg.llm = cfg.llm || {};
@@ -426,8 +453,9 @@ function loadConfig(argv) {
 
 // Graph cannot write hyperlink columns (400 invalidRequest in every
 // shape) — these fields route through SPO ValidateUpdateListItem
-// (FigureLink: the Test Cases primary-figure link, caseindex v1.4).
-const HYPERLINK_FIELDS = new Set(["SourceLink", "TextFileUrl", "FigureLink"]);
+// (FigureLink: the Test Cases primary-figure link, caseindex v1.4;
+// ImageLink: the Figures list's clickable picture, figureindex v1.0).
+const HYPERLINK_FIELDS = new Set(["SourceLink", "TextFileUrl", "FigureLink", "ImageLink"]);
 
 function splitHyperlinks(fields) {
   const rest = {};
@@ -724,14 +752,51 @@ async function main() {
       "paste its GUID, then backfill with --recase)\n"
     );
   }
+  // ---- figure index (Figure_Index_Plan; sweep v1.59) -------------
+  // Every document's figures (pasted pictures + collapsed diagram
+  // labels) as Figures list rows, one replace-set per document — the
+  // Test Cases pattern: enabled by the list GUID alone, derived state,
+  // never gates a document.
+  const fiKinds = (cfg.sweep.figureIndex && cfg.sweep.figureIndex.kinds) || [];
+  const fiEnabled = !!sp.lists.figures;
+  const figureRowsByDoc = new Map(); // docRowId -> [{id, fields}]
+  const missingFigureColumns = new Set();
+  if (fiEnabled) {
+    const items = await graph.listItems(siteId, sp.lists.figures, {
+      select: ["Title", "DocumentLookupId", "FigureKey", "FigureNo", "Kind",
+               "FileName", "Format", "SlideNo", "Section", "CaseNo", "Anchor",
+               "Caption", "Context", "Width", "Height", "Bytes", "Tools",
+               "Keywords", "ImageUrl", "ImageLink", "SweptOn"],
+    });
+    rawSnapshots.figures = items; // rides the per-run list backup
+    for (const it of items) {
+      const f = it.fields || {};
+      const docId = num(f.DocumentLookupId) ?? num(f.DocumentId);
+      if (docId === undefined) continue;
+      if (!figureRowsByDoc.has(docId)) figureRowsByDoc.set(docId, []);
+      figureRowsByDoc.get(docId).push({ id: String(it.id), fields: f });
+    }
+  } else if (sw.refigure) {
+    throw new Error(
+      "--refigure needs sharePoint.lists.figures — create the Figures " +
+      "list per Local_Setup §14 / schemas/SPList_Figures.csv and add its GUID"
+    );
+  } else {
+    process.stderr.write(
+      "note: sharePoint.lists.figures is not configured — figures are not " +
+      "indexed (Local_Setup §14: create the Figures list, paste its GUID, " +
+      "then backfill with --refigure)\n"
+    );
+  }
   // Case-tag vocabulary (caseindex v1.2): the run-start Keywords
   // snapshot compiled once — alias rows match under their own title
   // but report their CANONICAL's name and kind. Deliberately not
   // updated mid-run (the Get_kw_meta / kwSnapshot precedent, flow
   // §5.7 accepted degradation): keywords minted THIS run reach case
-  // tags on the doc's next reindex or the next --recase.
+  // tags on the doc's next reindex or the next --recase. The figure
+  // index tags its rows from the same vocabulary.
   let ciVocab = null;
-  if (ciEnabled) {
+  if (ciEnabled || fiEnabled) {
     const kwById2 = new Map(keywordRows.map((k) => [k.ID, k]));
     // document frequency per canonical keyword (v1.3): its DocKeywords
     // junction count — junctions are already minted against the
@@ -754,6 +819,45 @@ async function main() {
       })
     );
   }
+  // fail-soft on a column a tenant list does not have yet (v1.56):
+  // Graph answers 400 "Field 'X' is not recognized" — drop X, retry,
+  // count it, and say once per run which columns to add. The row is
+  // written with the columns that exist; the next backfill after the
+  // columns are added fills them in (the replace-set sees the
+  // difference). Shared by the case and figure syncs (v1.59).
+  const columnDropper = ({ listLabel, rowsLabel, schemaHint, backfillFlag, counter, missing }) =>
+    async (fields, write, sum) => {
+      let f = { ...fields };
+      for (let attempt = 0; attempt < 8; attempt++) {
+        try {
+          return { result: await write(f), fields: f };
+        } catch (e) {
+          const m = /Field '([^']+)' is not recognized/.exec(String(e.message));
+          if (!m || !(m[1] in f)) throw e;
+          delete f[m[1]];
+          sum[counter] = (sum[counter] || 0) + 1;
+          if (!missing.has(m[1])) {
+            missing.add(m[1]);
+            process.stderr.write(
+              `note: ${listLabel} list has no '${m[1]}' column — ${rowsLabel} are written without it. ` +
+              `Add it per ${schemaHint}, then run ${backfillFlag} --live once.\n`
+            );
+          }
+        }
+      }
+      throw new Error(`${rowsLabel.replace(/s$/, "")} write kept failing on unrecognized fields`);
+    };
+  const caseColumns = columnDropper({
+    listLabel: "Test Cases", rowsLabel: "case rows",
+    schemaHint: "schemas/SPList_TestCases.csv (Confidence, Group, SourceRef; Shape choices S1–S6/LLM/draft/deck)",
+    backfillFlag: "--recase", counter: "case_fields_dropped", missing: missingCaseColumns,
+  });
+  const figureColumns = columnDropper({
+    listLabel: "Figures", rowsLabel: "figure rows",
+    schemaHint: "schemas/SPList_Figures.csv",
+    backfillFlag: "--refigure", counter: "figure_fields_dropped", missing: missingFigureColumns,
+  });
+
   // Replace one document's case-row set with what its body states now.
   // An empty/off-kind fresh side deletes the document's rows (archived,
   // reclassified, or de-scoped docs clean up through the same path).
@@ -780,40 +884,12 @@ async function main() {
       if (!fresh.length && !existing.length) return;
       const plan = diffCaseRows(existing, fresh);
       const next = existing.filter((r) => !plan.delete.includes(r.id));
-      // fail-soft on a column the tenant list does not have yet (v1.56):
-      // Graph answers 400 "Field 'X' is not recognized" — drop X, retry,
-      // count it, and say once per run which columns to add
-      // (schemas/SPList_TestCases.csv). The row is written with the
-      // columns that exist; the next --recase after the columns are
-      // added fills them in (the replace-set sees the difference).
-      const withKnownColumns = async (fields, write) => {
-        let f = { ...fields };
-        for (let attempt = 0; attempt < 8; attempt++) {
-          try {
-            return { result: await write(f), fields: f };
-          } catch (e) {
-            const m = /Field '([^']+)' is not recognized/.exec(String(e.message));
-            if (!m || !(m[1] in f)) throw e;
-            delete f[m[1]];
-            sum.case_fields_dropped = (sum.case_fields_dropped || 0) + 1;
-            if (!missingCaseColumns.has(m[1])) {
-              missingCaseColumns.add(m[1]);
-              process.stderr.write(
-                `note: Test Cases list has no '${m[1]}' column — case rows are written without it. ` +
-                `Add it per schemas/SPList_TestCases.csv (Confidence, Group, SourceRef; Shape choices S1–S6/LLM/draft/deck), ` +
-                `then run --recase --live once.\n`
-              );
-            }
-          }
-        }
-        throw new Error("case row write kept failing on unrecognized fields");
-      };
       for (const f of plan.create) {
-        const { result: created, fields: wrote } = await withKnownColumns(f, (x) => writer.createRow("testCases", x));
+        const { result: created, fields: wrote } = await caseColumns(f, (x) => writer.createRow("testCases", x), sum);
         next.push({ id: String(created.id), fields: wrote });
       }
       for (const u of plan.update) {
-        const { fields: wrote } = await withKnownColumns(u.fields, (x) => writer.patchRow("testCases", u.id, x));
+        const { fields: wrote } = await caseColumns(u.fields, (x) => writer.patchRow("testCases", u.id, x), sum);
         const row = next.find((r) => r.id === u.id);
         if (row) row.fields = wrote;
       }
@@ -824,6 +900,70 @@ async function main() {
     } catch (e) {
       sum.case_errors++;
       process.stderr.write(`CASE-INDEX ERROR doc ${rowId}: ${e.message}\n`);
+    }
+  };
+
+  // Replace one document's figure-row set with what its body carries
+  // now (figureindex.mjs — image links + collapsed diagram labels).
+  // Same contract as syncCases: an empty/off-kind fresh side deletes
+  // the document's rows; never throws; `stem` locates the media folder
+  // for pixel sizes (a file not on disk sizes to nothing).
+  const syncFigures = async (rowId, docKind, bodyText, sum, docTitle) => {
+    if (!fiEnabled || !rowId) return;
+    try {
+      let fresh = [];
+      if (bodyText && (!fiKinds.length || fiKinds.includes(docKind))) {
+        const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+        const sizeOf = (rel) => {
+          try {
+            const fp = path.join(mdir, ...String(rel).split("/"));
+            const st = fs.statSync(fp);
+            if (!st.isFile()) return null;
+            const fd = fs.openSync(fp, "r");
+            const head = Buffer.alloc(Math.min(st.size, 65536));
+            try { fs.readSync(fd, head, 0, head.length, 0); } finally { fs.closeSync(fd); }
+            return { ...(imageSize(head) || {}), bytes: st.size };
+          } catch { return null; }
+        };
+        const parsed = extractFigures(bodyText, {
+          mediaUrlBase: `${sw.siteUrl}${sw.textsFolder}/media`,
+          contextCap: cfg.sweep.figureIndex && cfg.sweep.figureIndex.contextCap,
+          vocab: ciVocab, docTitle: docTitle || "", sizeOf,
+        });
+        const now = new Date().toISOString();
+        fresh = parsed.figures.map((f) => toFigureRowFields(rowId, f, now));
+      }
+      const existing = figureRowsByDoc.get(rowId) || [];
+      if (!fresh.length && !existing.length) return;
+      const plan = diffFigureRows(existing, fresh);
+      const next = existing.filter((r) => !plan.delete.includes(r.id));
+      for (const f of plan.create) {
+        const { result: created, fields: wrote } = await figureColumns(f, (x) => writer.createRow("figures", x), sum);
+        next.push({ id: String(created.id), fields: wrote });
+      }
+      for (const u of plan.update) {
+        const { fields: wrote } = await figureColumns(u.fields, (x) => writer.patchRow("figures", u.id, x), sum);
+        const row = next.find((r) => r.id === u.id);
+        if (row) row.fields = wrote;
+      }
+      for (const id of plan.delete) await writer.deleteRow("figures", id);
+      figureRowsByDoc.set(rowId, next);
+      sum.figures_upserted = (sum.figures_upserted || 0) + plan.create.length + plan.update.length;
+      sum.figures_removed = (sum.figures_removed || 0) + plan.delete.length;
+    } catch (e) {
+      sum.figure_errors = (sum.figure_errors || 0) + 1;
+      process.stderr.write(`FIGURE-INDEX ERROR doc ${rowId}: ${e.message}\n`);
+    }
+  };
+  // the figure catalog page + its remote put, for every live mode that
+  // converges figure rows (full sweep, --refigure, --rename, normalize)
+  const flushFigureCatalog = async () => {
+    if (!fiEnabled) return;
+    writeFigureCatalog(cfg, docIndexRows, figureRowsByDoc);
+    if (remote) {
+      const pg = path.join(cfg.paths.sidecarLibrary, "_Figure Catalog.md");
+      if (fs.existsSync(pg)) remote.queuePut(pg);
+      await remote.flush().catch((e) => process.stderr.write(`remote flush of figure catalog: ${e.message}\n`));
     }
   };
 
@@ -928,6 +1068,7 @@ async function main() {
         writer.writeFile(p.local, next);
         if (remote) await remote.flush();
         await syncCases(p.r.ID, p.r.DocKind, out, zsum, p.r.Title || "");
+        await syncFigures(p.r.ID, p.r.DocKind, out, zsum, p.r.Title || "");
         entry.ok = true;
         zsum.normalized++;
       } catch (e) {
@@ -944,6 +1085,7 @@ async function main() {
         await remote.flush().catch((e) => process.stderr.write(`remote flush of case catalog: ${e.message}\n`));
       }
     }
+    if (!dry && zsum.normalized) await flushFigureCatalog();
     const zDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(zDir, { recursive: true });
     const zStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1054,8 +1196,9 @@ async function main() {
       writeIndexPages(cfg, docIndexRows, sw.kindFolders);
       writeManifest(cfg, docIndexRows, issueByDoc(docIndexRows, docIdRows));
       if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+      if (fiEnabled) writeFigureCatalog(cfg, docIndexRows, figureRowsByDoc);
       if (remote) {
-        for (const pg of ["_Index.md", "_Manifest.json", "_Case Catalog.md"]) {
+        for (const pg of ["_Index.md", "_Manifest.json", "_Case Catalog.md", "_Figure Catalog.md"]) {
           const fp = path.join(cfg.paths.sidecarLibrary, pg);
           if (fs.existsSync(fp)) remote.queuePut(fp);
         }
@@ -1072,7 +1215,7 @@ async function main() {
     process.stdout.write(JSON.stringify({ ...nsum, logFile: nLog }) + "\n");
     for (const t of table) if (t.changed) process.stdout.write(`${t.folder}/${t.from} -> ${t.to}\n`);
     if (dry) process.stdout.write(`rename plan: ${table.filter((t) => t.changed).length} of ${table.length} sidecars would be renamed (log: ${nLog}); re-run with --rename --live to apply\n`);
-    else if (nsum.renamed) process.stdout.write(`renamed ${nsum.renamed} sidecar(s); run --recase --live next so Test Cases anchors and figure links follow\n`);
+    else if (nsum.renamed) process.stdout.write(`renamed ${nsum.renamed} sidecar(s); run --recase --live and --refigure --live next so Test Cases anchors, figure links and Figures image URLs follow\n`);
     return;
   }
 
@@ -1123,6 +1266,66 @@ async function main() {
     fs.writeFileSync(aLog, JSON.stringify({ summary: asum, plans: entries }, null, 1));
     pruneRunLogs(aDir);
     process.stdout.write(JSON.stringify({ ...asum, logFile: aLog }) + "\n");
+    return;
+  }
+
+  // ---- --refigure: rebuild the Figures list from the sidecars on
+  // disk (Figure_Index_Plan — the backfill; the --recase mold). No
+  // extraction, no AI calls, no sidecar writes: every Indexed document
+  // with a sidecar re-parses its body below the seam and replace-sets
+  // its figure rows. Run once after creating the list, after --rename
+  // (media URLs move with the stem), and after any figureindex.mjs
+  // parser bump; the nightly sweep keeps it converged.
+  if (sw.refigure) {
+    const fsum = {
+      mode: "refigure", dry_run: dry, eligible: 0, synced: 0,
+      no_sidecar: 0, no_seam: 0, figures_upserted: 0, figures_removed: 0,
+      figure_errors: 0,
+    };
+    const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
+    const done = new Set();
+    for (const r of docIndexRows) {
+      if (!r.ID || (fiKinds.length && !fiKinds.includes(r.DocKind))) continue;
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      fsum.eligible++;
+      if (fsum.synced >= cap) continue;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) {
+        fsum.no_sidecar++;
+        continue;
+      }
+      const content = fs.readFileSync(local, "utf8");
+      const seam = bodySeamEnd(content);
+      if (seam < 0) {
+        fsum.no_seam++;
+        continue;
+      }
+      await syncFigures(r.ID, r.DocKind, content.slice(seam), fsum, r.Title || "");
+      done.add(r.ID);
+      fsum.synced++;
+    }
+    if (!sw.smokeFile) {
+      const byId = new Map(docIndexRows.map((r) => [r.ID, r]));
+      for (const docId of [...figureRowsByDoc.keys()]) {
+        if (done.has(docId)) continue;
+        const row = byId.get(docId);
+        if (row && row.IndexStatus === "Indexed" && row.TextFileUrl &&
+            (!fiKinds.length || fiKinds.includes(row.DocKind))) continue;
+        await syncFigures(docId, "", "", fsum);
+      }
+    }
+    if (!dry) await flushFigureCatalog();
+    const fDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(fDir, { recursive: true });
+    const fStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const fLog = path.join(fDir, `sweep-${fStamp}.json`);
+    fs.writeFileSync(fLog, JSON.stringify({ summary: fsum, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(fDir);
+    process.stdout.write(JSON.stringify({ ...fsum, logFile: fLog }) + "\n");
+    if (dry) {
+      process.stdout.write(`dry run: ${writer.plan.length} planned writes recorded in ${fLog}\n`);
+    }
     return;
   }
 
@@ -1313,6 +1516,7 @@ async function main() {
     unchanged: 0, no_sidecar: 0, no_seam: 0, no_text: 0, errors: 0,
     cases_upserted: 0, cases_removed: 0, case_errors: 0,
     plans_caseless: 0, cases_shape_mixed: 0,
+    figures_upserted: 0, figures_removed: 0, figure_errors: 0, media_renamed: 0,
   };
   const summary = {
     library_items_seen: files.length,
@@ -1332,6 +1536,9 @@ async function main() {
     case_errors: 0,
     plans_caseless: 0,
     cases_shape_mixed: 0,
+    figures_upserted: 0,
+    figures_removed: 0,
+    figure_errors: 0,
     list_backup: listBackup ? path.basename(listBackup) : "",
   };
 
@@ -1427,9 +1634,14 @@ async function main() {
         // re-extracted on a reformat) move out of the flat
         // doc<srcItemId>_ naming once
         const stem = stemOf(existing.TextFileUrl);
-        const docText = relinkMedia(rfRaw, stem);
-        writeMedia(cfg, writer, stem, mediaFiles);
-        rfsum.media_moved = (rfsum.media_moved || 0) + placeLegacyMedia(cfg, writer, srcItemId, stem);
+        // v1.59: the standardized figure names — minted from the text,
+        // so the files already on disk move to match without re-extraction
+        const pm = prettifyMedia(rfRaw);
+        const docText = relinkMedia(pm.text, stem);
+        writeMedia(cfg, writer, stem, mediaFiles, pm.renames);
+        const placed = placeLegacyMedia(cfg, writer, srcItemId, stem, pm.renames);
+        rfsum.media_moved = (rfsum.media_moved || 0) + placed.legacy;
+        rfsum.media_renamed += placed.renamed;
         const body = renderBody(docText, existing.DocKind || "", cfg, rfsum);
         // format 3.0: the head (H1 + metadata table) is regenerated from
         // the row + the file's own metadata (whichever frame it carries),
@@ -1473,6 +1685,7 @@ async function main() {
         // doc's case rows even when the body itself is unchanged (the
         // rows may predate the feature, or a parser bump)
         await syncCases(existing.ID, existing.DocKind || "", body, rfsum, existing.Title || "");
+        await syncFigures(existing.ID, existing.DocKind || "", body, rfsum, existing.Title || "");
       } catch (e) {
         rfsum.errors++;
         process.stderr.write(`REFORMAT ERROR ${name}: ${e.message}\n`);
@@ -1540,7 +1753,7 @@ async function main() {
       }
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases,
+        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases, syncFigures,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -1672,6 +1885,7 @@ async function main() {
       // an archived doc's case rows are derived state — prune them
       // with the sidecar (empty fresh side = full deletion)
       await syncCases(g.ID, "", "", summary);
+      await syncFigures(g.ID, "", "", summary);
     }
     if (ghosts.length > cap) {
       process.stderr.write(`note: ${ghosts.length - cap} more ghost row(s) will archive on later runs (cap ${cap}/run)\n`);
@@ -1722,6 +1936,9 @@ async function main() {
     // the case catalog (Case_Index_Plan phase 3): every indexed test
     // case grouped by plan, from the case rows this run maintains
     if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+    // the figure catalog (Figure_Index_Plan): every indexed figure
+    // grouped by document, from the figure rows this run maintains
+    if (fiEnabled) writeFigureCatalog(cfg, docIndexRows, figureRowsByDoc);
     if (remote) {
       // the fs-written pages (status + indexes) ride the same
       // write-through; best-effort — a failed page upload is not a
@@ -1731,6 +1948,7 @@ async function main() {
         path.join(lib, "_Sweep Status.md"),
         path.join(lib, "_Index.md"),
         path.join(lib, "_Case Catalog.md"),
+        path.join(lib, "_Figure Catalog.md"),
         ...Object.values(sw.kindFolders || {}).map((f) => path.join(lib, f, "_Index.md")),
       ]) {
         if (fs.existsSync(p)) remote.queuePut(p);
@@ -1771,7 +1989,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -1810,7 +2028,11 @@ async function indexDoc(ctx) {
     sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
-  let docText = rawDocText;
+  // v1.59: standardized figure names (figureindex.mjs) — minted from the
+  // extracted text before anything reads it, so the LLM input, the
+  // preview and the sidecar all see `fig-NN-slide-KK-<slug>.<ext>`
+  const pretty = prettifyMedia(rawDocText);
+  let docText = pretty.text;
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
@@ -1896,7 +2118,7 @@ async function indexDoc(ctx) {
   const sidecarName = `${stem}.md`;
   // media lands in media/<stem>/; the body's placeholder links follow
   docText = relinkMedia(docText, stem);
-  writeMedia(cfg, writer, stem, mediaFiles);
+  writeMedia(cfg, writer, stem, mediaFiles, pretty.renames);
   const preview = cut(docText, sw.previewCap);
 
   // (e)+(f) header
@@ -1970,6 +2192,10 @@ async function indexDoc(ctx) {
   // index; a doc reclassified off the kinds list deletes its rows.
   setStep("case-index");
   await syncCases(rowId, docKind, bodyText, summary, title);
+  // figure rows (Figure_Index_Plan): the same body, replace-set onto
+  // the Figures list — same never-throws contract
+  setStep("figure-index");
+  await syncFigures(rowId, docKind, bodyText, summary, title);
 
   // (h) Doc IDs + id edges
   setStep("doc-ids");

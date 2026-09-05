@@ -463,7 +463,7 @@ def make_handler(state, lib_guid, src_files):
                     # the tenant list lacks the column — Graph's exact shape
                     return self._json({"error": {"code": "invalidRequest",
                                                  "message": f"Field '{bad[0]}' is not recognized"}}, 400)
-                if any(k in fields for k in ("SourceLink", "TextFileUrl", "FigureLink")):
+                if any(k in fields for k in ("SourceLink", "TextFileUrl", "FigureLink", "ImageLink")):
                     # real Graph rejects hyperlink columns — keep the mock honest
                     return self._json({"error": {"code": "invalidRequest",
                                                  "message": "hyperlink column via Graph"}}, 400)
@@ -638,6 +638,7 @@ LISTS = {
     "sourceLibrary": "list-library",
     "issueRefs": "list-issuerefs",
     "testCases": "list-testcases",
+    "figures": "list-figures",
 }
 
 GANTT = os.path.join(REPO, "local", "gantt.mjs")
@@ -906,6 +907,11 @@ def main():
     state.seed(LISTS["testCases"], {
         "Title": "Ghost case", "DocumentLookupId": int(ghost_row_id),
         "CaseKey": f"{ghost_row_id}|1", "Classification": "Positive",
+    })
+    # ... and a figure row (figure rows are derived state too)
+    state.seed(LISTS["figures"], {
+        "Title": "Ghost figure", "DocumentLookupId": int(ghost_row_id),
+        "FigureKey": f"{ghost_row_id}|1", "Kind": "image",
     })
     state.llm_by_file = {
         "Alpha Plan.pptx": {
@@ -1306,8 +1312,14 @@ def main():
     media_dir = os.path.join(sidecar_dir, "media")
     stem_dir = os.path.join(media_dir, "123-alpha-plan")
     media = os.listdir(stem_dir) if os.path.isdir(stem_dir) else []
-    check("media extracted into the sidecar's media/<stem>/ folder (no src-id prefix)",
-          "image1.png" in media and not any(m.startswith("doc10_") for m in media), str(media))
+    # v1.59: the archive's image1.png lands under its standardized name
+    # (fig-<ordinal>-slide-<slide>[-<title slug>]; alpha's slide 1 has
+    # no title) and the body links it one per line with a Figure alt
+    check("media extracted into the sidecar's media/<stem>/ folder under the standardized name",
+          media == ["fig-01-slide-01.png"] and not any(m.startswith("doc10_") for m in media), str(media))
+    check("body links the picture under its standardized name",
+          "![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)" in alpha_content
+          and "image1.png" not in alpha_content, alpha_content[-400:])
 
     # doc ids / links / keywords / junctions
     docids = list(state.lists.get(LISTS["docIds"], {}).values())
@@ -1405,6 +1417,48 @@ def main():
           "Ghost" not in cat
           and "2 case(s) across 1 plan(s)" in cat, cat)
 
+    # ---- figure-index leg (Figure_Index_Plan) ----------------------
+    # alpha carries one pasted picture on slide 1; the ghost's seeded
+    # figure row must not survive its archive; every kind gets rows
+    # (kinds [] = all) — beta simply has no figures
+    print("== figure-index leg")
+    figs = list(state.lists.get(LISTS["figures"], {}).values())
+    alpha_figs = [r for r in figs if r.get("DocumentLookupId") == alpha_id]
+    check("alpha got its one figure row", len(alpha_figs) == 1, str(figs)[:400])
+    af = alpha_figs[0] if alpha_figs else {}
+    check("figure row carries the naming + placement contract",
+          af.get("FigureKey") == f"{alpha_id}|1" and af.get("FigureNo") == 1
+          and af.get("Kind") == "image" and af.get("FileName") == "fig-01-slide-01.png"
+          and af.get("Format") == "png" and af.get("SlideNo") == 1
+          and af.get("Section") == "Slide 1" and af.get("Anchor") == "slide-1"
+          and af.get("CaseNo") == "" and af.get("Title") == "Figure 1", str(af))
+    check("figure row sized from the file on disk",
+          af.get("Width") == 1 and af.get("Height") == 1 and int(af.get("Bytes") or 0) == len(PNG), str(af))
+    check("figure row links the picture in the media folder (text URL + hyperlink via SPO)",
+          af.get("ImageUrl") == "https://mock.example/sites/lrsworkspace/LRS Doc Index/media/123-alpha-plan/fig-01-slide-01.png"
+          and isinstance(af.get("ImageLink"), dict)
+          and af["ImageLink"].get("Url") == af.get("ImageUrl")
+          and af["ImageLink"].get("Description") == "fig-01-slide-01.png", str(af))
+    check("figure context is the section's prose",
+          "lock acquisition #123" in str(af.get("Context")) and "![" not in str(af.get("Context")), str(af))
+    check("ghost's figure row pruned by the archive pass",
+          not [r for r in figs if str(r.get("FigureKey", "")).startswith(f"{ghost_row_id}|")], str(figs)[:400])
+    check("run summary counts figure writes",
+          int(out.get("figures_upserted", 0)) >= 1 and int(out.get("figures_removed", 0)) >= 1
+          and int(out.get("figure_errors", 0)) == 0, str(out))
+    fcat_path = os.path.join(sidecar_dir, "_Figure Catalog.md")
+    fcat = open(fcat_path).read() if os.path.exists(fcat_path) else ""
+    check("figure catalog written at the library root",
+          fcat.startswith("# Figures — catalog"), fcat[:200])
+    check("catalog groups by document with kind counts and links the picture + section",
+          re.search(r"(?m)^## Alpha Plan \(1: 1 image\)$", fcat) is not None
+          and "[fig-01-slide-01.png](<media/123-alpha-plan/fig-01-slide-01.png>)" in fcat
+          and "[Slide 1](<Test Plans/123-alpha-plan.md#slide-1>)" in fcat
+          and "| 1×1 |" in fcat
+          and "1 figure(s) (1 image(s)) across 1 document(s)" in fcat, fcat)
+    status_fig = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
+    check("status page reports figure writes", "**Figures:**" in status_fig, status_fig[:800])
+
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")
     llm_before = state.llm_calls
@@ -1426,6 +1480,11 @@ def main():
           and int(out.get("cases_removed", 0)) == 0
           and len([r for r in state.lists.get(LISTS["testCases"], {}).values()
                    if r.get("DocumentLookupId") == alpha_id]) == 2, str(out))
+    check("figure rows idempotent (unchanged corpus writes none)",
+          int(out.get("figures_upserted", 0)) == 0
+          and int(out.get("figures_removed", 0)) == 0
+          and len([r for r in state.lists.get(LISTS["figures"], {}).values()
+                   if r.get("DocumentLookupId") == alpha_id]) == 1, str(out))
     # streaks: run 1 stamped 1 night; this full run makes it 2
     status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("error streaks advance on full runs",
@@ -1454,9 +1513,9 @@ def main():
           str(backups) + " " + str(out.get("list_backup")))
     with gzip.open(os.path.join(work_dir, sorted(backups)[-1])) as f:
         bk = json.load(f)
-    check("list backup holds all six lists with raw rows",
+    check("list backup holds all seven lists with raw rows",
           set(bk.get("lists", {})) == {"docIndex", "keywords", "docIds",
-                                       "docKeywords", "docLinks", "testCases"}
+                                       "docKeywords", "docLinks", "testCases", "figures"}
           and len(bk["lists"]["docIndex"]) >= 3
           and "fields" in bk["lists"]["docIndex"][0],
           str({k: len(v) for k, v in bk.get("lists", {}).items()}))
@@ -1749,6 +1808,51 @@ def main():
     check("reformat is byte-idempotent on a format-3.0 head",
           (run_sweep(cfg_path, ["--live", "--reformat"]).returncode == 0
            and open(beta_sc).read() == after), open(beta_sc).read()[:300])
+    # the one figure update is the vocabulary catch-up: "acquisition"
+    # was minted by alpha's own index run, so it reaches alpha's figure
+    # tags on the next reflow (the caseindex v1.2 accepted degradation)
+    fig_rows_rf = [r for r in state.lists.get(LISTS["figures"], {}).values() if r.get("DocumentLookupId") == alpha_id]
+    check("reformat re-synced figure rows: no churn beyond the run-start vocabulary catch-up",
+          int(out.get("figures_upserted", 0)) == 1
+          and int(out.get("figures_removed", 0)) == 0
+          and int(out.get("figure_errors", 0)) == 0
+          and int(out.get("media_renamed", 0)) == 0
+          and len(fig_rows_rf) == 1 and fig_rows_rf[0].get("Keywords") == "acquisition", str(out) + str(fig_rows_rf)[:300])
+    # v1.59: a corpus still on the archive names (image1.png) converges
+    # under --reformat — the file on disk moves to its standardized name
+    # (no re-extraction), the body link follows, the figure row updates
+    print("== media-rename leg")
+    pretty_png = os.path.join(stem_dir, "fig-01-slide-01.png")
+    os.rename(pretty_png, os.path.join(stem_dir, "image1.png"))
+    with open(alpha_sc, "w") as f:
+        f.write(alpha_after.replace("![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)",
+                                    "![image1.png](../media/123-alpha-plan/image1.png)"))
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    check("media-rename reformat exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    alpha_renamed = open(alpha_sc).read()
+    check("reformat moved the archive-named file to its standardized name",
+          os.path.exists(pretty_png) and not os.path.exists(os.path.join(stem_dir, "image1.png"))
+          and int(out.get("media_renamed", 0)) == 1, str(out) + str(os.listdir(stem_dir)))
+    check("reformat relinked the body to the standardized name",
+          "![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)" in alpha_renamed
+          and "image1.png" not in alpha_renamed, alpha_renamed[-400:])
+    check("reformat spent no AI calls on the rename", state.llm_calls == llm_before_rf,
+          f"{state.llm_calls} vs {llm_before_rf}")
+    # the row already carried the standardized name (only the sidecar
+    # and the disk were reverted), so converging them writes no row
+    check("figure row stays on the standardized name with no churn",
+          [r.get("FileName") for r in state.lists.get(LISTS["figures"], {}).values()
+           if r.get("DocumentLookupId") == alpha_id] == ["fig-01-slide-01.png"]
+          and int(out.get("figures_upserted", 0)) == 0
+          and int(out.get("media_moved", 0)) == 0, str(out))
+    proc2 = run_sweep(cfg_path, ["--live", "--reformat"])
+    out2 = json.loads(proc2.stdout.splitlines()[0])
+    check("second reformat is a no-op on the renamed media (files, body, rows)",
+          proc2.returncode == 0 and int(out2.get("media_renamed", 0)) == 0
+          and int(out2.get("figures_upserted", 0)) == 0
+          and open(alpha_sc).read() == alpha_renamed, str(out2))
+    alpha_after = alpha_renamed
 
     # ---- format-3.0 migration leg (Sidecar_Format_Plan phase 1) -----
     # a sidecar still in the v2.8 yaml frame (comment-hidden ```yaml
@@ -1865,10 +1969,70 @@ def main():
           and int(out.get("case_fields_dropped", 0)) == 0, str(out) + str(mrows)[:300])
     tcs = list(state.lists.get(LISTS["testCases"], {}).values())
 
+    # ---- refigure leg (Figure_Index_Plan — the backfill) -----------
+    # wipe the Figures list and plant an orphan row whose document is
+    # gone; --refigure must rebuild alpha's row from the sidecar ON DISK
+    # (no extraction, no AI), delete the orphan, and rebuild the catalog
+    print("== refigure leg")
+    state.lists[LISTS["figures"]] = {}
+    state.seed(LISTS["figures"], {
+        "Title": "Orphan figure", "DocumentLookupId": 999999,
+        "FigureKey": "999999|1", "Kind": "image",
+    })
+    llm_before_rg = state.llm_calls
+    os.remove(fcat_path)
+    proc = run_sweep(cfg_path, ["--refigure"])
+    check("refigure dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("refigure dry run plans but writes nothing",
+          out.get("mode") == "refigure" and out.get("dry_run") is True
+          and int(out.get("eligible", 0)) >= 2 and int(out.get("synced", 0)) >= 2
+          and len(state.lists[LISTS["figures"]]) == 1
+          and not os.path.exists(fcat_path), str(out))
+    proc = run_sweep(cfg_path, ["--refigure", "--live"])
+    check("refigure live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    figs = list(state.lists.get(LISTS["figures"], {}).values())
+    check("refigure rebuilt the figure row from the sidecar on disk",
+          len([r for r in figs if r.get("DocumentLookupId") == alpha_id
+               and r.get("FileName") == "fig-01-slide-01.png" and r.get("Width") == 1]) == 1, str(figs)[:400])
+    check("refigure deleted the orphan row",
+          not [r for r in figs if r.get("FigureKey") == "999999|1"], str(figs)[:400])
+    check("refigure spent no AI calls", state.llm_calls == llm_before_rg,
+          f"{state.llm_calls} vs {llm_before_rg}")
+    check("refigure counters report the walk",
+          int(out.get("figures_upserted", 0)) == 1 and int(out.get("figures_removed", 0)) == 1
+          and int(out.get("figure_errors", 0)) == 0, str(out))
+    check("refigure live rebuilt the figure catalog",
+          os.path.exists(fcat_path)
+          and "[fig-01-slide-01.png](<media/123-alpha-plan/fig-01-slide-01.png>)" in open(fcat_path).read(),
+          open(fcat_path).read()[:300] if os.path.exists(fcat_path) else "(missing)")
+    # the shared column-dropper covers the Figures list too
+    state.lists[LISTS["figures"]] = {}
+    state.reject_fields = {"Bytes"}
+    proc = run_sweep(cfg_path, ["--refigure", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    frows = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("figures missing column: row written without it, one note naming the schema",
+          proc.returncode == 0 and len(frows) == 1 and "Bytes" not in frows[0]
+          and int(out.get("figure_errors", 0)) == 0 and int(out.get("figure_fields_dropped", 0)) == 1
+          and proc.stderr.count("Figures list has no 'Bytes' column") == 1
+          and "SPList_Figures.csv" in proc.stderr and "--refigure --live" in proc.stderr,
+          str(out) + proc.stderr[-400:])
+    state.reject_fields = set()
+    proc = run_sweep(cfg_path, ["--refigure", "--live"])
+    frows = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("figures column added: the next refigure fills it in",
+          proc.returncode == 0 and int(frows[0].get("Bytes") or 0) == len(PNG), str(frows)[:300])
+    proc = run_sweep(cfg_path, ["--refigure", "--recase"])
+    check("refigure refuses to combine with --recase",
+          proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
+
     # ---- case-index missing-GUID leg (fail-soft) -------------------
     print("== case-index missing-GUID leg")
     cfg_nocases = json.loads(json.dumps(cfg))
     del cfg_nocases["sharePoint"]["lists"]["testCases"]
+    del cfg_nocases["sharePoint"]["lists"]["figures"]
     cfg_nocases_path = os.path.join(tmp, "config-nocases.json")
     with open(cfg_nocases_path, "w") as f:
         json.dump(cfg_nocases, f)
@@ -1876,6 +2040,11 @@ def main():
     check("missing GUID: sweep still runs, with the loud note",
           proc.returncode == 0 and "sharePoint.lists.testCases" in proc.stderr,
           proc.stderr[-400:])
+    check("missing figures GUID: loud note, documents still index",
+          "sharePoint.lists.figures" in proc.stderr and "--refigure" in proc.stderr, proc.stderr[-600:])
+    proc = run_sweep(cfg_nocases_path, ["--refigure"])
+    check("missing figures GUID: --refigure refuses, naming the fix",
+          proc.returncode != 0 and "SPList_Figures.csv" in proc.stderr, proc.stderr[-300:])
     proc = run_sweep(cfg_nocases_path, ["--recase"])
     check("missing GUID: --recase refuses, naming the fix",
           proc.returncode != 0 and "Test Cases" in proc.stderr,
@@ -1933,9 +2102,9 @@ def main():
     cur = open(alpha_sc).read()
     legacy_media = os.path.join(sidecar_dir, "media", "doc10_image1.png")
     os.makedirs(os.path.dirname(legacy_media), exist_ok=True)
-    shutil.copyfile(os.path.join(stem_dir, "image1.png"), legacy_media)
+    shutil.copyfile(os.path.join(stem_dir, "fig-01-slide-01.png"), legacy_media)
     with open(old_path, "w") as f:
-        f.write(cur.replace("../media/123-alpha-plan/image1.png", "../media/doc10_image1.png"))
+        f.write(cur.replace("../media/123-alpha-plan/fig-01-slide-01.png", "../media/doc10_image1.png"))
     os.remove(alpha_sc)
     shutil.rmtree(stem_dir)
     old_url = state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"]
