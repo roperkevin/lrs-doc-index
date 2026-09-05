@@ -1,3 +1,67 @@
+# TestPlanGen v2.34 — related cases: the retrieval lane (prompt v1.11, testplangen.mjs v1.13)
+
+Owner-requested (2026-09-05), after the doc 910 review: the draft
+carried spanning-event and referent-method coverage only as
+[VERIFY] items, although the team's own cases for those dimensions
+sit in the catalog — in plans the story's `related:` routing never
+reached. Generation consumed the Test Cases index only through
+plan-level issue-id links; nothing retrieved individual cases by
+relevance. Now it does, with no file for a PE to maintain — the
+index the nightly sweep already keeps is the source:
+
+- **The lane (testplangen.mjs v1.13).** Every indexed case in the
+  catalog is scored against the story — shared Tools tags ×10 and
+  Keywords tags ×3 (the curated vocabulary, the story's from its
+  sidecar metadata table), a capped count of content-word stems
+  the case's title/scenario/text shares with the story text
+  (draftlint's stemmer, now exported), +100 when the case cites a
+  story issue id — and the top `relatedCasesSlots` (20) at or
+  above `relatedCasesMinScore` (4) are sent as RELATED CASES, each
+  headed by its plan title, surface, and case name, with its
+  section text sliced from the plan's sidecar (`caseSpans`; the
+  row's CaseText when the sidecar is not readable). Cases from
+  plans already in the exemplar or reference lanes are skipped —
+  the model sees those whole. Per-case (`relatedCaseChars` 900) and
+  per-lane (`relatedCasesCap` 12000) budgets, remaining-budget
+  take. Deterministic, read-only, no extra AI spend. Absent the
+  list, or `testplangen.relatedCases: false`, the block reads
+  "(none)" and the draft is the v1.10 draft. Gen_summary gains
+  `relatedCases= relCaseChars=`; the manual progress line names
+  the plans drawn from; `--preview` shows the block.
+- **Prompt v1.11 — the SIXTH input `RelatedCases`** (a CONTRACT
+  change like v1.3's ReferenceText: the tenant AI Builder prompt
+  needs the parameter created before the paste; the anthropic lane
+  needs nothing). One new text block, one lane rule (treat each
+  related case exactly like an exemplar case — a pattern, never
+  feature content or tool names), the Source Case Sweep condition
+  widened to the three lanes, the CASE SWEEP covering every related
+  case with "(related case)" in its Source plan cell, and the new
+  **VARIATION clause**: a source case that exercises a behavior
+  THIS STORY STATES over a different input value — a spanning line
+  event, another referent method, point where the story says point
+  and line, an option on — is a variation of a stated behavior:
+  Applies, mint the parameterized case for that value, Trace citing
+  the story statement first and the source case second. A source
+  case whose BEHAVIOR the story never states stays Verify. The
+  story-first posture is unchanged; what changed is the definition
+  of "the story says nothing" — it no longer covers inputs the
+  story's own statement already ranges over. Section order,
+  sentinels, and the lint's structural asserts are untouched.
+- Not done here, deliberately: axis mining from sibling case titles
+  (judged too noisy for the verifier); the verifier noise items
+  from the same review (Coverage Map rows citing Automation Notes,
+  the Title Case tools heuristic on step phrases) — separate.
+
+Gate: `check_testplangen.py` **198/198** — leg 20 (Plan F's tagged
+cases sent in score order with sidecar section text and headers;
+in-lane plans' cases and a below-threshold case excluded; the slots
+knob; `relatedCases: false` and no-list "(none)"; the anthropic
+prompt carries the block, the VARIATION clause and no leftover
+placeholder; the preview shows the sixth input). Tenant step queued:
+create the `RelatedCases` parameter on the AI Builder prompt, then
+paste v1.11 (`Coverage_Runbook.md` step 2's pattern) — the cloud
+flow packages are NOT re-cut here (the local job is the live path).
+
 # TestPlanGen v2.33 — console streaming (testplangen.mjs v1.12, llm.mjs v1.7)
 
 Owner question (2026-09-05): "Is it possible to stream the LLM's

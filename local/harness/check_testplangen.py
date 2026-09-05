@@ -157,6 +157,17 @@ verifier the cloud flow could not have
                      draft identical; without --stream no thinking
                      key is sent and nothing is echoed; on the
                      aibuilder lane --stream prints one note
+  leg 20 related     the RELATED CASES retrieval lane (v1.13, prompt
+                     v1.11's sixth input): indexed cases from plans
+                     outside the exemplar/reference lanes are scored
+                     by shared Tools/Keywords tags + story stems and
+                     sent with their sidecar section text, score
+                     order, plan/surface/case headers; below-threshold
+                     and in-lane plans' cases excluded; slots knob;
+                     relatedCases false and no list read "(none)";
+                     the anthropic prompt carries the block, the
+                     VARIATION clause, and no leftover placeholder;
+                     relatedCases=/relCaseChars= in Gen_summary
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -825,6 +836,11 @@ def main():
         {"id": "804", "fields": {"Title": "TC-P04 — Measures survive a reload",
                                  "DocumentLookupId": 27, "CaseKey": "27|6",
                                  "Keywords": "measures; route", "IssueRefs": ""}},
+        # leg 20: an untagged Plan F case sharing only the word "route"
+        # with story 12 — under the retrieval threshold, never sent
+        {"id": "806", "fields": {"Title": "TC-P01 — Create a route",
+                                 "DocumentLookupId": 27, "CaseKey": "27|1",
+                                 "IssueRefs": ""}},
     ]
     # Issue Refs rows (gantt.mjs's schedule feed) — enrich the trace
     state.lists["list-issuerefs"] = [
@@ -927,7 +943,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.10")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.11")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -998,7 +1014,7 @@ def main():
           and story_body in prompt
           and "--- EXEMPLAR: plan-a__doc21.md ---" in prompt, prompt[:200])
     check("prompt: no leftover placeholders",
-          not re.search(r"\{(StoryMeta|StoryText|RelatedDigest|ExemplarText|ReferenceText)\}",
+          not re.search(r"\{(StoryMeta|StoryText|RelatedDigest|ExemplarText|ReferenceText|RelatedCases)\}",
                         prompt), prompt[-300:])
     check("maxTokens honored (default 32000)",
           state.ant_last_body.get("max_tokens") == 32000, str(state.ant_last_body.get("max_tokens")))
@@ -1403,7 +1419,7 @@ def main():
     # none (covered by adjacency only); gap story 13's 7777 by a
     # plan-22 case (case-level coverage without a doc link)
     check("gap report: case tracing counters",
-          summ.get("caseRows") == "5" and summ.get("traced") == "1"
+          summ.get("caseRows") == "6" and summ.get("traced") == "1"
           and summ.get("coveredUntraced") == "1", r.stdout)
     check("covered-untraced story listed with its covering plan's case count",
           "## Case-level tracing" in body and '- doc 17 — "Edge Linked"' in body
@@ -2017,6 +2033,58 @@ def main():
           r.returncode == 0 and "progress: stream — the aibuilder lane cannot stream" in r.stderr
           and "--- draft:" not in r.stderr, r.stderr[-400:])
     state.gen_text = wrap(GOOD_DRAFT)
+
+    # ---- leg 20: the RELATED CASES retrieval lane (v1.13) ----------
+    print("== leg 20: related cases")
+    r = run_job(cfg_main, ["--story", "12", "--dry-run"])
+    summ = summary_of(r.stdout)
+    rc = state.gen_last_inputs.get("RelatedCases", "")
+    p02 = "--- RELATED CASE: Plan F — surface Pro — TC-P02 — Merge keeps measures ---"
+    p04 = "--- RELATED CASE: Plan F — surface Pro — TC-P04 — Measures survive a reload ---"
+    check("related cases: Plan F's tagged cases sent, tools-scored case first",
+          r.returncode == 0 and p02 in rc and p04 in rc and rc.index(p02) < rc.index(p04)
+          and summ.get("relatedCases") == "2" and int(summ.get("relCaseChars", "0")) == len(rc),
+          rc[:400] + str(summ))
+    check("related cases: section text sliced from the plan's sidecar",
+          "**Expected Result:** Merge keeps measures succeeds." in rc
+          and "**Steps:**" in rc, rc[:600])
+    check("related cases: in-lane plans and below-threshold cases excluded",
+          "Plan A" not in rc and "Plan B" not in rc and "TC-P01" not in rc
+          and "Plan C" not in rc and "Plan D" not in rc, rc)
+    check("related cases: progress line names the plans drawn from",
+          "progress: related cases — 2 (" in r.stderr and "from plans [27]" in r.stderr,
+          r.stderr[-500:])
+    cfg_rc1 = write_cfg("config-rc1.json",
+                        testplangen={"neighborCap": 8, "relatedCasesSlots": 1})
+    r = run_job(cfg_rc1, ["--story", "12", "--dry-run"])
+    rc = state.gen_last_inputs.get("RelatedCases", "")
+    check("relatedCasesSlots caps the lane in score order",
+          r.returncode == 0 and p02 in rc and p04 not in rc
+          and summary_of(r.stdout).get("relatedCases") == "1", rc[:300])
+    cfg_rc0 = write_cfg("config-rc0.json",
+                        testplangen={"neighborCap": 8, "relatedCases": False})
+    r = run_job(cfg_rc0, ["--story", "12", "--dry-run"])
+    check("relatedCases false: the block reads (none)",
+          r.returncode == 0 and state.gen_last_inputs.get("RelatedCases") == "(none)"
+          and summary_of(r.stdout).get("relatedCases") == "0", str(state.gen_last_inputs.get("RelatedCases"))[:100])
+    r = run_job(cfg_nc_path, ["--story", "12", "--dry-run"])
+    check("no Test Cases list: the block reads (none)",
+          r.returncode == 0 and state.gen_last_inputs.get("RelatedCases") == "(none)"
+          and summary_of(r.stdout).get("relatedCases") == "0", r.stdout)
+    r = run_job(cfg_ant, ["--story", "12", "--dry-run"])
+    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    check("anthropic prompt: the RELATED CASES block, the VARIATION clause, no leftover placeholder",
+          r.returncode == 0 and "<<<RELATED CASES BEGIN>>>\n--- RELATED CASE: Plan F" in prompt
+          and "**VARIATION**" in prompt and "{RelatedCases}" not in prompt
+          and "(related case)" in prompt, prompt[-600:])
+    r = run_job(cfg_main, ["--story", "12", "--preview"])
+    previews = sorted(
+        (f for f in os.listdir(work_dir) if f.startswith("testplangen-preview-")),
+        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+    preview_text = open(os.path.join(work_dir, previews[-1]), encoding="utf-8").read()
+    check("preview carries the sixth input and its counters",
+          r.returncode == 0 and "=== RelatedCases (" in preview_text and p02 in preview_text
+          and summary_of(r.stdout).get("relatedCases") == "2", r.stdout)
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

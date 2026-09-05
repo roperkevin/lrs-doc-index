@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.12 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.13 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -8,7 +8,33 @@
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29; case-aware generation: v2.30; first-run
- * review: v2.31; generated figures: v2.32; console streaming: v2.33).
+ * review: v2.31; generated figures: v2.32; console streaming: v2.33;
+ * related cases: v2.34).
+ *
+ * v1.13 (related cases — the retrieval lane, prompt v1.11's SIXTH
+ * input, testplangen/CHANGES.md v2.34): with the Test Cases list
+ * configured, every indexed case in the catalog is scored against
+ * the story — shared Tools tags ×10, shared Keywords tags ×3 (the
+ * curated vocabulary, from the story's sidecar metadata table), a
+ * capped count of content-word stems the case's title/scenario/
+ * text shares with the story text, and +100 when the case cites
+ * one of the story's issue ids — and the top `relatedCasesSlots`
+ * (20) with a score of at least `relatedCasesMinScore` (4) are sent
+ * as RELATED CASES: each headed by its plan title, surface and case
+ * name, with its section text sliced from the plan's sidecar
+ * (caseSpans; the row's CaseText when the sidecar is not readable),
+ * capped per case and per lane (remaining-budget take, the lane
+ * rule). Cases from plans already in the exemplar or reference
+ * lanes are skipped (the model sees those whole). Read-only,
+ * deterministic, no extra AI spend. The prompt's VARIATION clause
+ * makes them useful: a related case that varies an INPUT of a
+ * story-stated behavior is a Yes with a parameterized case, one
+ * whose behavior the story does not state stays Verify. Absent the
+ * list, or with `testplangen.relatedCases: false`, the block reads
+ * "(none)". Gen_summary gains `relatedCases= relCaseChars=`; the
+ * manual progress line names the plans drawn from. The aibuilder
+ * lane needs the sixth parameter RelatedCases on the tenant prompt
+ * (Coverage_Runbook step 2's pattern).
  *
  * v1.12 (console streaming — `--stream`, testplangen/CHANGES.md
  * v2.33): on the anthropic lane a manual run echoes the model's
@@ -387,7 +413,7 @@ import { RemoteLibrary } from "./lib/remotefs.mjs";
 import { aiBuilderPredict, dataverseToken, generateText, loadPromptTemplate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
-import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
+import { lintDraft, groundDraft, contentStems, stemMatches } from "./lib/draftlint.mjs";
 import { relEntries, metaList } from "./lib/sidecarmeta.mjs";
 import { extractCases, caseSpans } from "./lib/caseindex.mjs";
 import { stemOf } from "./lib/slug.mjs";
@@ -397,7 +423,7 @@ import {
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.12";
+const JOB_VERSION = "v1.13";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -408,7 +434,7 @@ const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 const DRAFT_BEGIN = "[[[DRAFT BEGIN]]]";
 const DRAFT_END = "[[[DRAFT END]]]";
 // the five item/requestv2 input keys, exact names (prompt header)
-const INPUT_KEYS = ["StoryMeta", "StoryText", "RelatedDigest", "ExemplarText", "ReferenceText"];
+const INPUT_KEYS = ["StoryMeta", "StoryText", "RelatedDigest", "ExemplarText", "ReferenceText", "RelatedCases"];
 const INPUTS_RE = new RegExp(`\\{(${INPUT_KEYS.join("|")})\\}`, "g");
 
 // Terminate_not_story / Terminate_no_draft, verbatim from the flow
@@ -583,7 +609,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.10",
+    promptVersion: "v1.11",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,
@@ -598,6 +624,11 @@ function loadConfig(argv) {
     figuresMaxTokens: 8000,
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
+    relatedCases: true, // v1.13: the RELATED CASES retrieval lane (needs the same list)
+    relatedCasesSlots: 20,
+    relatedCasesMinScore: 4,
+    relatedCaseChars: 900,
+    relatedCasesCap: 12000,
     autoDraft: false,
     autoMaxPerRun: 3,
     autoLookbackDays: 7,
@@ -1142,7 +1173,7 @@ async function caseRowsOf(ctx) {
     await graph.listItems(siteId, cfg.sharePoint.lists.testCases, {
       select: [
         "Title", "DocumentLookupId", "CaseKey", "CaseNo", "Classification",
-        "Scenario", "IssueRefs", "Anchor", "Tools", "Keywords",
+        "Scenario", "IssueRefs", "Anchor", "Tools", "Keywords", "CaseText", "Group",
       ],
     })
   ).map((it) => {
@@ -1162,9 +1193,77 @@ async function caseRowsOf(ctx) {
       anchor: f.Anchor || "",
       tools: split(f.Tools).map(lower),
       keywords: split(f.Keywords).map(lower),
+      caseText: String(f.CaseText || ""),
+      group: f.Group || "",
     };
   });
   return ctx._caseRows;
+}
+
+/**
+ * RELATED CASES (v1.13): the individual indexed cases most similar
+ * to the story, from plans NOT already in the exemplar/reference
+ * lanes. Deterministic scoring — Tools ×10, Keywords ×3, shared
+ * content stems (capped at 12), +100 for a case citing a story
+ * issue id — then the top slots at or above the minimum score, in
+ * score order (ties: plan id, ordinal). Each case's text is its
+ * section sliced from the plan's sidecar (caseSpans, cached per
+ * plan), falling back to the row's CaseText; per-case and per-lane
+ * caps hold the budget. Returns { text, count, chars, plans }.
+ */
+function relatedCasesLane(ctx, story, storyText, cc, laneUrls) {
+  const { cfg, byId, sw, tp } = ctx;
+  const out = { text: "", count: 0, chars: 0, plans: [] };
+  if (!cc || tp.relatedCases === false) return out;
+  const storyStems = contentStems(`${stripQuotes(story.Title)}\n${storyText}`);
+  const laneSet = new Set(laneUrls.filter(Boolean));
+  const scored = [];
+  for (const c of cc.rows) {
+    const plan = byId.get(c.planId);
+    if (!plan || plan.DocKind !== "Test Plan" || plan.IndexStatus !== "Indexed") continue;
+    if (plan.ID === story.ID || laneSet.has(plan.TextFileUrl)) continue;
+    let score = 0;
+    score += 10 * c.tools.filter((t) => cc.storyTools.includes(t)).length;
+    score += 3 * c.keywords.filter((k) => cc.storyKeywords.includes(k)).length;
+    const caseStems = contentStems(`${c.title}\n${c.scenario}\n${c.caseText.slice(0, 600)}`);
+    let hits = 0;
+    for (const t of caseStems) if (stemMatches(t, storyStems)) hits++;
+    score += Math.min(hits, 12);
+    if (c.issueList.some((k) => cc.keySet.has(k))) score += 100;
+    if (score >= Number(tp.relatedCasesMinScore)) scored.push({ c, plan, score });
+  }
+  scored.sort(
+    (a, b) => b.score - a.score || a.plan.ID - b.plan.ID || (a.c.ordinal ?? 0) - (b.c.ordinal ?? 0)
+  );
+  const spansCache = new Map();
+  const sectionOf = (plan, c) => {
+    if (c.ordinal === undefined) return c.caseText;
+    if (!spansCache.has(plan.ID)) {
+      let entry = null;
+      const local = plan.TextFileUrl ? urlToLocal(plan.TextFileUrl, sw, cfg) : null;
+      if (local && fs.existsSync(local)) entry = caseSpans(fs.readFileSync(local, "utf8"));
+      spansCache.set(plan.ID, entry);
+    }
+    const sp = spansCache.get(plan.ID);
+    const span = sp && sp.spans[c.ordinal - 1];
+    return span ? sp.lines.slice(span.start, span.end).join("\n").trim() : c.caseText;
+  };
+  const cap = Number(tp.relatedCasesCap);
+  for (const { c, plan } of scored.slice(0, Number(tp.relatedCasesSlots))) {
+    if (out.text.length >= cap) break;
+    const remaining = cap - out.text.length;
+    const body = cut(sectionOf(plan, c), Number(tp.relatedCaseChars));
+    const name = [c.caseNo, c.title].filter(Boolean).join(" ") || `case ${c.ordinal}`;
+    const head =
+      `--- RELATED CASE: ${stripQuotes(plan.Title)} — surface ${plan.Surface || ""} — ` +
+      `${name}${c.classification ? ` [${c.classification}]` : ""}` +
+      `${c.group ? ` (${cellSafe(c.group, 60)})` : ""} ---\n`;
+    out.text += head + cut(body, Math.max(0, remaining - head.length)) + "\n\n";
+    out.count++;
+    if (!out.plans.includes(plan.ID)) out.plans.push(plan.ID);
+  }
+  out.chars = out.text.length;
+  return out;
 }
 
 // the story's own devtopia issue keys (`repo#number`), from the Doc
@@ -1645,12 +1744,25 @@ async function generateOne(ctx, story) {
   // phase 5: a story/v1 sidecar puts Story + Acceptance Criteria ahead
   // of Testing/Automation/… so the StoryCap cut keeps the requirements
   const storyTextCapped = cut(storyTextFirst(storyMd), Number(tp.storyCap));
+  // RELATED CASES (v1.13) — retrieved individual cases from plans the
+  // two lanes above did not reach
+  const related = relatedCasesLane(
+    ctx, story, storyTextCapped, cc,
+    [...exemplarUrls, ...referenceRefs.map((r) => r.url)]
+  );
+  if (related.count) {
+    prog(
+      `related cases — ${related.count} (${related.chars} chars) from plans ` +
+      `[${related.plans.join(",")}]`
+    );
+  }
   const inputs = {
     StoryMeta: storyMeta,
     StoryText: storyTextCapped,
     RelatedDigest: digest === "" ? "(none)" : digest,
     ExemplarText: exemplarText === "" ? "(none)" : exemplarText,
     ReferenceText: referenceText === "" ? "(none)" : referenceText,
+    RelatedCases: related.text === "" ? "(none)" : related.text,
   };
 
   // testplangen.provider overrides llm.provider for the generation
@@ -1695,7 +1807,8 @@ async function generateOne(ctx, story) {
       `refChars=${referenceText.length} pinnedEx=${pins.ex.length} ` +
       `pinnedRef=${docRefPins.length} webRefs=${webRefCount} ` +
       `caseRouted=${routedIds.length} caseTrim=${caseTrim} ` +
-      `exCases=${exCasesKept}/${exCasesTotal} inputChars=${inChars} ` +
+      `exCases=${exCasesKept}/${exCasesTotal} relatedCases=${related.count} ` +
+      `relCaseChars=${related.chars} inputChars=${inChars} ` +
       `provider=${provider} preview=1`;
     return { line, preview: true, localInputs, provider, inputChars: inChars };
   }
@@ -1949,6 +2062,7 @@ async function generateOne(ctx, story) {
     `pinnedEx=${pins.ex.length} pinnedRef=${docRefPins.length} webRefs=${webRefCount} ` +
     `existingCases=${existingCases.count} caseRouted=${routedIds.length} ` +
     `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal} ` +
+    `relatedCases=${related.count} relCaseChars=${related.chars} ` +
     `genFigures=${figs.rendered.length}/${figs.proposed}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
