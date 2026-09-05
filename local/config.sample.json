@@ -85,6 +85,13 @@
     "$comment": "Mirrors flow v2.8 Config. Values below are the v2.8 defaults; keep them in sync with STATUS when the flow config changes. Also available: graphDownloadFallback (true = a source file missing from the OneDrive-synced folder is fetched through Graph instead of erroring for the night, v1.33); exportLists (false disables the per-run gzip list backup in workDir, v1.32); indexPages (false disables the _Index.md browse pages, v1.35); tesseractPath + pdftoppmPath + ocrMaxPages (set tesseractPath to enable the OCR lane for image-only PDFs, v1.36); embedRelated + embedSimMin with llm.embeddings {baseUrl, apiKey, model} (embedding-assisted relatedness via a Voyage/OpenAI-compatible endpoint — document text leaves the tenant when on, v1.38); remoteFiles + remoteDriveName (run with NO OneDrive: sidecars mirror down and write through Graph, sources download on demand — local/Hosted_Runner.md, v1.39).",
     "maxDocsPerRun": 150,
     "promptVersion": "v2.0",
+    "normalizeCases": {
+      "$comment": "sweep.mjs --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane for test plans the deterministic detectors leave caseless although _Case Audit.md sees a case shape. enabled is the owner switch (a --live run refuses without it; dry runs always list the candidates); maxPerRun caps model calls per run; provider '' follows llm.provider ('anthropic' executes prompts/CaseNormalize_Prompt.md verbatim; 'aibuilder' needs the same prompt pasted on tenant and its GUID in llm.normalizeModelId); maxTokens bounds the anthropic reply. Every reply is verified (contract lint + grounding) before a body is written; --reformat keeps LLM-normalized bodies.",
+      "enabled": false,
+      "maxPerRun": 10,
+      "provider": "",
+      "maxTokens": 16000
+    },
     "defaultRepo": "A/b",
     "relatedTopN": 5,
     "relatedShortlist": 12,

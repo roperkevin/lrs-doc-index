@@ -46,11 +46,12 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
-import { classifyDoc } from "./llm.mjs";
+import { classifyDoc, generateText, aiBuilderPredict, loadPromptTemplate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.mjs";
 import {
   lower, cut, folderOf, yamlEscape, stripQuotes, pipeToSlash, fmtDate,
@@ -59,7 +60,8 @@ import {
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
-import { auditBody, summarizeAudit, renderAuditPage } from "./lib/caseaudit.mjs";
+import { auditBody, summarizeAudit, renderAuditPage, hasSignal } from "./lib/caseaudit.mjs";
+import { buildNormalizePrompt, unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
 import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
 import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
 import { writeIndexPages, writeCaseCatalog, writeManifest } from "./lib/indexpages.mjs";
@@ -83,6 +85,13 @@ const FLOW_DEFAULTS = {
   smokeFile: "",
   defaultRepo: "ArcGISPro/ps-location-referencing",
   promptVersion: "v2.0",
+  // --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane
+  // for plans the detectors leave caseless. enabled = the owner switch
+  // (a live run refuses without it); maxPerRun caps model calls;
+  // provider "" follows llm.provider ("anthropic" runs
+  // prompts/CaseNormalize_Prompt.md verbatim; "aibuilder" needs
+  // llm.normalizeModelId); maxTokens bounds the anthropic reply.
+  normalizeCases: { enabled: false, maxPerRun: 10, provider: "", maxTokens: 16000 },
   textCap: 100000,
   previewCap: 5000,
   maxDocsPerRun: 150,
@@ -392,11 +401,12 @@ function loadConfig(argv) {
     else if (a === "--recase") args.flags.recase = true;
     else if (a === "--case-audit") args.flags.caseAudit = true;
     else if (a === "--rename") args.flags.rename = true;
+    else if (a === "--normalize-cases") args.flags.normalize = true;
     else if (a === "--rename-plan") { args.flags.rename = true; args.flags.dry = true; }
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--rename|--rename-plan] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -416,6 +426,10 @@ function loadConfig(argv) {
   }
   if (args.flags.caseAudit) cfg.sweep.caseAudit = true;
   if (args.flags.rename) cfg.sweep.rename = true;
+  if (args.flags.normalize) cfg.sweep.normalize = true;
+  if (cfg.sweep.normalize && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit || cfg.sweep.rename)) {
+    throw new Error("--normalize-cases is a standalone mode — do not combine it with other modes");
+  }
   if (cfg.sweep.rename && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit)) {
     throw new Error("--rename is a standalone mode — do not combine it with --rerank, --reformat, --recase or --case-audit");
   }
@@ -859,6 +873,107 @@ async function main() {
     .map((r) => r.Title)
     .join(", ");
 
+  // ---- --normalize-cases: the opt-in LLM lane (Sidecar_Format_Plan
+  // phase 4). Candidates = case-indexed plans whose body the detectors
+  // left caseless although the audit sees a case shape in it. Dry by
+  // default (the candidate list, no model call); `--live` needs
+  // sweep.normalizeCases.enabled (the owner switch), spends at most
+  // maxPerRun calls, and writes a plan's body only when the reply
+  // passes the contract lint + grounding (casenormalize.mjs). Never
+  // reachable from the nightly index, --reformat or --recase.
+  if (sw.normalize) {
+    const nc = { ...FLOW_DEFAULTS.normalizeCases, ...(sw.normalizeCases || {}) };
+    const provider = nc.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
+    const zsum = { mode: "normalize-cases", dry_run: dry, provider, prompt_version: NORMALIZE_PROMPT_VERSION,
+                   eligible: 0, candidates: 0, normalized: 0, refused: 0, errors: 0, skipped_cap: 0,
+                   cases_upserted: 0, cases_removed: 0, case_errors: 0, plans_caseless: 0, cases_shape_mixed: 0 };
+    if (!dry && !nc.enabled) {
+      throw new Error(
+        "--normalize-cases --live requires sweep.normalizeCases.enabled: true in config — " +
+        "the owner switch for AI spend on sidecar bodies (dry runs list the candidates without it)"
+      );
+    }
+    const template = provider === "anthropic"
+      ? loadPromptTemplate(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "prompts", "CaseNormalize_Prompt.md"))
+      : "";
+    if (!dry && provider === "aibuilder" && !cfg.llm.normalizeModelId) {
+      throw new Error("llm.normalizeModelId is not set — paste prompts/CaseNormalize_Prompt.md as a tenant prompt (inputs PlanTitle, Body) or use provider \"anthropic\"");
+    }
+    const plans = [];
+    for (const r of docIndexRows) {
+      if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      zsum.eligible++;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) continue;
+      const content = fs.readFileSync(local, "utf8");
+      const seam = bodySeamEnd(content);
+      if (seam < 0) continue;
+      const body = content.slice(seam);
+      if (body.includes("<!-- src: LLM")) continue;            // already normalized
+      if (extractCases(body).shape !== "none") continue;         // the detectors cover it
+      if (!hasSignal(auditBody(body))) continue;                 // genuinely caseless
+      zsum.candidates++;
+      plans.push({ r, local, content, seam, body });
+    }
+    const results = [];
+    for (const p of plans) {
+      if (zsum.normalized + zsum.refused + zsum.errors >= Number(nc.maxPerRun)) { zsum.skipped_cap++; continue; }
+      const entry = { id: p.r.ID, title: p.r.Title || p.r.FileName, ok: false, failures: [], cases: 0 };
+      results.push(entry);
+      if (dry) { entry.failures = ["dry run: not called"]; continue; }
+      try {
+        const inputs = { PlanTitle: p.r.Title || p.r.FileName || "", Body: p.body };
+        let raw;
+        if (provider === "aibuilder") {
+          const res = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.normalizeModelId);
+          raw = res?.responsev2?.predictionOutput?.text ?? "";
+        } else {
+          raw = await generateText({ ...cfg.llm, maxTokens: Number(nc.maxTokens) },
+                                   buildNormalizePrompt(template, { planTitle: inputs.PlanTitle, body: p.body }));
+        }
+        const out = unwrapReply(raw);
+        const v = verifyNormalized(p.body, out);
+        entry.cases = v.cases;
+        if (!v.ok) {
+          entry.failures = v.failures;
+          zsum.refused++;
+          process.stderr.write(`NORMALIZE REFUSED doc ${p.r.ID} (${entry.title}): ${v.failures.slice(0, 3).join("; ")}\n`);
+          continue;
+        }
+        const next = p.content.slice(0, p.seam) + out;
+        writer.writeFile(p.local, next);
+        if (remote) await remote.flush();
+        await syncCases(p.r.ID, p.r.DocKind, out, zsum, p.r.Title || "");
+        entry.ok = true;
+        zsum.normalized++;
+      } catch (e) {
+        zsum.errors++;
+        entry.failures = [String(e.message)];
+        process.stderr.write(`NORMALIZE ERROR doc ${p.r.ID}: ${e.message}\n`);
+      }
+    }
+    if (!dry && zsum.normalized && ciEnabled) {
+      writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+      if (remote) {
+        const pg = path.join(cfg.paths.sidecarLibrary, "_Case Catalog.md");
+        if (fs.existsSync(pg)) remote.queuePut(pg);
+        await remote.flush().catch((e) => process.stderr.write(`remote flush of case catalog: ${e.message}\n`));
+      }
+    }
+    const zDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(zDir, { recursive: true });
+    const zStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const zLog = path.join(zDir, `sweep-${zStamp}.json`);
+    fs.writeFileSync(zLog, JSON.stringify({ summary: zsum, plans: results, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(zDir);
+    process.stdout.write(JSON.stringify({ ...zsum, logFile: zLog }) + "\n");
+    for (const e of results) process.stdout.write(`${e.ok ? "normalized" : "not written"}: doc ${e.id} ${e.title}${e.ok ? ` (${e.cases} cases)` : ` — ${e.failures.slice(0, 2).join("; ")}`}\n`);
+    if (dry) process.stdout.write(`normalize plan: ${zsum.candidates} candidate plan(s); re-run with --normalize-cases --live (sweep.normalizeCases.enabled: true) to call the model\n`);
+    return;
+  }
+
   // ---- --rename / --rename-plan: re-mint every sidecar stem from the
   // §4.6 rules (<issue>-<slug>[-qualifier].md, media/<stem>/), move
   // the files and their media, rewrite every inbound link corpus-wide,
@@ -1294,6 +1409,13 @@ async function main() {
         const seam = bodySeamEnd(cur);
         if (seam < 0) {
           rfsum.no_seam++;
+          continue;
+        }
+        // phase 4: a body the LLM lane normalized (and a human accepted)
+        // is kept — the deterministic re-render would throw it away;
+        // a source edit reindexes it fresh anyway
+        if (cur.slice(seam).includes("<!-- src: LLM")) {
+          rfsum.llm_kept = (rfsum.llm_kept || 0) + 1;
           continue;
         }
         const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited,

@@ -302,6 +302,8 @@ def make_messy_pptx(fpath, text):
 
 class MockState:
     def __init__(self):
+        self.gen_text = ""           # --normalize-cases: the streamed reply
+        self.gen_prompts = []
         self.next_id = 100
         # list GUID -> {item_id(str) -> fields dict}
         self.lists = {}
@@ -443,6 +445,33 @@ def make_handler(state, lib_guid, src_files):
                     "anthropic-beta": self.headers.get("anthropic-beta"),
                 }
                 prompt = body["messages"][0]["content"]
+                if body.get("stream"):
+                    # generateText (llm.mjs v1.6) streams — the
+                    # --normalize-cases lane; serve the leg's gen_text as SSE
+                    state.gen_prompts.append(prompt)
+                    text = state.gen_text
+                    half = len(text) // 2
+                    events = [
+                        {"type": "message_start", "message": {"id": "msg_mock"}},
+                        {"type": "content_block_start", "index": 0,
+                         "content_block": {"type": "text", "text": ""}},
+                        {"type": "content_block_delta", "index": 0,
+                         "delta": {"type": "text_delta", "text": text[:half]}},
+                        {"type": "content_block_delta", "index": 0,
+                         "delta": {"type": "text_delta", "text": text[half:]}},
+                        {"type": "content_block_stop", "index": 0},
+                        {"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+                         "usage": {"output_tokens": 1}},
+                        {"type": "message_stop"},
+                    ]
+                    payload = "".join(
+                        f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+                    self.send_response(200)
+                    self.send_header("content-type", "text/event-stream")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
                 out = self._classify(lambda fname: fname in prompt)
                 return self._json({
                     "stop_reason": "end_turn",
@@ -2014,6 +2043,109 @@ def main():
     out = json.loads(proc.stdout.splitlines()[0])
     check("rename is a no-op the second time",
           int(out.get("renamed", 0)) == 0 and int(out.get("errors", 0)) == 0, str(out))
+
+    # ---- normalize-cases leg (Sidecar_Format_Plan phase 4) ----------
+    # a Test Plan the detectors leave caseless but the audit flags (an
+    # old collapsed-cell table): dry lists it and spends nothing; live
+    # refuses without the owner switch; enabled, one model call rewrites
+    # the body ONLY when the reply passes lint + grounding, mints LLM
+    # rows, and is not called again; an inventing reply is refused and
+    # the file stays; --reformat keeps an LLM body.
+    print("== normalize-cases leg")
+    gamma_body = ("## Slide 1 — Gamma cases\n\n| Positive Tests: Normal Routes |\n| --- |\n"
+                  "| Correct line order of 100, 200, 300 on a normal line Correct line order of 300, 400, 500 on a gapped line |\n")
+    gamma_dir = os.path.join(sidecar_dir, "Test Plans")
+    gamma_path = os.path.join(gamma_dir, "gamma-plan.md")
+    gamma_head = ("# Gamma Plan\n\n| Field | Value |\n| --- | --- |\n| **Doc** | 0 · Test Plan · Pro |\n"
+                  "| **Product** | — |\n| **Release** | — |\n| **Issues** | — |\n| **Source** | [g.pptx](<https://x/g.pptx>) |\n"
+                  "| **People** | author — · PE — · dev — |\n| **Edited** | — |\n"
+                  "| **Extracted** | 2026-09-05 · lane xmlstrip · format 3.0 · prompt v2.0 |\n| **Keywords** | — |\n| **Tools** | — |\n\n"
+                  "## Summary\n\nGamma.\n\n## Related documents\n\n<!-- related:begin -->\n_None yet._\n<!-- related:end -->\n\n---\n\n")
+    with open(gamma_path, "w") as f:
+        f.write(gamma_head + gamma_body)
+    gamma_id = int(state.seed(LISTS["docIndex"], {
+        "Title": "Gamma Plan", "FileName": "Gamma Plan.pptx", "DocKey": "shared documents/general/gamma plan.pptx",
+        "IndexStatus": "Indexed", "DocKind": "Test Plan", "Surface": "Pro", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-01T00:00:00Z",
+        "TextFileUrl": {"Url": cfg["sweep"]["siteUrl"] + "/LRS Doc Index/Test Plans/gamma-plan.md",
+                        "Description": "gamma-plan.md"}}))
+    llm_before_nz = state.llm_calls
+    proc = run_sweep(cfg_path, ["--normalize-cases"])
+    check("normalize dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize dry run lists the caseless-with-signal plan and spends nothing",
+          out.get("mode") == "normalize-cases" and out.get("dry_run") is True
+          and int(out.get("candidates", 0)) == 1 and int(out.get("normalized", 0)) == 0
+          and state.llm_calls == llm_before_nz
+          and open(gamma_path).read() == gamma_head + gamma_body, str(out))
+    saved_llm = cfg["llm"]
+    cfg["llm"] = {"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    check("normalize live refuses without the owner switch",
+          proc.returncode != 0 and "normalizeCases.enabled" in proc.stderr, proc.stderr[-300:])
+    cfg["sweep"]["normalizeCases"] = {"enabled": True, "maxPerRun": 5, "provider": "anthropic"}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    state.gen_text = ("Here you go:\n```markdown\n## Test Cases\n\n"
+                      "### TC-P01 — Correct line order of 100, 200, 300 on a normal line <!-- src: LLM · slide 1 · Positive Tests: Normal Routes · 1 -->\n"
+                      "- **Group:** Normal Routes\n\n"
+                      "### TC-P02 — Correct line order of 300, 400, 500 on a gapped line <!-- src: LLM · slide 1 · Positive Tests: Normal Routes · 2 -->\n"
+                      "- **Group:** Normal Routes\n```\n")
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    check("normalize live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    gamma_now = open(gamma_path).read()
+    check("normalize live: one model call, the plan normalized",
+          state.llm_calls == llm_before_nz + 1 and int(out.get("normalized", 0)) == 1
+          and int(out.get("refused", 0)) == 0, str(out))
+    check("normalize live: head preserved, body is the verified grammar with LLM provenance",
+          gamma_now.startswith(gamma_head)
+          and "### TC-P01 — Correct line order of 100, 200, 300 on a normal line <!-- src: LLM · slide 1" in gamma_now
+          and "```" not in gamma_now, gamma_now[-500:])
+    check("normalize prompt carried the plan title and body",
+          state.gen_prompts and "Gamma Plan" in state.gen_prompts[-1]
+          and "Correct line order of 100, 200, 300" in state.gen_prompts[-1], str(state.gen_prompts[-1:])[:300])
+    grows = [r for r in state.lists.get(LISTS["testCases"], {}).values() if r.get("DocumentLookupId") == gamma_id]
+    check("normalize live: case rows minted with the LLM shape and llm confidence",
+          len(grows) == 2 and all(r.get("Shape") == "LLM" and r.get("Confidence") == "llm" for r in grows)
+          and grows[0].get("Group") == "Normal Routes", str(grows)[:400])
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize is not called again on a normalized plan",
+          int(out.get("candidates", 0)) == 0 and state.llm_calls == llm_before_nz + 1, str(out))
+    # an inventing reply is refused whole
+    with open(gamma_path, "w") as f:
+        f.write(gamma_head + gamma_body)
+    state.gen_text = ("## Test Cases\n\n### TC-P01 — Elephants roam the savanna at dusk <!-- src: LLM · slide 1 -->\n"
+                      "| Route | R9 |\n| --- | --- |\n| R9 | 5 |\n")
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize refuses an inventing reply and leaves the file untouched",
+          int(out.get("refused", 0)) == 1 and int(out.get("normalized", 0)) == 0
+          and open(gamma_path).read() == gamma_head + gamma_body
+          and "NORMALIZE REFUSED" in proc.stderr, str(out) + proc.stderr[-300:])
+    cfg["llm"] = saved_llm
+    del cfg["sweep"]["normalizeCases"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    # --reformat keeps an LLM-normalized body (alpha stands in: mark
+    # its body, reformat, restore)
+    alpha_keep = open(alpha_sc).read()
+    with open(alpha_sc, "w") as f:
+        f.write(alpha_keep.replace("<!-- src: S1 · slide 2 · case 3 -->", "<!-- src: LLM · slide 2 · case 3 -->", 1))
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("--reformat keeps an LLM-normalized body",
+          int(out.get("llm_kept", 0)) == 1 and "<!-- src: LLM · slide 2 · case 3 -->" in open(alpha_sc).read(), str(out))
+    with open(alpha_sc, "w") as f:
+        f.write(alpha_keep)
+    run_sweep(cfg_path, ["--live", "--reformat"])
+    del state.lists[LISTS["docIndex"]][str(gamma_id)]
+    os.remove(gamma_path)
+    for k in [k for k, r in state.lists.get(LISTS["testCases"], {}).items() if r.get("DocumentLookupId") == gamma_id]:
+        del state.lists[LISTS["testCases"]][k]
 
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")

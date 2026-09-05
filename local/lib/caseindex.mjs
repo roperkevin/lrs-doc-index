@@ -356,7 +356,7 @@ function deckCases(lines, opts) {
 }
 
 /** Detector → confidence (Sidecar_Format_Plan §4.4). */
-export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: "high", S5: "medium", S6: "medium", draft: "high", deck: "high" };
+export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: "high", S5: "medium", S6: "medium", draft: "high", deck: "high", LLM: "llm" };
 
 /** The one case grammar: `### TC-<lane><n> — <title> <!-- src: … -->`
  *  (casegrammar profile output AND the draftlint draft contract). */
@@ -372,7 +372,7 @@ function tcCases(lines, opts) {
     const section = lines.slice(i + 1, end);
     const src = (m[5] || "").trim();
     const parts = src ? src.split(/\s*·\s*/) : [];
-    const det = parts.length && /^S[0-6]$/.test(parts[0]) ? parts[0] : "draft";
+    const det = parts.length && /^(S[0-6]|LLM)$/.test(parts[0]) ? parts[0] : "draft";
     const slide = /\bslide (\d+)\b/.exec(src);
     let group = "";
     for (const ln of section) {

@@ -1,5 +1,48 @@
 # Local sweep — release notes
 
+## normalize 4 (2026-09-05 — `--normalize-cases`, the opt-in LLM lane; sweep v1.52, casenormalize v1.0, CaseNormalizePromptVersion v1.0, Sidecar_Format_Plan phase 4)
+
+**For the residue only, verified before written, never on the nightly
+path.** Decided 2026-09-05 (build in phase 4):
+
+- **`prompts/CaseNormalize_Prompt.md`** (v1.0): inputs PlanTitle +
+  Body; the model returns the whole body in the `testplan/v1` grammar
+  with every case heading's src comment starting `LLM`, splitting
+  run-together cells into one TC per case, never inventing.
+- **`local/lib/casenormalize.mjs`** (new, pure): `buildNormalizePrompt`,
+  `unwrapReply` (an outer code fence and any preamble dropped),
+  `verifyNormalized` — the contract lint (`lintTestPlanBody`) plus
+  grounding: every TC title must be a substring of the input (or ≥ 60 %
+  of its content words must occur in it), every table row and image
+  link must exist verbatim in the input, the reply may not exceed twice
+  the input. Any failure refuses the whole reply.
+- sweep **v1.52**: standalone **`--normalize-cases`** — candidates are
+  case-indexed plans whose body the detectors leave caseless
+  (`extractCases` shape `none`) while `auditBody` sees a signal, minus
+  bodies already carrying `<!-- src: LLM`. Dry by default (the list,
+  no call). `--live` needs `sweep.normalizeCases.enabled: true` (the
+  owner switch) and spends at most `maxPerRun` calls; provider
+  `anthropic` (`generateText`, `maxTokens`) or `aibuilder`
+  (`llm.normalizeModelId`). A verified reply replaces the body below the
+  seam (head preserved), syncs the plan's case rows (Shape `LLM`,
+  Confidence `llm`), and rebuilds the catalog; a refusal is a counter +
+  stderr line and the file stays. **`--reformat` keeps an LLM body**
+  (`llm_kept`) — a source edit reindexes it fresh anyway.
+- caseindex: `LLM` detector token; schema `Shape` gains `LLM`,
+  `Confidence` gains `llm`.
+
+Gates: `check_local_sweep.py` normalize leg (dry lists + spends
+nothing; live refuses without the switch; one streamed call rewrites
+the body with LLM provenance and mints LLM/llm rows; not called again;
+an inventing reply is refused with the file untouched; `--reformat`
+keeps an LLM body — the mock serves SSE for `generateText`).
+
+ROLLOUT: after `--reformat --live` + `--recase --live`, run
+`--normalize-cases` (dry) to read the candidate list; set
+`sweep.normalizeCases.enabled: true` and run `--normalize-cases --live`
+in batches of `maxPerRun`; review the LLM-shaped rows in
+`_Case Catalog.md` (they are marked `LLM · llm`).
+
 ## casegrammar v1.0 / caseindex v2.0 (2026-09-05 — one case grammar, six detectors; sweep v1.51, Sidecar_Format_Plan phase 3)
 
 **From 43 covered plans to the whole shape inventory.** The case

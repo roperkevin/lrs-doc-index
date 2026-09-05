@@ -646,7 +646,7 @@ Files for §4.3/4.4 (body profiles and case grammar) — second PR:
 | 1b. Filenames — **shipped** (sweep v1.49, slug v1.0, `_Manifest.json`, `--rename`) | §4.6 slug v2, issue prefix, stem-named media folders, `_Manifest.json`, `--rename-plan` / `--rename` | dry-run table reviewed by hand once; uniqueness leg (no two rows in a folder resolve to one stem); link-rewrite leg in `check_local_sweep` (no dangling links after rename) | `--rename --live` once, same window as phase 1 |
 | 2. Extractor v2.5 — **shipped** (ZipTextExtract v2.5, sweep v1.50) | §4.5 fixes 1–4 (pdf unwrap optional) | byte-equivalence gates updated with new fixtures; diff report over the 62 collapsed-cell plans | same `--reformat` run (raw text is re-extracted from the synced source files) |
 | 3. Case grammar — **shipped** (casegrammar v1.0, caseindex v2.0, sweep v1.51) | §4.3 profile + §4.4 S0–S6 + over-capture fix + catalog changes | `check_caseindex` fixtures S0–S6; case count must be ≥ today's 463 on the 43 covered plans (no regression) and ≥ 120 plans covered | `--recase --live` |
-| 4. LLM lane (2 days) | `--normalize-cases` for the residue | grounding check + budget cap; manual review of the first 10 | opt-in, owner-run |
+| 4. LLM lane — **shipped** (sweep v1.52, casenormalize v1.0, prompt v1.0) | `--normalize-cases` for the residue | grounding check + budget cap; manual review of the first 10 | opt-in, owner-run |
 | 5. Story profile (1–2 days) | `story/v1` mapping; TestPlanGen trace rule reads `## Acceptance Criteria` first | `check_testplangen` grounding legs | `--reformat` |
 
 Rollback per phase is the existing pattern: a `format` version gate on the
