@@ -35,6 +35,7 @@ jobs:
       - run: python3 ../../pad/harness/check_pad_runner.py
       - run: python3 ../../local/harness/check_local_sweep.py
       - run: python3 ../../local/harness/check_testplangen.py
+      - run: python3 ../../local/harness/check_caseindex.py
 
   full-format:
     runs-on: ubuntu-latest

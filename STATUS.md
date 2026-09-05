@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-04w** — see "Current state" below.
+Last updated: **2026-09-05x** — see "Current state" below.
 Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
 review r7): this file keeps the deployed-truth TABLES; the story of
 each change belongs to the component CHANGES files.
@@ -119,6 +119,23 @@ each change belongs to the component CHANGES files.
   Documentation` addendum linking each page. Prompt deliberately
   unchanged (v1.10 — no TestPlanGenPromptVersion bump, no re-cuts);
   cloud flows untouched. Gate: `check_testplangen.py` **136/136**.
+- **2026-09-05x (test-case indexing, phases 0–1 — Case_Index_Plan,
+  authored on main):** the plan (`local/Case_Index_Plan.md` —
+  individual test cases out of each test plan, as rows in a seventh
+  list) plus its first two phases: `schemas/SPList_TestCases.csv`
+  (Doc Index lookup, `CaseKey` replace-set key, classification /
+  scenario / skim-text / per-case IssueRefs / anchor columns) and
+  the pure parser `local/lib/caseindex.mjs` v1.0 — both corpus case
+  shapes (the `caseHeadings` deck emission and the draftlint
+  `### TC-[PN]n` contract), per-case issue refs on the Doc IDs
+  patterns, `toRowFields`/`diffCaseRows` replace-set planner.
+  Deterministic, zero AI; config gains the inert `sweep.caseIndex`
+  block; NOTHING writes yet — sweep wiring (`syncCases`,
+  `--recase`, counters) is phase 2, list creation with it
+  (Local_Setup §12). Gate: new `check_caseindex.py` **45/45** (CI
+  fixture-free job), deck fixture produced by
+  `caseHeadings(tidyBody(...))` itself — the D1 coupling leg. No
+  sidecar format change, no PromptVersion implication.
 
 ## Core sweep
 
@@ -240,6 +257,7 @@ v1.2 describes them — paste with the window, step 6).
 | check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
 | check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
 | check_testplangen.py (local/harness — testplangen.mjs v1.7: guard, lanes + G6 fallback, remaining-budget caps, fail-closed marker slice, verifier incl. draftlint↔check_draft_coverage agreement + grounding legs, lookup front door, notify, auto mode + provider override, issue trace, gap report, pinned lanes, figures incl. the link-absolutizing leg, web references; 136/136; CI fixture-free job) | 2026-09-04 (v2.28) |
+| check_caseindex.py (local/harness — caseindex.mjs v1.0: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression, replace-set planner incl. SweptOn-never-dirties, caps; 45/45; CI fixture-free job) | 2026-09-05 (phases 0–1) |
 | check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
 | check_draft2pptx.py (local/harness — draft2pptx.mjs v1.1: python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |
 | check_svg2pptx.py (svg2pptx v1.4 — SVG figures → editable pptx shapes: package/shape/style/label contract, no-plate + title-band dress, case-heading titles + native case tables + metadata line from the sidecar, sidecar lookup + override + --no-tables legs, python-pptx open leg incl. table read-back; v1.4 exports the parser/emitter for draft2pptx's figure slides, CLI unchanged) | 2026-09-04 (v2.27) |

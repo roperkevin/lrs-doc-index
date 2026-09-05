@@ -88,6 +88,11 @@
     "relatedTopN": 5,
     "relatedShortlist": 12,
     "maxCellsWorkbookDump": 60000,
+    "caseIndex": {
+      "$comment": "Test-case indexing (Case_Index_Plan.md; parser shipped, sweep wiring is phase 2). OFF until sharePoint.lists.testCases carries the Test Cases list GUID (create the list per Local_Setup §12 / schemas/SPList_TestCases.csv — classic-created lookup). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text.",
+      "kinds": ["Test Plan"],
+      "caseTextCap": 4000
+    },
     "dryRun": true
   }
 }

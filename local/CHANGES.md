@@ -1,5 +1,46 @@
 # Local sweep — release notes
 
+## caseindex v1.0 (2026-09-05 — Case_Index_Plan phases 0–1)
+
+**Individual test cases become parseable.** The design record
+`local/Case_Index_Plan.md` (committed 2026-09-04) plus its first two
+phases: the schema for the seventh list
+(`schemas/SPList_TestCases.csv` — Doc Index lookup, `CaseKey`
+replace-set diff key, classification/scenario/skim-text/per-case
+issue refs/anchor columns) and the pure parser
+`local/lib/caseindex.mjs`:
+
+- `extractCases(body, {defaultRepo, caseTextCap})` →
+  `{cases, shape, mixed}` — both corpus case shapes: deck-derived
+  sections exactly as `caseHeadings` emits them (numbered
+  `## Case N: …`, rule-b classification-only H2s; checklist slides,
+  `… test cases` dividers, bare `## Slide N` and author-titled
+  sections are never cases) and the draft-style `### TC-[PN]<n>`
+  contract draftlint checks. A body with neither yields zero cases
+  (`shape: "none"`), never guesses; a body with both keeps the
+  larger set and flags `mixed` for the future `cases_shape_mixed`
+  counter.
+- `caseIssueRefs` — the Doc IDs patterns scoped to one case's text
+  (devtopia url / explicit `repo#n` / hashtag via `defaultRepo`,
+  claimed-number suppression; the doc-level filename source
+  deliberately excluded).
+- `toRowFields` / `diffCaseRows` — the shared row shaping and the
+  replace-set planner (create/update/delete by `CaseKey`; `SweptOn`
+  alone never dirties a row, so an unchanged plan writes nothing).
+
+Config grows `sweep.caseIndex` (`kinds`, `caseTextCap`) — inert
+until phase 2 wires `syncCases`/`--recase` into the sweep and
+`sharePoint.lists.testCases` names a real list (Local_Setup §12).
+No sidecar format change, no `Config.PromptVersion` implication,
+cloud flows untouched.
+
+Gate: new `local/harness/check_caseindex.py` (45 checks, CI
+fixture-free job) — the deck fixture's body is produced by
+`caseHeadings(tidyBody(...))` ITSELF in the same run, pinning the
+parser to the presentation layer's emission (the plan's D1 coupling
+leg at module level; the sweep-level leg and the missing-GUID leg
+land with phase 2).
+
 ## svg2pptx v1.4 (2026-09-04, with TestPlanGen v2.27)
 
 **The figure parser/emitter become importable.** `parseFigure`,

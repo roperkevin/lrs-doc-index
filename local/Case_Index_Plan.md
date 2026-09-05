@@ -1,8 +1,17 @@
 # Plan — indexing individual test cases (`local/lib/caseindex.mjs`)
 
-Status: **PLAN** (2026-09-04). Nothing below is built; this document
-is the design record and phased build order, the
-`Local_TestPlanGen_Plan.md` precedent. Each phase lands with its
+Status: **PHASES 0–1 BUILT** (2026-09-05 — `local/CHANGES.md`
+caseindex v1.0): `schemas/SPList_TestCases.csv`, the inert
+`sweep.caseIndex` config block, and the parser
+`local/lib/caseindex.mjs` (`extractCases`, `caseIssueRefs`,
+`toRowFields`, `diffCaseRows`), gated by its own standalone
+`local/harness/check_caseindex.py` (45/45, CI) — parser legs got
+their own gate in the check_svg2pptx/check_draft2docx mold rather
+than seats inside the 211-check sweep suite; the sweep-level
+coupling and missing-GUID legs land in `check_local_sweep.py` with
+phase 2, as does the list creation itself. Phases 2–3 remain the
+build order below. This document stays the design record, the
+`Local_TestPlanGen_Plan.md` precedent; each phase lands with its
 gate legs and a CHANGES entry before the next starts.
 
 ## Why
@@ -141,9 +150,11 @@ backs the new list up with the others once its GUID is in config.
 **`local/lib/caseindex.mjs`** (new, pure — the bodyindex/draftlint
 mold):
 
-- `extractCases(bodyText, { defaultRepo }) → [{ ordinal, caseNo,
-  slideNo, classification, scenario, title, text, anchor,
-  issueRefs }]` — deterministic, no I/O.
+- `extractCases(bodyText, { defaultRepo, caseTextCap }) →
+  { cases, shape: "deck"|"draft"|"none", mixed }` — deterministic,
+  no I/O; each case `{ ordinal, caseNo, slideNo, classification,
+  scenario, title, text, anchor, issueRefs }` (shape and the mixed
+  flag feed the run-summary counters directly).
 - `diffCaseRows(existingRows, fresh) → { create, update, delete }` —
   the replace-set planner, pure so the gate can table-test it.
 
@@ -220,19 +231,24 @@ case-level embedding relatedness.
 
 ## Gates
 
-Extend `local/harness/check_local_sweep.py` (the 211-check suite)
-with case-index legs, all CI:
+Two homes: `local/harness/check_caseindex.py` (standalone, the
+per-component-gate mold — BUILT, 45 checks) owns the parser;
+`check_local_sweep.py` (the 211-check suite) gains the
+sweep-integration legs with phase 2. All CI:
 
-- **Parser legs**: fixtures for both shapes; a checklist slide
-  (two+ numbered lines — never a case, the caseHeadings rule);
-  an author-titled plan with no structure ⇒ zero rows +
-  `plans_caseless`; per-case issue refs incl. the bare-`#n`
-  defaultRepo form; anchor slugs resolve against the fixture
-  sidecar's actual headings.
-- **Coupling leg** (the D1 risk, pinned): the deck fixture's case
-  rows are extracted from a sidecar the sweep ITSELF just wrote in
-  the same test run — `caseHeadings` drifting its emission breaks
-  this leg, not the corpus.
+- **Parser legs** (built): fixtures for both shapes; a checklist
+  slide (two+ numbered lines — never a case, the caseHeadings
+  rule); a prose plan with no structure ⇒ zero cases, shape
+  `"none"`; per-case issue refs incl. the bare-`#n` defaultRepo
+  form and claimed-number suppression; anchor slugs against the
+  fixture body's actual headings; replace-set planner table tests;
+  caps. The deck fixture's body is produced by
+  `caseHeadings(tidyBody(...))` itself in the same run — the D1
+  coupling pinned at module level.
+- **Coupling leg, sweep level** (phase 2): the case rows written by
+  a mock-Graph sweep run are extracted from a sidecar that same run
+  wrote — `caseHeadings` drifting its emission breaks the leg, not
+  the corpus.
 - **Replace-set legs**: mock-Graph diff — unchanged plan ⇒ zero
   writes; renumbered cases ⇒ update-in-place by ordinal; shrunk plan
   ⇒ stale rows deleted; archived doc ⇒ full deletion; missing GUID ⇒
@@ -242,14 +258,16 @@ with case-index legs, all CI:
 
 ## Phases
 
-**Phase 0 — schema + plumbing.** `schemas/SPList_TestCases.csv`,
-config keys + sample, Local_Setup list-creation section (classic
-lookups), fail-soft skip wiring. Gate: missing-GUID leg. No behavior
-change with the section absent.
+**Phase 0 — schema + plumbing** (BUILT).
+`schemas/SPList_TestCases.csv`, config keys + sample, Local_Setup
+§12 list-creation section (classic lookups). No behavior change
+with the section absent; the fail-soft missing-GUID wiring and its
+leg move to phase 2 with the code they guard.
 
-**Phase 1 — the parser.** `local/lib/caseindex.mjs`
-(`extractCases`, `diffCaseRows`), both shapes, issue refs, anchors.
-Gate: parser + coupling legs. Still no writes.
+**Phase 1 — the parser** (BUILT). `local/lib/caseindex.mjs`
+(`extractCases`, `caseIssueRefs`, `toRowFields`, `diffCaseRows`),
+both shapes, issue refs, anchors. Gate: `check_caseindex.py` parser
++ module-level coupling + planner legs, 45/45, CI. Still no writes.
 
 **Phase 2 — sweep integration.** `syncCases` in indexDoc +
 `--reformat`, ghost pass, `--recase` backfill, counters. Gate:
