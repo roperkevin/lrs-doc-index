@@ -153,6 +153,54 @@ UI Tests – First Pane:
 | <Null> | Hover a route with value > 10 -- expanded | tooltip shows <Null> |
 """
 
+# v2.1 tuning (the first full-library export): data tables are not
+# case tables, a Field column prefixes a data-shaped test, a Type
+# column classifies the row, duplicate titles take a suffix, and the
+# "Environments" / "Data to Test with" labels are stoplisted
+TUNING = """## Slide 3 — Detect Objects
+| Field | Test | Output |
+| --- | --- | --- |
+| Confidence threshold | (0.90,1000) | Tool runs; 12 detections |
+| Input frames | Browse and select the frames point FC | Layer accepted |
+
+## Slide 4 — Resolutions
+| Resolution | Aspect Ratio |
+| --- | --- |
+| 1920x1080 | 16:9 |
+| 1280x720 | 16:9 |
+
+## Slide 5 — Route data
+| Feature | RID | M |
+| --- | --- | --- |
+| Line | R21 | 0 |
+| Line | R22 | 10.5 |
+
+## Slide 6 — Route lookup
+| Type | Test | Expected |
+| --- | --- | --- |
+| Positive | Enter a valid route id | Route is found |
+| Negative | Enter an unknown route id | Error is shown |
+
+## Slide 7 — Overlay on Simple Route
+- Positive
+- 1. Overlay on simple route R1 from 0 to 10
+- Expected: Overlay draws once
+
+## Slide 8 — Overlay on Simple Route
+- Positive
+- 2. Overlay on simple route R1 from 0 to 10
+- Expected: Overlay draws twice
+
+## Slide 9 — Environments
+**Data to Test with:**
+- Pro 3.5 with LRS data
+- Enterprise 11.4
+
+**Environments:**
+- Windows 11
+- Windows Server 2022
+"""
+
 NODE_SCRIPT = """
 import { tidyBody } from "file://%(lib)s/presentation.mjs";
 import { renderTestPlanBody, lintTestPlanBody } from "file://%(lib)s/casegrammar.mjs";
@@ -172,6 +220,8 @@ const legacyMixed = extractCases(
   "## Case 2: Positive - Loop <!-- slide 4 -->\\nOld body.\\n\\n### TC-P1 — A draft-style case\\nSteps.\\n", opts);
 const shapes = renderTestPlanBody(tidyBody(fx.shapes));
 const mixed = extractCases(shapes.body, opts);
+const tuning = renderTestPlanBody(tidyBody(fx.tuning));
+const tuned = extractCases(tuning.body, opts);
 const capped = extractCases(deckBody, { ...opts, caseTextCap: 10 });
 const longTitle = extractCases(
   "### TC-P1 — " + "x".repeat(400) + "\\nSteps.\\n", opts);
@@ -206,6 +256,11 @@ process.stdout.write(JSON.stringify({
   renderedShape: rendered.shape, lint: lintTestPlanBody(deckBody),
   legacyMixed: { shape: legacyMixed.shape, mixed: legacyMixed.mixed, count: legacyMixed.cases.length },
   shapesBody: shapes.body,
+  tuningBody: tuning.body,
+  tuned: { shape: tuned.shape, lint: lintTestPlanBody(tuning.body),
+           cases: tuned.cases.map((c) => ({ caseNo: c.caseNo, det: c.det, classification: c.classification,
+             scenario: c.scenario, title: c.title, sourceRef: c.sourceRef, expectedResult: c.expectedResult,
+             text: c.text })) },
   mixed: { shape: mixed.shape, mixed: mixed.mixed, count: mixed.cases.length,
            cases: mixed.cases.map((c) => ({ caseNo: c.caseNo, det: c.det, classification: c.classification,
              scenario: c.scenario, group: c.group, sourceRef: c.sourceRef, confidence: c.confidence,
@@ -244,7 +299,8 @@ process.stdout.write(JSON.stringify({
 def main():
     tmp = os.path.join(HERE, "_caseindex_fixture.json")
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"rawDeck": RAW_DECK, "draft": DRAFT, "prose": PROSE, "shapes": SHAPES}, f)
+        json.dump({"rawDeck": RAW_DECK, "draft": DRAFT, "prose": PROSE, "shapes": SHAPES,
+                   "tuning": TUNING}, f)
     try:
         proc = subprocess.run(
             ["node", "--input-type=module", "-e", NODE_SCRIPT % {"lib": LIB}],
@@ -386,6 +442,43 @@ def main():
           [c["caseNo"] for c in mx["cases"]] == ["TC-U01", "TC-U02", "TC-P01", "TC-P02", "TC-N01",
                                                   "TC-U03", "TC-P03", "TC-P04", "TC-P05", "TC-P06"],
           json.dumps([c["caseNo"] for c in mx["cases"]]))
+
+    print("-- v2.1 tuning (data tables, Field prefix, Type column, duplicate titles, stoplist) --")
+    tn = r["tuned"]
+    tc = {c["caseNo"]: c for c in tn["cases"]}
+    tb = r["tuningBody"]
+    prose = tb.split("## Test Cases")[0] + tb.split("## Other content")[-1]
+    scen = [c["scenario"] for c in tn["cases"]]
+    check("tuning: profile lint clean", tn["lint"] == [], json.dumps(tn["lint"]))
+    check("data tables (Resolution/Aspect Ratio, Feature/RID/M) are not cases and stay prose",
+          not any(x in " ".join(scen) for x in ("16:9", "R21", "R22", "1920x1080"))
+          and "| 1920x1080 | 16:9 |" in prose and "| Line | R21 | 0 |" in prose,
+          json.dumps(scen))
+    check("a Field column prefixes a data-shaped test; Output is an expected column",
+          tc.get("TC-U01", {}).get("det") == "S3"
+          and tc["TC-U01"]["scenario"] == "Confidence threshold: (0.90,1000)"
+          and tc["TC-U01"]["expectedResult"] == "Tool runs; 12 detections"
+          and "**Field:**" not in tc["TC-U01"]["text"], json.dumps(tc.get("TC-U01")))
+    check("a wordy test in the same table keeps its own title and the Field rides as a line",
+          tc.get("TC-U02", {}).get("scenario") == "Browse and select the frames point FC"
+          and "**Field:** Input frames" in tc["TC-U02"]["text"], json.dumps(tc.get("TC-U02")))
+    check("a Type column classifies each row; the column is not repeated in the body",
+          tc.get("TC-P01", {}).get("scenario") == "Enter a valid route id"
+          and tc["TC-P01"]["classification"] == "Positive"
+          and tc.get("TC-N01", {}).get("scenario") == "Enter an unknown route id"
+          and tc["TC-N01"]["classification"] == "Negative"
+          and "**Type:**" not in tc["TC-P01"]["text"],
+          json.dumps([tc.get("TC-P01"), tc.get("TC-N01")]))
+    dup = [c for c in tn["cases"] if c["det"] == "S1"]
+    check("duplicate titles within a plan take the case number as a suffix",
+          [c["scenario"] for c in dup] == ["Overlay on Simple Route From 0 To 10 (case 1)",
+                                           "Overlay on Simple Route From 0 To 10 (case 2)"]
+          and [c["caseNo"] for c in dup] == ["TC-P02", "TC-P03"], json.dumps(dup))
+    check("Environments / Data to Test with labels are stoplisted (prose, not S5 cases)",
+          not any("Environments" in x or "Data to Test" in x for x in scen)
+          and "- Pro 3.5 with LRS data" in tb.split("## Other content")[-1],
+          json.dumps(scen))
+    check("tuning: exactly six cases", len(tn["cases"]) == 6, json.dumps([c["caseNo"] for c in tn["cases"]]))
 
     print("-- issue refs --")
     check("hashtag needs 3+ digits", r["refsBare"] == ["A/b#612"],
