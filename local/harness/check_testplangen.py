@@ -115,6 +115,23 @@ verifier the cloud flow could not have
                      list, or with testplangen.caseIndex false, the
                      lanes and the draft are exactly what they were
                      (leg 2b pins the pure G6 fallback that way)
+  leg 16 preview     the first-run check (v1.10): --preview runs the
+                     guard, lookup, pins and every lane, writes the
+                     five prompt inputs to workDir and stops BEFORE
+                     the model call — zero model calls, nothing
+                     uploaded even with --live, a preview=1 summary
+                     line; refused with --auto; --help exits 0 with
+                     the usage; and the trimmer's head-overrun fix:
+                     a plan whose head alone exceeds the remaining
+                     budget is cut to leave the footer's room, so
+                     exChars holds ExemplarCap (+ the header slack)
+  leg 17 remote      remote-files mode (v1.10): with
+                     sweep.remoteFiles true and an EMPTY sidecar
+                     workspace, the run mirrors the sidecar drive
+                     down first (delta listing + per-file download,
+                     eTag manifest) and the lanes come out exactly
+                     as from the synced folder; a second run
+                     downloads nothing
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -287,6 +304,8 @@ Verifies realignment of a route.
 
 class MockState:
     def __init__(self):
+        self.sidecar_dir = ""     # the "drive" the remote mirror (leg 17) serves
+        self.drive_downloads = 0
         self.lists = {}           # list guid -> items ([{id, fields}])
         self.gen_text = ""        # the model reply, both providers
         self.gen_by_doc = {}      # doc id -> reply (routed by StoryMeta's doc_id)
@@ -405,6 +424,39 @@ def make_handler(state):
                         for i, k in enumerate(sorted(state.drafts))
                         if k.startswith(prefix)]
                 return self._json({"value": kids})
+            # the sidecar drive (leg 17's remote-files mirror): one
+            # drive named after the texts folder, a flat delta listing
+            # of every .md under sidecar_dir, per-file content
+            if re.match(r"^/v1\.0/sites/[^/]+/drives$", p):
+                return self._json({"value": [{"id": "drive-1", "name": "LRS Doc Index"}]})
+            if p == "/v1.0/drives/drive-1/root/delta":
+                items = []
+                for root, _dirs, files in os.walk(state.sidecar_dir):
+                    for fn in files:
+                        if not fn.endswith(".md"):
+                            continue
+                        rel = os.path.relpath(os.path.join(root, fn), state.sidecar_dir)
+                        rel = rel.replace(os.sep, "/")
+                        parent = rel.rsplit("/", 1)[0] if "/" in rel else ""
+                        items.append({
+                            "id": f"i{len(items)}", "name": fn, "file": {},
+                            "eTag": f"etag-{len(open(os.path.join(root, fn), 'rb').read())}",
+                            "parentReference": {"path": "/drive/root:" + ("/" + parent if parent else "")},
+                        })
+                return self._json({"value": items})
+            m = re.match(r"^/v1\.0/drives/drive-1/root:/(.+):/content$", p)
+            if m:
+                fpath = os.path.join(state.sidecar_dir, *m.group(1).split("/"))
+                if not os.path.isfile(fpath):
+                    return self._json({"error": "not found"}, 404)
+                state.drive_downloads += 1
+                body = open(fpath, "rb").read()
+                self.send_response(200)
+                self.send_header("content-type", "text/markdown")
+                self.send_header("content-length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
             m = re.match(r"^/v1\.0/sites/([^/]+):(/.+)$", p)
             if m:
                 return self._json({"id": "site-1"})
@@ -510,6 +562,7 @@ def main():
     os.makedirs(work_dir, exist_ok=True)
 
     state = MockState()
+    state.sidecar_dir = sidecar_dir
     server = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(state))
     port = server.server_address[1]
     threading.Thread(target=server.serve_forever, daemon=True).start()
@@ -755,7 +808,7 @@ def main():
           summ.get("neighbors") == "7" and summ.get("exemplars") == "2"
           and summ.get("references") == "3" and summ.get("verify") == "ok", str(summ))
     paths = [p for p in state.drafts
-             if re.match(r"^/Test Plan Drafts/route-merge__doc12--draft-\d{8}-\d{4}\.md$", p)]
+             if re.match(r"^/Test Plan Drafts/route-merge__doc12--draft-\d{8}-\d{6}\.md$", p)]
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
@@ -1574,6 +1627,109 @@ def main():
           r.returncode == 0 and summ.get("caseTrim") == "0"
           and "cases omitted" not in ex and "### TC-P01" in ex
           and "### TC-P04" not in ex, r.stdout + ex[-200:])
+
+    # ---- leg 16: preview / help / trimmer head overrun (v1.10) -----
+    print("== leg 16: preview, help, trimmer head overrun")
+    r = run_job(cfg_main, ["--help"])
+    check("--help prints the usage and exits 0",
+          r.returncode == 0 and r.stdout.startswith("usage: testplangen.mjs")
+          and "--preview" in r.stdout, r.stdout[:200] + r.stderr[:200])
+    calls_before = state.gen_calls
+    drafts_before = dict(state.drafts)
+    previews_before = {f for f in os.listdir(work_dir) if f.startswith("testplangen-preview-")}
+    r = run_job(cfg_main, ["--story", "12", "--preview", "--live"])
+    summ = summary_of(r.stdout)
+    previews = sorted(
+        {f for f in os.listdir(work_dir) if f.startswith("testplangen-preview-")} - previews_before)
+    preview_text = (open(os.path.join(work_dir, previews[-1]), encoding="utf-8").read()
+                    if previews else "")
+    check("--preview succeeds with ZERO model calls and nothing uploaded (even with --live)",
+          r.returncode == 0 and state.gen_calls == calls_before
+          and state.drafts == drafts_before, r.stdout + r.stderr)
+    check("preview summary line: lane counters + inputChars/provider/preview=1",
+          summ.get("preview") == "1" and summ.get("provider") == "aibuilder"
+          and summ.get("exemplars") == "2" and summ.get("references") == "3"
+          and summ.get("neighbors") == "7" and int(summ.get("inputChars", "0")) > 1000
+          and "draftChars" not in summ, str(summ))
+    check("preview file carries the five inputs as they would be sent",
+          len(previews) == 1 and "=== StoryMeta (" in preview_text
+          and "=== ReferenceText (" in preview_text and story_body in preview_text
+          and "--- EXEMPLAR: plan-a__doc21.md ---" in preview_text
+          and "--- REFERENCE: Plan D — surface Server ---" in preview_text
+          and "NO model call was made" in preview_text, preview_text[:400])
+    check("preview: stdout names the inputs file, stderr progress stops before the call",
+          "preview: no model call made" in r.stdout and previews[-1] in r.stdout
+          and "progress: preview — no model call" in r.stderr
+          and "progress: calling the model" not in r.stderr, r.stdout + r.stderr[-300:])
+    r = run_job(cfg_main, ["--auto", "--preview"])
+    check("--preview refused with --auto",
+          r.returncode != 0 and "cannot be combined with --auto" in r.stderr
+          and state.gen_calls == calls_before, r.stderr[:300])
+    # the trimmer's head overrun: Plan F pinned under a cap smaller
+    # than its head + one case — before v1.10 the head took the whole
+    # budget and the omission footer rode on top, so exChars overran
+    # ExemplarCap by the footer's length; now the head yields the
+    # footer's room and no case fits, so kept=0 and the lane holds
+    cfg_head = write_cfg("config-head.json",
+                         testplangen={"neighborCap": 8, "exemplarCap": head_len + 20})
+    r = run_job(cfg_head, ["--story", "12", "--exemplar", "27", "--preview"])
+    summ = summary_of(r.stdout)
+    check("trimmer: a head larger than the budget still holds ExemplarCap (+ header slack)",
+          r.returncode == 0 and summ.get("caseTrim") == "1"
+          and summ.get("exCases") == "0/6"
+          and int(summ.get("exChars", "99999")) <= head_len + 20 + 80,
+          r.stdout + r.stderr)
+    previews = sorted(
+        (f for f in os.listdir(work_dir) if f.startswith("testplangen-preview-")),
+        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+    preview_text = open(os.path.join(work_dir, previews[-1]), encoding="utf-8").read()
+    check("trimmer: the omission footer survives the head cut",
+          "6 of 6 cases omitted — the 0 most relevant to this story kept" in preview_text
+          and "### TC-P01" not in preview_text.split("--- EXEMPLAR: plan-f__doc27.md ---")[-1],
+          preview_text[-500:])
+
+    # ---- leg 17: remote-files mode (v1.10) --------------------------
+    print("== leg 17: remote-files mirror")
+    remote_ws = os.path.join(tmp, "remote-ws")   # EMPTY: no OneDrive here
+    os.makedirs(remote_ws, exist_ok=True)
+    with open(cfg_main) as f:
+        cfg_remote = json.load(f)
+    cfg_remote["paths"]["sidecarLibrary"] = remote_ws
+    cfg_remote["sweep"]["remoteFiles"] = True
+    cfg_remote_path = os.path.join(tmp, "config-remote.json")
+    with open(cfg_remote_path, "w") as f:
+        json.dump(cfg_remote, f)
+    n_md = sum(1 for _r, _d, fs_ in os.walk(sidecar_dir) for fn in fs_ if fn.endswith(".md"))
+    state.drive_downloads = 0
+    r = run_job(cfg_remote_path, ["--story", "12", "--preview"])
+    summ = summary_of(r.stdout)
+    check("remote mode: the run mirrors the sidecar drive down first",
+          r.returncode == 0
+          and f"remote mirror: {n_md} sidecar file(s), {n_md} downloaded" in r.stderr
+          and state.drive_downloads == n_md
+          and os.path.isfile(os.path.join(remote_ws, "User Stories", "route-merge__doc12.md"))
+          and os.path.isfile(os.path.join(work_dir, "mirror-manifest.json")),
+          r.stdout + r.stderr)
+    check("remote mode: the lanes come out exactly as from the synced folder",
+          summ.get("exemplars") == "2" and summ.get("references") == "3"
+          and summ.get("neighbors") == "7", str(summ))
+    state.drive_downloads = 0
+    r = run_job(cfg_remote_path, ["--story", "12", "--preview"])
+    check("remote mode: a second run downloads nothing (eTag manifest)",
+          r.returncode == 0 and state.drive_downloads == 0
+          and f"remote mirror: {n_md} sidecar file(s), 0 downloaded" in r.stderr,
+          r.stderr[-300:])
+    # without the flag, the same empty workspace refuses with the
+    # coached message — the pre-v1.10 posture, now naming the fix
+    cfg_remote["sweep"]["remoteFiles"] = False
+    cfg_remote["paths"]["sidecarLibrary"] = os.path.join(tmp, "empty-ws")
+    os.makedirs(cfg_remote["paths"]["sidecarLibrary"], exist_ok=True)
+    with open(cfg_remote_path, "w") as f:
+        json.dump(cfg_remote, f)
+    r = run_job(cfg_remote_path, ["--story", "12", "--preview"])
+    check("no sync, no remote flag: refuses and names sweep.remoteFiles",
+          r.returncode != 0 and "story sidecar not found locally" in r.stderr
+          and "sweep.remoteFiles: true" in r.stderr, r.stderr[:400])
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
