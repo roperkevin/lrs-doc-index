@@ -58,7 +58,7 @@ import {
   pruneRunLogs, exportListSnapshots,
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
-import { extractCases, toRowFields, diffCaseRows } from "./lib/caseindex.mjs";
+import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
 import { writeIndexPages, writeCaseCatalog } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
@@ -672,7 +672,7 @@ async function main() {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
                "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
                "Shape", "FigureCount", "TableCount", "StepCount", "RouteRefs",
-               "ExpectedResult", "TraceText", "SweptOn"],
+               "ExpectedResult", "TraceText", "Tools", "Keywords", "SweptOn"],
     });
     rawSnapshots.testCases = items; // rides the per-run list backup
     for (const it of items) {
@@ -694,12 +694,28 @@ async function main() {
       "paste its GUID, then backfill with --recase)\n"
     );
   }
+  // Case-tag vocabulary (caseindex v1.2): the run-start Keywords
+  // snapshot compiled once — alias rows match under their own title
+  // but report their CANONICAL's name and kind. Deliberately not
+  // updated mid-run (the Get_kw_meta / kwSnapshot precedent, flow
+  // §5.7 accepted degradation): keywords minted THIS run reach case
+  // tags on the doc's next reindex or the next --recase.
+  let ciVocab = null;
+  if (ciEnabled) {
+    const kwById2 = new Map(keywordRows.map((k) => [k.ID, k]));
+    ciVocab = prepareVocab(
+      keywordRows.map((r) => {
+        const canon = (r.CanonicalRefId && kwById2.get(r.CanonicalRefId)) || r;
+        return { title: r.Title, kind: canon.Kind || r.Kind, canonical: canon.Title };
+      })
+    );
+  }
   // Replace one document's case-row set with what its body states now.
   // An empty/off-kind fresh side deletes the document's rows (archived,
   // reclassified, or de-scoped docs clean up through the same path).
   // Never throws: a case-write failure lands in the run summary, not in
   // the document's own lane.
-  const syncCases = async (rowId, docKind, bodyText, sum) => {
+  const syncCases = async (rowId, docKind, bodyText, sum, planTitle) => {
     if (!ciEnabled || !rowId) return;
     try {
       let fresh = [];
@@ -707,6 +723,8 @@ async function main() {
         const parsed = extractCases(bodyText, {
           defaultRepo: sw.defaultRepo,
           caseTextCap: cfg.sweep.caseIndex && cfg.sweep.caseIndex.caseTextCap,
+          vocab: ciVocab,
+          planTitle: planTitle || "",
         });
         if (parsed.mixed) sum.cases_shape_mixed++;
         if (parsed.shape === "none") sum.plans_caseless++;
@@ -790,7 +808,7 @@ async function main() {
         csum.no_seam++;
         continue;
       }
-      await syncCases(r.ID, r.DocKind, content.slice(seam), csum);
+      await syncCases(r.ID, r.DocKind, content.slice(seam), csum, r.Title || "");
       done.add(r.ID);
       csum.synced++;
     }
@@ -1049,7 +1067,7 @@ async function main() {
         // the reformatted body is the case parser's input — sync the
         // doc's case rows even when the body itself is unchanged (the
         // rows may predate the feature, or a parser bump)
-        await syncCases(existing.ID, existing.DocKind || "", body, rfsum);
+        await syncCases(existing.ID, existing.DocKind || "", body, rfsum, existing.Title || "");
       } catch (e) {
         rfsum.errors++;
         process.stderr.write(`REFORMAT ERROR ${name}: ${e.message}\n`);
@@ -1539,7 +1557,7 @@ async function indexDoc(ctx) {
   // throws — a case-write failure is a summary counter, not a failed
   // index; a doc reclassified off the kinds list deletes its rows.
   setStep("case-index");
-  await syncCases(rowId, docKind, bodyText, summary);
+  await syncCases(rowId, docKind, bodyText, summary, title);
 
   // (h) Doc IDs + id edges
   setStep("doc-ids");

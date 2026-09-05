@@ -1,5 +1,6 @@
 /**
- * indexpages.mjs v1.1 (sweep v1.35; v1.43 adds the case catalog) —
+ * indexpages.mjs v1.2 (sweep v1.35; v1.43 adds the case catalog;
+ * v1.44 adds its Tools column) —
  * corpus browse pages: a root "_Index.md" in the sidecar library plus
  * one per kind folder, so a human can BROWSE the catalog (the Q&A
  * agent answers questions; these answer "what's in here?"), and —
@@ -149,12 +150,12 @@ export function writeCaseCatalog(cfg, rows, caseRowsByDoc) {
       "",
       `[Sidecar](<${target}>) · ${clip(plan.Surface, 30) || "—"} · release ${clip(plan.TargetRelease, 20) || "—"}`,
       "",
-      "| Case | Classification | Scenario | Issues |",
-      "|---|---|---|---|",
+      "| Case | Classification | Scenario | Tools | Issues |",
+      "|---|---|---|---|---|",
       ...cases.map((c) => {
         const label = clip(c.Title, 90) || `Case ${ordinalOf(c)}`;
         const link = c.Anchor ? `[${label}](<${target}#${c.Anchor}>)` : label;
-        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Scenario, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
+        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Scenario, 60) || "—"} | ${clip(c.Tools, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
       }),
       ""
     );

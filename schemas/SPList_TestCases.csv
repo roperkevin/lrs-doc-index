@@ -16,4 +16,6 @@ StepCount,StepCount,Number,"0 decimals; numbered step lines in the section (draf
 RouteRefs,RouteRefs,Single line of text,"'; '-joined distinct fixture route ids (R1, R1L3, ...) in order of appearance in the case's own text; empty = none (caseindex v1.1)",No
 ExpectedResult,ExpectedResult,Single line of text,"The draft contract's 'Expected Result:' line, capped 255 (full text stays in CaseText); empty on deck-derived cases (caseindex v1.1)",No
 TraceText,TraceText,Single line of text,"The draft contract's 'Trace:' line — per-case story-grounding provenance, capped 255; empty on deck-derived cases (caseindex v1.1)",No
+Tools,Tools,Single line of text,"'; '-joined canonical TOOL names from the curated Keywords vocabulary found in this case's title/scenario/unfenced body or the plan title — 'the tool being tested'; alias rows fold to their canonical; sorted; empty = none matched (caseindex v1.2)",No
+Keywords,Keywords,Single line of text,"'; '-joined canonical topic + product keywords from the curated vocabulary found in the same scan text; sorted; empty = none matched (caseindex v1.2)",No
 SweptOn,SweptOn,Date and Time,"Include time; when this row was last written (unchanged rows are not rewritten, so this is last CHANGE, not last sweep)",No
