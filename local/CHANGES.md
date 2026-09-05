@@ -66,7 +66,9 @@ path.** Decided 2026-09-05 (build in phase 4):
   (`extractCases` shape `none`) while `auditBody` sees a signal, minus
   bodies already carrying `<!-- src: LLM`. Dry by default (the list,
   no call). `--live` needs `sweep.normalizeCases.enabled: true` (the
-  owner switch) and spends at most `maxPerRun` calls; provider
+  owner switch) and spends at most `maxPerRun` calls; bodies over
+  `maxInputChars` (150 000) are skipped and counted (`skipped_large`);
+  provider
   `anthropic` (`generateText`, `maxTokens`) or `aibuilder`
   (`llm.normalizeModelId`). A verified reply replaces the body below the
   seam (head preserved), syncs the plan's case rows (Shape `LLM`,
