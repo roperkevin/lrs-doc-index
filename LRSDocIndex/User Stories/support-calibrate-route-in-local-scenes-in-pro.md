@@ -1,0 +1,86 @@
+# Support Calibrate Route in Local Scenes in Pro
+
+| Field | Value |
+| --- | --- |
+| **Doc** | 774 · User Story · Pro |
+| **Product** | — |
+| **Release** | — |
+| **Issues** | — |
+| **Source** | [SupportCalibrateRouteinScenes.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/SupportCalibrateRouteinScenes.pptx>) |
+| **People** | author William Isley · PE — · dev — |
+| **Edited** | 2020-07-27 20:38 by Nathan Easley |
+| **Extracted** | 2026-09-04 · lane xmlstrip · format 3.0 · prompt v2.0.2 |
+| **Keywords** | calibration point · vertical pipe · local scene · 3d support · route calibration |
+| **Tools** | Add Calibration Point · Edit Calibration Point · Delete Calibration Point |
+
+## Summary
+
+This document describes a user story for enabling calibration of routes using vertical pipe segments in local scenes within ArcGIS Pro. It details the expected behavior for adding, editing, and deleting calibration points in 3D scenes, including UI interactions and 3D measure support. Testing and automation plans are outlined to verify functionality across different network types and route complexities.
+
+## Related documents
+
+<!-- related:begin -->
+- [Support Retire Route in Local Scenes in Pro](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/support-retire-route-in-local-scenes-in-pro.md>) — similar text 0.62 · 5 title words · 3 filename words · same kind/surface/folder <!-- rel:770 s=7.938 -->
+- [Support Extend Route in Local Scenes in Pro](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/support-extend-route-in-local-scenes-in-pro.md>) — similar text 0.65 · 5 title words · 3 filename words · same kind/surface/folder <!-- rel:775 s=7.855 -->
+- [Support Reassign Route in Local Scenes in Pro](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/support-reassign-route-in-local-scenes-in-pro.md>) — similar text 0.57 · 5 title words · 3 filename words · same kind/surface/folder <!-- rel:773 s=7.797 -->
+- [Support Realign Route in Local Scenes in Pro](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/support-realign-route-in-local-scenes-in-pro.md>) — similar text 0.62 · 5 title words · 3 filename words · same kind/surface/folder <!-- rel:771 s=7.526 -->
+- [Support Create Route in Local Scenes in Pro](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/support-create-route-in-local-scenes-in-pro.md>) — similar text 0.58 · 5 title words · 3 filename words · same kind/surface/folder <!-- rel:778 s=7.292 -->
+<!-- related:end -->
+
+<!-- docs:begin -->
+## Esri documentation
+
+[Add calibration points](https://doc.esri.com/en/arcgis-pro/latest/help/production/location-referencing-pipelines/add-calibration-points.html) · [Delete calibration points](https://doc.esri.com/en/arcgis-pro/latest/help/production/location-referencing-pipelines/delete-calibration-points.html)
+
+_No page matched:_ [Edit Calibration Point](https://www.google.com/search?q=%22Edit%20Calibration%20Point%22+site%3Adoc.esri.com)
+<!-- docs:end -->
+
+---
+
+## Story
+### Support Calibrate Route in Local Scenes in Pro <!-- slide 1 -->
+User Story
+
+### User Story <!-- slide 2 -->
+As an LRS editor, I need to be able to calibrate routes using vertical pipe segments, so that these routes can be linear referenced and utilized throughout the software.
+
+## Acceptance Criteria
+### Local Scene <!-- slide 3 -->
+- When clicking the Add, Edit, and Delete Calibration Point tools in a local scene, the map selection and UIs should open like they do in normal maps within Pro today
+
+### Calibrate Route in local scene <!-- slide 4 -->
+- In a local scene, users should be able to do the following:
+  - Add Calibration Point – once the tool is selected from the ribbon, the user should be able to click a route location on the scene and have the Add CP UI appear with the routeID/name of the route, the From Date of the route selected, and current measure at the selected location populated like it does in a normal map today.  When the user clicks run, the CP should be added and appear on the map.
+  - Edit Calibration Point – once the tool is selected from the ribbon, the user should be able to click an existing calibration point on the scene and have the Edit CP UI appear with the routeID/name, From Date, and measure populated like it does in a normal map today.  When the user clicks run, the CP should be edited and appear on the map.
+  - Delete Calibration Point – once the tool is selected from the ribbon, the user should be able to click an existing calibration point on the scene and have the Delete CP UI appear with the routeID/name, From Date, and measure populated, but greyed out and not editable like it does in a normal map today.  When the user clicks run, the CP should be deleted and the map should be refreshed.
+  - Any graphics on the map should appear in 3D
+  - Suggested measures for Add CP should be in 3D
+
+### Calibrate Route 3D <!-- slide 5 -->
+- Verify 3D support in Add/Edit/Delete Calibration Point; verify Z values are honored:
+  - For the suggested measures in the UI (Add only)
+  - For the calibration applied to the route (all three)
+- Note that Z units of measure that are different then XY units of measure will default back to the XY units of measure (this is a known limitation and we’re working to get it fixed by core)
+
+## Testing
+<!-- slide 6 -->
+- Test in both line and non line networks
+- Test with projected and unprojected data
+- Test with add/edit/delete CP on vertical pipes on both the vertical and non vertical portions
+- Verify 3D is honored (only 1-2 test cases needed) in both the suggested measures and the calibration applied
+- Test one case on a route with a vertical gap
+- Test one case on a complex route shape
+
+## Automation
+<!-- slide 7 -->
+UI Automation – Should have 4-5 tests for the UI for Add/Edit/Delete CP
+
+## Documentation
+<!-- slide 8 -->
+Add to the existing topic being created for Calibrate Route that outlines support for vertical pipes.
+
+## Assignment
+<!-- slide 9 -->
+Story Points:
+Dev:
+PE:

@@ -1,0 +1,99 @@
+# Migrate LRS to New Geodatabase Tool
+
+| Field | Value |
+| --- | --- |
+| **Doc** | 574 · User Story · Pro |
+| **Product** | Roads & Highways · Pipeline Referencing · Utility Network |
+| **Release** | — |
+| **Issues** | — |
+| **Source** | [MigrateLRStoNewGDB (1).pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/MigrateLRStoNewGDB%20(1).pptx>) |
+| **People** | author William Isley · PE — · dev — |
+| **Edited** | 2023-03-20 16:03 by Nathan Easley |
+| **Extracted** | 2026-09-04 · lane xmlstrip · format 3.0 · prompt v2.0.2 |
+| **Keywords** | lrs administrator · geodatabase migration · tolerance · resolution · feature dataset · feature classes · attribute rules · python tool · unprojected data |
+| **Tools** | Generate Routes · Generate Events · Generate Intersections |
+
+## Summary
+
+This document describes a user story for creating a Python tool with a UI to migrate an existing Linear Referencing System (LRS) to a new geodatabase with different tolerance and resolution settings. The tool will copy all relevant datasets, verify domains and rules, refresh the LRS, and regenerate routes, events, and intersections. Testing and automation plans are included, along with documentation guidelines.
+
+## Related documents
+
+<!-- related:begin -->
+- [Migrate LRS to New GDB Tool](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/migrate-lrs-to-new-gdb-tool.md>) — similar text 1.00 · 2 title words · 3 filename words · same kind/surface/folder <!-- rel:569 s=11.343 -->
+- [Identify Routes with Vertex Spacing Issues](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/identify-routes-with-vertex-spacing-issues.md>) — similar text 0.43 · same kind/surface/folder <!-- rel:591 s=4.58 -->
+- [Auto-Densify LRS Routes](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/auto-densify-lrs-routes-rh-apr-un-2023-03.md>) — similar text 0.43 · same kind/surface/folder <!-- rel:575 s=3.839 -->
+- [Auto-Densify LRS Routes](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/auto-densify-lrs-routes-rh-apr-un-2023-05.md>) — similar text 0.42 · same kind/surface/folder <!-- rel:570 s=3.425 -->
+- [Update Intersection Referent Tool User Story](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/update-intersection-referent-tool.md>) — similar text 0.24 · 1 title word · same kind/surface/folder <!-- rel:696 s=2.84 -->
+<!-- related:end -->
+
+<!-- docs:begin -->
+## Esri documentation
+
+[Tolerance and resolution settings for the LRS](https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/tolerance-and-resolution-settings-for-the-lrs.html) · [Create a template for an LRS feature count data product](https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/create-a-template-for-an-lrs-feature-count-data-product.html) · [View utility network feature class properties](https://doc.esri.com/en/arcgis-pro/latest/help/production/location-referencing-pipelines/view-utility-network-feature-class-properties.html)
+
+_No page matched:_ [Generate Routes](https://www.google.com/search?q=%22Generate%20Routes%22+site%3Adoc.esri.com) · [Generate Events](https://www.google.com/search?q=%22Generate%20Events%22+site%3Adoc.esri.com) · [Generate Intersections](https://www.google.com/search?q=%22Generate%20Intersections%22+site%3Adoc.esri.com)
+<!-- docs:end -->
+
+---
+
+## Story
+### Migrate LRS to new GDB tool <!-- slide 1 -->
+
+### User Story <!-- slide 2 -->
+As an LRS administrator, I need to be able to migrate my LRS into a new geodatabase while changing the tolerance and resolution, so I can modify those tolerance and resolution settings to better support my unprojected data.
+
+Persona
+LRS Administrator: This user is responsible for the initial configuration and ongoing changes to the configuration of the LRS.  For pipeline operators with unprojected data with very large distances between vertices, some of our operations aren’t working as expected.  One of the solutions is to change the tolerance/resolution settings of the feature classes that are part of the LRS to allow wider spacing of vertices.  This user story will build a tool/script that allows users to move their LRS to a new gdb while also changing the tolerance/resolution settings.
+
+## Acceptance Criteria
+### Migrate LRS to new GDB tool <!-- slide 3 -->
+- Create a python tool (needs to have a UI interface) to support migrating an existing LRS to a new GDB with different tolerance/resolutions
+- The tool should work with Pro 3.1, but will not be released with any Pro release
+- Follow the pattern of the ArcMap to Pro migration tools (Github repo, etc.)
+- The parameters for the tool UI would be:
+  - Current LRS gdb (can be fgdb or sde)
+  - New LRS gdb (can be a fgdb or sde)
+  - XY resolution*
+  - XY tolerance*
+  - Z resolution*
+  - Z tolerance*
+  - M resolution*
+  - M tolerance*
+*Populated with the existing value from the current LRS gdb, but can be changed by the user
+
+- The values users set for the XYZM resolution/tolerance would need to be verified as valid settings within the gdb
+
+### Migrate LRS to new GDB tool <!-- slide 4 -->
+- When executed, the tool would do the following:
+  - Create copies of all the feature dataset, feature classes and tables that participate in the LRS from the existing gdb into the new gdb.  The feature dataset and feature classes would need to be created with the new tolerance/resolution settings the user provides
+  - Verify all coded value domains, range domains, subtypes, and attribute rules are copied to the new gdb
+  - Ensure the controller dataset also copies to the new gdb
+  - If the new tolerance/resolution settings aren’t acknowledged by the LRS, refresh the LRS to ensure it reflects the new settings
+  - Run Generate Routes on all the LRS Networks
+  - Run Generate Events on all the LRS Events
+  - Run Generate Intersections on the LRS Intersections (if present)
+- Once completed, the new gdb should be an exact replica of the existing LRS gdb but with different tolerance/resolution settings
+
+## Testing
+<!-- slide 5 -->
+- Test on at least one RH, APR, and APR-UN dataset
+- Test on 1 projected dataset and the remaining cases on unprojected datasets
+- Test with a mix of fgdb and sde (traditional and branch versioned)
+- Test at least one case where the new tolerance/resolution settings are invalid
+- Verify with at least 1 dataset that it can be moved into an sde, branch versioned, have services published and do some basic LRS editing operations (Create, Realign, Add Event)
+
+## Automation
+<!-- slide 6 -->
+Automate this via python
+
+## Documentation
+<!-- slide 7 -->
+- The tool will be released independently of Pro; however, we should still document it in the same format as other GP tools within Pro
+- When the tool is released via GitHub, we should include this documentation with the tool on the site
+
+## Assignment
+<!-- slide 8 -->
+Story Points:
+Dev:
+PE:
