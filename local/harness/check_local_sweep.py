@@ -75,7 +75,7 @@ CORE_XML = (
 )
 
 
-def make_pptx(fpath, text, with_media=False, with_diagram=False):
+def make_pptx(fpath, text, with_media=False, with_diagram=False, with_case=False):
     with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
         embed = '<p:pic><a:blip r:embed="rId2"/></p:pic>' if with_media else ""
         diagram = diagram_shapes() if with_diagram else ""
@@ -85,6 +85,18 @@ def make_pptx(fpath, text, with_media=False, with_diagram=False):
             f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
             f"</p:txBody></p:sp>{diagram}{embed}</p:spTree></p:cSld></p:sld>",
         )
+        if with_case:
+            # one case slide in the corpus's own shape (classification
+            # line + ONE numbered case line) — the case-index legs read
+            # the Test Cases row the sweep mints from it. Planted into
+            # an existing fixture so no count-based assertion moves.
+            z.writestr(
+                "ppt/slides/slide2.xml",
+                "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+                "<a:p><a:r><a:t>Positive - Line network</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>3. Loop route – Split measure : 40</a:t></a:r></a:p>"
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
         if with_media:
             # media only counts when a slide references it via its rels
             z.writestr(
@@ -636,6 +648,7 @@ LISTS = {
     "docLinks": "list-doclinks",
     "sourceLibrary": "list-library",
     "issueRefs": "list-issuerefs",
+    "testCases": "list-testcases",
 }
 
 GANTT = os.path.join(REPO, "local", "gantt.mjs")
@@ -798,7 +811,7 @@ def main():
     # fixture corpus
     make_pptx(os.path.join(src_dir, "Alpha Plan.pptx"),
               "Alpha test plan covering lock acquisition #123 for Roads and Highways",
-              with_media=True, with_diagram=True)
+              with_media=True, with_diagram=True, with_case=True)
     make_messy_pptx(os.path.join(src_dir, "Beta Story.pptx"),
                     "Beta user story about locks and issue #123")
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
@@ -888,12 +901,18 @@ def main():
     os.makedirs(os.path.dirname(ghost_sc), exist_ok=True)
     with open(ghost_sc, "w") as f:
         f.write("# Ghost Doc\nstale sidecar\n")
-    state.seed(LISTS["docIndex"], {
+    ghost_row_id = state.seed(LISTS["docIndex"], {
         "Title": "Ghost Doc", "FileName": "Ghost Doc.pptx",
         "DocKey": "shared documents/ghost doc.pptx", "IndexStatus": "Indexed",
         "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
         "TextFileUrl": {"Url": "https://mock.example/sites/lrsworkspace/LRS Doc Index/Test Plans/Ghost Doc.md",
                         "Description": "Ghost Doc.md"},
+    })
+    # a case row the ghost doc left behind — the archive pass must
+    # prune it with the sidecar (case rows are derived state)
+    state.seed(LISTS["testCases"], {
+        "Title": "Ghost case", "DocumentLookupId": int(ghost_row_id),
+        "CaseKey": f"{ghost_row_id}|1", "Classification": "Positive",
     })
     state.llm_by_file = {
         "Alpha Plan.pptx": {
@@ -1340,6 +1359,40 @@ def main():
           "consumptionSource" in str(state.llm_last_request.get("source", "")),
           str(state.llm_last_request.get("source"))[:200])
 
+    # ---- case-index leg (Case_Index_Plan phase 2) ------------------
+    # alpha (Test Plan) carries one case slide; beta (User Story)
+    # carries case SECTIONS but is off the kinds list; the ghost's
+    # seeded case row must not survive its archive
+    print("== case-index leg")
+    tcs = list(state.lists.get(LISTS["testCases"], {}).values())
+    alpha_cases = [r for r in tcs if r.get("DocumentLookupId") == alpha_id]
+    check("alpha (Test Plan) got exactly one case row", len(alpha_cases) == 1,
+          str(tcs)[:400])
+    ac = alpha_cases[0] if alpha_cases else {}
+    check("case row carries the caseHeadings-derived contract",
+          ac.get("CaseKey") == f"{alpha_id}|1" and ac.get("CaseNo") == "3"
+          and ac.get("Classification") == "Positive" and ac.get("SlideNo") == 2
+          and ac.get("Scenario") == "Loop Route", str(ac))
+    check("case row title is the visible heading",
+          ac.get("Title") == "Case 3: Positive - Line Network",
+          str(ac.get("Title")))
+    check("case anchor deep-links the sidecar heading",
+          ac.get("Anchor") == "case-3-positive---line-network",
+          str(ac.get("Anchor")))
+    check("case text keeps the specifics",
+          "Split measure: 40" in str(ac.get("CaseText")), str(ac.get("CaseText")))
+    check("beta (User Story) minted no case rows despite its case sections",
+          not [r for r in tcs if r.get("DocumentLookupId") == beta_id],
+          str(tcs)[:400])
+    check("ghost's case row pruned by the archive pass",
+          not [r for r in tcs
+               if str(r.get("CaseKey", "")).startswith(f"{ghost_row_id}|")],
+          str(tcs)[:400])
+    check("run summary counts case writes",
+          int(out.get("cases_upserted", 0)) >= 1
+          and int(out.get("cases_removed", 0)) >= 1
+          and int(out.get("case_errors", 0)) == 0, str(out))
+
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")
     llm_before = state.llm_calls
@@ -1356,6 +1409,11 @@ def main():
     check("content-filtered doc never re-burns an AI call (dry + live only)",
           state.llm_files.count("filtered.txt") == 2,
           str(state.llm_files.count("filtered.txt")))
+    check("case rows idempotent (unchanged corpus writes none)",
+          int(out.get("cases_upserted", 0)) == 0
+          and int(out.get("cases_removed", 0)) == 0
+          and len([r for r in state.lists.get(LISTS["testCases"], {}).values()
+                   if r.get("DocumentLookupId") == alpha_id]) == 1, str(out))
     # streaks: run 1 stamped 1 night; this full run makes it 2
     status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("error streaks advance on full runs",
@@ -1384,9 +1442,9 @@ def main():
           str(backups) + " " + str(out.get("list_backup")))
     with gzip.open(os.path.join(work_dir, sorted(backups)[-1])) as f:
         bk = json.load(f)
-    check("list backup holds all five lists with raw rows",
+    check("list backup holds all six lists with raw rows",
           set(bk.get("lists", {})) == {"docIndex", "keywords", "docIds",
-                                       "docKeywords", "docLinks"}
+                                       "docKeywords", "docLinks", "testCases"}
           and len(bk["lists"]["docIndex"]) >= 3
           and "fields" in bk["lists"]["docIndex"][0],
           str({k: len(v) for k, v in bk.get("lists", {}).items()}))
@@ -1670,6 +1728,61 @@ def main():
           after[-600:])
     check("reformat spent no AI calls", state.llm_calls == llm_before_rf,
           f"{state.llm_calls} vs {llm_before_rf}")
+    check("reformat re-synced case rows without churn",
+          int(out.get("cases_upserted", 0)) == 0
+          and int(out.get("cases_removed", 0)) == 0
+          and int(out.get("case_errors", 0)) == 0, str(out))
+
+    # ---- recase leg (Case_Index_Plan phase 2 — the backfill) -------
+    # simulate a corpus indexed before the feature existed: wipe the
+    # Test Cases list and plant an orphan row whose document is gone;
+    # --recase must rebuild alpha's row from the sidecar ON DISK (no
+    # extraction, no AI) and delete the orphan
+    print("== recase leg")
+    state.lists[LISTS["testCases"]] = {}
+    state.seed(LISTS["testCases"], {
+        "Title": "orphan", "DocumentLookupId": 99999, "CaseKey": "99999|1"})
+    llm_before_rc = state.llm_calls
+    proc = run_sweep(cfg_path, ["--recase"])
+    check("recase dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("recase dry run plans but writes nothing",
+          out.get("mode") == "recase" and out.get("dry_run") is True
+          and int(out.get("cases_upserted", 0)) >= 1
+          and int(out.get("cases_removed", 0)) >= 1
+          and len(state.lists[LISTS["testCases"]]) == 1, str(out))
+    proc = run_sweep(cfg_path, ["--recase", "--live"])
+    check("recase live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    tcs = list(state.lists.get(LISTS["testCases"], {}).values())
+    check("recase rebuilt the plan's case rows from the sidecar on disk",
+          len([r for r in tcs if r.get("DocumentLookupId") == alpha_id
+               and r.get("CaseKey") == f"{alpha_id}|1"
+               and r.get("Classification") == "Positive"]) == 1, str(tcs)[:400])
+    check("recase deleted the orphan row",
+          not [r for r in tcs if r.get("CaseKey") == "99999|1"], str(tcs)[:400])
+    check("recase spent no AI calls", state.llm_calls == llm_before_rc,
+          f"{state.llm_calls} vs {llm_before_rc}")
+    check("recase counters report the walk",
+          int(out.get("eligible", 0)) >= 1 and int(out.get("synced", 0)) >= 1
+          and int(out.get("case_errors", 0)) == 0
+          and int(out.get("no_seam", 0)) == 0, str(out))
+
+    # ---- case-index missing-GUID leg (fail-soft) -------------------
+    print("== case-index missing-GUID leg")
+    cfg_nocases = json.loads(json.dumps(cfg))
+    del cfg_nocases["sharePoint"]["lists"]["testCases"]
+    cfg_nocases_path = os.path.join(tmp, "config-nocases.json")
+    with open(cfg_nocases_path, "w") as f:
+        json.dump(cfg_nocases, f)
+    proc = run_sweep(cfg_nocases_path, ["--only", "Alpha Plan.pptx"])
+    check("missing GUID: sweep still runs, with the loud note",
+          proc.returncode == 0 and "sharePoint.lists.testCases" in proc.stderr,
+          proc.stderr[-400:])
+    proc = run_sweep(cfg_nocases_path, ["--recase"])
+    check("missing GUID: --recase refuses, naming the fix",
+          proc.returncode != 0 and "Test Cases" in proc.stderr,
+          proc.stderr[-400:])
 
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")

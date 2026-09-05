@@ -1,5 +1,53 @@
 # Local sweep — release notes
 
+## v1.42 (2026-09-05 — Case_Index_Plan phase 2: the sweep writes case rows)
+
+**Individual test cases become list rows.** The caseindex parser
+(below) wires into the sweep: every document whose DocKind is in
+`sweep.caseIndex.kinds` (default `["Test Plan"]`) now replace-sets
+its rows in the **Test Cases** list from the same rendered body its
+sidecar carries — at index time, on `--reformat`, and via the new
+backfill mode:
+
+- `syncCases` — one replace-set per document (`CaseKey =
+  {docRowId}|{ordinal}`, diffed via `diffCaseRows` so an unchanged
+  plan writes NOTHING). A doc reclassified off the kinds list, or
+  archived by ghost reconciliation, deletes its rows through the same
+  path. Never throws: a case-write failure is the `case_errors`
+  counter plus a stderr line, not a failed index and never the doc
+  row's LastError.
+- `--recase` — the backfill: walks Indexed rows of the configured
+  kinds, re-parses each synced sidecar's body below the metadata
+  seam, and replace-sets its rows; orphan rows (doc gone, Archived,
+  reclassified, no longer Indexed) delete; eligible docs the cap or a
+  missing sidecar deferred are left alone. No extraction, no AI
+  spend, no sidecar writes; dry-run default plans the counts.
+  Standalone mode (refuses to combine with `--rerank`/`--reformat`);
+  smoke runs (`--only`) stay surgical — no cleanup.
+- Enablement is the `sharePoint.lists.testCases` GUID alone
+  (Local_Setup §12; the list per `schemas/SPList_TestCases.csv`,
+  classic-created lookup). Without it the sweep prints one loud note
+  per run and indexes documents normally; `--recase` without it
+  refuses, naming the fix. The fetched rows ride the per-run gzip
+  list backup like every other list.
+- Counters on the full, reformat, and recase summaries —
+  `cases_upserted`, `cases_removed`, `case_errors`, `plans_caseless`,
+  `cases_shape_mixed` — and a status-page **Test cases** bullet when
+  the run touched rows (loud on write errors). `Writer` gains
+  `deleteRow` (first list-row deletion in the pipeline; dry-run
+  plans it like every other write).
+
+Gate: `check_local_sweep.py` **230/230** (was 211) — the case-index
+leg (a case slide planted in the existing Alpha fixture: row
+contract incl. scenario/slide/anchor, the kinds filter on beta's
+case-bearing User Story, ghost-row pruning), idempotency (unchanged
+corpus writes none), reformat no-churn, the recase legs (dry plans /
+live rebuilds from disk / orphan deletion / zero AI), and the
+missing-GUID fail-soft + `--recase` refusal legs; the sweep-level
+D1 coupling now holds through the fixture the sweep itself writes.
+`check_caseindex.py` 45/45 and `check_testplangen.py` 136/136
+unchanged.
+
 ## caseindex v1.0 (2026-09-05 — Case_Index_Plan phases 0–1)
 
 **Individual test cases become parseable.** The design record

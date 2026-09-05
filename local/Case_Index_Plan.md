@@ -1,15 +1,19 @@
 # Plan — indexing individual test cases (`local/lib/caseindex.mjs`)
 
-Status: **PHASES 0–1 BUILT** (2026-09-05 — `local/CHANGES.md`
-caseindex v1.0): `schemas/SPList_TestCases.csv`, the inert
-`sweep.caseIndex` config block, and the parser
+Status: **PHASES 0–2 BUILT** (2026-09-05 — `local/CHANGES.md`
+caseindex v1.0 + sweep v1.42): the schema
+(`schemas/SPList_TestCases.csv`), the parser
 `local/lib/caseindex.mjs` (`extractCases`, `caseIssueRefs`,
-`toRowFields`, `diffCaseRows`), gated by its own standalone
-`local/harness/check_caseindex.py` (45/45, CI) — parser legs got
-their own gate in the check_svg2pptx/check_draft2docx mold rather
-than seats inside the 211-check sweep suite; the sweep-level
-coupling and missing-GUID legs land in `check_local_sweep.py` with
-phase 2, as does the list creation itself. Phases 2–3 remain the
+`toRowFields`, `diffCaseRows`; own gate
+`local/harness/check_caseindex.py`, 45/45, CI — parser legs in the
+per-component-gate mold rather than seats in the sweep suite), and
+the sweep wiring: `syncCases` at index time and on `--reformat`,
+ghost-pass pruning, the `--recase` backfill, the run-summary /
+status-page counters, and the missing-GUID fail-soft — gated by
+`check_local_sweep.py` **230/230** (CI). What remains on the tenant:
+create the Test Cases list (Local_Setup §12, classic lookup), paste
+the GUID, run `--recase --live` once — after auth restore (STATUS
+action 12) like everything else. Phase 3 (consumers) remains the
 build order below. This document stays the design record, the
 `Local_TestPlanGen_Plan.md` precedent; each phase lands with its
 gate legs and a CHANGES entry before the next starts.
@@ -245,10 +249,11 @@ sweep-integration legs with phase 2. All CI:
   caps. The deck fixture's body is produced by
   `caseHeadings(tidyBody(...))` itself in the same run — the D1
   coupling pinned at module level.
-- **Coupling leg, sweep level** (phase 2): the case rows written by
-  a mock-Graph sweep run are extracted from a sidecar that same run
-  wrote — `caseHeadings` drifting its emission breaks the leg, not
-  the corpus.
+- **Coupling leg, sweep level** (built, phase 2): the case rows a
+  mock-Graph sweep run writes come from the body that same run
+  rendered (a case slide planted in the existing Alpha fixture) —
+  `caseHeadings` drifting its emission breaks the leg, not the
+  corpus.
 - **Replace-set legs**: mock-Graph diff — unchanged plan ⇒ zero
   writes; renumbered cases ⇒ update-in-place by ordinal; shrunk plan
   ⇒ stale rows deleted; archived doc ⇒ full deletion; missing GUID ⇒
@@ -269,11 +274,15 @@ leg move to phase 2 with the code they guard.
 both shapes, issue refs, anchors. Gate: `check_caseindex.py` parser
 + module-level coupling + planner legs, 45/45, CI. Still no writes.
 
-**Phase 2 — sweep integration.** `syncCases` in indexDoc +
-`--reformat`, ghost pass, `--recase` backfill, counters. Gate:
-replace-set legs, full-suite green. First live `--recase` run is
-this phase's exit check (counts recorded in CHANGES, the
-gantt-first-run mold).
+**Phase 2 — sweep integration** (BUILT — sweep v1.42). `syncCases`
+in indexDoc + `--reformat`, ghost pass, `--recase` backfill,
+counters + status-page bullet, missing-GUID fail-soft (`--recase`
+without the GUID refuses, naming the fix). Gate:
+`check_local_sweep.py` 230/230 — case-index / idempotency /
+reformat-no-churn / recase / missing-GUID legs. The first live
+`--recase` run is this phase's tenant exit check (list created per
+Local_Setup §12, counts recorded in CHANGES, the gantt-first-run
+mold) — queued behind auth restore, STATUS action 12.
 
 **Phase 3 — consumers.** `_Case Catalog.md`; gap-report case
 columns; status-page counters. Gate: consumer legs; smoke question

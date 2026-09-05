@@ -121,7 +121,7 @@ keeps the old yaml-on-top layout).
 | local/Hosted_Runner.md | Remote-files mode + hosted GitHub Actions sweep — setup, prerequisites, and the credentials policy decision | v1.39 |
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
-| local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (phases 0–1 shipped: schema, parser, gate; sweep wiring is phase 2) | — |
+| local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (phases 0–2 shipped: schema, parser, gate, sweep wiring incl. `--recase`; phase 3 consumers queued; tenant list creation per Local_Setup §12) | — |
 | local/harness/check_caseindex.py | Case-parser gate (both case shapes via the presentation layer's own emission, issue refs, replace-set planner; 45 checks; CI) | v1.0 |
 | review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |
 | STATUS_history.md | The per-day STATUS narratives, moved out of STATUS.md's head (2026-09-03) | — |

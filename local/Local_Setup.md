@@ -812,16 +812,17 @@ automatically; the aibuilder lane still needs the tenant paste.
 
 Individual test cases out of each indexed test plan, as rows in a
 seventh list — design record and phased build order in
-`local/Case_Index_Plan.md`. Shipped so far: the deterministic parser
+`local/Case_Index_Plan.md`. Shipped: the deterministic parser
 (`local/lib/caseindex.mjs` — deck-derived `## Case N` sections and
 draft-style `### TC-P/TC-N` headings, per-case issue references,
 replace-set planner) under its own CI gate
-(`local/harness/check_caseindex.py`). The sweep wiring (`syncCases`
-at index/reformat time, the `--recase` backfill, run-summary
-counters) is the plan's phase 2 — until it lands, nothing reads
-this section's config.
+(`local/harness/check_caseindex.py`), and the sweep wiring (sweep
+v1.42): documents of the configured kinds sync their case rows at
+index time and on `--reformat`, ghost reconciliation prunes an
+archived doc's rows, and `--recase` backfills the whole corpus from
+the sidecars on disk.
 
-Setup, once, when phase 2 lands:
+Setup, once:
 
 1. Create the **Test Cases** list on lrsworkspace per
    `schemas/SPList_TestCases.csv`. The `Document` lookup targets Doc

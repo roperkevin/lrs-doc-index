@@ -82,6 +82,10 @@ export function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fat
     ...(summary.archived
       ? [`- **Archived this run:** ${summary.archived} row(s) whose source was deleted from the library (sidecars pruned; a restored doc re-indexes automatically)`]
       : []),
+    ...(summary.cases_upserted || summary.cases_removed || summary.case_errors
+      ? [`- **Test cases:** ${summary.cases_upserted ?? 0} row(s) upserted, ${summary.cases_removed ?? 0} removed` +
+         (summary.case_errors ? ` — **${summary.case_errors} case-write error(s)**, see the run log` : "")]
+      : []),
     "",
     "## Action needed",
     "",

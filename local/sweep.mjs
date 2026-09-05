@@ -58,6 +58,7 @@ import {
   pruneRunLogs, exportListSnapshots,
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
+import { extractCases, toRowFields, diffCaseRows } from "./lib/caseindex.mjs";
 import { writeIndexPages } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
@@ -299,10 +300,11 @@ function loadConfig(argv) {
     else if (a === "--only") args.flags.only = argv[++i];
     else if (a === "--rerank") args.flags.rerank = true;
     else if (a === "--reformat") args.flags.reformat = true;
+    else if (a === "--recase") args.flags.recase = true;
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -316,6 +318,10 @@ function loadConfig(argv) {
   if (args.flags.only !== undefined) cfg.sweep.smokeFile = args.flags.only;
   if (args.flags.rerank) cfg.sweep.rerank = true;
   if (args.flags.reformat) cfg.sweep.reformat = true;
+  if (args.flags.recase) cfg.sweep.recase = true;
+  if (cfg.sweep.recase && (cfg.sweep.rerank || cfg.sweep.reformat)) {
+    throw new Error("--recase is a standalone mode — do not combine it with --rerank or --reformat");
+  }
   if (args.flags.checkHeartbeat) cfg.sweep.checkHeartbeat = true;
   cfg.llm = cfg.llm || {};
   cfg.graph = cfg.graph || {};
@@ -403,6 +409,11 @@ class Writer {
     if (Object.keys(links).length) {
       await this.spo.validateUpdate(this.lists[listKey], id, links);
     }
+  }
+  async deleteRow(listKey, id) {
+    this.log("deleteRow", `${listKey}/${id}`, {});
+    if (this.dryRun) return;
+    await this.graph.deleteItem(this.siteId, this.lists[listKey], id);
   }
   writeFile(absPath, data) {
     this.log("writeFile", absPath, { bytes: data.length });
@@ -647,6 +658,82 @@ async function main() {
   const docIdRows = await fetch("docIds", "docIds", ["Title", "Repo", "IssueNumber", "Source", "IdKey", "DocumentLookupId"]);
   const docLinkRows = await fetch("docLinks", "docLinks", ["LinkType", "SharedValues", "Strength", "LinkKey", "DocALookupId", "DocBLookupId"]);
   const docKwRows = await fetch("docKeywords", "docKeywords", ["Title", "KWKey", "DocumentLookupId", "KeywordLookupId"]);
+
+  // ---- test-case index (Case_Index_Plan phase 2) -----------------
+  // Individual test cases as Test Cases list rows, one replace-set
+  // per document. Enabled by the list GUID alone; without it the
+  // sweep says so once and indexes documents normally — case rows
+  // are derived state and never gate a document.
+  const ciKinds = (cfg.sweep.caseIndex && cfg.sweep.caseIndex.kinds) || ["Test Plan"];
+  const ciEnabled = !!sp.lists.testCases;
+  const caseRowsByDoc = new Map(); // docRowId -> [{id, fields}]
+  if (ciEnabled) {
+    const items = await graph.listItems(siteId, sp.lists.testCases, {
+      select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
+               "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor", "SweptOn"],
+    });
+    rawSnapshots.testCases = items; // rides the per-run list backup
+    for (const it of items) {
+      const f = it.fields || {};
+      const docId = num(f.DocumentLookupId) ?? num(f.DocumentId);
+      if (docId === undefined) continue;
+      if (!caseRowsByDoc.has(docId)) caseRowsByDoc.set(docId, []);
+      caseRowsByDoc.get(docId).push({ id: String(it.id), fields: f });
+    }
+  } else if (sw.recase) {
+    throw new Error(
+      "--recase needs sharePoint.lists.testCases — create the Test Cases " +
+      "list per Local_Setup §12 / schemas/SPList_TestCases.csv and add its GUID"
+    );
+  } else {
+    process.stderr.write(
+      "note: sharePoint.lists.testCases is not configured — individual test " +
+      "cases are not indexed (Local_Setup §12: create the Test Cases list, " +
+      "paste its GUID, then backfill with --recase)\n"
+    );
+  }
+  // Replace one document's case-row set with what its body states now.
+  // An empty/off-kind fresh side deletes the document's rows (archived,
+  // reclassified, or de-scoped docs clean up through the same path).
+  // Never throws: a case-write failure lands in the run summary, not in
+  // the document's own lane.
+  const syncCases = async (rowId, docKind, bodyText, sum) => {
+    if (!ciEnabled || !rowId) return;
+    try {
+      let fresh = [];
+      if (ciKinds.includes(docKind)) {
+        const parsed = extractCases(bodyText, {
+          defaultRepo: sw.defaultRepo,
+          caseTextCap: cfg.sweep.caseIndex && cfg.sweep.caseIndex.caseTextCap,
+        });
+        if (parsed.mixed) sum.cases_shape_mixed++;
+        if (parsed.shape === "none") sum.plans_caseless++;
+        const now = new Date().toISOString();
+        fresh = parsed.cases.map((c) => toRowFields(rowId, c, now));
+      }
+      const existing = caseRowsByDoc.get(rowId) || [];
+      if (!fresh.length && !existing.length) return;
+      const plan = diffCaseRows(existing, fresh);
+      const next = existing.filter((r) => !plan.delete.includes(r.id));
+      for (const f of plan.create) {
+        const created = await writer.createRow("testCases", f);
+        next.push({ id: String(created.id), fields: f });
+      }
+      for (const u of plan.update) {
+        await writer.patchRow("testCases", u.id, u.fields);
+        const row = next.find((r) => r.id === u.id);
+        if (row) row.fields = u.fields;
+      }
+      for (const id of plan.delete) await writer.deleteRow("testCases", id);
+      caseRowsByDoc.set(rowId, next);
+      sum.cases_upserted += plan.create.length + plan.update.length;
+      sum.cases_removed += plan.delete.length;
+    } catch (e) {
+      sum.case_errors++;
+      process.stderr.write(`CASE-INDEX ERROR doc ${rowId}: ${e.message}\n`);
+    }
+  };
+
   const listBackup = exportListSnapshots(cfg, rawSnapshots);
 
   const byDocKey = new Map(docIndexRows.map((r) => [lower(r.DocKey), r]));
@@ -669,6 +756,68 @@ async function main() {
     .filter((r) => !r.CanonicalRefId)
     .map((r) => r.Title)
     .join(", ");
+
+  // ---- --recase: rebuild the Test Cases list from the sidecars on
+  // disk (Case_Index_Plan phase 2 — the backfill). No extraction, no
+  // AI calls, no sidecar writes: each eligible document's body below
+  // the metadata seam re-parses and replace-sets its case rows. Run
+  // once after creating the list, and after any caseindex.mjs parser
+  // bump (CaseIndexVersion); the nightly sweep keeps it converged.
+  if (sw.recase) {
+    const csum = {
+      mode: "recase", dry_run: dry, eligible: 0, synced: 0,
+      no_sidecar: 0, no_seam: 0, cases_upserted: 0, cases_removed: 0,
+      case_errors: 0, plans_caseless: 0, cases_shape_mixed: 0,
+    };
+    const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
+    const done = new Set();
+    for (const r of docIndexRows) {
+      if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      csum.eligible++;
+      if (csum.synced >= cap) continue;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) {
+        csum.no_sidecar++;
+        continue;
+      }
+      const content = fs.readFileSync(local, "utf8");
+      const seam = bodySeamEnd(content);
+      if (seam < 0) {
+        csum.no_seam++;
+        continue;
+      }
+      await syncCases(r.ID, r.DocKind, content.slice(seam), csum);
+      done.add(r.ID);
+      csum.synced++;
+    }
+    // rows whose document is gone, Archived, reclassified, or no
+    // longer Indexed delete here (the replace-set with an empty fresh
+    // side); rows for eligible docs the cap or a missing sidecar
+    // deferred are left alone. Smoke runs stay surgical: no cleanup.
+    if (!sw.smokeFile) {
+      const byId = new Map(docIndexRows.map((r) => [r.ID, r]));
+      for (const docId of [...caseRowsByDoc.keys()]) {
+        if (done.has(docId)) continue;
+        const row = byId.get(docId);
+        if (row && row.IndexStatus === "Indexed" && row.TextFileUrl &&
+            ciKinds.includes(row.DocKind)) continue;
+        await syncCases(docId, "", "", csum);
+      }
+    }
+    const cDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(cDir, { recursive: true });
+    const cStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const cLog = path.join(cDir, `sweep-${cStamp}.json`);
+    fs.writeFileSync(cLog, JSON.stringify({ summary: csum, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(cDir);
+    process.stdout.write(JSON.stringify({ ...csum, logFile: cLog }) + "\n");
+    if (dry) {
+      process.stdout.write(`dry run: ${writer.plan.length} planned writes recorded in ${cLog}\n`);
+    }
+    return;
+  }
 
   // ---- --rerank: rebuild every related section from persisted state
   // (no extraction, no AI calls — pure local compute + sidecar
@@ -783,6 +932,8 @@ async function main() {
     mode: "reformat", dry_run: dry, eligible: 0, rewritten: 0,
     unchanged: 0, no_sidecar: 0, no_seam: 0, no_text: 0, errors: 0,
     figures: 0, figure_errors: 0, figures_ocr: 0, figures_ocr_off: 0,
+    cases_upserted: 0, cases_removed: 0, case_errors: 0,
+    plans_caseless: 0, cases_shape_mixed: 0,
   };
   const summary = {
     library_items_seen: files.length,
@@ -801,6 +952,11 @@ async function main() {
     figures_ocr: 0,
     figures_ocr_off: 0,
     graph_downloads: 0,
+    cases_upserted: 0,
+    cases_removed: 0,
+    case_errors: 0,
+    plans_caseless: 0,
+    cases_shape_mixed: 0,
     list_backup: listBackup ? path.basename(listBackup) : "",
   };
 
@@ -869,13 +1025,18 @@ async function main() {
           rfsum.no_text++;
           continue;
         }
-        const next = cur.slice(0, seam) + caseHeadings(tidyBody(docText));
+        const body = caseHeadings(tidyBody(docText));
+        const next = cur.slice(0, seam) + body;
         if (next === cur) rfsum.unchanged++;
         else {
           writer.writeFile(scLocal, next);
           if (remote) await remote.flush();
           rfsum.rewritten++;
         }
+        // the reformatted body is the case parser's input — sync the
+        // doc's case rows even when the body itself is unchanged (the
+        // rows may predate the feature, or a parser bump)
+        await syncCases(existing.ID, existing.DocKind || "", body, rfsum);
       } catch (e) {
         rfsum.errors++;
         process.stderr.write(`REFORMAT ERROR ${name}: ${e.message}\n`);
@@ -943,7 +1104,7 @@ async function main() {
       }
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver,
+        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -1073,6 +1234,9 @@ async function main() {
       summary.archived++;
       const local = urlToLocal(g.TextFileUrl || "", sw, cfg);
       if (local && fs.existsSync(local)) writer.deleteFile(local);
+      // an archived doc's case rows are derived state — prune them
+      // with the sidecar (empty fresh side = full deletion)
+      await syncCases(g.ID, "", "", summary);
     }
     if (ghosts.length > cap) {
       process.stderr.write(`note: ${ghosts.length - cap} more ghost row(s) will archive on later runs (cap ${cap}/run)\n`);
@@ -1168,7 +1332,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -1320,8 +1484,9 @@ async function indexDoc(ctx) {
   }
   // body gets the v1.20 presentation tidy + v1.25 case headings; the
   // LLM input, preview and similarity index all keep the raw text
+  const bodyText = caseHeadings(tidyBody(docText));
   const sidecarContent = upsertDocsBlock(
-    header + caseHeadings(tidyBody(docText)),
+    header + bodyText,
     docsBlock(ai.tools || [], docLinks, toolLinks, topicLinks)
   );
   writer.writeFile(localSidecar, sidecarContent);
@@ -1351,6 +1516,13 @@ async function indexDoc(ctx) {
     caches.byDocKey.set(docKey, cachedRow);
     caches.docIndexRows.push(cachedRow);
   }
+
+  // test-case rows (Case_Index_Plan phase 2): the same rendered body
+  // the sidecar carries, replace-set onto the Test Cases list. Never
+  // throws — a case-write failure is a summary counter, not a failed
+  // index; a doc reclassified off the kinds list deletes its rows.
+  setStep("case-index");
+  await syncCases(rowId, docKind, bodyText, summary);
 
   // (h) Doc IDs + id edges
   setStep("doc-ids");
