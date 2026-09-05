@@ -1,5 +1,123 @@
 # Local sweep — release notes
 
+## v1.43 (2026-09-05 — Case_Index_Plan phase 3: the case catalog)
+
+**The case index gets its browse surface.** indexpages **v1.1** adds
+`writeCaseCatalog`: one **"_Case Catalog.md"** at the sidecar-library
+root — every indexed test case grouped by plan (newest plan first,
+cases in plan order), per-plan Positive/Negative counts, each case
+row deep-linking its sidecar section through the anchor its Test
+Cases row carries, scenario and per-case issue refs alongside. The
+`_Index.md` conventions apply: rebuilt by every live full sweep from
+the rows the run already holds (no extra fetches, no AI),
+`sweep.indexPages: false` disables it, remote-files mode uploads it
+with the other pages, and the Q&A agent gains the cross-plan view
+for free (the page lives in the library it grounds on). A live
+`--recase` also rebuilds it, so the backfill leaves the browse
+surface current; dry runs never write it. Plans with no case rows
+stay off the page (they're on `_Index.md`); zero cases writes the
+explicit "_None yet._" state.
+
+Companion consumer, recorded in `testplangen/CHANGES.md` v2.29:
+`--gap-report` now traces each story's issue ids against the case
+rows (testplangen.mjs v1.8) — covered-by-adjacency-only stories
+surface, and the smoke suite gains the case-catalog question
+(`agent/QA_Smoke_Questions.md` v1.1).
+
+Gates: `check_local_sweep.py` **235/235** (catalog contract —
+grouping, counts, anchors, exclusions, recase rebuild, dry never
+writes), `check_testplangen.py` **141/141**, `check_caseindex.py`
+45/45.
+
+## v1.42 (2026-09-05 — Case_Index_Plan phase 2: the sweep writes case rows)
+
+**Individual test cases become list rows.** The caseindex parser
+(below) wires into the sweep: every document whose DocKind is in
+`sweep.caseIndex.kinds` (default `["Test Plan"]`) now replace-sets
+its rows in the **Test Cases** list from the same rendered body its
+sidecar carries — at index time, on `--reformat`, and via the new
+backfill mode:
+
+- `syncCases` — one replace-set per document (`CaseKey =
+  {docRowId}|{ordinal}`, diffed via `diffCaseRows` so an unchanged
+  plan writes NOTHING). A doc reclassified off the kinds list, or
+  archived by ghost reconciliation, deletes its rows through the same
+  path. Never throws: a case-write failure is the `case_errors`
+  counter plus a stderr line, not a failed index and never the doc
+  row's LastError.
+- `--recase` — the backfill: walks Indexed rows of the configured
+  kinds, re-parses each synced sidecar's body below the metadata
+  seam, and replace-sets its rows; orphan rows (doc gone, Archived,
+  reclassified, no longer Indexed) delete; eligible docs the cap or a
+  missing sidecar deferred are left alone. No extraction, no AI
+  spend, no sidecar writes; dry-run default plans the counts.
+  Standalone mode (refuses to combine with `--rerank`/`--reformat`);
+  smoke runs (`--only`) stay surgical — no cleanup.
+- Enablement is the `sharePoint.lists.testCases` GUID alone
+  (Local_Setup §12; the list per `schemas/SPList_TestCases.csv`,
+  classic-created lookup). Without it the sweep prints one loud note
+  per run and indexes documents normally; `--recase` without it
+  refuses, naming the fix. The fetched rows ride the per-run gzip
+  list backup like every other list.
+- Counters on the full, reformat, and recase summaries —
+  `cases_upserted`, `cases_removed`, `case_errors`, `plans_caseless`,
+  `cases_shape_mixed` — and a status-page **Test cases** bullet when
+  the run touched rows (loud on write errors). `Writer` gains
+  `deleteRow` (first list-row deletion in the pipeline; dry-run
+  plans it like every other write).
+
+Gate: `check_local_sweep.py` **230/230** (was 211) — the case-index
+leg (a case slide planted in the existing Alpha fixture: row
+contract incl. scenario/slide/anchor, the kinds filter on beta's
+case-bearing User Story, ghost-row pruning), idempotency (unchanged
+corpus writes none), reformat no-churn, the recase legs (dry plans /
+live rebuilds from disk / orphan deletion / zero AI), and the
+missing-GUID fail-soft + `--recase` refusal legs; the sweep-level
+D1 coupling now holds through the fixture the sweep itself writes.
+`check_caseindex.py` 45/45 and `check_testplangen.py` 136/136
+unchanged.
+
+## caseindex v1.0 (2026-09-05 — Case_Index_Plan phases 0–1)
+
+**Individual test cases become parseable.** The design record
+`local/Case_Index_Plan.md` (committed 2026-09-04) plus its first two
+phases: the schema for the seventh list
+(`schemas/SPList_TestCases.csv` — Doc Index lookup, `CaseKey`
+replace-set diff key, classification/scenario/skim-text/per-case
+issue refs/anchor columns) and the pure parser
+`local/lib/caseindex.mjs`:
+
+- `extractCases(body, {defaultRepo, caseTextCap})` →
+  `{cases, shape, mixed}` — both corpus case shapes: deck-derived
+  sections exactly as `caseHeadings` emits them (numbered
+  `## Case N: …`, rule-b classification-only H2s; checklist slides,
+  `… test cases` dividers, bare `## Slide N` and author-titled
+  sections are never cases) and the draft-style `### TC-[PN]<n>`
+  contract draftlint checks. A body with neither yields zero cases
+  (`shape: "none"`), never guesses; a body with both keeps the
+  larger set and flags `mixed` for the future `cases_shape_mixed`
+  counter.
+- `caseIssueRefs` — the Doc IDs patterns scoped to one case's text
+  (devtopia url / explicit `repo#n` / hashtag via `defaultRepo`,
+  claimed-number suppression; the doc-level filename source
+  deliberately excluded).
+- `toRowFields` / `diffCaseRows` — the shared row shaping and the
+  replace-set planner (create/update/delete by `CaseKey`; `SweptOn`
+  alone never dirties a row, so an unchanged plan writes nothing).
+
+Config grows `sweep.caseIndex` (`kinds`, `caseTextCap`) — inert
+until phase 2 wires `syncCases`/`--recase` into the sweep and
+`sharePoint.lists.testCases` names a real list (Local_Setup §12).
+No sidecar format change, no `Config.PromptVersion` implication,
+cloud flows untouched.
+
+Gate: new `local/harness/check_caseindex.py` (45 checks, CI
+fixture-free job) — the deck fixture's body is produced by
+`caseHeadings(tidyBody(...))` ITSELF in the same run, pinning the
+parser to the presentation layer's emission (the plan's D1 coupling
+leg at module level; the sweep-level leg and the missing-GUID leg
+land with phase 2).
+
 ## svg2pptx v1.4 (2026-09-04, with TestPlanGen v2.27)
 
 **The figure parser/emitter become importable.** `parseFigure`,

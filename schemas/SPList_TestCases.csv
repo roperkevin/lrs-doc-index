@@ -1,0 +1,12 @@
+Display Name,Internal Name,Type,Details,Required
+Title,Title,Single line (native),"The case heading text, cleaned, truncated 255",Yes
+Document,Document,Lookup,"Target: Doc Index, show Title; INDEXED — create via CLASSIC list settings (modern-created lookups are broken: silent write drops, spinning pickers)",Yes
+CaseKey,CaseKey,Single line of text,"{DocRowId}|{ordinal} — INDEXED; the replace-set diff key (Case_Index_Plan.md D4): every (re)index of a plan replaces its full case-row set, so this is a within-run dedup key, never a durable case identity",Yes
+CaseNo,CaseNo,Single line of text,"The plan's own number: '2' (deck-derived) or 'TC-P4' (draft-style); display only, never identity",No
+SlideNo,SlideNo,Number,"0 decimals; from the sidecar's <!-- slide K --> provenance comment; empty for draft-style plans",No
+Classification,Classification,Choice,"Positive; Negative; Unspecified — from the heading (deck) or the TC lane letter (draft)",No
+Scenario,Scenario,Single line of text,"The '### <scenario>' line (deck) / heading remainder after the TC id (draft)",No
+CaseText,CaseText,Multiple lines of text,"PLAIN text (not enhanced); the case section's body with tables/figure links/fences stripped, capped 4000 chars — skim/search aid, like TextPreview",No
+IssueRefs,IssueRefs,Single line of text,"'; '-joined repo#number found in this case's OWN text (devtopia url / explicit repo#n / hashtag via sweep.defaultRepo, url-claimed numbers suppress hashtags — the Doc IDs patterns minus the doc-level filename source); empty = none",No
+Anchor,Anchor,Single line of text,"GitHub-style anchor slug of the sidecar heading — deep link target {TextFileUrl}#{Anchor}",No
+SweptOn,SweptOn,Date and Time,"Include time; when this row was last written (unchanged rows are not rewritten, so this is last CHANGE, not last sweep)",No

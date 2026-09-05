@@ -807,3 +807,50 @@ sync, not a silent degrade. Prompt promotion stays the
 `TestPlanGenPromptVersion` paste path (`testplangen/CHANGES.md`) —
 the anthropic lane picks a promoted prompt up on its next run
 automatically; the aibuilder lane still needs the tenant paste.
+
+## 12. Test-case indexing (caseindex — the Test Cases list)
+
+Individual test cases out of each indexed test plan, as rows in a
+seventh list — design record and phased build order in
+`local/Case_Index_Plan.md`. Shipped: the deterministic parser
+(`local/lib/caseindex.mjs` — deck-derived `## Case N` sections and
+draft-style `### TC-P/TC-N` headings, per-case issue references,
+replace-set planner) under its own CI gate
+(`local/harness/check_caseindex.py`), the sweep wiring (sweep
+v1.42): documents of the configured kinds sync their case rows at
+index time and on `--reformat`, ghost reconciliation prunes an
+archived doc's rows, and `--recase` backfills the whole corpus from
+the sidecars on disk — and the consumers (sweep v1.43 / TestPlanGen
+v2.29): live runs rebuild **"_Case Catalog.md"** at the library root
+(every case grouped by plan, anchor deep links; the Q&A agent
+grounds on it automatically), and `testplangen.mjs --gap-report`
+traces story issue ids against the case rows, surfacing stories
+covered by adjacency only.
+
+Setup, once:
+
+1. Create the **Test Cases** list on lrsworkspace per
+   `schemas/SPList_TestCases.csv`. The `Document` lookup targets Doc
+   Index and MUST be created via CLASSIC list settings (the standing
+   modern-lookup quirk: silent write drops, spinning pickers).
+   DONE 2026-09-05 — the live list's GUID is
+   `ae9374ab-295a-4321-8afa-a83a08e17711` (recorded in
+   `config.sample.json` with the other six).
+2. Carry the GUID into the sweep machine's `config.json` as
+   `sharePoint.lists.testCases` (copy the line from the sample).
+   Absent or empty GUID = feature off: the sweep prints one loud
+   note and indexes documents normally — a case-write failure never
+   fails the document row.
+3. Knobs under `sweep.caseIndex`: `kinds` (default
+   `["Test Plan"]` — which DocKinds get case rows) and `caseTextCap`
+   (4000 — the per-case skim-text bound).
+4. Backfill: `node sweep.mjs --config config.json --recase --live`
+   (dry-run default prints the planned create/update/delete counts;
+   no AI spend, no re-extraction, no sidecar writes). The nightly
+   sweep keeps the list converged after that.
+
+Case rows are a REPLACE-SET per document (`CaseKey =
+{docRowId}|{ordinal}`): every (re)index of a plan rewrites its full
+set, archived docs delete theirs, and nothing else in the pipeline
+may hold a Test Cases row id — the rows are derived state, safe to
+delete wholesale and rebuild with `--recase`.

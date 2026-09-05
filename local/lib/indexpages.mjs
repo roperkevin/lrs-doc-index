@@ -1,11 +1,14 @@
 /**
- * indexpages.mjs v1.0 (sweep v1.35) — corpus browse pages: a root
- * "_Index.md" in the sidecar library plus one per kind folder, so a
- * human can BROWSE the catalog (the Q&A agent answers questions; these
- * answer "what's in here?"). Rewritten after every live full sweep
- * from the same rows the run already holds — no extra fetches, no AI.
- * Underscore names, matching "_Sweep Status.md" (the corpus's one
- * established non-sidecar file). `sweep.indexPages: false` disables.
+ * indexpages.mjs v1.1 (sweep v1.35; v1.43 adds the case catalog) —
+ * corpus browse pages: a root "_Index.md" in the sidecar library plus
+ * one per kind folder, so a human can BROWSE the catalog (the Q&A
+ * agent answers questions; these answer "what's in here?"), and —
+ * when test-case indexing is on — "_Case Catalog.md", every indexed
+ * test case grouped by plan (Case_Index_Plan phase 3). Rewritten
+ * after every live full sweep from the same rows the run already
+ * holds — no extra fetches, no AI. Underscore names, matching
+ * "_Sweep Status.md" (the corpus's one established non-sidecar
+ * file). `sweep.indexPages: false` disables all of them.
  *
  * Each row links the sidecar (angle-bracket target — folder names
  * carry spaces), shows products/release, and clips the AI summary to
@@ -102,5 +105,75 @@ export function writeIndexPages(cfg, rows, kindFolders) {
     fs.writeFileSync(path.join(dir, "_Index.md"), rootMd);
   } catch (e) {
     process.stderr.write("index page write failed (root): " + e.message + "\n");
+  }
+}
+
+/**
+ * "_Case Catalog.md" — every indexed test case, grouped by plan
+ * (newest plan first, cases in plan order), each case deep-linking
+ * its sidecar section through the heading anchor the case row
+ * carries. Written by live runs when test-case indexing is enabled
+ * (the caller gates on the list GUID); `rows` are the Doc Index rows
+ * the run holds, `caseRowsByDoc` the docRowId -> [{id, fields}] map
+ * the sweep maintains.
+ */
+export function writeCaseCatalog(cfg, rows, caseRowsByDoc) {
+  const dir = cfg?.paths?.sidecarLibrary;
+  if (!dir || cfg?.sweep?.indexPages === false || !caseRowsByDoc) return;
+  const ordinalOf = (f) => {
+    const n = parseInt(String(f?.CaseKey || "").split("|")[1], 10);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const plans = rows
+    .filter((r) => r.ID && r.IndexStatus === "Indexed" && r.TextFileUrl &&
+                   (caseRowsByDoc.get(r.ID) || []).length > 0)
+    .sort((a, b) => String(b.SourceModified || "").localeCompare(String(a.SourceModified || "")));
+  const sections = [];
+  let total = 0;
+  for (const plan of plans) {
+    const cases = (caseRowsByDoc.get(plan.ID) || [])
+      .map((c) => c.fields || {})
+      .sort((a, b) => ordinalOf(a) - ordinalOf(b));
+    total += cases.length;
+    const parts = String(plan.TextFileUrl).split("/");
+    const file = decodeURIComponent(parts[parts.length - 1] || "");
+    const folder = decodeURIComponent(parts[parts.length - 2] || "");
+    const target = folder ? `${folder}/${file}` : file;
+    const nPos = cases.filter((c) => c.Classification === "Positive").length;
+    const nNeg = cases.filter((c) => c.Classification === "Negative").length;
+    const counts = [`${nPos} positive`, `${nNeg} negative`];
+    const nOther = cases.length - nPos - nNeg;
+    if (nOther) counts.push(`${nOther} unspecified`);
+    sections.push(
+      `## ${clip(plan.Title || plan.FileName, 80)} (${cases.length}: ${counts.join(" / ")})`,
+      "",
+      `[Sidecar](<${target}>) · ${clip(plan.Surface, 30) || "—"} · release ${clip(plan.TargetRelease, 20) || "—"}`,
+      "",
+      "| Case | Classification | Scenario | Issues |",
+      "|---|---|---|---|",
+      ...cases.map((c) => {
+        const label = clip(c.Title, 90) || `Case ${ordinalOf(c)}`;
+        const link = c.Anchor ? `[${label}](<${target}#${c.Anchor}>)` : label;
+        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Scenario, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
+      }),
+      ""
+    );
+  }
+  const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
+  const md = [
+    "# Test cases — catalog",
+    "",
+    "_Every indexed test case, grouped by plan (newest first). Case",
+    "links open the plan's sidecar at that case's section; see",
+    "\"_Index.md\" for the document catalog._",
+    "",
+    ...(sections.length ? sections : ["_None yet._", ""]),
+    `_Rebuilt automatically by the local sweep · ${stamp}Z · ${total} case(s) across ${plans.length} plan(s)._`,
+    "",
+  ].join("\n");
+  try {
+    fs.writeFileSync(path.join(dir, "_Case Catalog.md"), md);
+  } catch (e) {
+    process.stderr.write("case catalog write failed: " + e.message + "\n");
   }
 }

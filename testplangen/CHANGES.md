@@ -1,3 +1,38 @@
+# TestPlanGen v2.29 — case-level gap tracing (testplangen.mjs v1.8)
+
+The gap report learns the truth adjacency cannot see
+(`local/Case_Index_Plan.md` phase 3). With the sweep's **Test
+Cases** list configured (`sharePoint.lists.testCases` — sweep
+v1.42's per-case index), `--gap-report` reads it (read-only, like
+every list this job touches) and checks each story's issue ids
+against every indexed case's own `IssueRefs`:
+
+- the head and the `mode=gap-report` summary line gain
+  `caseRows= traced= coveredUntraced=`;
+- a new **Case-level tracing** section lists covered stories whose
+  issues NO case cites — "covered by adjacency ONLY": a plan sits
+  next to them (related-list entry or Doc Links edge), but no case
+  actually exercises their issues — naming each covering plan and
+  its case count;
+- a GAP story whose issues some case already cites is flagged on
+  its line as case-level coverage without a doc link (the inverse
+  blind spot);
+- covered stories with no issue ids to trace are counted, not
+  listed.
+
+`linkedToPlanSet` now returns a story→plans Map (the auto mode's
+membership test reads it unchanged) so the tracing section can name
+the covering plans. Without the list GUID the report is
+byte-for-byte the pure-adjacency report it always was — no config
+migration needed. No AI spend, no prompt or flow changes, no
+TestPlanGenPromptVersion bump.
+
+Gate: `check_testplangen.py` **141/141** — tracing counters, the
+covered-untraced listing (story 17's issue cited by no case, its
+covering plan's case count named), the traced story counted-never-
+listed, the flagged gap story (13's issue cited by a plan-22 case),
+and the no-list degrade leg.
+
 # TestPlanGen v2.28 — hyperlinks as references (testplangen.mjs v1.7)
 
 (Merged after v2.27 landed independently on main — this entry
