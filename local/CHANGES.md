@@ -1,5 +1,55 @@
 # Local sweep — release notes
 
+## sweep v1.60 (2026-09-05 — figureindex v1.1, tuned on the first live Figures export)
+
+The first `Figures` export after the rollout (1,302 rows / 139
+documents: 687 pictures, 615 diagrams) — every picture on a
+standardized name, every one sized, case attribution working (39
+pictures and 154 diagrams inside TC sections). Read from it, fixed
+in `figureindex.mjs` (FigureIndexVersion 1.1 — reflow with
+`--refigure --live`):
+
+- **Icons are not figures.** 90 of the 687 pictures were 16–32 px
+  button glyphs from docx documentation pages (`fig-10-example-4.png`
+  at 16×16, the same 493-byte glyph in six documents). A picture no
+  larger than `ICON_MAX` (48 px) on its longest side is now Kind
+  **`icon`** — still a named, linked, sized file, but set aside:
+  `_Figure Catalog.md` counts icons per document and does not list
+  them; list views filter on Kind. Decided from the header on disk, so
+  a picture the sweep cannot read stays `image`. Tenant: add `icon`
+  to the Kind choices (`schemas/SPList_Figures.csv`).
+- **Untitled slides name by their first text line.** 155 pictures sat
+  under bare `## Slide N` headings and came out as
+  `fig-01-slide-02.png`; the slide's first prose line (table rows,
+  labels and links skipped; list markers, numbering and bold
+  stripped) now supplies the slug —
+  `fig-01-slide-02-functionality-verification-new.png`. Deterministic
+  from the text as before.
+- **Reformat converges an earlier standardized name.** A file already
+  under a v1.59 name whose slug rule changed moves to the new name by
+  its `fig-NN[-slide-KK]` prefix + extension (`placeLegacyMedia`), so
+  the body never links a file that stayed behind; `media_renamed`
+  counts it.
+- Left as found, for the record: the 615 diagram rows are the DL-1
+  label collapse verbatim (a prompt-matrix slide of floating text
+  boxes yields a 26-document caption like `AI Assistant should: ·
+  Route · Road · …`) — the extractor's rule, not the index's; the
+  same 344×57 banner sits in 8 documents and would want a
+  cross-document asset flag (deferred); Tools/Keywords noise (`table`,
+  `time`, `create`, `test plan` on every plan figure) is the standing
+  vocabulary-curation item, and 223 rows sit at the Keywords 255 cap
+  with rarest-first holding.
+- Gates: `check_figureindex.py` **50/50** (icon kind + title, sizeless
+  stays image, first-line slug incl. the table-skip / marker-strip
+  case), `check_local_sweep.py` (64×64 media fixture so the figure is
+  an image; the alpha picture now carries its first-line slug; icon
+  row + catalog set-aside + restore; earlier-standardized-name
+  convergence on reformat).
+
+ROLLOUT: add `icon` to Kind; `--reformat --live` (names on untitled
+slides change once; the move is prefix-matched) then
+`--refigure --live`.
+
 ## sweep v1.59 (2026-09-05 — figure indexing + standardized figure names; figureindex v1.0, indexpages v1.3)
 
 Owner requests: "index the figures" and "prettify and standardize the

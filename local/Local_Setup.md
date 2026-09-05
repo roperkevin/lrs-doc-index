@@ -971,6 +971,10 @@ Setup, once:
    `--rename --live` (ImageUrl carries the stem), and after any
    figureindex.mjs parser bump (FigureIndexVersion). The nightly
    sweep keeps the list converged after that.
+6. **figureindex v1.1 (sweep v1.60, after the first live export):**
+   add `icon` to the `Kind` choices, then `--reformat --live` (untitled
+   slides' pictures take a first-line slug; files under the v1.59
+   names move by prefix) and `--refigure --live` once.
 
 A column the tenant list lacks is dropped from the write and noted
 once per run (`figure_fields_dropped`; the v1.56 fail-soft, shared

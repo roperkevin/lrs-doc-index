@@ -318,8 +318,19 @@ function placeLegacyMedia(cfg, writer, srcItemId, stem, renames) {
     const base = n.slice(prefix.length);
     if (move(path.join(mdir, n), path.join(mdir, stem, to.get(base) || base))) out.legacy++;
   }
+  // an earlier standardized name for the same figure (the slug rule
+  // changed — v1.60 names untitled slides by their first line) shares
+  // the `fig-NN[-slide-KK]` prefix and the extension: converge it too
+  let inStem = [];
+  try { inStem = fs.readdirSync(path.join(mdir, stem)); } catch { /* no folder yet */ }
   for (const [from, dest] of to) {
-    if (move(path.join(mdir, stem, from), path.join(mdir, stem, dest))) out.renamed++;
+    if (move(path.join(mdir, stem, from), path.join(mdir, stem, dest))) { out.renamed++; continue; }
+    if (fs.existsSync(path.join(mdir, stem, dest))) continue;
+    const m = /^(fig-\d+(?:-slide-\d+)?)(?:-.*)?(\.[a-z0-9]+)$/.exec(dest);
+    if (!m) continue;
+    const prior = inStem.find((n) => n !== dest && n.endsWith(m[2]) &&
+      (n === `${m[1]}${m[2]}` || n.startsWith(`${m[1]}-`)));
+    if (prior && move(path.join(mdir, stem, prior), path.join(mdir, stem, dest))) out.renamed++;
   }
   return out;
 }

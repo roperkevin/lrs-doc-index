@@ -57,10 +57,21 @@ def check(name, cond, detail=""):
 
 # ---- fixtures -------------------------------------------------------
 
-PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/"
-    "q842iQAAAABJRU5ErkJggg=="
-)
+def _png(w, h):
+    """A valid w x h grayscale PNG (zlib-deflated rows); the media
+    fixture is 64x64 so the figure index sizes it as an image, not an
+    icon (figureindex v1.1 ICON_MAX)."""
+    import struct
+    import zlib
+    def chunk(tag, data):
+        return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data) & 0xffffffff)
+    raw = b"".join(b"\x00" + bytes([(x * 4) % 256 for x in range(w)]) for _ in range(h))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+
+
+PNG = _png(64, 64)
+ICON = _png(16, 16)
 
 CORE_XML = (
     '<?xml version="1.0"?>'
@@ -1314,11 +1325,12 @@ def main():
     media = os.listdir(stem_dir) if os.path.isdir(stem_dir) else []
     # v1.59: the archive's image1.png lands under its standardized name
     # (fig-<ordinal>-slide-<slide>[-<title slug>]; alpha's slide 1 has
-    # no title) and the body links it one per line with a Figure alt
+    # no title, so v1.60 slugs its first text line) and the body links
+    # it one per line with a Figure alt
     check("media extracted into the sidecar's media/<stem>/ folder under the standardized name",
-          media == ["fig-01-slide-01.png"] and not any(m.startswith("doc10_") for m in media), str(media))
+          media == ["fig-01-slide-01-alpha-test-plan-covering-lock.png"] and not any(m.startswith("doc10_") for m in media), str(media))
     check("body links the picture under its standardized name",
-          "![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)" in alpha_content
+          "![Figure 1 — Alpha test plan covering lock acquisition #123 for Roads and Highways](../media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png)" in alpha_content
           and "image1.png" not in alpha_content, alpha_content[-400:])
 
     # doc ids / links / keywords / junctions
@@ -1428,17 +1440,17 @@ def main():
     af = alpha_figs[0] if alpha_figs else {}
     check("figure row carries the naming + placement contract",
           af.get("FigureKey") == f"{alpha_id}|1" and af.get("FigureNo") == 1
-          and af.get("Kind") == "image" and af.get("FileName") == "fig-01-slide-01.png"
+          and af.get("Kind") == "image" and af.get("FileName") == "fig-01-slide-01-alpha-test-plan-covering-lock.png"
           and af.get("Format") == "png" and af.get("SlideNo") == 1
           and af.get("Section") == "Slide 1" and af.get("Anchor") == "slide-1"
           and af.get("CaseNo") == "" and af.get("Title") == "Figure 1", str(af))
     check("figure row sized from the file on disk",
-          af.get("Width") == 1 and af.get("Height") == 1 and int(af.get("Bytes") or 0) == len(PNG), str(af))
+          af.get("Width") == 64 and af.get("Height") == 64 and int(af.get("Bytes") or 0) == len(PNG), str(af))
     check("figure row links the picture in the media folder (text URL + hyperlink via SPO)",
-          af.get("ImageUrl") == "https://mock.example/sites/lrsworkspace/LRS Doc Index/media/123-alpha-plan/fig-01-slide-01.png"
+          af.get("ImageUrl") == "https://mock.example/sites/lrsworkspace/LRS Doc Index/media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png"
           and isinstance(af.get("ImageLink"), dict)
           and af["ImageLink"].get("Url") == af.get("ImageUrl")
-          and af["ImageLink"].get("Description") == "fig-01-slide-01.png", str(af))
+          and af["ImageLink"].get("Description") == "fig-01-slide-01-alpha-test-plan-covering-lock.png", str(af))
     check("figure context is the section's prose",
           "lock acquisition #123" in str(af.get("Context")) and "![" not in str(af.get("Context")), str(af))
     check("ghost's figure row pruned by the archive pass",
@@ -1452,9 +1464,9 @@ def main():
           fcat.startswith("# Figures — catalog"), fcat[:200])
     check("catalog groups by document with kind counts and links the picture + section",
           re.search(r"(?m)^## Alpha Plan \(1: 1 image\)$", fcat) is not None
-          and "[fig-01-slide-01.png](<media/123-alpha-plan/fig-01-slide-01.png>)" in fcat
+          and "[fig-01-slide-01-alpha-test-plan-covering-lock.png](<media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png>)" in fcat
           and "[Slide 1](<Test Plans/123-alpha-plan.md#slide-1>)" in fcat
-          and "| 1×1 |" in fcat
+          and "| 64×64 |" in fcat
           and "1 figure(s) (1 image(s)) across 1 document(s)" in fcat, fcat)
     status_fig = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("status page reports figure writes", "**Figures:**" in status_fig, status_fig[:800])
@@ -1822,10 +1834,10 @@ def main():
     # under --reformat — the file on disk moves to its standardized name
     # (no re-extraction), the body link follows, the figure row updates
     print("== media-rename leg")
-    pretty_png = os.path.join(stem_dir, "fig-01-slide-01.png")
+    pretty_png = os.path.join(stem_dir, "fig-01-slide-01-alpha-test-plan-covering-lock.png")
     os.rename(pretty_png, os.path.join(stem_dir, "image1.png"))
     with open(alpha_sc, "w") as f:
-        f.write(alpha_after.replace("![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)",
+        f.write(alpha_after.replace("![Figure 1 — Alpha test plan covering lock acquisition #123 for Roads and Highways](../media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png)",
                                     "![image1.png](../media/123-alpha-plan/image1.png)"))
     proc = run_sweep(cfg_path, ["--live", "--reformat"])
     check("media-rename reformat exit 0", proc.returncode == 0, proc.stderr[-400:])
@@ -1835,7 +1847,7 @@ def main():
           os.path.exists(pretty_png) and not os.path.exists(os.path.join(stem_dir, "image1.png"))
           and int(out.get("media_renamed", 0)) == 1, str(out) + str(os.listdir(stem_dir)))
     check("reformat relinked the body to the standardized name",
-          "![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)" in alpha_renamed
+          "![Figure 1 — Alpha test plan covering lock acquisition #123 for Roads and Highways](../media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png)" in alpha_renamed
           and "image1.png" not in alpha_renamed, alpha_renamed[-400:])
     check("reformat spent no AI calls on the rename", state.llm_calls == llm_before_rf,
           f"{state.llm_calls} vs {llm_before_rf}")
@@ -1843,7 +1855,7 @@ def main():
     # and the disk were reverted), so converging them writes no row
     check("figure row stays on the standardized name with no churn",
           [r.get("FileName") for r in state.lists.get(LISTS["figures"], {}).values()
-           if r.get("DocumentLookupId") == alpha_id] == ["fig-01-slide-01.png"]
+           if r.get("DocumentLookupId") == alpha_id] == ["fig-01-slide-01-alpha-test-plan-covering-lock.png"]
           and int(out.get("figures_upserted", 0)) == 0
           and int(out.get("media_moved", 0)) == 0, str(out))
     proc2 = run_sweep(cfg_path, ["--live", "--reformat"])
@@ -1852,6 +1864,19 @@ def main():
           proc2.returncode == 0 and int(out2.get("media_renamed", 0)) == 0
           and int(out2.get("figures_upserted", 0)) == 0
           and open(alpha_sc).read() == alpha_renamed, str(out2))
+    # v1.60: a file under an EARLIER standardized name (the v1.59 rule
+    # left untitled slides slug-less) converges by its fig-NN-slide-KK
+    # prefix — no re-extraction, the body relinks
+    os.rename(pretty_png, os.path.join(stem_dir, "fig-01-slide-01.png"))
+    with open(alpha_sc, "w") as f:
+        f.write(alpha_renamed.replace("![Figure 1 — Alpha test plan covering lock acquisition #123 for Roads and Highways](../media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png)", "![Figure 1](../media/123-alpha-plan/fig-01-slide-01.png)"))
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("reformat converges an earlier standardized name by its fig-NN-slide-KK prefix",
+          proc.returncode == 0 and os.path.exists(pretty_png)
+          and not os.path.exists(os.path.join(stem_dir, "fig-01-slide-01.png"))
+          and int(out.get("media_renamed", 0)) == 1
+          and open(alpha_sc).read() == alpha_renamed, str(out) + str(os.listdir(stem_dir)))
     alpha_after = alpha_renamed
 
     # ---- format-3.0 migration leg (Sidecar_Format_Plan phase 1) -----
@@ -1995,7 +2020,7 @@ def main():
     figs = list(state.lists.get(LISTS["figures"], {}).values())
     check("refigure rebuilt the figure row from the sidecar on disk",
           len([r for r in figs if r.get("DocumentLookupId") == alpha_id
-               and r.get("FileName") == "fig-01-slide-01.png" and r.get("Width") == 1]) == 1, str(figs)[:400])
+               and r.get("FileName") == "fig-01-slide-01-alpha-test-plan-covering-lock.png" and r.get("Width") == 64]) == 1, str(figs)[:400])
     check("refigure deleted the orphan row",
           not [r for r in figs if r.get("FigureKey") == "999999|1"], str(figs)[:400])
     check("refigure spent no AI calls", state.llm_calls == llm_before_rg,
@@ -2005,8 +2030,26 @@ def main():
           and int(out.get("figure_errors", 0)) == 0, str(out))
     check("refigure live rebuilt the figure catalog",
           os.path.exists(fcat_path)
-          and "[fig-01-slide-01.png](<media/123-alpha-plan/fig-01-slide-01.png>)" in open(fcat_path).read(),
+          and "[fig-01-slide-01-alpha-test-plan-covering-lock.png](<media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png>)" in open(fcat_path).read(),
           open(fcat_path).read()[:300] if os.path.exists(fcat_path) else "(missing)")
+    # v1.1: a tiny picture on disk is Kind icon — swap the file for a
+    # 16x16 and refigure; then restore
+    with open(pretty_png, "wb") as f:
+        f.write(ICON)
+    proc = run_sweep(cfg_path, ["--refigure", "--live"])
+    irow = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("a 16x16 picture indexes as Kind icon with an Icon title",
+          proc.returncode == 0 and len(irow) == 1 and irow[0].get("Kind") == "icon"
+          and irow[0].get("Width") == 16 and irow[0].get("Title") == "Icon 1", str(irow)[:300])
+    fcat_icon = open(fcat_path).read() if os.path.exists(fcat_path) else ""
+    check("catalog sets icons aside (counted, not listed)",
+          "(1: 0 images / 1 icon)" in fcat_icon and "fig-01-slide-01-alpha" not in fcat_icon, fcat_icon[:400])
+    with open(pretty_png, "wb") as f:
+        f.write(PNG)
+    proc = run_sweep(cfg_path, ["--refigure", "--live"])
+    check("restoring the picture flips the row back to Kind image",
+          proc.returncode == 0 and [r.get("Kind") for r in state.lists[LISTS["figures"]].values()
+                                    if r.get("DocumentLookupId") == alpha_id] == ["image"], "")
     # the shared column-dropper covers the Figures list too
     state.lists[LISTS["figures"]] = {}
     state.reject_fields = {"Bytes"}
@@ -2102,9 +2145,9 @@ def main():
     cur = open(alpha_sc).read()
     legacy_media = os.path.join(sidecar_dir, "media", "doc10_image1.png")
     os.makedirs(os.path.dirname(legacy_media), exist_ok=True)
-    shutil.copyfile(os.path.join(stem_dir, "fig-01-slide-01.png"), legacy_media)
+    shutil.copyfile(os.path.join(stem_dir, "fig-01-slide-01-alpha-test-plan-covering-lock.png"), legacy_media)
     with open(old_path, "w") as f:
-        f.write(cur.replace("../media/123-alpha-plan/fig-01-slide-01.png", "../media/doc10_image1.png"))
+        f.write(cur.replace("../media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png", "../media/doc10_image1.png"))
     os.remove(alpha_sc)
     shutil.rmtree(stem_dir)
     old_url = state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"]

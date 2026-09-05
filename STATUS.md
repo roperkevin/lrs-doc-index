@@ -68,6 +68,22 @@ each change belongs to the component CHANGES files.
   `check_local_sweep.py` **307/307** (figure-index, media-rename,
   refigure, missing-column, missing-GUID legs), `check_caseindex.py`
   87/87, `check_testplangen.py` 156/156, slug + storyprofile green.
+- **2026-09-05hh (figureindex v1.1 / sweep v1.60 — tuned on the
+  FIRST LIVE Figures export; authored on branch
+  `claude/figure-indexing-3n2o1b`):** the owner created the Figures
+  list and ran the rollout — 1,302 rows / 139 documents (687 pictures,
+  615 diagrams), every picture standardized and sized, TC attribution
+  working. Fixed from the export: pictures ≤ 48 px are Kind **`icon`**
+  (90 docx button glyphs were figures; the catalog counts them, does
+  not list them), untitled slides slug their first text line (155
+  slug-less names), and `--reformat` converges an earlier
+  standardized name by its `fig-NN-slide-KK` prefix. TENANT: add
+  `icon` to Kind, `--reformat --live`, `--refigure --live`. Left as
+  found: DL-1 diagram captions verbatim, template assets repeating
+  across documents (cross-document flag deferred), tag noise =
+  curation. Gates: `check_figureindex.py` **50/50**,
+  `check_local_sweep.py` **311/311**, caseindex 87/87, testplangen
+  156/156, slug + storyprofile green.
 - **Pipeline: DOWN — auth expired** (open action 12): Conditional
   Access rejects device-code sign-in; fix is `"auth": "interactive"`
   + one console sign-in on the sweep machine. Nothing indexes until
@@ -431,7 +447,7 @@ v1.2 describes them — paste with the window, step 6).
 | check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
 | check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
 | check_testplangen.py (local/harness — testplangen.mjs v1.9: guard, lanes + G6 fallback, remaining-budget caps, fail-closed marker slice, verifier incl. draftlint↔check_draft_coverage agreement + grounding legs, lookup front door, notify, auto mode + provider override, issue trace, gap report incl. the v2.29 case-tracing + degrade legs, pinned lanes, figures incl. the link-absolutizing leg, web references, the v2.30 case-lane leg — routing, trimming, addendum, degrades; 156/156; CI fixture-free job) | 2026-09-05 (v2.30) |
-| check_figureindex.py (local/harness — figureindex.mjs v1.0: the naming rule (ordinal / first slide / slug cap + stopword trim / jpeg→jpg / one name per source file / one link per line / docx headings / fenced code / fixed point), the index against the case grammar's OWN body (image + diagram rows, TC attribution, captions, context, legacy paths, URL resolution, sizeOf plumbing, vocabulary tags), header sizing (PNG/GIF/BMP/JPEG/junk), row shaping + the FigureKey replace-set planner; 46/46; CI fixture-free job). Sweep-level figure legs (write contract incl. size-from-disk + SPO hyperlink, ghost pruning, idempotency, catalog + status line, reformat no-churn + media-rename convergence, --refigure, shared missing-column dropper, missing-GUID fail-soft) live in check_local_sweep.py | 2026-09-05 (v1.0) |
+| check_figureindex.py (local/harness — figureindex.mjs v1.1 (icon kind, first-line slugs) / v1.0: the naming rule (ordinal / first slide / slug cap + stopword trim / jpeg→jpg / one name per source file / one link per line / docx headings / fenced code / fixed point), the index against the case grammar's OWN body (image + diagram rows, TC attribution, captions, context, legacy paths, URL resolution, sizeOf plumbing, vocabulary tags), header sizing (PNG/GIF/BMP/JPEG/junk), row shaping + the FigureKey replace-set planner; 50/50; CI fixture-free job). Sweep-level figure legs (write contract incl. size-from-disk + SPO hyperlink, ghost pruning, idempotency, catalog + status line, reformat no-churn + media-rename convergence, --refigure, shared missing-column dropper, missing-GUID fail-soft) live in check_local_sweep.py | 2026-09-05 (v1.0) |
 | check_caseindex.py (local/harness — caseindex.mjs v1.2: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression + the 3–5-digit floor + the fenced-code trap, the v1.1 metadata legs (Shape/counts/RouteRefs/ExpectedResult/TraceText), the v1.2 vocabulary-tag legs (plan-title tool tagging, alias folding, word-boundary, fenced-vocab trap, no-vocab empty), the v1.3 legs (figure-link resolution incl. the collapsed-label no-link rule, rarest-first df ordering), the v1.4 legs (primary-figure hyperlink shaping incl. "(+N more)" and the figure-less clear, Url-only hyperlink diff), replace-set planner incl. SweptOn-never-dirties, caps; 68/68; CI fixture-free job). Sweep-level case-index legs (write contract incl. the v1.1–v1.4 columns, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, catalog + recase-rebuild) live in check_local_sweep.py, 237/237 | 2026-09-05 (v1.4) |
 | check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
 | check_draft2pptx.py (local/harness — draft2pptx.mjs v1.1: python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |

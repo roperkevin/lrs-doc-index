@@ -66,6 +66,13 @@ Speaker notes.
 Negative - Line network
 4. Normal route – Split measure : 16
 ![image4.gif]({PH}image4.gif)
+
+## Slide 4
+| Route | From |
+| --- | --- |
+| R1 | 0 |
+- **Bold bullet:** the first prose line
+![image5.png]({PH}image5.png)
 ```arcade
 var s = "![sneaky.png](../media/__MEDIA__/sneaky.png)";
 ```
@@ -128,7 +135,8 @@ const vocab = prepareVocab([
   { title: "split measure", kind: "topic", canonical: "split measure", df: 12 },
 ]);
 const idx = extractFigures(body, { mediaUrlBase: MB, docTitle: "Alpha", vocab,
-  sizeOf: (rel) => { seen.push(rel); return rel.endsWith(".png") ? { width: 640, height: 480, bytes: 1234 } : null; } });
+  sizeOf: (rel) => { seen.push(rel); return rel.endsWith(".jpg") ? { width: 16, height: 16, bytes: 300 }
+    : rel.endsWith(".png") ? { width: 640, height: 480, bytes: 1234 } : null; } });
 const legacy = extractFigures(fx.legacy, { mediaUrlBase: MB });
 const noBase = extractFigures(fx.legacy, {});
 const capped = extractFigures(body, { contextCap: 12 });
@@ -198,7 +206,7 @@ def main():
     p = r["pDeck"]
     renames = {x["from"]: x["to"] for x in p["renames"]}
     check("distinct source files each get one standardized name, in document order",
-          [x["from"] for x in p["renames"]] == ["image1.png", "image2.jpeg", "image3.PNG", "image4.gif"],
+          [x["from"] for x in p["renames"]] == ["image1.png", "image2.jpeg", "image3.PNG", "image4.gif", "image5.png"],
           json.dumps(p["renames"]))
     check("name = fig-NN-slide-KK-<slug>.<ext>, jpeg normalized to jpg",
           renames.get("image1.png") == "fig-01-slide-01-overview.png"
@@ -206,8 +214,10 @@ def main():
     check("slug capped at a word boundary, never ending on a stopword; extension case folded",
           renames.get("image3.PNG") == "fig-03-slide-02-positive-non-spanning-line-event.png",
           renames.get("image3.PNG", ""))
-    check("an untitled slide names by ordinal + slide only",
-          renames.get("image4.gif") == "fig-04-slide-03.gif", renames.get("image4.gif", ""))
+    check("an untitled slide names by its first text line (v1.1)",
+          renames.get("image4.gif") == "fig-04-slide-03-negative-line-network.gif", renames.get("image4.gif", ""))
+    check("first-line title skips tables and strips list markers / bold",
+          renames.get("image5.png") == "fig-05-slide-04-bold-bullet-the-first-prose-line.png", renames.get("image5.png", ""))
     check("a picture linked from two slides keeps its first name (one figure)",
           p["text"].count(f"({PH}fig-01-slide-01-overview.png)") == 2
           and "image1.png" not in p["text"], p["text"])
@@ -221,7 +231,8 @@ def main():
           "sneaky" not in json.dumps(p["renames"]) and "sneaky.png" in p["text"], p["text"])
     check("figures carry ordinal / slide / title",
           p["figures"][2]["slideNo"] == 2 and p["figures"][2]["ordinal"] == 3
-          and p["figures"][2]["title"].startswith("Positive - Non spanning"), json.dumps(p["figures"]))
+          and p["figures"][2]["title"].startswith("Positive - Non spanning")
+          and p["figures"][3]["title"] == "Negative - Line network", json.dumps(p["figures"]))
     check("second pass is a fixed point (no placeholder links left, text unchanged)",
           r["pAgainText"] == p["text"] and r["pAgainRenames"] == [], r["pAgainText"][:200])
     d = r["pDocx"]
@@ -244,10 +255,14 @@ def main():
     check("body rendered through the testplan/v1 grammar", r["renderedShape"] == "S1", r["renderedShape"])
     figs = r["figures"]
     kinds = [(f["ordinal"], f["kind"], f["fileName"]) for f in figs]
-    check("five figures: four images + one diagram, in document order, one per distinct file",
-          kinds == [(1, "image", "fig-01-slide-01-overview.png"), (2, "image", "fig-02-slide-01-overview.jpg"),
+    check("six figures: images, one diagram, one icon, in document order, one per distinct file",
+          kinds == [(1, "image", "fig-01-slide-01-overview.png"), (2, "icon", "fig-02-slide-01-overview.jpg"),
                     (3, "diagram", ""), (4, "image", "fig-03-slide-02-positive-non-spanning-line-event.png"),
-                    (5, "image", "fig-04-slide-03.gif")], json.dumps(kinds))
+                    (5, "image", "fig-04-slide-03-negative-line-network.gif"),
+                    (6, "image", "fig-05-slide-04-bold-bullet-the-first-prose-line.png")], json.dumps(kinds))
+    check("a 16x16 picture is Kind icon, titled Icon N, still linked and sized",
+          figs[1]["kind"] == "icon" and figs[1]["title"] == "Icon 2 — Overview" and figs[1]["width"] == 16
+          and figs[1]["url"].endswith("fig-02-slide-01-overview.jpg"), json.dumps(figs[1]))
     f1 = figs[0]
     check("image row: section, anchor, slide, format, url resolved onto the media folder",
           f1["section"] == "Slide 1 — Overview" and f1["anchor"] == "slide-1--overview" and f1["slideNo"] == 1
@@ -270,9 +285,10 @@ def main():
     f5 = figs[4]
     check("negative-lane figure attributed to TC-N01",
           f5["caseNo"] == "TC-N01" and f5["format"] == "gif", json.dumps(f5))
+    check("a sizeless picture stays an image", figs[5]["kind"] == "image" or figs[5]["width"] == 640, json.dumps(figs[5]))
     check("fenced code never mints a figure", "sneaky" not in json.dumps(figs), json.dumps(figs)[:300])
     check("sizeOf is asked per image file path and its answer lands on the row",
-          sorted(r["sizesSeen"]) == sorted([f["filePath"] for f in figs if f["kind"] == "image"])
+          sorted(r["sizesSeen"]) == sorted([f["filePath"] for f in figs if f["kind"] != "diagram"])
           and f1["width"] == 640 and f1["height"] == 480 and f1["bytes"] == 1234
           and f5["width"] is None and f5["bytes"] is None, json.dumps(r["sizesSeen"]))
     check("vocabulary tags from title + section + context (tool -> tools, topic -> keywords)",
@@ -304,6 +320,7 @@ def main():
           and fr["ImageLink"] == {"Url": fr["ImageUrl"], "Description": "fig-01-slide-01-overview.png"}
           and fr["SweptOn"] == "2026-09-05T00:00:00Z", json.dumps(fr))
     dr = r["fresh"][2]
+    check("icon row keeps Kind icon", r["fresh"][1]["Kind"] == "icon", json.dumps(r["fresh"][1]))
     check("diagram row: hyperlink cleared, no size, caption carried",
           dr["ImageLink"] == "" and dr["ImageUrl"] == "" and dr["Width"] is None
           and dr["Caption"] == "10–22 · R1 · E1 · Output" and dr["FileName"] == "", json.dumps(dr))
