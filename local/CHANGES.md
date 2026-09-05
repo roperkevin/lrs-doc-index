@@ -1,5 +1,17 @@
 # Local sweep — release notes
 
+## sweep v1.55 (2026-09-05 — `sharePoint.syncedSubfolder`)
+
+The sweep machine's OneDrive sync roots at the library's `General`
+child ("Location Referencing - General"), so every computed local
+path doubled the segment and 714 of 755 sources came through the
+Graph fallback instead of the disk. New optional
+`sharePoint.syncedSubfolder` ("General"): stripped from local source
+paths only — scope (`libraryRootSegment`) is unchanged, and the 41
+documents outside `General` keep taking the download fallback.
+Gate: `check_local_sweep.py` synced-subfolder leg (a reformat with
+the sync rooted at General resolves locally with zero downloads).
+
 ## sweep v1.54 (2026-09-05 — `--reformat` takes the Graph download fallback)
 
 The first `--reformat --live` on the sweep machine failed every

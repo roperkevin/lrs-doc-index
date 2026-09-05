@@ -482,6 +482,7 @@ function loadConfig(argv) {
   cfg.sharePoint.sourceSitePath = cfg.sharePoint.sourceSitePath || "/sites/LocationReferencing";
   cfg.sharePoint.docKeyStrip = cfg.sharePoint.docKeyStrip || "/sites/LocationReferencing/";
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";
+  cfg.sharePoint.syncedSubfolder = cfg.sharePoint.syncedSubfolder || "";
   return cfg;
 }
 
@@ -1404,7 +1405,15 @@ async function main() {
     // root segment is structurally unreachable (out-of-scope lane)
     const inScope = siteRel.startsWith(sp.libraryRootSegment + "/");
     const libRel = inScope ? siteRel.slice(sp.libraryRootSegment.length + 1) : siteRel;
-    const localPath = path.join(cfg.paths.sourceLibrary, ...libRel.split("/"));
+    // sharePoint.syncedSubfolder (v1.55): the OneDrive sync often roots
+    // at a library CHILD (a Teams channel folder such as "General"),
+    // so paths.sourceLibrary IS that child — strip it from the local
+    // path; documents outside it still resolve to a path that is not
+    // on disk and take the Graph download fallback as before
+    const synced = String(sp.syncedSubfolder || "").replace(/^\/+|\/+$/g, "");
+    const localRel = synced && (libRel === synced || libRel.startsWith(synced + "/"))
+      ? libRel.slice(synced.length + 1) : libRel;
+    const localPath = path.join(cfg.paths.sourceLibrary, ...localRel.split("/"));
     const sourceLink = item.webUrl || "";
 
     // --reformat: re-extract and rewrite ONLY the sidecar body, so

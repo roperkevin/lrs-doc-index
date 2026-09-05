@@ -7,6 +7,8 @@
     "sourceSitePath": "/sites/LocationReferencing",
     "docKeyStrip": "/sites/LocationReferencing/",
     "libraryRootSegment": "Shared Documents",
+    "syncedSubfolder": "",
+    "$comment_syncedSubfolder": "Set when the OneDrive sync roots at a library CHILD rather than the library itself — e.g. \"General\" when paths.sourceLibrary is the Teams channel folder 'Location Referencing - General'. The segment is stripped from local source paths (Shared Documents/General/Test Plans/x.pptx -> <sourceLibrary>/Test Plans/x.pptx); documents outside it keep taking the Graph download fallback (sweep.graphDownloadFallback). Scope (libraryRootSegment) is unaffected.",
     "lists": {
       "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
       "keywords": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
