@@ -147,6 +147,16 @@ verifier the cloud flow could not have
                      reply skips the pass and the draft still lands;
                      --auto refuses; aibuilder without a model id
                      refuses BEFORE the generation spend
+  leg 19 stream      console streaming (v1.12, llm.mjs v1.7): --stream
+                     on the anthropic lane asks for summarized
+                     thinking and echoes the thinking chunks, then the
+                     reply chunks, to stderr in arrival order — for
+                     the draft call AND the figures call — with the
+                     rules and the end-of-stream char count, no
+                     heartbeat line, stdout untouched, the written
+                     draft identical; without --stream no thinking
+                     key is sent and nothing is echoed; on the
+                     aibuilder lane --stream prints one note
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -437,8 +447,25 @@ def make_handler(state):
                     # accumulation across chunks is actually exercised.
                     text = state.fig_text if is_fig else state.gen_text
                     half = len(text) // 2
+                    # v1.7: a request carrying thinking.display
+                    # "summarized" gets a thinking block first, as the
+                    # API streams it (thinking_delta chunks)
+                    thinking = []
+                    if (body.get("thinking") or {}).get("display") == "summarized":
+                        thinking = [
+                            {"type": "content_block_start", "index": 0,
+                             "content_block": {"type": "thinking", "thinking": ""}},
+                            {"type": "content_block_delta", "index": 0,
+                             "delta": {"type": "thinking_delta",
+                                       "thinking": "Reading the story; "}},
+                            {"type": "content_block_delta", "index": 0,
+                             "delta": {"type": "thinking_delta",
+                                       "thinking": "two positive cases fit."}},
+                            {"type": "content_block_stop", "index": 0},
+                        ]
                     events = [
                         {"type": "message_start", "message": {"id": "msg_mock"}},
+                        *thinking,
                         {"type": "content_block_start", "index": 0,
                          "content_block": {"type": "text", "text": ""}},
                         {"type": "content_block_delta", "index": 0,
@@ -1945,6 +1972,50 @@ def main():
     check("aibuilder without llm.figuresModelId refuses before the generation call",
           r.returncode != 0 and "needs llm.figuresModelId" in r.stderr
           and state.gen_calls == gen_before, r.stderr[:300])
+    state.gen_text = wrap(GOOD_DRAFT)
+
+    # ---- leg 19: console streaming (v1.12) ---------------------------
+    print("== leg 19: console streaming")
+    state.gen_text = wrap(FIG_DRAFT)
+    state.fig_text = FIG_REPLY_WRAPPED
+    state.drafts.clear()
+    r = run_job(cfg_fig_ant, ["--story", "12", "--live", "--stream"])
+    err = r.stderr
+    summ = summary_of(r.stdout)
+    body = state.ant_last_body
+    check("--stream: the request asks for summarized thinking",
+          r.returncode == 0 and body.get("thinking") == {"type": "adaptive", "display": "summarized"},
+          json.dumps(body.get("thinking")))
+    d_think, d_reply = err.find("--- draft: model thinking ---"), err.find("--- draft: model reply ---")
+    f_think, f_reply = err.find("--- figures: model thinking ---"), err.find("--- figures: model reply ---")
+    check("draft call: thinking summary echoed, then the reply, in order",
+          0 <= d_think < d_reply
+          and "Reading the story; two positive cases fit." in err[d_think:d_reply]
+          and wrap(FIG_DRAFT) in err[d_reply:]
+          and f"--- draft: end of stream ({len(wrap(FIG_DRAFT))} chars) ---" in err,
+          err[:600])
+    check("figures call: echoed after the draft, same shape",
+          d_reply < f_think < f_reply
+          and FIG_REPLY_WRAPPED in err[f_reply:]
+          and f"--- figures: end of stream ({len(FIG_REPLY_WRAPPED)} chars) ---" in err,
+          err[f_think:f_think + 300] if f_think >= 0 else err[-400:])
+    check("streaming run: no heartbeat, stdout contract intact, draft identical",
+          "still waiting on the model" not in err
+          and "progress:" not in r.stdout and "--- draft:" not in r.stdout
+          and summ.get("genFigures") == "2/4"
+          and FIG_DRAFT.strip() in [v for k, v in state.drafts.items() if k.endswith(".md")][0],
+          r.stdout[:300])
+    # without --stream: no thinking key, no echo
+    r = run_job(cfg_fig_ant, ["--story", "12", "--dry-run"])
+    check("no --stream: no thinking key sent, nothing echoed",
+          r.returncode == 0 and "thinking" not in state.ant_last_body
+          and "--- draft:" not in r.stderr and "Reading the story" not in r.stderr,
+          r.stderr[-300:])
+    # aibuilder lane: one note, otherwise ignored
+    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--stream"])
+    check("aibuilder lane: --stream prints one note and is ignored",
+          r.returncode == 0 and "progress: stream — the aibuilder lane cannot stream" in r.stderr
+          and "--- draft:" not in r.stderr, r.stderr[-400:])
     state.gen_text = wrap(GOOD_DRAFT)
 
     server.shutdown()

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.11 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.12 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -8,7 +8,28 @@
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29; case-aware generation: v2.30; first-run
- * review: v2.31; generated figures: v2.32).
+ * review: v2.31; generated figures: v2.32; console streaming: v2.33).
+ *
+ * v1.12 (console streaming — `--stream`, testplangen/CHANGES.md
+ * v2.33): on the anthropic lane a manual run echoes the model's
+ * output to STDERR as it streams — first the model's thinking
+ * summary (the request asks for `display: "summarized"`; the raw
+ * chain of thought is never returned by the API, the summary is
+ * what exists; thinking is billed the same either way), then the
+ * reply text, for the draft call and the figures call alike, each
+ * under a `--- model thinking ---` / `--- model reply ---` rule and
+ * closed by `--- end of stream (N chars) ---`. The 30-second
+ * heartbeat is silent while a stream is echoing (the deltas ARE the
+ * heartbeat); a transport retry prints a `[stream restarted]` rule
+ * because the echoed partial is discarded exactly as the marker
+ * slice would discard it. stdout keeps the JSON + Gen_summary
+ * contract byte-for-byte; the written draft is unchanged — the
+ * fail-closed slice still runs on the COMPLETE reply. The aibuilder
+ * lane cannot stream (Dataverse Predict is one request, one
+ * response): `--stream` there prints one note and is otherwise
+ * ignored. Manual runs only (the auto and gap-report modes stay
+ * quiet for their task logs); `testplangen.stream: true` makes it
+ * the default for a machine.
  *
  * v1.11 (generated figures — `--figures`, testplangen/CHANGES.md
  * v2.32): an OPTIONAL second model pass over the VERIFIED draft
@@ -376,7 +397,7 @@ import {
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.11";
+const JOB_VERSION = "v1.12";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -407,7 +428,9 @@ const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
   "[--exemplar <docId>]... [--reference <docId>|<https-url>]... " +
-  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] | --models | --help\n" +
+  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--stream] | --models | --help\n" +
+  "--stream echoes the model's thinking summary and reply to stderr as they " +
+  "arrive (anthropic lane only — Dataverse Predict cannot stream). " +
   "--figures adds a second model pass over the verified draft that selects the " +
   "cases worth a schematic and renders grounded SVG figures beside the draft " +
   "(prompts/TestPlanFigures_Prompt.md; manual runs only). " +
@@ -436,6 +459,7 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--preview") args.flags.preview = true;
     else if (a === "--figures") args.flags.figures = true;
+    else if (a === "--stream") args.flags.stream = true;
     else if (a === "--help" || a === "-h") args.flags.help = true;
     else if (a === "--models") args.flags.models = true;
     else if (a === "--notify") args.flags.notify = true;
@@ -570,6 +594,7 @@ function loadConfig(argv) {
     maxTokens: 32000,
     webRefTimeoutMs: 30000,
     figures: false, // v1.11: the generated-figures pass (--figures forces on for a run)
+    stream: false, // v1.12: echo the model's thinking summary + reply to stderr (anthropic lane)
     figuresMaxTokens: 8000,
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
@@ -585,6 +610,7 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.testplangen.dryRun = true;
   if (args.flags.preview) cfg.testplangen.dryRun = true; // never writes, by construction
   if (args.flags.figures) cfg.testplangen.figures = true;
+  if (args.flags.stream) cfg.testplangen.stream = true;
   if (args.flags.notify) cfg.testplangen.notify = true;
   if (args.verify !== undefined) cfg.testplangen.verify = args.verify;
   if (!VERIFY_MODES.includes(cfg.testplangen.verify)) {
@@ -867,6 +893,44 @@ async function run(cfg) {
       `(would land as ${res.draftPath})\n`
     );
   }
+}
+
+// Console streaming (v1.12): the generateText onDelta listener for
+// MANUAL runs on the anthropic lane. Returns null when the run is
+// quiet (auto / gap-report), the knob is off, or the lane cannot
+// stream — the caller then keeps its heartbeat. The echo goes to
+// stderr only; stdout's JSON + Gen_summary contract is untouched.
+function streamEcho(ctx, provider, label) {
+  const { tp } = ctx;
+  if (!tp.stream || !ctx.progress) return null;
+  if (provider !== "anthropic") {
+    ctx.progress(
+      `stream — the ${provider} lane cannot stream (Dataverse Predict is one ` +
+      "request, one response); --stream ignored for this call"
+    );
+    return null;
+  }
+  let mode = "";
+  let chars = 0;
+  const w = (s) => process.stderr.write(s);
+  const rule = (m) => {
+    if (mode) w("\n");
+    mode = m;
+    w(`--- ${label}: model ${m === "text" ? "reply" : m} ---\n`);
+  };
+  const onDelta = (kind, text) => {
+    if (kind === "restart") {
+      w(`\n--- ${label}: [stream restarted — the partial output above is discarded] ---\n`);
+      mode = "";
+      chars = 0;
+      return;
+    }
+    if (kind !== mode) rule(kind);
+    if (kind === "text") chars += text.length; // the end-of-stream count is the REPLY's
+    w(text);
+  };
+  onDelta.done = () => w(`\n--- ${label}: end of stream (${chars} chars) ---\n`);
+  return onDelta;
 }
 
 // the generation transport: testplangen.provider overrides llm.provider
@@ -1641,7 +1705,8 @@ async function generateOne(ctx, story) {
     " (a long wait here is generation, not a hang; retries print their own llm: lines)"
   );
   const genT0 = Date.now();
-  const beat = ctx.progress
+  const echo = streamEcho(ctx, provider, "draft");
+  const beat = ctx.progress && !echo
     ? setInterval(
         () => prog(`still waiting on the model — ${Math.round((Date.now() - genT0) / 1000)}s elapsed`),
         30000
@@ -1668,7 +1733,12 @@ async function generateOne(ctx, story) {
     // substitution
     const prompt = template.replace(INPUTS_RE, (m, key) => inputs[key]);
     try {
-      genRaw = await generateText({ ...cfg.llm, maxTokens: Number(tp.maxTokens) }, prompt);
+      genRaw = await generateText(
+        { ...cfg.llm, maxTokens: Number(tp.maxTokens) },
+        prompt,
+        echo ? { onDelta: echo, showThinking: true } : {}
+      );
+      echo?.done();
     } catch (e) {
       if (/max_tokens/.test(String(e.message))) {
         throw new Error(
@@ -1946,7 +2016,13 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
     } else {
       const template = loadPromptTemplate(FIG_PROMPT_FILE);
       const prompt = template.replace(FIG_INPUTS_RE, (m, key) => inputs[key]);
-      raw = await generateText({ ...cfg.llm, maxTokens: Number(tp.figuresMaxTokens) }, prompt);
+      const echo = streamEcho(ctx, provider, "figures");
+      raw = await generateText(
+        { ...cfg.llm, maxTokens: Number(tp.figuresMaxTokens) },
+        prompt,
+        echo ? { onDelta: echo, showThinking: true } : {}
+      );
+      echo?.done();
     }
     const reply = parseFiguresReply(raw);
     out.proposed = reply.figures.length;

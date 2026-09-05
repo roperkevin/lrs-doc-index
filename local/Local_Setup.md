@@ -846,6 +846,23 @@ it (no tenant prompt exists yet — set `testplangen.provider` to
 slides today, run `svg2pptx.mjs` on them; draft2pptx's `--media`
 still renders story `**Figure:**` lines only.
 
+**`--stream` — watch the model work** (v1.12, `testplangen/CHANGES.md`
+v2.33; or `testplangen.stream: true`): on the anthropic lane a manual
+run echoes the model's output to stderr as it streams — first its
+THINKING SUMMARY (the request asks the API for
+`display: "summarized"`; the raw chain of thought is never returned,
+the summary is what exists, and thinking is billed the same whether
+shown or not), then the reply — for the draft call and the figures
+call, each under a `--- draft: model thinking ---` /
+`--- draft: model reply ---` rule and closed with the char count. The
+heartbeat stays silent while a stream echoes; a transport retry
+prints a `[stream restarted]` rule because the partial output is
+discarded exactly as the marker slice would discard it. stdout's
+JSON + `Gen_summary` and the written draft are unchanged — the
+fail-closed slice still runs on the complete reply. The aibuilder
+lane cannot stream (Dataverse Predict is one request, one response):
+`--stream` there prints one note. Manual runs only.
+
 **No OneDrive on this machine?** (v1.10) Set `sweep.remoteFiles:
 true` — the sweep's v1.39 remote-files mode (§7, `Hosted_Runner.md`)
 — and the run mirrors the sidecar library down into

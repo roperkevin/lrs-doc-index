@@ -1,3 +1,44 @@
+# TestPlanGen v2.33 — console streaming (testplangen.mjs v1.12, llm.mjs v1.7)
+
+Owner question (2026-09-05): "Is it possible to stream the LLM's
+responses or thought process in the console?" — yes on the
+anthropic lane, which already streamed (llm.mjs v1.6) but printed
+nothing while it did. Built for that lane:
+
+- **`--stream`** (or `testplangen.stream: true`) on a MANUAL run
+  echoes the model's output to stderr as it arrives: first the
+  model's THINKING SUMMARY, then the REPLY, for the draft call and
+  the figures call alike — each under a `--- draft: model thinking
+  ---` / `--- draft: model reply ---` rule and closed by
+  `--- draft: end of stream (N chars) ---`. The request adds
+  `thinking: {type: "adaptive", display: "summarized"}` only when
+  echoing (the default display is "omitted": the model thinks and is
+  billed the same, but its blocks arrive empty). The raw chain of
+  thought is never returned by the API on any model; the summary is
+  what exists.
+- **llm.mjs v1.7** — `generateText(cfg, prompt, {onDelta,
+  showThinking})`: `onDelta(kind, text)` fires per SSE chunk with
+  kind "text" | "thinking", and "restart" on a transport retry
+  (the partial echo is stale — the console prints a
+  `[stream restarted]` rule; accumulated text and the fail-closed
+  posture are unchanged). Existing callers pass nothing and behave
+  as before.
+- The 30-second heartbeat stays silent while a stream is echoing
+  (the deltas are the heartbeat). stdout keeps the JSON +
+  Gen_summary contract byte-for-byte; the written draft is
+  identical — the marker slice still runs on the COMPLETE reply.
+  The aibuilder lane cannot stream (Dataverse Predict is one
+  request, one response): `--stream` there prints one progress
+  note and is otherwise ignored. Auto and gap-report runs stay
+  quiet for their task logs.
+
+Gate: `check_testplangen.py` **189/189** — leg 19 (the thinking
+key on the request; thinking chunks then reply chunks in arrival
+order for both calls, with rules and char counts; no heartbeat;
+stdout untouched; the draft byte-identical; no key and no echo
+without the flag; the aibuilder note). The mock's SSE emitter now
+serves a thinking block when the request asks for it.
+
 # TestPlanGen v2.32 — generated figures (testplangen.mjs v1.11, figurespec v1.0, TestPlanFigures prompt v0.1 wired)
 
 Owner-requested (2026-09-05): "build the --figures pass and
