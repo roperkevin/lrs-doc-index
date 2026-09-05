@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.14 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.15 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -9,7 +9,21 @@
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29; case-aware generation: v2.30; first-run
  * review: v2.31; generated figures: v2.32; console streaming: v2.33;
- * related cases: v2.34).
+ * related cases: v2.34; doc 910 draft review: v2.35).
+ *
+ * v1.15 (doc 910 draft review — testplangen/CHANGES.md v2.35): the
+ * figures pass names its own cap when the model's reply is cut
+ * (testplangen.figuresMaxTokens, default raised 8000 → 24000: a
+ * 22-case draft's six specs plus the mandatory per-case skipped list
+ * overran 8000, and the generic "raise the caller's maxTokens knob"
+ * pointed at the DRAFT cap); the draft verifier stops flagging a
+ * Coverage Map row covered by a present Automation Notes /
+ * Documentation Impacts section (the prompt's own rule — lint v1.4,
+ * Python authority first), a Title Case run that is a known term
+ * abutting story words ("Experience Builder Split"), a trailing value
+ * word ("To Date Null"), and enumerations in the sidecar's machine
+ * digest; prompt v1.12 sends preserved-value behaviors to the
+ * Positive lane.
  *
  * v1.13–v1.14 (related cases — the retrieval lane, prompt v1.11's
  * SIXTH input, testplangen/CHANGES.md v2.34): with the Test Cases
@@ -81,7 +95,7 @@
  * refuses BEFORE the generation call. Gen_summary gains
  * `genFigures=<rendered>/<proposed>`; the run log lists every spec
  * with its file or its findings. Knobs: testplangen.figures (default
- * false; `--figures` forces on), figuresMaxTokens (8000), and
+ * false; `--figures` forces on), figuresMaxTokens (24000 since v1.15), and
  * llm.figuresModelId for the aibuilder lane (no tenant prompt exists
  * yet — the anthropic lane executes the repo prompt verbatim).
  * Manual runs only, like the pins.
@@ -424,7 +438,7 @@ import {
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.14";
+const JOB_VERSION = "v1.15";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -610,7 +624,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.11",
+    promptVersion: "v1.12",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,
@@ -622,7 +636,10 @@ function loadConfig(argv) {
     webRefTimeoutMs: 30000,
     figures: false, // v1.11: the generated-figures pass (--figures forces on for a run)
     stream: false, // v1.12: echo the model's thinking summary + reply to stderr (anthropic lane)
-    figuresMaxTokens: 8000,
+    // v1.15: 8000 truncated the first real run (22 cases: six specs +
+    // the mandatory per-case skipped list is ~9k tokens of JSON, and
+    // --stream's thinking summary shares the cap) — see generateFigures
+    figuresMaxTokens: 24000,
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
     relatedCases: true, // v1.13/v1.14: the RELATED CASES retrieval lane (needs the same list)
@@ -2238,11 +2255,29 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
       const template = loadPromptTemplate(FIG_PROMPT_FILE);
       const prompt = template.replace(FIG_INPUTS_RE, (m, key) => inputs[key]);
       const echo = streamEcho(ctx, provider, "figures");
-      raw = await generateText(
-        { ...cfg.llm, maxTokens: Number(tp.figuresMaxTokens) },
-        prompt,
-        echo ? { onDelta: echo, showThinking: true } : {}
-      );
+      try {
+        raw = await generateText(
+          { ...cfg.llm, maxTokens: Number(tp.figuresMaxTokens) },
+          prompt,
+          echo ? { onDelta: echo, showThinking: true } : {}
+        );
+      } catch (e) {
+        // v1.15: name THIS pass's knob — the generic "raise the
+        // caller's maxTokens knob" sent the first --figures run to
+        // testplangen.maxTokens (the DRAFT cap), which this call never
+        // reads; with --stream the thinking summary also counts
+        // against the same cap
+        if (/max_tokens/.test(String(e.message))) {
+          throw new Error(
+            `${e.message} — for the figures pass the knob is ` +
+            `testplangen.figuresMaxTokens (currently ${tp.figuresMaxTokens}; ` +
+            "testplangen.maxTokens bounds only the draft call; the model allows " +
+            "up to 128000, and with --stream the thinking summary spends the " +
+            "same budget)"
+          );
+        }
+        throw e;
+      }
       echo?.done();
     }
     const reply = parseFiguresReply(raw);

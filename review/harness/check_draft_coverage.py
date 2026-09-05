@@ -9,7 +9,7 @@ the draft honors the coverage contract, and prints the counters used
 for before/after comparison when a prompt bump lands
 (`testplangen/Coverage_Runbook.md` step 5).
 
-Asserts (v1.7 contract):
+Asserts (v1.7 contract, amended v1.12 — the conditional-section citation in 5):
 
   1. the six core sections present, in order: Overview,
      Setup / Prerequisites, Positive Tests, Negative Tests,
@@ -20,7 +20,11 @@ Asserts (v1.7 contract):
   3. Negative Tests opens with the fixed `> [!CAUTION]` alert
   4. Open Questions has at least one `- [ ]` item
   5. Coverage Map: a well-formed GFM table with >= 1 data row; no
-     empty Covered by cell; every TC id a cell cites exists in the
+     empty Covered by cell — every cell cites a TC id, Open
+     Questions, or (v1.12) a conditional section name, "Automation
+     Notes" / "Documentation Impacts", that is present in the draft
+     (the prompt's Coverage Map rule lets those sections' bullets
+     carry a requirement); every TC id a cell cites exists in the
      draft; every TC id in the draft appears in some cell
   6. TC numbering sequential per lane (TC-P1..Pn, TC-N1..Nn)
   7. granularity, the structural half (v1.6): every TC case has
@@ -60,6 +64,9 @@ import re
 import sys
 
 failures = []
+
+# the CONDITIONAL sections a Coverage Map cell may cite (v1.12)
+COND_SECTIONS = ('Automation Notes', 'Documentation Impacts')
 
 
 def check(cond, label):
@@ -142,9 +149,19 @@ def main():
             covered = cells[-1] if cells else ''
             ids_in_cell = set(re.findall(r'TC-[PN]\d+', covered))
             cited_ids |= ids_in_cell
-            check(bool(ids_in_cell) or 'Open Questions' in covered,
-                  f'Coverage Map row {i}: Covered by cites a case or '
-                  f'Open Questions')
+            # v1.12: the prompt's Coverage Map rule lets a Covered by
+            # cell name "Automation Notes" / "Documentation Impacts"
+            # where those sections' bullets carry the requirement —
+            # accepted only when the named section is present
+            sections_in_cell = [s for s in COND_SECTIONS if s in covered]
+            check(bool(ids_in_cell) or 'Open Questions' in covered
+                  or bool(sections_in_cell),
+                  f'Coverage Map row {i}: Covered by cites a case, Open '
+                  f'Questions, Automation Notes, or Documentation Impacts')
+            for sec in sections_in_cell:
+                check(f'## {sec}' in text,
+                      f'Coverage Map row {i}: cited {sec} section exists '
+                      f'in draft')
             for cid in ids_in_cell:
                 check(cid in draft_ids,
                       f'Coverage Map row {i}: cited {cid} exists in draft')
