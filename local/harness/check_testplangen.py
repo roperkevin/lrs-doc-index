@@ -403,11 +403,20 @@ def make_handler(state):
 # ---- fixtures -------------------------------------------------------
 
 def sidecar(sidecar_dir, folder, name, body, related=None):
-    """A minimal v2.8-shaped sidecar: hidden metadata comment frame
-    with the machine-written related: line, then the body."""
-    rel = json.dumps(related or [], separators=(",", ":"))
-    text = (f"# {name}\n\n<!-- metadata\n```yaml\ndoc_id: 0\n"
-            f"related: {rel}\n```\n-->\n\n{body}\n")
+    """A minimal format-3.0 sidecar: H1 + metadata table (no yaml), the
+    Related region carrying the machine list on its markers, then the
+    body below the seam."""
+    bullets = "\n".join(
+        f"- [{r['file']}](<{r['file']}>) <!-- rel:{r['doc']} s={r['s']} -->"
+        for r in (related or [])) or "_None yet._"
+    text = (f"# {name}\n\n| Field | Value |\n| --- | --- |\n"
+            f"| **Doc** | 0 · Test Plan · Pro |\n| **Product** | — |\n| **Release** | — |\n"
+            f"| **Issues** | — |\n| **Source** | [{name}](<{name}>) |\n"
+            f"| **People** | author — · PE — · dev — |\n| **Edited** | — |\n"
+            f"| **Extracted** | 2026-09-05 · lane xmlstrip · format 3.0 · prompt v2.0 |\n"
+            f"| **Keywords** | — |\n| **Tools** | — |\n\n"
+            f"## Related documents\n\n<!-- related:begin -->\n{bullets}\n<!-- related:end -->\n\n"
+            f"---\n\n{body}\n")
     fpath = os.path.join(sidecar_dir, folder, name)
     os.makedirs(os.path.dirname(fpath), exist_ok=True)
     with open(fpath, "w", encoding="utf-8") as f:
@@ -692,7 +701,7 @@ def main():
           summ.get("neighbors") == "7" and summ.get("exemplars") == "2"
           and summ.get("references") == "3" and summ.get("verify") == "ok", str(summ))
     paths = [p for p in state.drafts
-             if re.match(r"^/Test Plan Drafts/TestPlanDraft__doc12__\d{8}-\d{6}\.md$", p)]
+             if re.match(r"^/Test Plan Drafts/route-merge__doc12--draft-\d{8}-\d{4}\.md$", p)]
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
@@ -916,7 +925,7 @@ def main():
     check("--notify posts one webhook line for the written draft",
           r.returncode == 0 and len(state.alerts) == 1
           and 'Story 12 — "Route Merge"' in text
-          and "TestPlanDraft__doc12__" in text
+          and "route-merge__doc12--draft-" in text
           and "verify=ok" in text, str(state.alerts))
     state.alerts.clear()
     r = run_job(cfg_main, ["--story", "12", "--dry-run", "--notify"])
@@ -1027,7 +1036,7 @@ def main():
     state.alerts.clear()
     r = run_job(cfg_auto, ["--auto", "--live"])
     summ = auto_summary(r.stdout)
-    doc13 = [p for p in state.drafts if "TestPlanDraft__doc13__" in p]
+    doc13 = [p for p in state.drafts if "lonely__doc13--draft-" in p]
     check("auto live: gap story drafted, bad draft refused",
           r.returncode == 0 and summ.get("drafted") == "1"
           and summ.get("refused") == "1" and summ.get("errors") == "0"

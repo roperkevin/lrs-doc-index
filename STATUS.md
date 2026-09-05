@@ -10,6 +10,22 @@ each change belongs to the component CHANGES files.
 
 ## Current state (2026-09-03q)
 
+- **2026-09-05 (Sidecar_Format_Plan phases 0–5, authored on branch
+  `claude/sidecar-format-phases-6oomga`; nothing deployed yet):**
+  format 3.0 (the metadata table replaces the yaml block; sweep
+  v1.48, SidecarPatch v1.7, agent instructions v1.4), filenames
+  `<issue>-<slug>.md` + media/<stem>/ + `_Manifest.json` + `--rename`
+  (v1.49, slug v1.0), ZipTextExtract v2.5 (cell paragraphs, inherited
+  bullets, top-label headings, docx labels/ordered lists) + pdf
+  re-flow (v1.50), ONE case grammar with six detectors + caseindex
+  v2.0 (v1.51), the opt-in `--normalize-cases` LLM lane (v1.52), the
+  story/v1 profile (v1.53), `--case-audit` (v1.47). TENANT STEPS: Test
+  Cases columns Confidence / Group / SourceRef + Shape choices; then
+  the rollout sequence at the top of `local/CHANGES.md`. Gates:
+  `check_local_sweep.py`, `check_caseindex.py` 78/78, `check_slug.py`,
+  `check_storyprofile.py`, `check_related.py`, `check_format.py`
+  (+§13), `check_testplangen.py` 141/141, `check_svg2pptx.py`,
+  `check_typecheck.py` — all green on the branch.
 - **Pipeline: DOWN — auth expired** (open action 12): Conditional
   Access rejects device-code sign-in; fix is `"auth": "interactive"`
   + one console sign-in on the sweep machine. Nothing indexes until

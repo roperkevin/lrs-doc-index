@@ -46,28 +46,35 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import zlib from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
-import { classifyDoc } from "./llm.mjs";
+import { classifyDoc, generateText, aiBuilderPredict, loadPromptTemplate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.mjs";
 import {
   lower, cut, folderOf, yamlEscape, stripQuotes, pipeToSlash, fmtDate,
-  quoteYamlItem, htmlToText, num, hyperlink, urlToLocal, folderToLocal,
+  quoteYamlItem, htmlToText, num, hyperlink, urlToLocal, folderToLocal, unwrapPdfText,
   pruneRunLogs, exportListSnapshots,
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
-import { writeIndexPages, writeCaseCatalog } from "./lib/indexpages.mjs";
+import { auditBody, summarizeAudit, renderAuditPage, hasSignal } from "./lib/caseaudit.mjs";
+import { buildNormalizePrompt, unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
+import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
+import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
+import { writeIndexPages, writeCaseCatalog, writeManifest } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
-  upsertDocsBlock, bodySeamEnd, yamlList,
+  upsertDocsBlock, bodySeamEnd,
 } from "./lib/doclinks.mjs";
-import { placeFigure, tidyBody, caseHeadings, compactWhy } from "./lib/presentation.mjs";
+import { placeFigure, tidyBody, compactWhy } from "./lib/presentation.mjs";
+import { renderTestPlanBody, lintTestPlanBody } from "./lib/casegrammar.mjs";
+import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
 
@@ -79,6 +86,13 @@ const FLOW_DEFAULTS = {
   smokeFile: "",
   defaultRepo: "ArcGISPro/ps-location-referencing",
   promptVersion: "v2.0",
+  // --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane
+  // for plans the detectors leave caseless. enabled = the owner switch
+  // (a live run refuses without it); maxPerRun caps model calls;
+  // provider "" follows llm.provider ("anthropic" runs
+  // prompts/CaseNormalize_Prompt.md verbatim; "aibuilder" needs
+  // llm.normalizeModelId); maxTokens bounds the anthropic reply.
+  normalizeCases: { enabled: false, maxPerRun: 10, provider: "", maxTokens: 16000 },
   textCap: 100000,
   previewCap: 5000,
   maxDocsPerRun: 150,
@@ -131,6 +145,10 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   let figureCount = 0, figureError = "";
   let figureOcr = 0, figureOcrOff = 0;
   let srcAuthor = "", srcEditor = "", srcEdited = "";
+  // media is minted against a PLACEHOLDER folder and handed back to
+  // the caller as bytes: the document's stem (its media folder name)
+  // is only known once the title is — phase 1b, media/<stem>/<asset>
+  const mediaFiles = [];
   const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
   const oversize = size > sw.oversizeBytes && ext !== "xlsx";
   if (!fs.existsSync(localPath)) {
@@ -143,7 +161,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     setStep(`ziptext-${ext}`);
     const zt = op({
       op: "ziptext", zipFile: localPath,
-      mediaPrefix: `../media/doc${srcItemId}_`,
+      mediaPrefix: MEDIA_PLACEHOLDER,
     });
     docText = zt.text || "";
     relsText = zt.rels || "";
@@ -155,8 +173,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
       setStep("media");
       const md = op({ op: "media", zipFile: localPath });
       for (const img of md.images || []) {
-        const imgPath = path.join(cfg.paths.sidecarLibrary, "media", `doc${srcItemId}_${img.name}`);
-        writer.writeFile(imgPath, Buffer.from(img.b64 || img.base64 || "", "base64"));
+        mediaFiles.push({ name: img.name, data: Buffer.from(img.b64 || img.base64 || "", "base64") });
       }
     }
     // v1.23: slide diagrams as SVG figures. ZipTextExtract still collapses a
@@ -200,10 +217,9 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
         const figs = (fg && fg.figures) || [];
         const bySlide = new Map();
         for (const f of figs) {
-          const name = `doc${srcItemId}_${f.name}`;
-          writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", name), f.svg);
+          mediaFiles.push({ name: f.name, data: f.svg });
           if (!bySlide.has(f.slide)) bySlide.set(f.slide, []);
-          bySlide.get(f.slide).push({ href: `../media/${name}`, alt: f.alt, anchor: f.anchor });
+          bySlide.get(f.slide).push({ href: `${MEDIA_PLACEHOLDER}${f.name}`, alt: f.alt, anchor: f.anchor });
         }
         for (const [slide, items] of bySlide) {
           docText = placeFigure(docText, slide, items);
@@ -261,7 +277,9 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     if (r.status !== 0) {
       throw new Error(`pdftotext exit ${r.status}: ${cut(String(r.stderr || ""), 300)}`);
     }
-    docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
+    // v2.5 (PDF-1): re-flow the column-wrapped lines so a case reads
+    // as one sentence instead of four fragments
+    docText = String(r.stdout || "").trim() === "" ? "" : unwrapPdfText(r.stdout);
     lane = "plaintext";
     // OCR lane (v1.36, opt-in via sweep.tesseractPath): a text-less
     // PDF is usually a scan — render pages with pdftoppm and OCR them
@@ -284,7 +302,95 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   // pdf(no tool)/image/other/oversize (and empty html/msg): DocText
   // stays empty → Skip lane.
   return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-           figureCount, figureError, figureOcr, figureOcrOff };
+           figureCount, figureError, figureOcr, figureOcrOff, mediaFiles };
+}
+
+/** The sidecar BODY for a document (phase 3): tidyBody for every
+ *  kind, plus the `testplan/v1` case grammar for the case-indexed
+ *  kinds (casegrammar.mjs — a plan with no detectable case keeps its
+ *  tidied slide sections). The LLM input, TextPreview and the
+ *  similarity index keep the raw text. */
+function renderBody(docText, docKind, cfg, sum) {
+  const tidied = tidyBody(docText);
+  // phase 5: User Story decks that follow the team template map onto
+  // the story/v1 sections (storyprofile.mjs); others stay tidied
+  if (docKind === "User Story" && cfg.sweep.storyProfile !== false) {
+    const r = renderStoryBody(tidied);
+    if (sum && r.shape === "story") sum.stories_profiled = (sum.stories_profiled || 0) + 1;
+    return r.body;
+  }
+  const kinds = (cfg.sweep.caseIndex && cfg.sweep.caseIndex.kinds) || ["Test Plan"];
+  if (!kinds.includes(docKind)) return tidied;
+  const r = renderTestPlanBody(tidied);
+  if (sum) {
+    if (r.shape !== "none") sum.plans_profiled = (sum.plans_profiled || 0) + 1;
+    const lint = lintTestPlanBody(r.body);
+    if (lint.length) {
+      sum.profile_lint_failures = (sum.profile_lint_failures || 0) + 1;
+      process.stderr.write(`PROFILE LINT: ${lint.slice(0, 3).join("; ")}\n`);
+    }
+  }
+  return r.body;
+}
+
+/** Write a document's media into media/<stem>/ (phase 1b). */
+function writeMedia(cfg, writer, stem, mediaFiles) {
+  for (const m of mediaFiles || []) {
+    writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", stem, m.name), m.data);
+  }
+}
+
+/** Move a document's pre-1b flat media (`media/doc<srcItemId>_<name>`)
+ *  into its media/<stem>/ folder — idempotent; nothing to do when the
+ *  flat files are gone. Used by --reformat (images are not re-extracted
+ *  there) and by --rename. */
+function placeLegacyMedia(cfg, writer, srcItemId, stem) {
+  const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+  let names = [];
+  try { names = fs.readdirSync(mdir); } catch { return 0; }
+  const prefix = `doc${srcItemId}_`;
+  let moved = 0;
+  for (const n of names) {
+    if (!n.startsWith(prefix)) continue;
+    const from = path.join(mdir, n);
+    try {
+      if (!fs.statSync(from).isFile()) continue;
+      writer.writeFile(path.join(mdir, stem, n.slice(prefix.length)), fs.readFileSync(from));
+      writer.deleteFile(from);
+      moved++;
+    } catch { /* unreadable: leave it */ }
+  }
+  return moved;
+}
+
+/** Map rowId -> primary issue number (0 = none), for the manifest. */
+function issueByDoc(rows, docIdRows) {
+  const idsOf = new Map();
+  for (const d of docIdRows || []) {
+    if (!idsOf.has(d.DocumentId)) idsOf.set(d.DocumentId, []);
+    idsOf.get(d.DocumentId).push({ repo: d.Repo, number: d.IssueNumber, source: d.Source });
+  }
+  const out = new Map();
+  for (const r of rows || []) out.set(r.ID, primaryIssue(idsOf.get(r.ID) || [], r.FileName || ""));
+  return out;
+}
+
+/** Stems already used in a kind folder — the rows' files plus whatever
+ *  is on disk (rows can lag a write). */
+function takenStems(cfg, sw, rows, kindFolder, exceptRowId) {
+  const taken = new Set();
+  for (const r of rows || []) {
+    if (!r.TextFileUrl || r.ID === exceptRowId) continue;
+    const parts = String(r.TextFileUrl).split("/");
+    if (decodeURIComponent(parts[parts.length - 2] || "") !== kindFolder) continue;
+    taken.add(stemOf(r.TextFileUrl));
+  }
+  try {
+    for (const f of fs.readdirSync(path.join(cfg.paths.sidecarLibrary, kindFolder))) {
+      if (f.endsWith(".md") && !f.startsWith("_")) taken.add(f.replace(/\.md$/, ""));
+    }
+  } catch { /* folder not there yet */ }
+  return taken;
 }
 
 // ---- config ---------------------------------------------------------
@@ -301,10 +407,14 @@ function loadConfig(argv) {
     else if (a === "--rerank") args.flags.rerank = true;
     else if (a === "--reformat") args.flags.reformat = true;
     else if (a === "--recase") args.flags.recase = true;
+    else if (a === "--case-audit") args.flags.caseAudit = true;
+    else if (a === "--rename") args.flags.rename = true;
+    else if (a === "--normalize-cases") args.flags.normalize = true;
+    else if (a === "--rename-plan") { args.flags.rename = true; args.flags.dry = true; }
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -321,6 +431,18 @@ function loadConfig(argv) {
   if (args.flags.recase) cfg.sweep.recase = true;
   if (cfg.sweep.recase && (cfg.sweep.rerank || cfg.sweep.reformat)) {
     throw new Error("--recase is a standalone mode — do not combine it with --rerank or --reformat");
+  }
+  if (args.flags.caseAudit) cfg.sweep.caseAudit = true;
+  if (args.flags.rename) cfg.sweep.rename = true;
+  if (args.flags.normalize) cfg.sweep.normalize = true;
+  if (cfg.sweep.normalize && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit || cfg.sweep.rename)) {
+    throw new Error("--normalize-cases is a standalone mode — do not combine it with other modes");
+  }
+  if (cfg.sweep.rename && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit)) {
+    throw new Error("--rename is a standalone mode — do not combine it with --rerank, --reformat, --recase or --case-audit");
+  }
+  if (cfg.sweep.caseAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase)) {
+    throw new Error("--case-audit is a standalone mode — do not combine it with --rerank, --reformat or --recase");
   }
   if (args.flags.checkHeartbeat) cfg.sweep.checkHeartbeat = true;
   cfg.llm = cfg.llm || {};
@@ -486,62 +608,22 @@ function normalizeRows(items, kind) {
   });
 }
 
-// ---- sidecar header (flow §4.3(e)/(f), byte-faithful) ---------------
+// ---- sidecar header (format 3.0 — Sidecar_Format_Plan phase 1) ------
+// H1 + the metadata TABLE (the only metadata representation; see
+// lib/sidecarmeta.mjs), then Summary, the Related region and the
+// header/body seam. `sidecarHead` is the part --reformat regenerates;
+// `sidecarTail` is the part it preserves from the file on disk.
 
-function sidecarHeader(p) {
-  const productRow = p.products.length
-    ? `| **Product** | ${p.products.join(" · ")} |\n`
-    : "";
-  const issueLinks = p.ids.map(
-    (id) => `[${id.repo}#${id.number}](https://devtopia.esri.com/${id.repo}/issues/${id.number})`
-  );
-  const issueRow = p.ids.length ? `| **Issue** | ${issueLinks.join(" · ")} |\n` : "";
-  const release = stripQuotes(pipeToSlash(p.targetRelease)) || "—";
-  const edited = fmtDate(p.srcEdited, true) || "unknown";
-  const editor = pipeToSlash(p.srcEditor) || "unknown";
-  const today = fmtDate(new Date().toISOString(), false);
+function sidecarHead(p) {
+  return `# ${p.h1Title}\n\n${renderMetaTable(p)}\n`;
+}
+
+function sidecarTail(p) {
   const summary =
     p.summary && p.summary.trim() !== ""
       ? p.summary
       : "> [!WARNING]\n> No AI summary was generated for this document.";
-
-  return `# ${p.h1Title}
-
-|   |   |
-| --- | --- |
-| **Kind** | ${p.docKind} · ${p.surface} |
-| **Release** | ${release} |
-${productRow}${issueRow}| **Source** | [${p.fileName}](<${p.sourceLink}>) |
-| **Edited** | ${edited} by ${editor} |
-| **Extracted** | ${today} · lane \`${p.lane}\` |
-
-<!-- metadata
-\`\`\`yaml
-title: "${yamlEscape(p.title)}"
-source_file: "${yamlEscape(p.fileName)}"
-source_url: "${p.sourceLink}"
-doc_id: ${p.rowId}
-doc_kind: "${p.docKind}"
-surface: "${p.surface}"
-doc_revision: "${p.docRevision}"
-target_release: "${stripQuotes(p.targetRelease)}"
-pe: "${stripQuotes(p.pe)}"
-dev: "${stripQuotes(p.dev)}"
-author: "${stripQuotes(p.srcAuthor)}"
-last_edited_by: "${stripQuotes(p.srcEditor)}"
-last_edited: "${p.srcEdited}"
-extracted: ${today}
-extraction_lane: ${p.lane}
-prompt_version: "${p.promptVersion}"
-keywords: [${p.keywords.map(quoteYamlItem).join(", ")}]
-tools: [${p.tools.map(quoteYamlItem).join(", ")}]
-products: [${p.products.map((x) => '"' + x + '"').join(", ")}]
-issues: [${p.ids.map((id) => `"${id.repo}#${id.number}"`).join(", ")}]
-related: []
-\`\`\`
--->
-
-## Summary
+  return `## Summary
 
 ${summary}
 
@@ -554,6 +636,10 @@ _None yet._
 ---
 
 `;
+}
+
+function sidecarHeader(p) {
+  return sidecarHead(p) + sidecarTail(p);
 }
 
 // ---- the sweep ------------------------------------------------------
@@ -672,7 +758,8 @@ async function main() {
     const items = await graph.listItems(siteId, sp.lists.testCases, {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
                "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
-               "Shape", "FigureCount", "TableCount", "StepCount", "RouteRefs",
+               "Shape", "Confidence", "Group", "SourceRef",
+               "FigureCount", "TableCount", "StepCount", "RouteRefs",
                "ExpectedResult", "TraceText", "Tools", "Keywords", "FigureLinks",
                "FigureLink", "SweptOn"],
     });
@@ -794,6 +881,277 @@ async function main() {
     .map((r) => r.Title)
     .join(", ");
 
+  // ---- --normalize-cases: the opt-in LLM lane (Sidecar_Format_Plan
+  // phase 4). Candidates = case-indexed plans whose body the detectors
+  // left caseless although the audit sees a case shape in it. Dry by
+  // default (the candidate list, no model call); `--live` needs
+  // sweep.normalizeCases.enabled (the owner switch), spends at most
+  // maxPerRun calls, and writes a plan's body only when the reply
+  // passes the contract lint + grounding (casenormalize.mjs). Never
+  // reachable from the nightly index, --reformat or --recase.
+  if (sw.normalize) {
+    const nc = { ...FLOW_DEFAULTS.normalizeCases, ...(sw.normalizeCases || {}) };
+    const provider = nc.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
+    const zsum = { mode: "normalize-cases", dry_run: dry, provider, prompt_version: NORMALIZE_PROMPT_VERSION,
+                   eligible: 0, candidates: 0, normalized: 0, refused: 0, errors: 0, skipped_cap: 0,
+                   cases_upserted: 0, cases_removed: 0, case_errors: 0, plans_caseless: 0, cases_shape_mixed: 0 };
+    if (!dry && !nc.enabled) {
+      throw new Error(
+        "--normalize-cases --live requires sweep.normalizeCases.enabled: true in config — " +
+        "the owner switch for AI spend on sidecar bodies (dry runs list the candidates without it)"
+      );
+    }
+    const template = provider === "anthropic"
+      ? loadPromptTemplate(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "prompts", "CaseNormalize_Prompt.md"))
+      : "";
+    if (!dry && provider === "aibuilder" && !cfg.llm.normalizeModelId) {
+      throw new Error("llm.normalizeModelId is not set — paste prompts/CaseNormalize_Prompt.md as a tenant prompt (inputs PlanTitle, Body) or use provider \"anthropic\"");
+    }
+    const plans = [];
+    for (const r of docIndexRows) {
+      if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      zsum.eligible++;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) continue;
+      const content = fs.readFileSync(local, "utf8");
+      const seam = bodySeamEnd(content);
+      if (seam < 0) continue;
+      const body = content.slice(seam);
+      if (body.includes("<!-- src: LLM")) continue;            // already normalized
+      if (extractCases(body).shape !== "none") continue;         // the detectors cover it
+      if (!hasSignal(auditBody(body))) continue;                 // genuinely caseless
+      zsum.candidates++;
+      plans.push({ r, local, content, seam, body });
+    }
+    const results = [];
+    for (const p of plans) {
+      if (zsum.normalized + zsum.refused + zsum.errors >= Number(nc.maxPerRun)) { zsum.skipped_cap++; continue; }
+      const entry = { id: p.r.ID, title: p.r.Title || p.r.FileName, ok: false, failures: [], cases: 0 };
+      results.push(entry);
+      if (dry) { entry.failures = ["dry run: not called"]; continue; }
+      try {
+        const inputs = { PlanTitle: p.r.Title || p.r.FileName || "", Body: p.body };
+        let raw;
+        if (provider === "aibuilder") {
+          const res = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.normalizeModelId);
+          raw = res?.responsev2?.predictionOutput?.text ?? "";
+        } else {
+          raw = await generateText({ ...cfg.llm, maxTokens: Number(nc.maxTokens) },
+                                   buildNormalizePrompt(template, { planTitle: inputs.PlanTitle, body: p.body }));
+        }
+        const out = unwrapReply(raw);
+        const v = verifyNormalized(p.body, out);
+        entry.cases = v.cases;
+        if (!v.ok) {
+          entry.failures = v.failures;
+          zsum.refused++;
+          process.stderr.write(`NORMALIZE REFUSED doc ${p.r.ID} (${entry.title}): ${v.failures.slice(0, 3).join("; ")}\n`);
+          continue;
+        }
+        const next = p.content.slice(0, p.seam) + out;
+        writer.writeFile(p.local, next);
+        if (remote) await remote.flush();
+        await syncCases(p.r.ID, p.r.DocKind, out, zsum, p.r.Title || "");
+        entry.ok = true;
+        zsum.normalized++;
+      } catch (e) {
+        zsum.errors++;
+        entry.failures = [String(e.message)];
+        process.stderr.write(`NORMALIZE ERROR doc ${p.r.ID}: ${e.message}\n`);
+      }
+    }
+    if (!dry && zsum.normalized && ciEnabled) {
+      writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+      if (remote) {
+        const pg = path.join(cfg.paths.sidecarLibrary, "_Case Catalog.md");
+        if (fs.existsSync(pg)) remote.queuePut(pg);
+        await remote.flush().catch((e) => process.stderr.write(`remote flush of case catalog: ${e.message}\n`));
+      }
+    }
+    const zDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(zDir, { recursive: true });
+    const zStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const zLog = path.join(zDir, `sweep-${zStamp}.json`);
+    fs.writeFileSync(zLog, JSON.stringify({ summary: zsum, plans: results, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(zDir);
+    process.stdout.write(JSON.stringify({ ...zsum, logFile: zLog }) + "\n");
+    for (const e of results) process.stdout.write(`${e.ok ? "normalized" : "not written"}: doc ${e.id} ${e.title}${e.ok ? ` (${e.cases} cases)` : ` — ${e.failures.slice(0, 2).join("; ")}`}\n`);
+    if (dry) process.stdout.write(`normalize plan: ${zsum.candidates} candidate plan(s); re-run with --normalize-cases --live (sweep.normalizeCases.enabled: true) to call the model\n`);
+    return;
+  }
+
+  // ---- --rename / --rename-plan: re-mint every sidecar stem from the
+  // §4.6 rules (<issue>-<slug>[-qualifier].md, media/<stem>/), move
+  // the files and their media, rewrite every inbound link corpus-wide,
+  // patch TextFileUrl, rebuild the browse pages + manifest. Dry by
+  // default (`--rename-plan` = the old→new table); `--live` applies.
+  // Test Cases rows keep their old anchor/figure URLs until the next
+  // `--recase --live` — the run says so.
+  if (sw.rename) {
+    const abbr = { ...defaultAbbreviations(), ...(sw.slugAbbreviations || {}) };
+    const idsOf = new Map();
+    for (const d of docIdRows) {
+      if (!idsOf.has(d.DocumentId)) idsOf.set(d.DocumentId, []);
+      idsOf.get(d.DocumentId).push({ repo: d.Repo, number: d.IssueNumber, source: d.Source });
+    }
+    const eligible = docIndexRows.filter((r) => r.ID && r.IndexStatus === "Indexed" && r.TextFileUrl);
+    const folderOfRow = (r) => {
+      const parts = String(r.TextFileUrl).split("/");
+      return decodeURIComponent(parts[parts.length - 2] || "") || (sw.kindFolders[r.DocKind] || "Other");
+    };
+    const byFolder = new Map();
+    const entries = [];
+    for (const r of eligible) {
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      const content = local && fs.existsSync(local) ? fs.readFileSync(local, "utf8") : null;
+      const meta = content ? readMeta(content) : {};
+      const e = {
+        row: r, local, content, folder: folderOfRow(r),
+        oldStem: stemOf(r.TextFileUrl), newStem: "",
+        doc: {
+          rowId: r.ID, title: r.Title || "", fileName: r.FileName || "", kind: r.DocKind || "Other",
+          ids: idsOf.get(r.ID) || [], products: String(r.Products || "").split("; ").filter(Boolean),
+          docRevision: meta.doc_revision || "", lastEdited: meta.last_edited || r.SourceModified || "",
+        },
+      };
+      entries.push(e);
+      if (!byFolder.has(e.folder)) byFolder.set(e.folder, []);
+      byFolder.get(e.folder).push(e);
+    }
+    for (const [, es] of byFolder) {
+      const minted = mintStems(es.map((e) => e.doc), abbr);
+      for (const e of es) e.newStem = minted.get(e.row.ID) || e.oldStem;
+    }
+    const nsum = { mode: "rename", dry_run: dry, eligible: entries.length, renamed: 0, unchanged: 0,
+                   no_sidecar: 0, media_moved: 0, links_rewritten: 0, errors: 0 };
+    const fileMap = new Map(); // old file name -> new file name (unique tokens)
+    for (const e of entries) {
+      if (!e.content) { nsum.no_sidecar++; continue; }
+      if (e.newStem !== e.oldStem) fileMap.set(`${e.oldStem}.md`, `${e.newStem}.md`);
+    }
+    const table = entries.map((e) => ({
+      id: e.row.ID, folder: e.folder, from: `${e.oldStem}.md`, to: `${e.newStem}.md`,
+      changed: e.newStem !== e.oldStem,
+    }));
+    const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+    for (const e of entries) {
+      if (!e.content) continue;
+      try {
+        let next = e.content;
+        // this document's media: legacy flat files and the old stem
+        // folder both move to media/<newStem>/
+        for (const ml of mediaLinksOf(next)) {
+          const from = ml.dir ? path.join(mdir, ml.dir, ml.name) : path.join(mdir, `${ml.legacyPrefix || ""}${ml.name}`);
+          const toRel = `../media/${e.newStem}/${ml.name}`;
+          if (ml.dir === e.newStem) continue;
+          if (fs.existsSync(from)) {
+            writer.writeFile(path.join(mdir, e.newStem, ml.name), fs.readFileSync(from));
+            writer.deleteFile(from);
+            nsum.media_moved++;
+          }
+          next = next.split(ml.link).join(toRel);
+        }
+        // every renamed neighbour referenced from this file
+        for (const [from, to] of fileMap) {
+          if (next.includes(from)) { next = next.split(from).join(to); nsum.links_rewritten++; }
+        }
+        const newLocal = path.join(path.dirname(e.local), `${e.newStem}.md`);
+        if (e.newStem !== e.oldStem) {
+          writer.writeFile(newLocal, next);
+          writer.deleteFile(e.local);
+          const url = `${sw.siteUrl}${sw.textsFolder}/${e.folder}/${e.newStem}.md`;
+          await writer.patchRow("docIndex", e.row.ID, { TextFileUrl: { Url: url, Description: `${e.newStem}.md` } });
+          e.row.TextFileUrl = url;
+          nsum.renamed++;
+        } else if (next !== e.content) {
+          writer.writeFile(e.local, next);
+          nsum.unchanged++;
+        } else {
+          nsum.unchanged++;
+        }
+      } catch (err) {
+        nsum.errors++;
+        process.stderr.write(`RENAME ERROR ${e.oldStem}: ${err.message}\n`);
+      }
+    }
+    if (!dry) {
+      writeIndexPages(cfg, docIndexRows, sw.kindFolders);
+      writeManifest(cfg, docIndexRows, issueByDoc(docIndexRows, docIdRows));
+      if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+      if (remote) {
+        for (const pg of ["_Index.md", "_Manifest.json", "_Case Catalog.md"]) {
+          const fp = path.join(cfg.paths.sidecarLibrary, pg);
+          if (fs.existsSync(fp)) remote.queuePut(fp);
+        }
+        await remote.flush().catch((err) =>
+          process.stderr.write(`remote flush after rename: ${err.message}\n`));
+      }
+    }
+    const nDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(nDir, { recursive: true });
+    const nStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const nLog = path.join(nDir, `sweep-${nStamp}.json`);
+    fs.writeFileSync(nLog, JSON.stringify({ summary: nsum, renames: table, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(nDir);
+    process.stdout.write(JSON.stringify({ ...nsum, logFile: nLog }) + "\n");
+    for (const t of table) if (t.changed) process.stdout.write(`${t.folder}/${t.from} -> ${t.to}\n`);
+    if (dry) process.stdout.write(`rename plan: ${table.filter((t) => t.changed).length} of ${table.length} sidecars would be renamed (log: ${nLog}); re-run with --rename --live to apply\n`);
+    else if (nsum.renamed) process.stdout.write(`renamed ${nsum.renamed} sidecar(s); run --recase --live next so Test Cases anchors and figure links follow\n`);
+    return;
+  }
+
+  // ---- --case-audit: which plans the case index covers, and what the
+  // uncovered ones contain (Sidecar_Format_Plan phase 0). Reads the
+  // sidecars on disk, runs the SAME parser --recase runs plus the
+  // latent-shape signals in caseaudit.mjs, and writes `_Case Audit.md`
+  // next to the catalog on a live run. No list writes, no extraction,
+  // no AI calls; the Test Cases GUID is not required.
+  if (sw.caseAudit) {
+    const entries = [];
+    let noSidecar = 0, noSeam = 0;
+    for (const r of docIndexRows) {
+      if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) { noSidecar++; continue; }
+      const content = fs.readFileSync(local, "utf8");
+      const seam = bodySeamEnd(content);
+      if (seam < 0) { noSeam++; continue; }
+      const body = content.slice(seam);
+      const parsed = extractCases(body, { planTitle: r.Title || "" });
+      const parts = String(r.TextFileUrl).split("/");
+      const file = decodeURIComponent(parts[parts.length - 1] || "");
+      const folder = decodeURIComponent(parts[parts.length - 2] || "");
+      entries.push({
+        id: r.ID, title: r.Title || r.FileName || `doc ${r.ID}`,
+        target: folder ? `${folder}/${file}` : file,
+        shape: parsed.shape, cases: parsed.cases.length, signals: auditBody(body),
+      });
+    }
+    const asum = { mode: "case-audit", dry_run: dry, no_sidecar: noSidecar, no_seam: noSeam,
+                   ...summarizeAudit(entries) };
+    if (!dry && cfg.sweep.indexPages !== false) {
+      const pg = path.join(cfg.paths.sidecarLibrary, "_Case Audit.md");
+      fs.writeFileSync(pg, renderAuditPage(entries, new Date().toISOString()));
+      if (remote) {
+        remote.queuePut(pg);
+        await remote.flush().catch((e) =>
+          process.stderr.write(`remote flush of case audit: ${e.message}\n`));
+      }
+    }
+    const aDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(aDir, { recursive: true });
+    const aStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const aLog = path.join(aDir, `sweep-${aStamp}.json`);
+    fs.writeFileSync(aLog, JSON.stringify({ summary: asum, plans: entries }, null, 1));
+    pruneRunLogs(aDir);
+    process.stdout.write(JSON.stringify({ ...asum, logFile: aLog }) + "\n");
+    return;
+  }
+
   // ---- --recase: rebuild the Test Cases list from the sidecars on
   // disk (Case_Index_Plan phase 2 — the backfill). No extraction, no
   // AI calls, no sidecar writes: each eligible document's body below
@@ -907,10 +1265,10 @@ async function main() {
         // sidecars gain/refresh links in the same pass
         const before = fs.readFileSync(local, "utf8");
         const rowProducts = String(r.Products || "").split("; ").filter(Boolean);
-        // prefer the sidecar's own yaml (original casing) over the
+        // prefer the sidecar's own metadata (original casing) over the
         // lowercased junction titles for display
-        const yTools = yamlList(before, "tools");
-        const yKeywords = yamlList(before, "keywords");
+        const yTools = metaList(before, "Tools");
+        const yKeywords = metaList(before, "Keywords");
         const rowTools = yTools.length ? yTools : toolsOf(r.ID);
         const rowTopics = yKeywords.length ? yKeywords : topicsOf(r.ID);
         const toolLinks = new Map();
@@ -1061,7 +1419,15 @@ async function main() {
           rfsum.no_seam++;
           continue;
         }
-        const { docText, figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
+        // phase 4: a body the LLM lane normalized (and a human accepted)
+        // is kept — the deterministic re-render would throw it away;
+        // a source edit reindexes it fresh anyway
+        if (cur.slice(seam).includes("<!-- src: LLM")) {
+          rfsum.llm_kept = (rfsum.llm_kept || 0) + 1;
+          continue;
+        }
+        const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited,
+                figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath, ext, srcItemId, modified, withMedia: false,
         });
@@ -1069,12 +1435,50 @@ async function main() {
         if (figureError) rfsum.figure_errors++;
         rfsum.figures_ocr += figureOcr || 0;
         rfsum.figures_ocr_off += figureOcrOff || 0;
-        if (!docText) {
+        if (!rfRaw) {
           rfsum.no_text++;
           continue;
         }
-        const body = caseHeadings(tidyBody(docText));
-        const next = cur.slice(0, seam) + body;
+        // phase 1b: media links point at media/<stem>/ — figures are
+        // re-rendered into it here; images (not re-extracted on a
+        // reformat) move out of the flat doc<srcItemId>_ naming once
+        const stem = stemOf(existing.TextFileUrl);
+        const docText = relinkMedia(rfRaw, stem);
+        writeMedia(cfg, writer, stem, mediaFiles);
+        rfsum.media_moved = (rfsum.media_moved || 0) + placeLegacyMedia(cfg, writer, srcItemId, stem);
+        const body = renderBody(docText, existing.DocKind || "", cfg, rfsum);
+        // format 3.0: the head (H1 + metadata table) is regenerated from
+        // the row + the file's own metadata (whichever frame it carries),
+        // the Summary/Related/docs stretch is preserved from disk with
+        // the rel markers carrying their scores, and the yaml block —
+        // if any — is dropped. The first extraction date is carried, so
+        // a second --reformat is byte-idempotent.
+        const oldMeta = readMeta(cur);
+        const rowIds = docIdRows
+          .filter((d) => d.DocumentId === existing.ID)
+          .map((d) => ({ repo: d.Repo, number: d.IssueNumber }));
+        const head = sidecarHead({
+          h1Title: (existing.Title || name) === name ? name.replace(/\.[^.]*$/, "") : existing.Title,
+          rowId: existing.ID, fileName: name, sourceLink,
+          docKind: existing.DocKind || "", surface: existing.Surface || "",
+          targetRelease: existing.TargetRelease || "", pe: existing.PE || "", dev: existing.Dev || "",
+          srcAuthor, srcEditor, srcEditedText: fmtDate(srcEdited, true),
+          lane: rfLane || oldMeta.extraction_lane,
+          extractedOn: oldMeta.extracted || fmtDate(new Date().toISOString(), false),
+          docRevision: oldMeta.doc_revision, promptVersion: existing.PromptVersion || sw.promptVersion,
+          keywords: oldMeta.keywords, tools: oldMeta.tools,
+          products: String(existing.Products || "").split("; ").filter(Boolean),
+          ids: rowIds,
+        });
+        const sumAt = cur.indexOf("\n## Summary");
+        let tail = sumAt >= 0 && sumAt < seam
+          ? cur.slice(sumAt + 1, seam)
+          : sidecarTail({ summary: existing.Summary || "" });
+        if (!isFormat3(cur)) {
+          const region = relatedRegion(tail);
+          if (region) tail = tail.replace(region, migrateRelMarkers(region, relEntries(cur)));
+        }
+        const next = head + tail + body;
         if (next === cur) rfsum.unchanged++;
         else {
           writer.writeFile(scLocal, next);
@@ -1331,6 +1735,7 @@ async function main() {
     // browse pages (v1.35): the catalog as humans see it — root +
     // per-kind _Index.md, rebuilt from the rows this run already holds
     writeIndexPages(cfg, docIndexRows, sw.kindFolders);
+    writeManifest(cfg, docIndexRows, issueByDoc(docIndexRows, docIdRows));
     // the case catalog (Case_Index_Plan phase 3): every indexed test
     // case grouped by plan, from the case rows this run maintains
     if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
@@ -1419,11 +1824,12 @@ async function indexDoc(ctx) {
   }
 
   // Switch_ext lane dispatch (shared with the --reformat pass)
-  const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-          figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
+  const { docText: rawDocText, relsText, lane, srcAuthor, srcEditor, srcEdited,
+          figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
     sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
+  let docText = rawDocText;
   summary.figures = (summary.figures || 0) + (figureCount || 0);
   if (figureError) summary.figure_errors = (summary.figure_errors || 0) + 1;
   summary.figures_ocr = (summary.figures_ocr || 0) + (figureOcr || 0);
@@ -1464,7 +1870,6 @@ async function indexDoc(ctx) {
   const docKind = DOC_KINDS.includes(ai.docKind) ? ai.docKind : "Other";
   const surface = SURFACES.includes(ai.surface) ? ai.surface : "Other";
   const title = cut(ai.title && ai.title !== "" ? ai.title : name, 255);
-  const preview = cut(docText, sw.previewCap);
 
   // (b) regex/ids
   setStep("regex");
@@ -1486,7 +1891,7 @@ async function indexDoc(ctx) {
     SourceAuthor: srcAuthor, SourceEditor: srcEditor,
     SourceEdited: srcEdited || null, Surface: surface,
     ExtractionLane: lane, IndexedOn: new Date().toISOString(),
-    TextPreview: preview, DocRevision: rx.docRevision || "",
+    DocRevision: rx.docRevision || "",
     TargetRelease: ai.targetRelease || "", PE: ai.pe || "", Dev: ai.dev || "",
     Products: products.join("; "),
   };
@@ -1498,13 +1903,24 @@ async function indexDoc(ctx) {
     await writer.patchRow("docIndex", rowId, rowFields);
   }
 
-  // (d) sidecar naming
-  const fallbackSlug = lower(name.replace(/\.[^.]*$/, ""))
-    .replaceAll(" ", "-").replaceAll("#", "").replaceAll("%", "");
-  const slug = rx.slug && rx.slug !== "" ? rx.slug : fallbackSlug;
-  const sidecarName = `${slug}__doc${rowId}.md`;
+  // (d) sidecar naming (phase 1b): <issue>-<slug>[-qualifier].md — a
+  // stem is minted once and then FROZEN (the row's TextFileUrl is the
+  // record; --rename re-mints the corpus), so an AI re-title never
+  // renames a linked file
   const kindFolder = sw.kindFolders[docKind] || "Other";
   const sidecarFolder = `${sw.textsFolder}/${kindFolder}`;
+  const frozen = existing?.TextFileUrl ? stemOf(existing.TextFileUrl) : "";
+  const stem = frozen || mintStem(
+    { rowId, title, fileName: name, kind: docKind, ids, products,
+      docRevision: rx.docRevision || "", lastEdited: srcEdited || "" },
+    takenStems(cfg, sw, caches.docIndexRows, kindFolder, rowId),
+    { ...defaultAbbreviations(), ...(sw.slugAbbreviations || {}) }
+  );
+  const sidecarName = `${stem}.md`;
+  // media lands in media/<stem>/; the body's placeholder links follow
+  docText = relinkMedia(docText, stem);
+  writeMedia(cfg, writer, stem, mediaFiles);
+  const preview = cut(docText, sw.previewCap);
 
   // (e)+(f) header
   const header = sidecarHeader({
@@ -1512,7 +1928,8 @@ async function indexDoc(ctx) {
     title, fileName: name, sourceLink, rowId,
     docKind, surface, targetRelease: ai.targetRelease || "",
     pe: ai.pe || "", dev: ai.dev || "",
-    srcAuthor, srcEditor, srcEdited, lane,
+    srcAuthor, srcEditor, srcEdited, srcEditedText: fmtDate(srcEdited, true), lane,
+    extractedOn: fmtDate(new Date().toISOString(), false),
     docRevision: rx.docRevision || "", promptVersion: sw.promptVersion,
     summary: ai.summary || "",
     keywords: ai.keywords || [], tools: ai.tools || [],
@@ -1534,9 +1951,10 @@ async function indexDoc(ctx) {
   for (const k of ai.keywords || []) {
     topicLinks.set(k, linkResolver.topicLink(k, products));
   }
-  // body gets the v1.20 presentation tidy + v1.25 case headings; the
-  // LLM input, preview and similarity index all keep the raw text
-  const bodyText = caseHeadings(tidyBody(docText));
+  // body gets the v1.20 presentation tidy + the phase-3 case grammar
+  // for test plans; the LLM input, preview and similarity index all
+  // keep the raw text
+  const bodyText = renderBody(docText, docKind, cfg, summary);
   const sidecarContent = upsertDocsBlock(
     header + bodyText,
     docsBlock(ai.tools || [], docLinks, toolLinks, topicLinks)
@@ -1546,7 +1964,7 @@ async function indexDoc(ctx) {
   await writer.patchRow("docIndex", rowId, {
     Title: title, FileName: name, DocKey: docKey, IndexStatus: "Indexed",
     TextFileUrl: { Url: textFileUrl, Description: sidecarName },
-    LastError: "", PromptVersion: sw.promptVersion,
+    LastError: "", PromptVersion: sw.promptVersion, TextPreview: preview,
   });
   const oldUrl = existing?.TextFileUrl || "";
   if (oldUrl.startsWith(sw.siteUrl + "/") && oldUrl !== textFileUrl) {

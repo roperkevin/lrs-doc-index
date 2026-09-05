@@ -89,6 +89,7 @@ Exit code: non-zero on any failed assertion.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -105,6 +106,12 @@ def check(cond, label):
     print(('ok   ' if cond else 'FAIL ') + label)
     if not cond:
         failures.append(label)
+
+
+def has_rel(text, doc):
+    """A tagged bullet for `doc` — v1.7 markers carry the score
+    (`<!-- rel:17 s=1003 -->`); older ones are bare (`<!-- rel:17 -->`)."""
+    return re.search(r'<!-- rel:%d(?:\s+s=-?[\d.]+)?\s*-->' % doc, text) is not None
 
 
 # ---- wrap both scripts ---------------------------------------------------
@@ -617,6 +624,25 @@ related: [decoy]
 ### Notes
 stray seams and related-lookalikes everywhere
 '''
+    if frame == 'table':
+        # v1.7 / format 3.0: the info table IS the metadata — no yaml,
+        # no comment; the scores ride the rel markers
+        return f'''# Conflict "Prevention": Acquire Locks for New Routes
+
+| Field | Value |
+| --- | --- |
+| **Doc** | 42 · User Story · Pro |
+| **Product** | — |
+| **Release** | — |
+| **Issues** | [ArcGISPro/x#101](https://devtopia.esri.com/ArcGISPro/x/issues/101) |
+| **Source** | [locks.pptx](<https://x/s/locks.pptx>) |
+| **People** | author A · PE — · dev — |
+| **Edited** | 2026-08-13 10:00 by A |
+| **Extracted** | 2026-08-13 · lane xmlstrip · format 3.0 · prompt v2.0 |
+| **Keywords** | locks · routes |
+| **Tools** | — |
+
+{tail}'''
     if frame in ('details', 'comment'):
         # the headed shapes: flow v2.7 / PromptVersion v1.9 wraps the
         # yaml in <details>; flow v2.8 / PromptVersion v2.0 hides it in
@@ -707,8 +733,8 @@ check(parsed['related'] == [{'doc': 17, 'file': 'lock-acquisition-test-plan__doc
                             {'doc': 9, 'file': 'locks-overview__doc9.md', 's': 1}],
       'metadata related-line yaml-parses to the 3 ranked entries in order')
 region = content[content.find(BEGIN):content.find(END)]
-check(region.count('\n- [') == 3 and '<!-- rel:17 -->' in region
-      and '<!-- rel:23 -->' in region and '<!-- rel:9 -->' in region,
+check(region.count('\n- [') == 3 and has_rel(region, 17)
+      and has_rel(region, 23) and has_rel(region, 9),
       'set mode renders 3 tagged bullets inside the marker region')
 check('[Lock Acquisition Test Plan](<https://x/sites/s/Document Index Texts/'
       'lock-acquisition-test-plan__doc17.md>) — shared issue a#1' in region,
@@ -736,7 +762,7 @@ nfm = yaml.safe_load(fm_of(out['content']))
 check(out['changed'] and out['note'] == 'merged' and
       [e['doc'] for e in nfm['related']] == [42, 99],
       'merge inserts doc 42 (s=1003) above the existing s=1 entry')
-check('<!-- rel:42 -->' in out['content'] and '<!-- rel:99 -->' in out['content'],
+check(has_rel(out['content'], 42) and has_rel(out['content'], 99),
       'merge keeps the existing bullet and adds the new tagged bullet')
 nregion = out['content'][out['content'].find(BEGIN):out['content'].find(END)]
 check(nregion.find('rel:42') < nregion.find('rel:99'),
@@ -877,7 +903,7 @@ crlf = '﻿' + sidecar().replace('\n', '\r\n')
 [out] = patch([{'doc': 42, 'name': 's.md', 'content': crlf}])
 check(out['changed'] and '\r' not in out['content'] and '﻿' not in out['content'],
       'BOM+CRLF sidecar is normalized (patchable again)')
-check('<!-- rel:17 -->' in out['content'], 'normalized sidecar received the patch')
+check(has_rel(out['content'], 17), 'normalized sidecar received the patch')
 [again] = patch([{'doc': 42, 'name': 's.md', 'content': out['content']}])
 check(not again['changed'] and again['content'] == out['content'],
       'idempotent after normalization')
@@ -918,6 +944,32 @@ dup_ranked = [{'doc': 17, 's': 900.0, 'why': 'w1'}, {'doc': 17, 's': 5.0, 'why':
 [out] = patch([{'doc': 42, 'name': 's.md', 'content': sidecar()}], ranked=dup_ranked)
 check(out['content'].count('rel:17') == 1 and '"s":900' in out['content'],
       f"v1.4: duplicate ranked doc renders once at its best score (x{out['content'].count('rel:17')})")
+
+# -- v1.7: table frame (format 3.0) — no yaml, scores on the markers -----
+tbl = sidecar(frame='table')
+[out] = patch([{'doc': 42, 'name': 'self.md', 'content': tbl}])
+tc = out['content']
+check(out['changed'] and out['note'] == 'set' and tc.startswith('# Conflict')
+      and '```' not in tc.split('## Summary')[0] and 'related: [' not in tc.split('---')[0],
+      'v1.7: table frame patched without any yaml line')
+tregion = tc[tc.find(BEGIN):tc.find(END)]
+check('<!-- rel:17 s=1003 -->' in tregion and '<!-- rel:23 s=2 -->' in tregion
+      and '<!-- rel:9 s=1 -->' in tregion,
+      'v1.7: table-frame bullets carry the score on the marker')
+check(tc.count('related: [decoy]') == 1 and '| **Doc** | 42 · User Story · Pro |' in tc,
+      'v1.7: table head and body decoy untouched')
+[again] = patch([{'doc': 42, 'name': 'self.md', 'content': tc}])
+check(not again['changed'] and again['content'] == tc, 'v1.7: table frame idempotent')
+tbl_n = sidecar(frame='table',
+                region='- [Other](<https://x/o.md>) — 1 shared keyword: locks <!-- rel:99 s=1 -->')
+[out] = patch([{'doc': 17, 'name': 'n.md', 'content': tbl_n}])
+nreg = out['content'][out['content'].find(BEGIN):out['content'].find(END)]
+check(has_rel(nreg, 42) and has_rel(nreg, 99) and nreg.find('rel:42') < nreg.find('rel:99')
+      and 's=1003' in nreg,
+      'v1.7: table-frame merge reads the existing entry from its marker and inserts by score')
+[out] = patch([{'doc': 42, 'name': 'x.md', 'content': '# Just a title\n\n## Summary\n\nno table\n'}])
+check(not out['changed'] and out['note'] == 'not-frontmatter',
+      'v1.7: an H1 without the metadata table is still not a frame')
 
 # -- v1.5: details-frame sidecar (flow v2.7 / PromptVersion v1.9) ---------
 det = sidecar(frame='details')
@@ -1005,7 +1057,7 @@ check(out['changed'] and out['content'].startswith('```yaml\n') and
 det_crlf = '﻿' + sidecar(frame='details').replace('\n', '\r\n')
 [out] = patch([{'doc': 42, 'name': 's.md', 'content': det_crlf}])
 check(out['changed'] and '\r' not in out['content'] and
-      '<!-- rel:17 -->' in out['content'],
+      has_rel(out['content'], 17),
       'v1.5: BOM+CRLF details-frame sidecar is normalized and patched')
 
 # -- v1.6: comment-frame sidecar (flow v2.8 / PromptVersion v2.0) ---------
@@ -1088,7 +1140,7 @@ check(patch([{'doc': 42, 'name': 'self.md', 'content': sidecar()}])[0]['content'
 com_crlf = '﻿' + sidecar(frame='comment').replace('\n', '\r\n')
 [out] = patch([{'doc': 42, 'name': 's.md', 'content': com_crlf}])
 check(out['changed'] and '\r' not in out['content'] and
-      '<!-- rel:17 -->' in out['content'],
+      has_rel(out['content'], 17),
       'v1.6: BOM+CRLF comment-frame sidecar is normalized and patched')
 
 # ---- type-check both wrapped runners (separately — each Office Script

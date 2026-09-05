@@ -872,3 +872,32 @@ Case rows are a REPLACE-SET per document (`CaseKey =
 set, archived docs delete theirs, and nothing else in the pipeline
 may hold a Test Cases row id — the rows are derived state, safe to
 delete wholesale and rebuild with `--recase`.
+
+## 13. Sidecar format 3.0 rollout (Sidecar_Format_Plan phases 0–5)
+
+The review in `Sidecar_Format_Plan.md` shipped as sweep v1.47–v1.53.
+Before the first nightly run on the new code:
+
+1. **Tenant** — Test Cases list: add `Confidence` (Choice: high;
+   medium; low; llm), `Group` (text), `SourceRef` (text); extend
+   `Shape`'s choices to S1; S2; S3; S4; S5; S6; LLM; draft; deck
+   (`schemas/SPList_TestCases.csv`).
+2. `node local/sweep.mjs --config local/config.json --reformat --live`
+   — every sidecar rewrites once: the metadata table (no yaml block),
+   the v2.5 re-extraction, the case grammar on test plans, the story
+   profile on stories. No AI spend. Byte-idempotent on a second run.
+3. `--rename-plan` (read the old → new table, nothing touched) then
+   `--rename --live` (files, media/<stem>/, every inbound link,
+   TextFileUrl, browse pages, `_Manifest.json`), then
+   `--recase --live` so Test Cases anchors and figure links follow.
+4. `--case-audit --live` and read `_Case Audit.md`. Optionally set
+   `sweep.normalizeCases.enabled: true` and run
+   `--normalize-cases --live` in batches (`maxPerRun`); LLM-shaped rows
+   show as `LLM · llm` in `_Case Catalog.md`.
+5. Paste `agent/QA_Agent_Instructions_v1_4.md` and re-run the smoke
+   questions.
+
+Config knobs added: `sweep.slugAbbreviations` (extend the shipped
+`local/slug_abbreviations.json`), `sweep.storyProfile` (default on),
+`sweep.normalizeCases` (see `config.sample.json`), `llm.normalizeModelId`
+(aibuilder lane only).

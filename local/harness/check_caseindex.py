@@ -104,8 +104,53 @@ Steps.
 
 PROSE = "Just a prose document.\n\n## Background\n\nWords about nothing.\n"
 
+# every other detector on one deck: S3 case table, S4 label list, S5
+# labelled steps, S6 numbered cases, S2 titled case slide, a stoplist
+# label that stays prose, a checklist that is not a case
+SHAPES = """## Slide 1 — Scope
+Notes:
+- Test on RH and APR data
+- Test in FGDB and FS
+
+## Slide 2 — Coordinate Configuration Tests
+| # | Test | Expected result |
+| --- | --- | --- |
+| A-1 | Toggle is present in the widget configuration | Toggle shown, OFF by default |
+| A-2 | Click the toggle | Precision options appear |
+
+## Slide 3
+**Positive Tests: Normal Routes**
+- Correct line order of 100, 200, 300, 400 on a normal line
+- Time sliced routes, first slice 100, 200 and second 300, 400
+
+**Negative Tests: Gapped Routes**
+- Incorrect line order of 400, 200, 100 with a gap between routes 200 and 100
+
+## Slide 4
+UI Tests – First Pane:
+- Verify the Open Type is set from the configuration
+- Verify the Attribute Set is as configured
+
+## Slide 5 — Positive cases
+1. Normal route, coordinate input, positive offset
+| Route | From |
+| --- | --- |
+| R2 | 0 |
+2. Gapped route, coordinate input, negative offset
+
+## Slide 6 — Test case 3: Transfer to existing line – keep original measures
+| Rname | Line |
+| --- | --- |
+| 1A | Red |
+
+## Slide 7
+17. Verify the effective date defaults to today
+18. Verify route information is shown on hover
+"""
+
 NODE_SCRIPT = """
-import { tidyBody, caseHeadings } from "file://%(lib)s/presentation.mjs";
+import { tidyBody } from "file://%(lib)s/presentation.mjs";
+import { renderTestPlanBody, lintTestPlanBody } from "file://%(lib)s/casegrammar.mjs";
 import { extractCases, toRowFields, diffCaseRows, caseIssueRefs,
   prepareVocab, caseTags } from "file://%(lib)s/caseindex.mjs";
 import fs from "node:fs";
@@ -113,12 +158,15 @@ import fs from "node:fs";
 const fx = JSON.parse(fs.readFileSync(process.env.CASEINDEX_FIXTURE, "utf8"));
 const MB = "https://mock.example/sites/l/LRS Doc Index/media";
 const opts = { defaultRepo: "A/b", mediaUrlBase: MB };
-const deckBody = caseHeadings(tidyBody(fx.rawDeck));
+const rendered = renderTestPlanBody(tidyBody(fx.rawDeck));
+const deckBody = rendered.body;
 const deck = extractCases(deckBody, opts);
 const draft = extractCases(fx.draft, opts);
 const prose = extractCases(fx.prose, opts);
-const mixed = extractCases(
-  deckBody + "\\n### TC-P1 — A stray draft-style case\\nSteps.\\n", opts);
+const legacyMixed = extractCases(
+  "## Case 2: Positive - Loop <!-- slide 4 -->\\nOld body.\\n\\n### TC-P1 — A draft-style case\\nSteps.\\n", opts);
+const shapes = renderTestPlanBody(tidyBody(fx.shapes));
+const mixed = extractCases(shapes.body, opts);
 const capped = extractCases(deckBody, { ...opts, caseTextCap: 10 });
 const longTitle = extractCases(
   "### TC-P1 — " + "x".repeat(400) + "\\nSteps.\\n", opts);
@@ -150,7 +198,13 @@ const hlDiff = diffCaseRows(hlDiffRows, fresh);
 
 process.stdout.write(JSON.stringify({
   deckBody, deck, draft, prose,
-  mixed: { shape: mixed.shape, mixed: mixed.mixed, count: mixed.cases.length },
+  renderedShape: rendered.shape, lint: lintTestPlanBody(deckBody),
+  legacyMixed: { shape: legacyMixed.shape, mixed: legacyMixed.mixed, count: legacyMixed.cases.length },
+  shapesBody: shapes.body,
+  mixed: { shape: mixed.shape, mixed: mixed.mixed, count: mixed.cases.length,
+           cases: mixed.cases.map((c) => ({ caseNo: c.caseNo, det: c.det, classification: c.classification,
+             scenario: c.scenario, group: c.group, sourceRef: c.sourceRef, confidence: c.confidence,
+             expectedResult: c.expectedResult, stepCount: c.stepCount, slideNo: c.slideNo })) },
   cappedTextLens: capped.cases.map((c) => c.text.length),
   longTitleLen: toRowFields(1, longTitle.cases[0], now).Title.length,
   fresh, same, changed, sweptOnly, grown, stale, archived, hlSame, hlDiff,
@@ -185,7 +239,7 @@ process.stdout.write(JSON.stringify({
 def main():
     tmp = os.path.join(HERE, "_caseindex_fixture.json")
     with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"rawDeck": RAW_DECK, "draft": DRAFT, "prose": PROSE}, f)
+        json.dump({"rawDeck": RAW_DECK, "draft": DRAFT, "prose": PROSE, "shapes": SHAPES}, f)
     try:
         proc = subprocess.run(
             ["node", "--input-type=module", "-e", NODE_SCRIPT % {"lib": LIB}],
@@ -203,18 +257,22 @@ def main():
     print("-- deck shape (via the presentation layer's own emission) --")
     deck = r["deck"]
     cases = deck["cases"]
-    check("deck: shape", deck["shape"] == "deck", deck["shape"])
+    check("deck: shape is the S1 detector (profile rendered)",
+          deck["shape"] == "S1" and r["renderedShape"] == "S1", deck["shape"])
+    check("deck: profile lint clean", r["lint"] == [], json.dumps(r["lint"]))
     check("deck: exactly the two case slides", len(cases) == 2,
           json.dumps([c["title"] for c in cases]))
     c1 = cases[0] if cases else {}
     check("deck: numbered case title from the case + classification lines",
-          c1.get("title") == "Case 2: Positive - Non Spanning Line Event",
-          c1.get("title", ""))
-    check("deck: caseNo is the plan's own number", c1.get("caseNo") == "2",
-          c1.get("caseNo", ""))
+          c1.get("title") == "TC-P01 — Loop", c1.get("title", ""))
+    check("deck: caseNo is the TC id; the deck's own number rides the src",
+          c1.get("caseNo") == "TC-P01" and "case 2" in c1.get("sourceRef", ""),
+          c1.get("caseNo", "") + " / " + c1.get("sourceRef", ""))
+    check("deck: group from the classification line",
+          c1.get("group") == "Non Spanning Line Event", c1.get("group", ""))
     check("deck: slide provenance", c1.get("slideNo") == 4, str(c1.get("slideNo")))
     check("deck: classification Positive", c1.get("classification") == "Positive")
-    check("deck: scenario from the H3", c1.get("scenario") == "Loop",
+    check("deck: scenario is the heading remainder", c1.get("scenario") == "Loop",
           c1.get("scenario", ""))
     check("deck: case specifics survive in CaseText",
           "Split measure: 20" in c1.get("text", ""), c1.get("text", ""))
@@ -226,22 +284,25 @@ def main():
           c1.get("issueRefs") == ["A/b#612", "ArcGISPro/ps-location-referencing#4855"],
           json.dumps(c1.get("issueRefs")))
     check("deck: anchor is the GitHub slug of the visible heading",
-          c1.get("anchor") == "case-2-positive---non-spanning-line-event",
-          c1.get("anchor", ""))
+          c1.get("anchor") == "tc-p01--loop", c1.get("anchor", ""))
     c2 = cases[1] if len(cases) > 1 else {}
     check("deck: rule-b classification-only heading is a case",
-          c2.get("title") == "Negative - Line Network", c2.get("title", ""))
+          c2.get("title") == "TC-N01 — Normal Route", c2.get("title", ""))
     check("deck: rule-b classification", c2.get("classification") == "Negative")
-    check("deck: rule-b has no case number", c2.get("caseNo") == "")
+    check("deck: rule-b group is the classification remainder",
+          c2.get("group") == "Line Network", c2.get("group", ""))
     check("deck: rule-b scenario", c2.get("scenario") == "Normal Route",
           c2.get("scenario", ""))
     check("deck: ordinals are 1-based document order",
           [c["ordinal"] for c in cases] == [1, 2])
     body = r["deckBody"]
-    check("deck: checklist slide stayed a bare heading (not a case)",
-          "## Slide 6" in body, body)
+    check("deck: checklist slide lands under Other content (not a case)",
+          "### Slide 6 <!-- slide 6 -->" in body.split("## Other content")[-1], body)
     check("deck: divider section rendered but not a case",
-          "test cases <!-- slide 7 -->" in body, body)
+          "Conflict Prevention test cases" in body.split("## Other content")[-1], body)
+    check("deck: profile sections in order",
+          body.index("## Test Cases") < body.index("## Other content")
+          and "## Overview" not in body, body)
 
     print("-- draft shape (the draftlint TC contract) --")
     draft = r["draft"]
@@ -274,10 +335,47 @@ def main():
     check("no structure: zero cases, shape none",
           r["prose"]["shape"] == "none" and r["prose"]["cases"] == [],
           json.dumps(r["prose"]))
-    check("mixed: larger set wins (deck)", r["mixed"]["shape"] == "deck"
-          and r["mixed"]["count"] == 2, json.dumps(r["mixed"]))
-    check("mixed: flagged for the run summary", r["mixed"]["mixed"] is True)
+    check("legacy deck section + TC section: the TC grammar wins",
+          r["legacyMixed"]["shape"] == "draft" and r["legacyMixed"]["count"] == 1
+          and r["legacyMixed"]["mixed"] is False, json.dumps(r["legacyMixed"]))
     check("deck fixture alone is not mixed", deck["mixed"] is False)
+
+    print("-- the other detectors (S2–S6) --")
+    mx = r["mixed"]
+    mc = {c["caseNo"]: c for c in mx["cases"]}
+    check("several detectors on one plan: shape mixed, flagged",
+          mx["shape"] == "mixed" and mx["mixed"] is True, json.dumps(mx)[:300])
+    dets = [c["det"] for c in mx["cases"]]
+    check("S3 table rows are cases with id, expected result and the row in src",
+          mc.get("TC-U01", {}).get("det") == "S3"
+          and mc["TC-U01"]["expectedResult"] == "Toggle shown, OFF by default"
+          and mc["TC-U01"]["sourceRef"] == "S3 · slide 2 · table · A-1"
+          and mc["TC-U01"]["slideNo"] == 2, json.dumps(mc.get("TC-U01")))
+    check("S4 Positive/Negative label items are one case each with the group",
+          mc.get("TC-P01", {}).get("det") == "S4" and mc["TC-P01"]["group"] == "Normal Routes"
+          and mc["TC-P01"]["scenario"].startswith("Correct line order of 100")
+          and mc.get("TC-N01", {}).get("det") == "S4" and mc["TC-N01"]["group"] == "Gapped Routes",
+          json.dumps([mc.get("TC-P01"), mc.get("TC-N01")]))
+    check("S5 other label: one case per label, bullets as numbered steps, medium confidence",
+          mc.get("TC-U03", {}).get("det") == "S5" and mc["TC-U03"]["scenario"] == "UI Tests – First Pane"
+          and mc["TC-U03"]["stepCount"] == 2 and mc["TC-U03"]["confidence"] == "medium",
+          json.dumps(mc.get("TC-U03")))
+    check("S6 numbered cases under a Positive title: one case per line, table rides with its case",
+          [c["caseNo"] for c in mx["cases"] if c["det"] == "S6"] == ["TC-P03", "TC-P04"]
+          and "| R2 | 0 |" in r["shapesBody"].split("### TC-P03")[1].split("### TC-P04")[0],
+          json.dumps([c for c in mx["cases"] if c["det"] == "S6"]))
+    check("S2 titled case slide is one case with the slide's tables (lane inherited from the Positive divider)",
+          any(c["det"] == "S2" and c["caseNo"] == "TC-P05"
+              and c["scenario"].startswith("Transfer to existing line") for c in mx["cases"])
+          and "| 1A | Red |" in r["shapesBody"], json.dumps([c for c in mx["cases"] if c["det"] == "S2"]))
+    check("stoplist label (Notes) stays prose in Overview; checklist slide is not a case",
+          "## Overview" in r["shapesBody"] and "- Test on RH and APR data" in r["shapesBody"].split("## Test Cases")[0]
+          and "17. Verify the effective date" in r["shapesBody"].split("## Other content")[-1]
+          and not any("effective date" in c["scenario"] for c in mx["cases"]), r["shapesBody"][:600])
+    check("ids are per-lane sequences in document order",
+          [c["caseNo"] for c in mx["cases"]] == ["TC-U01", "TC-U02", "TC-P01", "TC-P02", "TC-N01",
+                                                  "TC-U03", "TC-P03", "TC-P04", "TC-P05"],
+          json.dumps([c["caseNo"] for c in mx["cases"]]))
 
     print("-- issue refs --")
     check("hashtag needs 3+ digits", r["refsBare"] == ["A/b#612"],
@@ -292,7 +390,7 @@ def main():
 
     print("-- per-case metadata (v1.1) --")
     check("deck case: shape/figure/table counts and routes from the fixture table",
-          c1.get("shape") == "deck" and c1.get("figureCount") == 3
+          c1.get("shape") == "S1" and c1.get("figureCount") == 3
           and c1.get("tableCount") == 1 and c1.get("stepCount") == 0
           and c1.get("routeRefs") == "R1L1", json.dumps(c1))
     check("deck case: no draft contract lines",
@@ -364,8 +462,11 @@ def main():
           json.dumps(r["dfOrder"]))
 
     row0 = r["fresh"][0]
-    check("row shaping carries the v1.1 columns",
-          row0.get("Shape") == "deck" and row0.get("TableCount") == 1
+    check("row shaping carries the v1.1 + v2.0 columns",
+          row0.get("Shape") == "S1" and row0.get("Confidence") == "high"
+          and row0.get("Group") == "Non Spanning Line Event"
+          and row0.get("SourceRef") == "S1 · slide 4 · case 2"
+          and row0.get("TableCount") == 1
           and row0.get("RouteRefs") == "R1L1"
           and "ExpectedResult" in row0 and "TraceText" in row0
           and "StepCount" in row0 and "FigureCount" in row0,

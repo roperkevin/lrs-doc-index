@@ -327,3 +327,19 @@ Each phase: `local/CHANGES.md` entry + STATUS table row; phases 0–1
 are pure-repo work, safe while the pipeline is down (open action
 12); phase 2's live backfill waits on auth restore like everything
 else.
+
+## Addendum (2026-09-05) — one case grammar (Sidecar_Format_Plan phase 3)
+
+D3's "two shapes, one parser" is superseded. The sidecar body of a
+case-indexed kind is rendered by `local/lib/casegrammar.mjs` into the
+`testplan/v1` profile (`## Overview` / `## Test Cases` / `## Other
+content`), and every detected case — from any of six source shapes —
+is one `### TC-P01 — <title> <!-- src: S3 · slide 4 · table · A-7 -->`
+section: the same heading TestPlanGen drafts already use. `caseindex`
+v2.0 reads that single grammar (`tcCases`); the pre-3 `## Case N`
+deck sections still parse (Shape `deck`) until `--reformat --live`
+converges the corpus. New row columns: `Confidence` (high / medium
+from the detector), `Group` (the label a case came from), `SourceRef`
+(the src comment verbatim — catalog row → source slide). The detectors
+and their yield on the corpus are in `Sidecar_Format_Plan.md` §4.4
+and `_Case Audit.md`.

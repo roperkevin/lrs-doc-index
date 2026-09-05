@@ -83,6 +83,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readMeta } from "./lib/sidecarmeta.mjs";
 
 export const EMU_PX = 9525;          // 96 dpi
 const SLIDE_W = 12192000;            // 13.33 in (16:9)
@@ -126,50 +127,55 @@ function collectInputs(argv) {
 // figure's whole context: its H1 is the document title, its yaml block
 // carries the document metadata, and the figure's own case section
 // (heading + tables) sits around the figure's image link in the body.
-function yamlVal(md, key) {
-  const m = md.match(new RegExp(`^${key}:\\s*["']?(.*?)["']?\\s*$`, "m"));
-  return m ? m[1].trim() : "";
-}
+// the sidecar's metadata — the format-3.0 table, or the legacy yaml
+// block on a file the backfill has not rewritten yet (sidecarmeta.mjs
+// reads both)
 
 function sidecarFor(file, cache) {
-  const m = basename(file).match(/^doc(\d+)_/);
-  if (!m) return null;
-  const id = m[1];
-  if (cache[id] !== undefined) return cache[id];
+  // phase 1b naming: media/<stem>/<asset> -> <kind folder>/<stem>.md
+  // (the stem folder's siblings are the kind folders); pre-1b flat
+  // media doc{N}_<asset> -> {slug}__doc{N}.md
   const dir = dirname(resolve(file));
-  const parent = dirname(dir);
+  const stemDir = basename(dir);
+  const flat = basename(file).match(/^doc(\d+)_/);
+  const id = flat ? flat[1] : (basename(dirname(dir)) === "media" ? stemDir : null);
+  if (!id) return null;
+  if (cache[id] !== undefined) return cache[id];
   const hits = [];
+  const wanted = flat ? (f) => f.endsWith(`__doc${id}.md`) : (f) => f === `${stemDir}.md`;
   const scan = (d) => {
     try {
-      for (const f of readdirSync(d)) if (f.endsWith(`__doc${id}.md`)) hits.push(join(d, f));
+      for (const f of readdirSync(d)) if (wanted(f)) hits.push(join(d, f));
     } catch { /* unreadable dir: keep looking elsewhere */ }
   };
+  // flat: media/ and the kind folders are siblings of each other;
+  // stem folder: media/<stem>/ sits two levels below the library root
+  const root = flat ? dirname(dir) : dirname(dirname(dir));
   scan(dir);
-  scan(parent);
+  scan(root);
   try {
-    for (const f of readdirSync(parent)) {
-      const p = join(parent, f);
+    for (const f of readdirSync(root)) {
+      const p = join(root, f);
       if (p === dir) continue;
       try { if (statSync(p).isDirectory()) scan(p); } catch { /* ignore */ }
     }
   } catch { /* ignore */ }
-  let sc = { id, title: `doc ${id}`, meta: "", lines: null };
+  let sc = { id, title: flat ? `doc ${id}` : stemDir.replace(/[-_]+/g, " "), meta: "", lines: null };
   if (hits.length) {
-    const slug = basename(hits[0]).replace(new RegExp(`__doc${id}\\.md$`), "");
+    const slug = basename(hits[0]).replace(/\.md$/, "").replace(/__doc\d+$/, "");
     sc.title = slug.replace(/[-_]+/g, " ").trim() || sc.title;
     try {
       const md = readFileSync(hits[0], "utf8");
+      const meta = readMeta(md);
       const h1 = md.match(/^# (.+)$/m);
       if (h1) sc.title = h1[1].trim();
-      else if (yamlVal(md, "title")) sc.title = yamlVal(md, "title");
+      else if (meta.title) sc.title = meta.title;
       // the metadata line: what a reviewer needs to place the case —
       // kind, surface, products, and how fresh the source is
-      const products = (md.match(/^products:\s*\[(.*)\]\s*$/m) || ["", ""])[1]
-        .split(",").map((s) => s.replace(/["']/g, "").trim()).filter(Boolean);
-      const edited = (yamlVal(md, "last_edited").match(/\d{4}-\d{2}-\d{2}/) || [""])[0];
-      const editor = yamlVal(md, "last_edited_by");
+      const edited = (meta.last_edited.match(/\d{4}-\d{2}-\d{2}/) || [""])[0];
+      const editor = meta.last_edited_by;
       sc.meta = [
-        yamlVal(md, "doc_kind"), yamlVal(md, "surface"), products.join(" / "),
+        meta.doc_kind, meta.surface, meta.products.join(" / "),
         edited ? `edited ${edited}${editor ? " by " + editor : ""}` : "",
       ].filter(Boolean).join("  ·  ").slice(0, 120);
       sc.lines = md.split("\n");
@@ -203,13 +209,16 @@ function caseSection(sc, svgName) {
     if (lines[i].indexOf("](") >= 0 && lines[i].indexOf(svgName) >= 0) { at = i; break; }
   }
   if (at < 0) return null;
+  // the case heading: phase-3 bodies put a case under "### TC-P01 — …"
+  // (its section ends at the next heading of any level); pre-3 bodies
+  // used "## Case N …" sections
   let s = at, e = lines.length;
-  while (s > 0 && !/^## /.test(lines[s])) s--;
+  while (s > 0 && !/^##(#)? /.test(lines[s])) s--;
   for (let i = at + 1; i < lines.length; i++) {
-    if (/^## /.test(lines[i])) { e = i; break; }
+    if (/^##(#)? /.test(lines[i])) { e = i; break; }
   }
-  const head = /^## /.test(lines[s])
-    ? lines[s].replace(/^## /, "").replace(/<!--[\s\S]*?-->/g, "").trim() : "";
+  const head = /^##(#)? /.test(lines[s])
+    ? lines[s].replace(/^##(#)? /, "").replace(/<!--[\s\S]*?-->/g, "").trim() : "";
   const isRow = (ln) => {
     const t = ln.trim();
     return t.length > 1 && t[0] === "|" && t[t.length - 1] === "|";

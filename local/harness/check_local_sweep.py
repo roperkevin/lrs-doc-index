@@ -30,6 +30,7 @@ import re
 import shutil
 import struct
 import subprocess
+import urllib.parse
 import sys
 import tempfile
 import threading
@@ -96,6 +97,26 @@ def make_pptx(fpath, text, with_media=False, with_diagram=False, with_case=False
                 "<a:p><a:r><a:t>Positive - Line network</a:t></a:r></a:p>"
                 "<a:p><a:r><a:t>3. Loop route – Split measure : 40 "
                 "using Merge Events</a:t></a:r></a:p>"
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+            # a checklist slide (2+ numbered verifications, not a case) and
+            # a LONG negative case line (the heading must take a short
+            # scenario title; the full text rides as the Case line) — the
+            # case-grammar legs (Sidecar_Format_Plan phase 3) read these
+            z.writestr(
+                "ppt/slides/slide3.xml",
+                "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+                "<a:p><a:r><a:t>17. Verify the effective date defaults to today</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>18. Verify route information is shown on hover</a:t></a:r></a:p>"
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+            z.writestr(
+                "ppt/slides/slide4.xml",
+                "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+                "<a:p><a:r><a:t>Negative - Merge option disabled</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>9. Merge Option disabled, coincident events that have "
+                "exact attributes from measures 0-4 and exist in both versions</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>current date: 3/29/2022</a:t></a:r></a:p>"
                 "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
             )
         if with_media:
@@ -278,10 +299,37 @@ def make_messy_pptx(fpath, text):
         z.writestr("docProps/core.xml", CORE_XML)
 
 
+def make_story_pptx(fpath, text):
+    """A story deck in the team template (Sidecar_Format_Plan phase 5):
+    title placeholders name the slides — User Story, a feature slide,
+    Testing, Automation, Documentation, Assignment — so the sweep maps
+    them onto the story/v1 sections."""
+    def slide(title, paras):
+        ttl = ("<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr/>"
+               "<p:nvPr><p:ph type=\"title\"/></p:nvPr></p:nvSpPr><p:txBody>"
+               f"<a:p><a:r><a:t>{title}</a:t></a:r></a:p></p:txBody></p:sp>")
+        body = "".join(f"<a:p><a:r><a:t>{t}</a:t></a:r></a:p>" for t in paras)
+        return ("<p:sld><p:cSld><p:spTree>" + ttl + "<p:sp><p:txBody>" + body +
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>")
+    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("ppt/slides/slide1.xml", slide(text, ["User Story"]))
+        z.writestr("ppt/slides/slide2.xml", slide("User Story", [
+            "As a LRS editor, I want to split events at a measure so that records stay accurate."]))
+        z.writestr("ppt/slides/slide3.xml", slide("Split behaviour", [
+            "Splitting at a measure creates two events with the same attributes."]))
+        z.writestr("ppt/slides/slide4.xml", slide("Testing", ["Test on normal and gapped routes."]))
+        z.writestr("ppt/slides/slide5.xml", slide("Automation", ["Add to the split-events automation."]))
+        z.writestr("ppt/slides/slide6.xml", slide("Documentation", ["Update the split events topic."]))
+        z.writestr("ppt/slides/slide7.xml", slide("Assignment", ["Story Points: 3", "Dev: Ada"]))
+        z.writestr("docProps/core.xml", CORE_XML)
+
+
 # ---- mock Graph + LLM server ---------------------------------------
 
 class MockState:
     def __init__(self):
+        self.gen_text = ""           # --normalize-cases: the streamed reply
+        self.gen_prompts = []
         self.next_id = 100
         # list GUID -> {item_id(str) -> fields dict}
         self.lists = {}
@@ -423,6 +471,33 @@ def make_handler(state, lib_guid, src_files):
                     "anthropic-beta": self.headers.get("anthropic-beta"),
                 }
                 prompt = body["messages"][0]["content"]
+                if body.get("stream"):
+                    # generateText (llm.mjs v1.6) streams — the
+                    # --normalize-cases lane; serve the leg's gen_text as SSE
+                    state.gen_prompts.append(prompt)
+                    text = state.gen_text
+                    half = len(text) // 2
+                    events = [
+                        {"type": "message_start", "message": {"id": "msg_mock"}},
+                        {"type": "content_block_start", "index": 0,
+                         "content_block": {"type": "text", "text": ""}},
+                        {"type": "content_block_delta", "index": 0,
+                         "delta": {"type": "text_delta", "text": text[:half]}},
+                        {"type": "content_block_delta", "index": 0,
+                         "delta": {"type": "text_delta", "text": text[half:]}},
+                        {"type": "content_block_stop", "index": 0},
+                        {"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+                         "usage": {"output_tokens": 1}},
+                        {"type": "message_stop"},
+                    ]
+                    payload = "".join(
+                        f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+                    self.send_response(200)
+                    self.send_header("content-type", "text/event-stream")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
                 out = self._classify(lambda fname: fname in prompt)
                 return self._json({
                     "stop_reason": "end_turn",
@@ -1123,7 +1198,8 @@ def main():
     check("alpha PromptVersion stamped", alpha.get("PromptVersion") == "v2.0")
     check("alpha TextFileUrl set",
           isinstance(alpha.get("TextFileUrl"), dict)
-          and "__doc" in alpha["TextFileUrl"].get("Url", ""), str(alpha.get("TextFileUrl")))
+          and alpha["TextFileUrl"].get("Url", "").endswith("/Test Plans/123-alpha-plan.md"),
+          str(alpha.get("TextFileUrl")))
     check("alpha preview + author", "lock acquisition" in alpha.get("TextPreview", "")
           and alpha.get("SourceAuthor") == "Fixture Author")
 
@@ -1156,11 +1232,18 @@ def main():
     check("root browse index lists the corpus by kind",
           "# LRS Doc Index — catalog" in root_idx
           and "## Test Plans (1)" in root_idx
-          and "__doc" in root_idx, root_idx[:400])
+          and "123-alpha-plan.md" in root_idx, root_idx[:400])
+    man_path = os.path.join(sidecar_dir, "_Manifest.json")
+    man = json.load(open(man_path)) if os.path.exists(man_path) else {}
+    check("live run writes _Manifest.json (row id -> sidecar path)",
+          man.get("format") == "3.0"
+          and any(d.get("path") == "Test Plans/123-alpha-plan.md" and d.get("issue") == 123
+                  for d in man.get("docs", {}).values()),
+          str(man)[:300])
     kind_idx_path = os.path.join(sidecar_dir, "Test Plans", "_Index.md")
     kind_idx = open(kind_idx_path).read() if os.path.exists(kind_idx_path) else ""
     check("per-kind browse index links its sidecars",
-          "# Test Plans — index" in kind_idx and "__doc" in kind_idx
+          "# Test Plans — index" in kind_idx and "123-alpha-plan.md" in kind_idx
           and "(<Test Plans/" not in kind_idx, kind_idx[:400])
 
     # body-text similarity: spec.pdf and notes.txt share body words but
@@ -1169,7 +1252,7 @@ def main():
     spec_sc = open(spec_sc_path).read() if spec_sc_path else ""
     notes_id = int(by_name["notes.txt"][0])
     check("body-sim relates spec.pdf to notes.txt (no shared keyword)",
-          f"doc{notes_id}" in spec_sc and "similar text " in spec_sc,
+          f"<!-- rel:{notes_id} " in spec_sc and "similar text " in spec_sc,
           spec_sc[-500:])
 
     # status page (live runs only, sidecar-library root)
@@ -1189,10 +1272,18 @@ def main():
     check("alpha sidecar in kind folder", alpha_sc is not None and os.sep + "Test Plans" + os.sep in alpha_sc,
           str(alpha_sc))
     sc = open(alpha_sc).read() if alpha_sc else ""
-    check("sidecar header shape", sc.startswith("# Alpha Plan")
-          and "<!-- metadata" in sc and 'prompt_version: "v2.0"' in sc
-          and "| **Kind** | Test Plan · Pro |" in sc, sc[:300])
-    check("sidecar issue row + yaml", "#123" in sc and 'issues: ["' in sc)
+    check("sidecar header shape (format 3.0: H1 + metadata table, no yaml block)",
+          sc.startswith("# Alpha Plan")
+          and "<!-- metadata" not in sc and "```yaml" not in sc
+          and "| Field | Value |" in sc
+          and re.search(r"(?m)^\| \*\*Doc\*\* \| \d+ · Test Plan · Pro \|$", sc) is not None
+          and "· format 3.0 · prompt v2.0 |" in sc, sc[:400])
+    check("sidecar issue row links the issue", "#123](https://devtopia.esri.com/" in sc
+          and "| **Issues** | [" in sc, sc[:400])
+    check("sidecar table carries every row in order",
+          [m for m in re.findall(r"(?m)^\| \*\*([A-Za-z]+)\*\* \|", sc)][:10]
+          == ["Doc", "Product", "Release", "Issues", "Source", "People", "Edited",
+              "Extracted", "Keywords", "Tools"], sc[:600])
     check("sidecar body appended", "Alpha test plan covering lock acquisition" in sc)
     check("product detected on the row",
           alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
@@ -1237,21 +1328,23 @@ def main():
     # 123 bodies and produced zero figures with no error anywhere.
     # media files are prefixed with the SOURCE item id (10 here), not the
     # Doc Index row id — that distinction is deliberate and easy to get wrong
+    # phase 1b: media/<stem>/<asset> — the stem is the sidecar's own
     media_dir = os.path.join(sidecar_dir, "media")
-    svgs = [f for f in os.listdir(media_dir) if f.endswith(".svg")]
-    check("sweep wrote an SVG figure for the diagram deck",
-          "doc10_slide1.svg" in svgs, str(svgs))
+    stem_dir = os.path.join(media_dir, "123-alpha-plan")
+    svgs = [f for f in os.listdir(stem_dir)] if os.path.isdir(stem_dir) else []
+    check("sweep wrote an SVG figure for the diagram deck into media/<stem>/",
+          "slide1.svg" in svgs, str(svgs))
     check("figure linked from the sidecar body",
-          "](../media/doc10_slide1.svg)" in sc, sc[:600])
+          "](../media/123-alpha-plan/slide1.svg)" in sc, sc[:600])
     check("figure link sits directly before its anchor table (v1.26)",
-          re.search(r"!\[[^\]]*\]\(\.\./media/doc10_slide1\.svg\)\n\n\| Route ID \| R9 \|",
+          re.search(r"!\[[^\]]*\]\(\.\./media/123-alpha-plan/slide1\.svg\)\n\n\| Route ID \| R9 \|",
                     sc) is not None, sc[:600])
     check("figure link no longer stacks under the slide heading",
           re.search(r"## Slide 1[^\n]*\n\n!\[", sc) is None, sc[:600])
     check("the figure replaced the [figure: ...] caption",
           "[figure:" not in sc, sc[:600])
     check("alt text describes the diagram",
-          re.search(r"!\[[^\]]{20,}\]\(\.\./media/doc10_slide1\.svg\)", sc) is not None,
+          re.search(r"!\[[^\]]{20,}\]\(\.\./media/123-alpha-plan/slide1\.svg\)", sc) is not None,
           sc[:600])
     check("run summary reports figures written",
           int(out.get("figures", 0)) >= 1, str(out.get("figures")))
@@ -1270,11 +1363,11 @@ def main():
           re.search(r"same [a-z]+(/[a-z]+)*", rel_region) is not None,
           rel_region)
     check("alpha related region patched (names beta)",
-          f"doc{beta_id}" in sc.split("<!-- related:begin -->")[-1]
-          or f"doc{beta_id}" in sc, sc[-500:])
+          f"<!-- rel:{beta_id} " in sc.split("<!-- related:begin -->")[-1]
+          or f"<!-- rel:{beta_id} " in sc, sc[-500:])
     beta_content = open(beta_sc).read() if beta_sc else ""
     check("beta sidecar reciprocally patched (names alpha)",
-          f"doc{alpha_id}" in beta_content and "_None yet._" not in beta_content,
+          f"<!-- rel:{alpha_id} " in beta_content and "_None yet._" not in beta_content,
           beta_content[-500:])
 
     # body presentation (tidyBody)
@@ -1291,45 +1384,45 @@ def main():
     check("body still carries the slide content",
           "Scope of testing" in beta_body and "## Slide 2" in beta_body, beta_body)
 
-    # case headings (caseHeadings, v1.25 TC-1 / v1.29 TC-3)
-    check("case heading carries the classification, not the case specifics",
-          "## Case 2: Positive - Non Spanning Line Event <!-- slide 4 -->"
-          in beta_body, beta_body)
-    check("scenario descriptor becomes an H3 under the case heading",
-          re.search(r"(?m)^### Loop$", beta_body) is not None, beta_body)
+    # case grammar (casegrammar testplan/v1, Sidecar_Format_Plan phase 3)
+    # — on the Test Plan fixture; the story fixture keeps its tidied
+    # slide sections (kinds-only by design)
+    alpha_content = open(alpha_sc).read()
+    alpha_body = alpha_content[alpha_content.rindex("\n---\n") + 5:]
+    check("case heading is a TC id + scenario with the detector/slide provenance",
+          "### TC-P01 — Loop Route <!-- src: S1 · slide 2 · case 3 -->" in alpha_body, alpha_body)
+    check("classification remainder becomes the Group line",
+          "- **Group:** Line Network" in alpha_body, alpha_body)
     check("full case line survives in the body (measures never lost)",
-          "**Loop – Split measure: 20**" in beta_body, beta_body)
+          "- **Case:** Loop route – Split measure: 40 using Merge Events" in alpha_body, alpha_body)
+    check("profile sections present and ordered",
+          "## Test Cases" in alpha_body and "## Other content" in alpha_body
+          and alpha_body.index("## Test Cases") < alpha_body.index("## Other content"), alpha_body)
     check("promoted case line removed from the body",
-          not re.search(r"(?m)^2\. Loop", beta_body), beta_body)
+          not re.search(r"(?m)^3\. Loop route", alpha_body), alpha_body)
     check("promoted classification line removed from the body",
-          not re.search(r"(?m)^Positive - Non spanning line event$", beta_body),
-          beta_body)
+          not re.search(r"(?m)^Positive - Line network$", alpha_body), alpha_body)
     check("no heading carries a split measure or route id",
-          not re.search(r"(?mi)^#{2,3} .*(split(ting)? measure|\bR\d+L\d+\b)",
-                        beta_body), beta_body)
-    check("checklist slide keeps its bare slide heading",
-          "## Slide 5" in beta_body
-          and "17. Verify the effective date defaults to today" in beta_body,
-          beta_body)
-
-    # long case lines: full-text subheader, no truncation (v1.27 TC-2
-    # under the v1.29 TC-3 heading shape)
-    check("long case line yields the classification heading",
-          "## Case 9: Negative - Merge Option Disabled <!-- slide 6 -->"
-          in beta_body, beta_body)
-    check("redundant scenario H3 suppressed (classification already says it)",
-          "### Merge Option Disabled" not in beta_body, beta_body)
-    check("full case text survives as a bold subheader line",
-          "**Merge Option disabled, coincident events that have exact "
-          "attributes from measures 0-4 and exist in both versions**" in beta_body,
-          beta_body)
+          not re.search(r"(?mi)^#{2,3} .*(split(ting)? measure|\bR\d+L\d+\b)", alpha_body), alpha_body)
+    check("checklist slide lands under Other content, not as a case",
+          "### Slide 3 <!-- slide 3 -->" in alpha_body.split("## Other content")[-1]
+          and "17. Verify the effective date defaults to today" in alpha_body, alpha_body)
+    check("long case line yields a short scenario title in the Negative lane",
+          "### TC-N01 — Merge Option Disabled <!-- src: S1 · slide 4 · case 9 -->" in alpha_body, alpha_body)
+    check("redundant Group suppressed (classification already says it)",
+          "- **Group:** Merge Option Disabled" not in alpha_body, alpha_body)
+    check("full case text survives as the Case line",
+          "- **Case:** Merge Option disabled, coincident events that have exact "
+          "attributes from measures 0-4 and exist in both versions" in alpha_body, alpha_body)
     check("nothing truncates mid-sentence into a heading",
-          not re.search(r"(?m)^## .*\band <!-- slide", beta_body), beta_body)
+          not re.search(r"(?m)^### .*\band <!-- src", alpha_body), alpha_body)
+    check("story fixture keeps tidied slide sections (no case grammar off the kinds list)",
+          "## Slide 4" in beta_body and "### TC-" not in beta_body, beta_body)
 
     # media
-    media = os.listdir(os.path.join(sidecar_dir, "media"))
-    check("media extracted with src-id prefix",
-          any(m.startswith("doc10_") for m in media), str(media))
+    media = os.listdir(stem_dir) if os.path.isdir(stem_dir) else []
+    check("media extracted into the sidecar's media/<stem>/ folder (no src-id prefix)",
+          "image1.png" in media and not any(m.startswith("doc10_") for m in media), str(media))
 
     # doc ids / links / keywords / junctions
     docids = list(state.lists.get(LISTS["docIds"], {}).values())
@@ -1371,15 +1464,19 @@ def main():
     print("== case-index leg")
     tcs = list(state.lists.get(LISTS["testCases"], {}).values())
     alpha_cases = [r for r in tcs if r.get("DocumentLookupId") == alpha_id]
-    check("alpha (Test Plan) got exactly one case row", len(alpha_cases) == 1,
+    alpha_cases.sort(key=lambda r: str(r.get("CaseKey")))
+    check("alpha (Test Plan) got its two case rows (the checklist slide is not one)",
+          len(alpha_cases) == 2 and alpha_cases[1].get("CaseNo") == "TC-N01",
           str(tcs)[:400])
     ac = alpha_cases[0] if alpha_cases else {}
-    check("case row carries the caseHeadings-derived contract",
-          ac.get("CaseKey") == f"{alpha_id}|1" and ac.get("CaseNo") == "3"
+    check("case row carries the case-grammar contract",
+          ac.get("CaseKey") == f"{alpha_id}|1" and ac.get("CaseNo") == "TC-P01"
           and ac.get("Classification") == "Positive" and ac.get("SlideNo") == 2
-          and ac.get("Scenario") == "Loop Route", str(ac))
+          and ac.get("Scenario") == "Loop Route"
+          and ac.get("SourceRef") == "S1 · slide 2 · case 3"
+          and ac.get("Confidence") == "high", str(ac))
     check("case row carries the v1.1 metadata columns",
-          ac.get("Shape") == "deck" and ac.get("FigureCount") == 0
+          ac.get("Shape") == "S1" and ac.get("FigureCount") == 0
           and ac.get("TableCount") == 0 and ac.get("StepCount") == 0
           and ac.get("RouteRefs") == "" and ac.get("ExpectedResult") == ""
           and ac.get("TraceText") == "" and ac.get("FigureLinks") == ""
@@ -1388,10 +1485,10 @@ def main():
           ac.get("Tools") == "merge events"
           and ac.get("Keywords") == "split measure", str(ac))
     check("case row title is the visible heading",
-          ac.get("Title") == "Case 3: Positive - Line Network",
+          ac.get("Title") == "TC-P01 — Loop Route",
           str(ac.get("Title")))
     check("case anchor deep-links the sidecar heading",
-          ac.get("Anchor") == "case-3-positive---line-network",
+          ac.get("Anchor") == "tc-p01--loop-route",
           str(ac.get("Anchor")))
     check("case text keeps the specifics",
           "Split measure: 40" in str(ac.get("CaseText")), str(ac.get("CaseText")))
@@ -1412,14 +1509,16 @@ def main():
     check("case catalog written at the library root",
           cat.startswith("# Test cases — catalog"), cat[:200])
     check("catalog groups by plan with classification counts",
-          re.search(r"(?m)^## Alpha Plan \(1: 1 positive / 0 negative\)$", cat)
+          re.search(r"(?m)^## Alpha Plan \(2: 1 positive / 1 negative\)$", cat)
           is not None, cat)
     check("catalog case row deep-links the sidecar anchor",
-          "#case-3-positive---line-network>" in cat
+          "#tc-p01--loop-route>" in cat
           and "| Positive |" in cat and "Loop Route" in cat, cat)
-    check("caseless and non-plan docs stay off the catalog",
-          "Beta Story" not in cat and "Ghost" not in cat
-          and "1 case(s) across 1 plan(s)" in cat, cat)
+    check("catalog rows carry the group and the detector",
+          "| Line Network |" in cat and "| S1 |" in cat, cat)
+    check("caseless docs stay off the catalog",
+          "Ghost" not in cat
+          and "2 case(s) across 1 plan(s)" in cat, cat)
 
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")
@@ -1441,7 +1540,7 @@ def main():
           int(out.get("cases_upserted", 0)) == 0
           and int(out.get("cases_removed", 0)) == 0
           and len([r for r in state.lists.get(LISTS["testCases"], {}).values()
-                   if r.get("DocumentLookupId") == alpha_id]) == 1, str(out))
+                   if r.get("DocumentLookupId") == alpha_id]) == 2, str(out))
     # streaks: run 1 stamped 1 night; this full run makes it 2
     status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("error streaks advance on full runs",
@@ -1718,7 +1817,7 @@ def main():
           f"llm={state.llm_calls} vs {llm_before_rr}")
     sc_rr = open(alpha_sc).read()
     check("rerank preserved keyword/id relateds (alpha still names beta)",
-          f"doc{beta_id}" in sc_rr, sc_rr[-400:])
+          f"<!-- rel:{beta_id} " in sc_rr, sc_rr[-400:])
     check("rerank upsert kept exactly one docs block",
           sc_rr.count("<!-- docs:begin -->") == 1
           and "[Extend a route](" in sc_rr,
@@ -1750,16 +1849,65 @@ def main():
     check("reformat body is freshly extracted and tidied",
           "## Slide 2" in after and "- Append Events" in after
           and "### Notes" not in after, after[-400:])
-    check("reformat re-derives case headings",
-          "## Case 2: Positive - Non Spanning Line Event <!-- slide 4 -->" in after
-          and re.search(r"(?m)^### Loop$", after) is not None,
-          after[-600:])
+    alpha_after = open(alpha_sc).read()
+    check("reformat re-derives the case grammar on the plan",
+          "### TC-P01 — Loop Route <!-- src: S1 · slide 2 · case 3 -->" in alpha_after
+          and "- **Group:** Line Network" in alpha_after, alpha_after[-600:])
+    check("reformat leaves the story on tidied slide sections",
+          "## Slide 4" in after and "### TC-" not in after, after[-400:])
     check("reformat spent no AI calls", state.llm_calls == llm_before_rf,
           f"{state.llm_calls} vs {llm_before_rf}")
     check("reformat re-synced case rows without churn",
           int(out.get("cases_upserted", 0)) == 0
           and int(out.get("cases_removed", 0)) == 0
           and int(out.get("case_errors", 0)) == 0, str(out))
+    check("reformat is byte-idempotent on a format-3.0 head",
+          (run_sweep(cfg_path, ["--live", "--reformat"]).returncode == 0
+           and open(beta_sc).read() == after), open(beta_sc).read()[:300])
+
+    # ---- format-3.0 migration leg (Sidecar_Format_Plan phase 1) -----
+    # a sidecar still in the v2.8 yaml frame (comment-hidden ```yaml
+    # with the scored related: line, bare rel markers) must come out
+    # of --reformat as a 3.0 file: table head, no yaml, scores moved
+    # onto the markers, keywords/tools and the first extraction date
+    # carried across
+    print("== format-3.0 migration leg")
+    tbl_start = after.index("| Field | Value |")
+    tbl_end = after.index("\n## Summary")
+    legacy_yaml = ("<!-- metadata\n```yaml\n"
+                   'title: "Beta Story"\nsource_file: "Beta Story.pptx"\n'
+                   "doc_id: 0\ndoc_kind: \"User Story\"\nsurface: \"Pro\"\n"
+                   'doc_revision: "V9"\ntarget_release: ""\npe: ""\ndev: ""\n'
+                   'author: "Old Author"\nlast_edited_by: "Old Author"\n'
+                   'last_edited: "2026-08-01T00:00:00Z"\nextracted: 2026-01-02\n'
+                   "extraction_lane: xmlstrip\nprompt_version: \"v1.9\"\n"
+                   'keywords: ["Legacy Keyword", "locks"]\ntools: ["Old Tool"]\n'
+                   'products: []\nissues: []\n'
+                   'related: [{"doc":' + str(alpha_id) + ',"file":"x.md","s":42.5}]\n'
+                   "```\n-->\n")
+    legacy = after[:tbl_start] + legacy_yaml + after[tbl_end:]
+    legacy = re.sub(r"<!-- rel:(\d+) s=[-\d.]+ -->", r"<!-- rel:\1 -->", legacy)
+    with open(beta_sc, "w") as f:
+        f.write(legacy)
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    check("migration reformat exit 0", proc.returncode == 0, proc.stderr[-400:])
+    mig = open(beta_sc).read()
+    check("legacy yaml frame becomes the 3.0 table",
+          "<!-- metadata" not in mig and "```yaml" not in mig
+          and "| Field | Value |" in mig and "| **Doc** |" in mig, mig[:500])
+    check("migration carries keywords, tools, revision and the first extraction date",
+          "| **Keywords** | Legacy Keyword · locks |" in mig
+          and "| **Tools** | Old Tool |" in mig
+          and "· rev V9 |" in mig
+          and "| **Extracted** | 2026-01-02 · lane" in mig, mig[:700])
+    check("migration moves the related scores onto the markers",
+          f"<!-- rel:{alpha_id} s=42.5 -->" in mig, mig)
+    check("migration keeps the summary, related region and body",
+          "## Summary" in mig and "<!-- related:begin -->" in mig
+          and "## Slide 2" in mig, mig[-300:])
+    check("migrated file is byte-idempotent on the next reformat",
+          (run_sweep(cfg_path, ["--live", "--reformat"]).returncode == 0
+           and open(beta_sc).read() == mig), "")
 
     # ---- recase leg (Case_Index_Plan phase 2 — the backfill) -------
     # simulate a corpus indexed before the feature existed: wipe the
@@ -1819,6 +1967,256 @@ def main():
           proc.returncode != 0 and "Test Cases" in proc.stderr,
           proc.stderr[-400:])
 
+    # ---- case-audit leg (Sidecar_Format_Plan phase 0) ---------------
+    # --case-audit reads the sidecars on disk, runs the case parser plus
+    # the latent-shape signals, and writes `_Case Audit.md` only on a
+    # live run; no list writes, no AI, and no Test Cases GUID needed
+    print("== case-audit leg")
+    audit_pg = os.path.join(sidecar_dir, "_Case Audit.md")
+    if os.path.exists(audit_pg):
+        os.remove(audit_pg)
+    llm_before_au = state.llm_calls
+    proc = run_sweep(cfg_path, ["--case-audit"])
+    check("case-audit dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("case-audit dry run reports the walk and writes no page",
+          out.get("mode") == "case-audit" and out.get("dry_run") is True
+          and int(out.get("plans", 0)) >= 1 and int(out.get("covered", 0)) >= 1
+          and int(out.get("no_seam", 0)) == 0
+          and not os.path.exists(audit_pg), str(out))
+    proc = run_sweep(cfg_path, ["--case-audit", "--live"])
+    check("case-audit live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("case-audit live wrote the audit page listing the covered plan",
+          os.path.exists(audit_pg) and "Alpha Plan" in open(audit_pg).read()
+          and "## Covered plans (" in open(audit_pg).read(), str(out))
+    check("case-audit spent no AI calls and touched no list",
+          state.llm_calls == llm_before_au
+          and len(state.lists.get(LISTS["testCases"], {})) == len(tcs),
+          f"{state.llm_calls} vs {llm_before_au}")
+    check("case-audit log carries per-plan signals",
+          any(k in json.load(open(out["logFile"])).get("plans", [{}])[0].get("signals", {})
+              for k in ("caseTable", "posNegTable", "verifyBullets")), out.get("logFile", ""))
+    proc = run_sweep(cfg_nocases_path, ["--case-audit"])
+    check("case-audit runs without the Test Cases GUID",
+          proc.returncode == 0 and json.loads(proc.stdout.splitlines()[0]).get("mode") == "case-audit",
+          proc.stderr[-300:])
+    proc = run_sweep(cfg_path, ["--case-audit", "--recase"])
+    check("case-audit refuses to combine with --recase",
+          proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
+
+    # ---- rename leg (Sidecar_Format_Plan phase 1b) -------------------
+    # a corpus still on the pre-1b naming: alpha's sidecar sits at
+    # {slug}__doc{id}.md with a flat media/doc10_*.svg figure, beta's
+    # Related bullet links that old file. --rename-plan lists the move
+    # and touches nothing; --rename --live renames the file, moves the
+    # media into media/<stem>/, rewrites alpha's own links AND beta's
+    # inbound link, patches TextFileUrl, and writes the manifest.
+    print("== rename leg")
+    alpha_dir = os.path.dirname(alpha_sc)
+    old_name = f"alpha-plan-old__doc{alpha_id}.md"
+    old_path = os.path.join(alpha_dir, old_name)
+    cur = open(alpha_sc).read()
+    legacy_media = os.path.join(sidecar_dir, "media", "doc10_slide1.svg")
+    os.makedirs(os.path.dirname(legacy_media), exist_ok=True)
+    shutil.copyfile(os.path.join(stem_dir, "slide1.svg"), legacy_media)
+    with open(old_path, "w") as f:
+        f.write(cur.replace("../media/123-alpha-plan/slide1.svg", "../media/doc10_slide1.svg"))
+    os.remove(alpha_sc)
+    shutil.rmtree(stem_dir)
+    old_url = state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"]
+    new_url_expected = old_url
+    old_url = old_url.rsplit("/", 1)[0] + "/" + old_name
+    state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"] = {"Url": old_url, "Description": old_name}
+    beta_txt = open(beta_sc).read().replace("123-alpha-plan.md", old_name)
+    with open(beta_sc, "w") as f:
+        f.write(beta_txt)
+    proc = run_sweep(cfg_path, ["--rename-plan"])
+    check("rename-plan exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("rename-plan lists alpha's move and writes nothing",
+          out.get("mode") == "rename" and out.get("dry_run") is True
+          and int(out.get("renamed", 0)) == 1
+          and f"Test Plans/{old_name} -> 123-alpha-plan.md" in proc.stdout
+          and os.path.exists(old_path) and not os.path.exists(alpha_sc), proc.stdout[:600])
+    proc = run_sweep(cfg_path, ["--rename", "--live"])
+    check("rename live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    renamed = open(alpha_sc).read() if os.path.exists(alpha_sc) else ""
+    check("rename moved the sidecar to <issue>-<slug>.md and removed the old file",
+          os.path.exists(alpha_sc) and not os.path.exists(old_path)
+          and int(out.get("renamed", 0)) == 1 and int(out.get("errors", 0)) == 0, str(out))
+    check("rename moved the flat media into media/<stem>/ and relinked the body",
+          os.path.exists(os.path.join(stem_dir, "slide1.svg"))
+          and not os.path.exists(legacy_media)
+          and "](../media/123-alpha-plan/slide1.svg)" in renamed
+          and "doc10_slide1.svg" not in renamed, renamed[-500:])
+    check("rename rewrote beta's inbound link",
+          "123-alpha-plan.md" in open(beta_sc).read()
+          and old_name not in open(beta_sc).read(), open(beta_sc).read()[-500:])
+    check("rename patched TextFileUrl",
+          state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"] == new_url_expected,
+          str(state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]))
+    manifest_path = os.path.join(sidecar_dir, "_Manifest.json")
+    manifest = json.load(open(manifest_path)) if os.path.exists(manifest_path) else {}
+    check("rename wrote the manifest (id -> path, stem, issue)",
+          manifest.get("docs", {}).get(str(alpha_id), {}).get("path") == "Test Plans/123-alpha-plan.md"
+          and manifest["docs"][str(alpha_id)].get("stem") == "123-alpha-plan"
+          and manifest["docs"][str(alpha_id)].get("issue") == 123, str(manifest)[:400])
+    check("rename told the operator to recase",
+          "--recase --live" in proc.stdout, proc.stdout[-300:])
+    proc = run_sweep(cfg_path, ["--rename", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("rename is a no-op the second time",
+          int(out.get("renamed", 0)) == 0 and int(out.get("errors", 0)) == 0, str(out))
+
+    # ---- normalize-cases leg (Sidecar_Format_Plan phase 4) ----------
+    # a Test Plan the detectors leave caseless but the audit flags (an
+    # old collapsed-cell table): dry lists it and spends nothing; live
+    # refuses without the owner switch; enabled, one model call rewrites
+    # the body ONLY when the reply passes lint + grounding, mints LLM
+    # rows, and is not called again; an inventing reply is refused and
+    # the file stays; --reformat keeps an LLM body.
+    print("== normalize-cases leg")
+    gamma_body = ("## Slide 1 — Gamma cases\n\n| Positive Tests: Normal Routes |\n| --- |\n"
+                  "| Correct line order of 100, 200, 300 on a normal line Correct line order of 300, 400, 500 on a gapped line |\n")
+    gamma_dir = os.path.join(sidecar_dir, "Test Plans")
+    gamma_path = os.path.join(gamma_dir, "gamma-plan.md")
+    gamma_head = ("# Gamma Plan\n\n| Field | Value |\n| --- | --- |\n| **Doc** | 0 · Test Plan · Pro |\n"
+                  "| **Product** | — |\n| **Release** | — |\n| **Issues** | — |\n| **Source** | [g.pptx](<https://x/g.pptx>) |\n"
+                  "| **People** | author — · PE — · dev — |\n| **Edited** | — |\n"
+                  "| **Extracted** | 2026-09-05 · lane xmlstrip · format 3.0 · prompt v2.0 |\n| **Keywords** | — |\n| **Tools** | — |\n\n"
+                  "## Summary\n\nGamma.\n\n## Related documents\n\n<!-- related:begin -->\n_None yet._\n<!-- related:end -->\n\n---\n\n")
+    with open(gamma_path, "w") as f:
+        f.write(gamma_head + gamma_body)
+    gamma_id = int(state.seed(LISTS["docIndex"], {
+        "Title": "Gamma Plan", "FileName": "Gamma Plan.pptx", "DocKey": "shared documents/general/gamma plan.pptx",
+        "IndexStatus": "Indexed", "DocKind": "Test Plan", "Surface": "Pro", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-01T00:00:00Z",
+        "TextFileUrl": {"Url": cfg["sweep"]["siteUrl"] + "/LRS Doc Index/Test Plans/gamma-plan.md",
+                        "Description": "gamma-plan.md"}}))
+    llm_before_nz = state.llm_calls
+    proc = run_sweep(cfg_path, ["--normalize-cases"])
+    check("normalize dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize dry run lists the caseless-with-signal plan and spends nothing",
+          out.get("mode") == "normalize-cases" and out.get("dry_run") is True
+          and int(out.get("candidates", 0)) == 1 and int(out.get("normalized", 0)) == 0
+          and state.llm_calls == llm_before_nz
+          and open(gamma_path).read() == gamma_head + gamma_body, str(out))
+    saved_llm = cfg["llm"]
+    cfg["llm"] = {"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    check("normalize live refuses without the owner switch",
+          proc.returncode != 0 and "normalizeCases.enabled" in proc.stderr, proc.stderr[-300:])
+    cfg["sweep"]["normalizeCases"] = {"enabled": True, "maxPerRun": 5, "provider": "anthropic"}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    state.gen_text = ("Here you go:\n```markdown\n## Test Cases\n\n"
+                      "### TC-P01 — Correct line order of 100, 200, 300 on a normal line <!-- src: LLM · slide 1 · Positive Tests: Normal Routes · 1 -->\n"
+                      "- **Group:** Normal Routes\n\n"
+                      "### TC-P02 — Correct line order of 300, 400, 500 on a gapped line <!-- src: LLM · slide 1 · Positive Tests: Normal Routes · 2 -->\n"
+                      "- **Group:** Normal Routes\n```\n")
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    check("normalize live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    gamma_now = open(gamma_path).read()
+    check("normalize live: one model call, the plan normalized",
+          state.llm_calls == llm_before_nz + 1 and int(out.get("normalized", 0)) == 1
+          and int(out.get("refused", 0)) == 0, str(out))
+    check("normalize live: head preserved, body is the verified grammar with LLM provenance",
+          gamma_now.startswith(gamma_head)
+          and "### TC-P01 — Correct line order of 100, 200, 300 on a normal line <!-- src: LLM · slide 1" in gamma_now
+          and "```" not in gamma_now, gamma_now[-500:])
+    check("normalize prompt carried the plan title and body",
+          state.gen_prompts and "Gamma Plan" in state.gen_prompts[-1]
+          and "Correct line order of 100, 200, 300" in state.gen_prompts[-1], str(state.gen_prompts[-1:])[:300])
+    grows = [r for r in state.lists.get(LISTS["testCases"], {}).values() if r.get("DocumentLookupId") == gamma_id]
+    check("normalize live: case rows minted with the LLM shape and llm confidence",
+          len(grows) == 2 and all(r.get("Shape") == "LLM" and r.get("Confidence") == "llm" for r in grows)
+          and grows[0].get("Group") == "Normal Routes", str(grows)[:400])
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize is not called again on a normalized plan",
+          int(out.get("candidates", 0)) == 0 and state.llm_calls == llm_before_nz + 1, str(out))
+    # an inventing reply is refused whole
+    with open(gamma_path, "w") as f:
+        f.write(gamma_head + gamma_body)
+    state.gen_text = ("## Test Cases\n\n### TC-P01 — Elephants roam the savanna at dusk <!-- src: LLM · slide 1 -->\n"
+                      "| Route | R9 |\n| --- | --- |\n| R9 | 5 |\n")
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize refuses an inventing reply and leaves the file untouched",
+          int(out.get("refused", 0)) == 1 and int(out.get("normalized", 0)) == 0
+          and open(gamma_path).read() == gamma_head + gamma_body
+          and "NORMALIZE REFUSED" in proc.stderr, str(out) + proc.stderr[-300:])
+    cfg["llm"] = saved_llm
+    del cfg["sweep"]["normalizeCases"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    # --reformat keeps an LLM-normalized body (alpha stands in: mark
+    # its body, reformat, restore)
+    alpha_keep = open(alpha_sc).read()
+    with open(alpha_sc, "w") as f:
+        f.write(alpha_keep.replace("<!-- src: S1 · slide 2 · case 3 -->", "<!-- src: LLM · slide 2 · case 3 -->", 1))
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("--reformat keeps an LLM-normalized body",
+          int(out.get("llm_kept", 0)) == 1 and "<!-- src: LLM · slide 2 · case 3 -->" in open(alpha_sc).read(), str(out))
+    with open(alpha_sc, "w") as f:
+        f.write(alpha_keep)
+    run_sweep(cfg_path, ["--live", "--reformat"])
+    del state.lists[LISTS["docIndex"]][str(gamma_id)]
+    os.remove(gamma_path)
+    for k in [k for k, r in state.lists.get(LISTS["testCases"], {}).items() if r.get("DocumentLookupId") == gamma_id]:
+        del state.lists[LISTS["testCases"]][k]
+
+    # ---- story-profile leg (Sidecar_Format_Plan phase 5) ------------
+    # a User Story deck in the team template maps onto the story/v1
+    # sections; the messy story fixture (no canonical titles) stays on
+    # its tidied slide sections (checked above)
+    print("== story-profile leg")
+    story_dir = os.path.join(cfg["paths"]["sourceLibrary"], "General") \
+        if os.path.isdir(os.path.join(cfg["paths"]["sourceLibrary"], "General")) else src_dir
+    make_story_pptx(os.path.join(story_dir, "Delta Story.pptx"), "Split Events Story")
+    state.llm_by_file["Delta Story.pptx"] = {
+        "title": "Split Events Story", "docKind": "User Story", "surface": "Pro",
+        "summary": "A story about splitting events.", "pe": "", "dev": "",
+        "targetRelease": "", "tools": [], "keywords": ["split events"]}
+    src_files.append(src_item(31, "Delta Story.pptx", "2026-08-23T10:00:00Z"))
+    proc = run_sweep(cfg_path, ["--live", "--only", "Delta Story.pptx"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.stdout.strip() else {}
+    check("story deck indexed and profiled",
+          proc.returncode == 0 and out.get("processed") == 1
+          and int(out.get("stories_profiled", 0)) == 1, str(out) + proc.stderr[-300:])
+    delta_row = next((f_ for f_ in state.lists[LISTS["docIndex"]].values()
+                      if f_.get("FileName") == "Delta Story.pptx"), {})
+    delta_url = str(delta_row.get("TextFileUrl", {}).get("Url", ""))
+    delta_local = os.path.join(sidecar_dir, *[urllib.parse.unquote(x) for x in delta_url.split("/LRS Doc Index/")[-1].split("/")]) if delta_url else ""
+    ds = open(delta_local).read() if delta_local and os.path.exists(delta_local) else ""
+    body_ds = ds[ds.rindex("\n---\n") + 5:] if "\n---\n" in ds else ""
+    check("story/v1 sections in canonical order",
+          [m for m in re.findall(r"(?m)^## (.+)$", body_ds)]
+          == ["Story", "Acceptance Criteria", "Testing", "Automation", "Documentation", "Assignment"],
+          body_ds[:600])
+    check("title slide and User Story slide land under Story with provenance",
+          "### Split Events Story <!-- slide 1 -->" in body_ds
+          and "### User Story <!-- slide 2 -->" in body_ds
+          and "As a LRS editor" in body_ds.split("## Acceptance Criteria")[0], body_ds[:600])
+    ac_part = body_ds.split("## Acceptance Criteria")[1].split("## Testing")[0] \
+        if "## Acceptance Criteria" in body_ds else ""
+    check("the feature slide becomes an Acceptance Criteria subsection",
+          "### Split behaviour <!-- slide 3 -->" in ac_part, body_ds)
+    check("canonical slides carry only their slide comment",
+          "<!-- slide 4 -->\nTest on normal and gapped routes." in body_ds
+          and "### Testing" not in body_ds, body_ds)
+    check("story deck is not a case source",
+          not [r for r in state.lists.get(LISTS["testCases"], {}).values()
+               if r.get("DocumentLookupId") == int(delta_row.get("id", 0) or 0)]
+          and "### TC-" not in body_ds, body_ds)
+
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")
     pages_out = os.path.join(tmp, "pages.json")
@@ -1847,7 +2245,7 @@ def main():
           and base + "/docsec2/y.html" in proc.stdout, proc.stdout[-300:])
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
-          f"doc{notes_id}" in spec_rr and "similar text " in spec_rr,
+          f"<!-- rel:{notes_id} " in spec_rr and "similar text " in spec_rr,
           spec_rr[-400:])
 
     # ---- leg 3g: Graph download fallback for unsynced sources ------
@@ -1980,13 +2378,14 @@ def main():
               if f_.get("FileName") == "message.msg"][0]
     guide_id = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
                 if f_.get("FileName") == "guide.html"][0]
+    msg_url = state.lists[LISTS["docIndex"]][msg_id].get("TextFileUrl", {}).get("Url", "")
     msg_sc = ""
     for r, _, fs_ in os.walk(sidecar_dir):
         for f in fs_:
-            if f.endswith(f"__doc{msg_id}.md"):
+            if msg_url.endswith("/" + f):
                 msg_sc = open(os.path.join(r, f)).read()
     check("embeddings joined the paraphrase pair (msg relates the guide)",
-          f"doc{guide_id}" in msg_sc and "similar text" in msg_sc,
+          f"<!-- rel:{guide_id} " in msg_sc and "similar text" in msg_sc,
           msg_sc[-600:])
     check("embed rerank made no classify calls",
           state.llm_calls == llm_before_em, f"{state.llm_calls} vs {llm_before_em}")
@@ -2042,8 +2441,9 @@ def main():
           row.get("IndexStatus") == "Indexed"
           and row.get("PromptVersion") == "v2.0-remote-leg", str(row)[:200])
     up_keys = set(state.remote_files)
+    notes_file = str(row.get("TextFileUrl", {}).get("Url", "")).rsplit("/", 1)[-1]
     check("sidecar write-through uploaded to the drive",
-          any(k.endswith(f"__doc{notes_id2}.md") for k in up_keys), str(up_keys))
+          bool(notes_file) and any(k.endswith("/" + notes_file) for k in up_keys), str(up_keys))
     check("status + index pages uploaded too",
           "_Sweep Status.md" in up_keys and "_Index.md" in up_keys, str(up_keys))
     # second run: manifest carries the uploads' eTags, so the mirror
@@ -2415,7 +2815,10 @@ def main():
           and int(out.get("figures", 0)) >= 1
           and int(out.get("figure_errors", 0)) == 0,
           str(out) + " " + proc.stderr[-300:])
-    wf_path = os.path.join(sidecar_dir, "media", "doc21_slide1.svg")
+    panel_row = next(f_ for f_ in state.lists[LISTS["docIndex"]].values()
+                     if f_.get("FileName") == "Panel UI.pptx")
+    panel_stem = str(panel_row.get("TextFileUrl", {}).get("Url", "")).rsplit("/", 1)[-1][:-3]
+    wf_path = os.path.join(sidecar_dir, "media", panel_stem, "slide1.svg")
     wf = open(wf_path, encoding="utf-8").read() if os.path.exists(wf_path) else ""
     check("wireframe figure written for the screenshot",
           "interface wireframe" in wf, wf[:300])

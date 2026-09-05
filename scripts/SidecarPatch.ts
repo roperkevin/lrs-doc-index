@@ -1,5 +1,5 @@
 /**
- * SidecarPatch v1.6 — surgical "Related documents" patching for
+ * SidecarPatch v1.7 — surgical "Related documents" patching for
  * markdown sidecars, batched over every file touched for one doc
  * ------------------------------------------------------------------
  * r6 batch (flow v2.8 hidden-metadata format) — gated by
@@ -82,6 +82,16 @@
  *                rendered as link bullets, each ending in an
  *                invisible <!-- rel:N --> tag so a later merge can
  *                re-associate, reorder and evict without parsing prose
+ *
+ * v1.7 (format 3.0, Sidecar_Format_Plan phase 1): the metadata block is
+ * GONE — the sidecar's metadata is its visible info table, and the
+ * machine related list lives in the region's own markers,
+ * `<!-- rel:N s=SCORE -->` (the score rides the marker; the file is
+ * the bullet's link target). A file whose head is H1 + a table with a
+ * `| **Doc** |` row and no yaml opener is the TABLE frame: only the
+ * marker region is rewritten, nothing else. Legacy frames still parse
+ * and keep their yaml `related:` line in step, and every bullet
+ * written from v1.7 on carries `s=` whatever the frame.
  *
  * v1.1 (frames; extended in v1.5/v1.6): the metadata block comes in
  * four frames — the PromptVersion v2.0 comment form (H1 + info table,
@@ -183,7 +193,10 @@ interface Frame {
   close: string;
   fm: string;
   body: string;
+  table?: boolean;
 }
+
+const TABLE_ROW = "\n| **Doc** | ";
 
 /**
  * Split a sidecar into its metadata block and body. Recognizes the
@@ -217,10 +230,15 @@ function splitFrame(content: string): Frame | null {
       open = DETAILS_OPEN;
       close = DETAILS_CLOSE;
     }
+    const firstH2 = content.indexOf("\n## ");
     if (openAt < 0) {
+      // v1.7: the table frame — the metadata table IS the metadata
+      const docRow = content.indexOf(TABLE_ROW);
+      if (docRow >= 0 && (firstH2 < 0 || docRow < firstH2)) {
+        return { head: "", open: "", close: "", fm: "", body: content, table: true };
+      }
       return null;
     }
-    const firstH2 = content.indexOf("\n## ");
     if (firstH2 >= 0 && firstH2 < openAt) {
       return null;
     }
@@ -301,11 +319,15 @@ function cleanUrl(u: string): string {
   return u.replace(/>/g, "%3E");
 }
 
-function renderBullet(title: string, url: string, why: string, doc: number): string {
+function relTag(doc: number, s: number): string {
+  return "<!-- rel:" + doc + " s=" + s + " -->";
+}
+
+function renderBullet(title: string, url: string, why: string, doc: number, s: number): string {
   const t = cleanText(title);
   const w = cleanText(why);
   const reason = w ? " — " + w : "";
-  return "- [" + (t || "untitled") + "](<" + cleanUrl(url) + ">)" + reason + " <!-- rel:" + doc + " -->";
+  return "- [" + (t || "untitled") + "](<" + cleanUrl(url) + ">)" + reason + " " + relTag(doc, s);
 }
 
 function renderFmLine(entries: RelEntry[]): string {
@@ -321,7 +343,7 @@ function renderRegionInner(entries: RelEntry[], bullets: { [doc: number]: string
   // renders unlinked — a bare-filename link only resolves when the
   // neighbor happens to share this sidecar's kind subfolder.
   return entries
-    .map((e) => bullets[e.doc] || "- " + cleanText(e.file) + " <!-- rel:" + e.doc + " -->")
+    .map((e) => bullets[e.doc] || "- " + cleanText(e.file) + " " + relTag(e.doc, e.s))
     .join("\n");
 }
 
@@ -415,6 +437,30 @@ function readBullets(inner: string): { [doc: number]: string } {
   return out;
 }
 
+/** v1.7: entries from the marker region itself — `<!-- rel:N s=S -->`
+ *  plus the bullet's link target for the file — the table frame's only
+ *  merge state. */
+function readMarkerEntries(inner: string): RelEntry[] {
+  const out: RelEntry[] = [];
+  for (const line of inner.split("\n")) {
+    if (line.indexOf("- ") !== 0) continue;
+    const m = line.match(/<!-- rel:(\d+)(?:\s+s=(-?[\d.]+))?\s*-->/);
+    if (!m) continue;
+    const doc = parseInt(m[1], 10);
+    if (!(doc > 0)) continue;
+    const u = line.match(/\]\(<?([^)>]*)>?\)/);
+    let file = "";
+    if (u) {
+      const parts = u[1].split("/");
+      file = decodeURIComponent(parts[parts.length - 1] || "");
+    } else {
+      file = line.replace(/<!--.*$/, "").replace(/^- /, "").trim();
+    }
+    out.push({ doc: doc, file: file, s: m[2] !== undefined ? parseFloat(m[2]) : 0 });
+  }
+  return out;
+}
+
 /**
  * Patch one sidecar. Returns the new content plus a note, or the
  * original content with a diagnostic note when patching is unsafe.
@@ -451,6 +497,9 @@ function patchOne(
     body = body.slice(0, seam) + "\n\n" + HEADING + "\n\n" + region + body.slice(seam);
   }
 
+  if (frame.table) {
+    return { content: body, note: noteOk };
+  }
   const newFm = patchFrontmatter(fm, renderFmLine(entries));
   return { content: frame.head + frame.open + newFm + frame.close + body, note: noteOk };
 }
@@ -534,7 +583,7 @@ function main(
         }
         const parts = meta.url.split("/");
         entries.push({ doc: r.doc, file: parts[parts.length - 1], s: r.s });
-        bullets[r.doc] = renderBullet(meta.title || parts[parts.length - 1], meta.url, r.why, r.doc);
+        bullets[r.doc] = renderBullet(meta.title || parts[parts.length - 1], meta.url, r.why, r.doc, r.s);
       }
       patched = patchOne(file.content, sortAndCap(entries, cap), bullets, "set");
     } else {
@@ -555,11 +604,15 @@ function main(
         const e = body.indexOf(END);
         const inner = b >= 0 && e > b ? body.slice(b + BEGIN.length, e) : "";
 
-        const entries = readFmEntries(fm).filter((x) => x.doc !== selfMeta.doc);
+        // v1.7: the table frame keeps its merge state in the markers;
+        // legacy frames keep it on the yaml line (markers as fallback)
+        const known = frame && frame.table ? readMarkerEntries(inner) : readFmEntries(fm);
+        const entries = (known.length > 0 ? known : readMarkerEntries(inner))
+          .filter((x) => x.doc !== selfMeta.doc);
         const bullets = readBullets(inner);
         entries.push({ doc: selfMeta.doc, file: selfMeta.file, s: pairEvidence.s });
         bullets[selfMeta.doc] = renderBullet(
-          selfMeta.title || selfMeta.file, selfMeta.url, pairEvidence.why, selfMeta.doc
+          selfMeta.title || selfMeta.file, selfMeta.url, pairEvidence.why, selfMeta.doc, pairEvidence.s
         );
         patched = patchOne(file.content, sortAndCap(entries, cap), bullets, "merged");
       }

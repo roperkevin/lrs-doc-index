@@ -1,5 +1,317 @@
 # Local sweep — release notes
 
+## story 5 (2026-09-05 — the story/v1 profile; sweep v1.53, storyprofile v1.0, TestPlanGen local job v1.10, Sidecar_Format_Plan phase 5)
+
+- **`local/lib/storyprofile.mjs`** (new, pure): `renderStoryBody`
+  maps a User Story deck's slide titles onto canonical sections —
+  `## Story` (title slide, "User Story", personas/workflow),
+  `## Acceptance Criteria` ("Acceptance Criteria", "Requirements",
+  "Configuration" and every untitled requirement slide before
+  Testing), `## Testing`, `## Automation`, `## Documentation`,
+  `## Assignment` ("Assignment", "Story Points", "Estimation"),
+  `## Other content` — each source slide as `### <title> <!-- slide N -->`
+  inside its section. Applied only when a deck carries ≥ 2 canonical
+  titles; the corpus trial profiles **266 of 298** stories. A
+  non-template deck keeps its tidied slide sections.
+- sweep **v1.53**: `renderBody` routes User Story documents through
+  the profile (`sweep.storyProfile: false` opts out); counter
+  `stories_profiled`.
+- TestPlanGen local job **v1.10**: `storyTextFirst` orders a story/v1
+  sidecar's sections Story → Acceptance Criteria → Testing → … before
+  the StoryCap cut, so the requirements survive truncation; non-profile
+  stories are unchanged (no prompt change).
+
+Gates: new `check_storyprofile.py` (mapping, order, provenance,
+non-template pass-through, text ordering — CI), `check_local_sweep.py`
+story-profile leg (a template deck indexed via `--only`: sections in
+order, Story/Acceptance Criteria placement, no case rows),
+`check_testplangen.py`.
+
+ROLLOUT: the same `--reformat --live` as phases 1–3 (stories
+re-render with the profile; no AI).
+
+---
+
+The five phases of `local/Sidecar_Format_Plan.md` are all authored on
+this branch. One rollout sequence, on the sweep machine, after the
+tenant columns for the Test Cases list are added (Confidence, Group,
+SourceRef; Shape choices S1–S6/LLM/draft/deck):
+
+1. `--reformat --live` — format 3.0 heads, v2.5 re-extraction, the
+   case grammar on test plans, the story profile on stories.
+2. `--rename-plan` → review → `--rename --live` → `--recase --live`.
+3. `--case-audit --live` — read `_Case Audit.md`; then, optionally,
+   `sweep.normalizeCases.enabled: true` + `--normalize-cases --live`
+   in batches.
+4. Paste Q&A agent instructions v1.4.
+
+## normalize 4 (2026-09-05 — `--normalize-cases`, the opt-in LLM lane; sweep v1.52, casenormalize v1.0, CaseNormalizePromptVersion v1.0, Sidecar_Format_Plan phase 4)
+
+**For the residue only, verified before written, never on the nightly
+path.** Decided 2026-09-05 (build in phase 4):
+
+- **`prompts/CaseNormalize_Prompt.md`** (v1.0): inputs PlanTitle +
+  Body; the model returns the whole body in the `testplan/v1` grammar
+  with every case heading's src comment starting `LLM`, splitting
+  run-together cells into one TC per case, never inventing.
+- **`local/lib/casenormalize.mjs`** (new, pure): `buildNormalizePrompt`,
+  `unwrapReply` (an outer code fence and any preamble dropped),
+  `verifyNormalized` — the contract lint (`lintTestPlanBody`) plus
+  grounding: every TC title must be a substring of the input (or ≥ 60 %
+  of its content words must occur in it), every table row and image
+  link must exist verbatim in the input, the reply may not exceed twice
+  the input. Any failure refuses the whole reply.
+- sweep **v1.52**: standalone **`--normalize-cases`** — candidates are
+  case-indexed plans whose body the detectors leave caseless
+  (`extractCases` shape `none`) while `auditBody` sees a signal, minus
+  bodies already carrying `<!-- src: LLM`. Dry by default (the list,
+  no call). `--live` needs `sweep.normalizeCases.enabled: true` (the
+  owner switch) and spends at most `maxPerRun` calls; provider
+  `anthropic` (`generateText`, `maxTokens`) or `aibuilder`
+  (`llm.normalizeModelId`). A verified reply replaces the body below the
+  seam (head preserved), syncs the plan's case rows (Shape `LLM`,
+  Confidence `llm`), and rebuilds the catalog; a refusal is a counter +
+  stderr line and the file stays. **`--reformat` keeps an LLM body**
+  (`llm_kept`) — a source edit reindexes it fresh anyway.
+- caseindex: `LLM` detector token; schema `Shape` gains `LLM`,
+  `Confidence` gains `llm`.
+
+Gates: `check_local_sweep.py` normalize leg (dry lists + spends
+nothing; live refuses without the switch; one streamed call rewrites
+the body with LLM provenance and mints LLM/llm rows; not called again;
+an inventing reply is refused with the file untouched; `--reformat`
+keeps an LLM body — the mock serves SSE for `generateText`).
+
+ROLLOUT: after `--reformat --live` + `--recase --live`, run
+`--normalize-cases` (dry) to read the candidate list; set
+`sweep.normalizeCases.enabled: true` and run `--normalize-cases --live`
+in batches of `maxPerRun`; review the LLM-shaped rows in
+`_Case Catalog.md` (they are marked `LLM · llm`).
+
+## casegrammar v1.0 / caseindex v2.0 (2026-09-05 — one case grammar, six detectors; sweep v1.51, Sidecar_Format_Plan phase 3)
+
+**From 43 covered plans to the whole shape inventory.** The case
+index read exactly two shapes — `## Case N <!-- slide N -->` (minted
+only for slides with an EMPTY title placeholder) and the draft
+contract — so 135 of 178 plans yielded nothing while 123 of them
+carried a readable case shape (`_Case Audit.md`). Now:
+
+- **`local/lib/casegrammar.mjs`** (new, pure): `renderTestPlanBody`
+  turns a tidied plan body into the `testplan/v1` profile —
+  `## Overview` (units before the first case), `## Test Cases`, and
+  `## Other content` — with every case as
+  `### TC-P01 — <title> <!-- src: S4 · slide 1 · Positive Tests: Normal Routes · 3 -->`
+  plus `- **Group:**` / `- **Case:**` (full text when the title was
+  shortened) / `- **Expected Result:**` lines and the case's own
+  tables and figures. Detectors, in precedence order per unit: S2
+  titled case slide (`Slide 4 — Test case 1: …`, `Slide 3 — 1. …`),
+  S3 case table (`# / Test / Expected result`, xlsx case sheets — lane
+  from the sheet name), S4 Positive/Negative label + list (one case
+  per bullet, Group from the label), S5 other label + list (one case
+  per label, bullets as numbered steps; stoplist labels stay prose),
+  S1 single-numbered case slide (caseHeadings' rules a/b, now with the
+  full case line as `- **Case:**`), S6 numbered case lines under a
+  Positive/Negative context. Ids are per-lane sequences (P/N/U). A
+  plan with no detectable case keeps its tidied sections (shape
+  `none`) — nothing is guessed. `lintTestPlanBody` checks src
+  comments and id sequences.
+- **caseindex v2.0**: ONE parser (`tcCases`) for the grammar AND the
+  draft contract; `Shape` = the detector (`S1`..`S6` / `draft`; `deck`
+  for pre-3 sections until the reformat), new `Confidence`, `Group`,
+  `SourceRef` columns; `Expected Result` read from the grammar's
+  bullet form too; anchors slug every space to a hyphen (GitHub's
+  rule — `tc-p01--loop`). Sections end at the next heading of any
+  level.
+- sweep **v1.51**: `renderBody` — tidyBody for every kind, the
+  profile for the case-indexed kinds (`sweep.caseIndex.kinds`,
+  default Test Plan); counters `plans_profiled` and
+  `profile_lint_failures`; `caseHeadings` retired from the pipeline.
+  `_Case Catalog.md` rows gain Group and Shape (· confidence when not
+  high) columns. `svg2pptx` reads the `### TC-` heading above a figure.
+
+Corpus trial (bodies on main, pre-v2.5 extraction): LRS Identify
+coordinates plan 0 → 78 cases (S3), Relocate Events 0 → 51 (S2),
+ExB Add Multiple Line Events (docx) 0 → 9 (S4/S5), Search by Route
+and Station (docx) 0 → 14, Coordinates Method 0 → 16 (S2), REST
+Geometry to Referent (xlsx) 0 → 55 (S3, P/N from the sheets). The S4
+yield on the 62 collapsed-cell decks arrives with the v2.5
+re-extraction.
+
+TENANT STEP: add `Confidence` (Choice: high; medium; low), `Group`,
+`SourceRef` (text) to the Test Cases list and extend `Shape`'s choices
+(S1..S6, draft, deck); then `--reformat --live` (bodies) and
+`--recase --live` (rows).
+
+Gates: `check_caseindex.py` **78/78** (the D1 coupling now pins
+`renderTestPlanBody(tidyBody(raw))`; S2–S6 legs on one deck; lane
+inheritance from a Positive divider; stoplist + checklist non-cases;
+row columns), `check_local_sweep.py` (grammar on the Test Plan
+fixture incl. a checklist slide and a long Negative case; the story
+fixture stays on tidied sections; catalog counts/columns; reformat
+re-derives the grammar), `check_svg2pptx.py`, `check_testplangen.py`.
+
+## extract 2 (2026-09-05 — ZipTextExtract v2.5 + pdf re-flow; sweep v1.50, Sidecar_Format_Plan phase 2)
+
+**Structure the extractor used to throw away.** The review found the
+biggest test-case defect UPSTREAM of any parser: `ZipTextExtract`
+joined every paragraph inside a table cell with a space, so a
+"Positive Tests: Gapped Routes" cell holding nine cases became one
+900-character run-on (62 of 178 plans). Four extractor fixes and one
+pdf fix, each with a purpose-built fixture:
+
+- **CP-1** cell paragraphs — single-column label boxes render as
+  `**label**` + one `- ` bullet per paragraph (the shape the phase-3
+  case detector reads); multi-column cells join on `<br>` (decided
+  2026-09-05).
+- **IB-1** inherited body-placeholder bullets resolved slide → layout
+  → master; `buNone` honoured.
+- **TP-1** title-less slides take their topmost short text shape as
+  the heading (z-order no longer puts a section label under its table).
+- **DL-2** docx bold-label / ":"-label paragraphs become `### `
+  headings; list items via paragraph styles too; ordered lists render
+  `1. `.
+- sweep **v1.50**: `unwrapPdfText` (`local/lib/util.mjs`) re-flows
+  pdftotext's column-wrapped lines (sentence continues in lowercase,
+  hyphen breaks; list starts, headings and blanks never join).
+
+Gates: `check_format.py` §13 (cells_deck.pptx + labels.docx from
+`make_fixtures.py`: 16 assertions), every pre-existing fixture
+byte-identical, `check_typecheck.py`, `check_local_sweep.py`,
+`check_figures.py`, `check_regex.py`, `render_sample.py`.
+
+ROLLOUT: `--reformat --live` (re-extracts every body; no AI). Run it
+once after phase 1's format-3.0 reformat — or let one reformat carry
+both.
+
+## naming 1b (2026-09-05 — `<issue>-<slug>.md`, media/<stem>/, `--rename`; sweep v1.49, slug v1.0, Sidecar_Format_Plan phase 1b)
+
+**One filename convention, decided 2026-09-05: issue-number prefix on,
+no doc-id token, glossary abbreviations on.**
+
+- **`local/lib/slug.mjs`** (new, pure): `slugFor` — the H1 title with
+  the kind's own words dropped (`Test Plan: X`, `X Test Plan V2`,
+  `Spike: X`, `X User Story`), kebab-cased, abbreviated token-wise from
+  **`local/slug_abbreviations.json`** (exb, lr, eb, dynseg, pro, gp,
+  rh, apr, sld, cp, un — override/extend with `sweep.slugAbbreviations`),
+  soft-capped at 60 chars on a word boundary and never on a stopword;
+  falls back to the cleaned source basename (issue prefix, `_TestPlan_V2`,
+  `(2) 1`, copy/final/fixed tokens stripped). `primaryIssue`: the source
+  filename's own prefix, else the lowest url-sourced id, else any.
+  `mintStem` (nightly: base → product → +rev → +month → numeric) and
+  `mintStems` (`--rename`: a colliding group all take the first
+  qualifier level that separates them — RH/APR twins become `-rh` /
+  `-apr`; re-uploads get `-2`, `-3` in row-id order; deterministic).
+- sweep **v1.49**: sidecars are named `<issue>-<slug>[-qualifier].md`;
+  a stem is minted once and **frozen** (the row's TextFileUrl is the
+  record — an AI re-title changes the H1, never the file). Media
+  lands in **`media/<stem>/<asset>`** (extraction mints links against
+  a placeholder folder and the bytes are written once the stem is
+  known); `--reformat` relinks and moves a document's flat
+  `doc<srcItemId>_*` files into its folder. **`_Manifest.json`** at the
+  library root (row id → path, stem, kind, issue, title) replaces the
+  `__doc<id>` suffix as the id→file lookup, rebuilt with the browse
+  pages. New standalone **`--rename-plan`** (the old→new table, nothing
+  touched) / **`--rename --live`** (re-mints every stem, renames the
+  files, moves media, rewrites every inbound link corpus-wide, patches
+  TextFileUrl, rebuilds pages + manifest, and says to run
+  `--recase --live` so Test Cases anchors/figure links follow).
+- consumers: `caseindex` figure links keep the media subfolder;
+  `svg2pptx` resolves `media/<stem>/` → `<kind folder>/<stem>.md` (flat
+  `doc{N}_` still resolves); TestPlanGen drafts are named
+  `<stem>--draft-<yyyymmdd-hhmm>.md` and the auto-mode idempotency
+  scan reads both that and the legacy `TestPlanDraft__doc{ID}__` form.
+
+Gates: new `check_slug.py` (kind words, abbreviations, cap, primary
+issue, incremental + batch minting incl. determinism, media links —
+CI), `check_local_sweep.py` (new naming + media/<stem>/ throughout,
+manifest on live runs, the rename leg: plan lists + touches nothing,
+live renames + moves media + rewrites the neighbour's inbound link +
+patches TextFileUrl + writes the manifest + is a no-op the second
+time), `check_svg2pptx.py` stem-folder leg, `check_testplangen.py`
+draft names, `check_caseindex.py`.
+
+ROLLOUT (after the format-3.0 `--reformat --live`):
+`--rename-plan` → read the table → `--rename --live` → `--recase --live`.
+
+## format 3.0 (2026-09-05 — the metadata table replaces the yaml block; sweep v1.48, SidecarPatch v1.7, Sidecar_Format_Plan phase 1)
+
+**One metadata representation, no code block.** The yaml block —
+fenced, comment-hidden, duplicating nine of its keys in the info
+table above it, regex-read by four consumers, YAML-parsed by none —
+is gone. The visible info table under the H1 is the sidecar's
+metadata (`local/lib/sidecarmeta.mjs`): ten rows, always present,
+fixed order (Doc / Product / Release / Issues / Source / People /
+Edited / Extracted / Keywords / Tools), lists joined by " · ",
+`|` escaped. The machine related list moved onto the Related
+region's own markers: `<!-- rel:578 s=1006.257 -->` (file = the
+bullet's link target).
+
+- sweep **v1.48**: `sidecarHead` (H1 + table) + `sidecarTail`
+  (Summary, Related, seam) replace the old template. **`--reformat`
+  now regenerates the head** from the Doc Index row plus the file's
+  own metadata (keywords/tools original casing, revision, and the
+  FIRST extraction date carried across, so a second reformat is
+  byte-idempotent), preserves the Summary/Related/docs stretch from
+  disk, stamps the yaml scores onto the rel markers, and drops the
+  yaml block — the whole corpus converges with one
+  `--reformat --live`, no AI spend, no PromptVersion bump. The
+  Extracted row records `format 3.0`.
+- **`local/lib/sidecarmeta.mjs`** (new): `renderMetaTable`,
+  `readMeta` (every field, from the table OR the legacy yaml
+  frames), `metaList`, `relEntries` (markers first, yaml line on
+  unmigrated files), `migrateRelMarkers`. The rerank pass, TestPlanGen
+  (`parseRelated`) and svg2pptx (case metadata line) read through it,
+  so both shapes answer identically during the backfill window.
+- **SidecarPatch v1.7** (`scripts/SidecarPatch.ts`, the local sweep
+  runs it directly — no tenant paste): fifth frame, the TABLE frame
+  (H1 + a `| **Doc** |` row, no yaml opener) — only the marker region
+  is rewritten; every bullet now carries `s=` on its marker in every
+  frame; merge mode reads a table-frame neighbour's entries from its
+  markers. Legacy frames still parse and keep their yaml line in
+  step.
+- Q&A agent instructions **v1.4** authored (`agent/`), paste with the
+  rollout. `flow/v2_8/definition.json`'s `Sidecar_header` is frozen at
+  the v2.8 shape — the cloud flow is retired in favour of the local
+  sweep and is not being updated for 3.0.
+
+Gates: `check_local_sweep.py` (header shape + row order, reformat
+byte-idempotency, the new format-3.0 migration leg: yaml frame in →
+table out, keywords/tools/rev/first-date carried, scores on markers,
+idempotent again), `check_related.py` (table-frame set/merge/idempotent
+legs, `has_rel` tolerant of scored markers), `check_testplangen.py`
+141/141 and `check_svg2pptx.py` on format-3.0 fixtures,
+`check_format.py`, `check_typecheck.py`.
+
+ROLLOUT: `node local/sweep.mjs --config local/config.json --reformat --live`
+once (every sidecar rewrites — ~755 files), then paste agent v1.4.
+
+## caseaudit v1.0 (2026-09-05 — `--case-audit`, Sidecar_Format_Plan phase 0; sweep v1.47)
+
+**Instrument before changing the format.** The review in
+`local/Sidecar_Format_Plan.md` found the case index covers 43 of the
+178 test plans (463 cases) and that 123 of the 135 uncovered plans
+carry a case shape the parser does not read yet. This round makes
+that visible on every run instead of once in a review:
+
+- **`local/lib/caseaudit.mjs`** (new, pure): `auditBody` counts eight
+  latent-shape signals in a sidecar body — `caseTable`,
+  `posNegTable`, `posNegLabel`, `titledCaseSlide`, `numberedCases`,
+  `verifyBullets`, `collapsedCells`, `expectedLines` — and
+  `renderAuditPage` writes them per plan.
+- sweep **v1.47**: new standalone mode **`--case-audit`** — walks the
+  eligible plans like `--recase`, runs the same `extractCases` plus
+  `auditBody`, prints the summary JSON (`plans`, `covered`,
+  `uncovered_with_signal`, `uncovered_no_signal`, per-signal plan
+  counts) and on `--live` writes **`_Case Audit.md`** beside
+  `_Case Catalog.md` (Uncovered plans first, signals named). No
+  list writes, no AI, no Test Cases GUID needed.
+- `LRSDocIndex/_Case Audit.md` committed from the corpus on main so
+  the phase-3 yield has a baseline to be measured against.
+
+Gates: `check_local_sweep.py` case-audit leg (dry writes nothing,
+live writes the page, no AI, no list touch, per-plan signals in the
+run log, runs without the GUID, refuses `--recase`).
+
 ## caseindex v1.4 (2026-09-05 — the primary figure becomes clickable; sweep v1.46)
 
 **CaseIndexVersion bump — add the FigureLink column (Hyperlink),

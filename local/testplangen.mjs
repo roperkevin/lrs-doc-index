@@ -259,6 +259,9 @@ import { aiBuilderPredict, dataverseToken, generateText, loadPromptTemplate } fr
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
+import { relEntries } from "./lib/sidecarmeta.mjs";
+import { stemOf } from "./lib/slug.mjs";
+import { storyTextFirst } from "./lib/storyprofile.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
 const JOB_VERSION = "v1.8";
@@ -515,21 +518,13 @@ function normalizeRow(it) {
   };
 }
 
-// G4 — related-line parse (line-sliced; the label `related: ` is 9
-// characters). A missing or bracket-less line degrades to no
-// neighbors; a bracketed but internally invalid line throws and
-// fails the caller — the flow's accepted Catch residual (only
-// out-of-band sidecar edits produce it).
+// G4 — the sidecar's machine related list: format 3.0 keeps it in the
+// Related region's own markers (`<!-- rel:N s=SCORE -->`, file = the
+// bullet's link target); files not yet rewritten still carry the yaml
+// `related:` line, which relEntries reads first. A missing region
+// degrades to no neighbors.
 function parseRelated(storyMd) {
-  const relStart = storyMd.indexOf("related: [");
-  let relLine = "[]";
-  if (relStart > -1) {
-    const tail = storyMd.slice(relStart + 9);
-    const nl = tail.indexOf("\n");
-    relLine = (nl > -1 ? tail.slice(0, nl) : tail).trim();
-  }
-  const relJsonSafe = relLine.startsWith("[") && relLine.endsWith("]") ? relLine : "[]";
-  return JSON.parse(relJsonSafe);
+  return relEntries(storyMd);
 }
 
 async function run(cfg) {
@@ -1118,7 +1113,9 @@ async function generateOne(ctx, story) {
     `dev: ${stripQuotes(story.Dev)}`,
     `doc_id: ${story.ID}`,
   ].join("\n");
-  const storyTextCapped = cut(storyMd, Number(tp.storyCap));
+  // phase 5: a story/v1 sidecar puts Story + Acceptance Criteria ahead
+  // of Testing/Automation/… so the StoryCap cut keeps the requirements
+  const storyTextCapped = cut(storyTextFirst(storyMd), Number(tp.storyCap));
   const inputs = {
     StoryMeta: storyMeta,
     StoryText: storyTextCapped,
@@ -1303,7 +1300,10 @@ async function generateOne(ctx, story) {
   const stamp =
     `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
     `-${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}`;
-  const draftName = `TestPlanDraft__doc${story.ID}__${stamp}.md`;
+  // phase 1b: drafts share the story sidecar's stem —
+  // <stem>--draft-<yyyymmdd-hhmm>.md (the `--draft-` token is what the
+  // auto-mode idempotency scan keys on)
+  const draftName = `${stemOf(story.TextFileUrl) || `doc${story.ID}`}--draft-${String(stamp).slice(0, 13)}.md`;
   const draftPath = `${tp.draftFolder}/${draftName}`;
   plan.push({ action: "putFile", path: draftPath, bytes: draft.length });
   let putRes = null;
@@ -1390,9 +1390,16 @@ async function runAuto(ctx) {
 
   // idempotency: existing auto/manual drafts, one listing per run
   const existing = new Set();
+  const idByStem = new Map(rows.filter((r) => r.TextFileUrl).map((r) => [stemOf(r.TextFileUrl), r.ID]));
   for (const child of await graph.listFolder(siteId, tp.draftFolder)) {
-    const m = /^TestPlanDraft__doc(\d+)__/.exec(String(child.name || ""));
-    if (m) existing.add(Number(m[1]));
+    const nm = String(child.name || "");
+    const legacy = /^TestPlanDraft__doc(\d+)__/.exec(nm);
+    if (legacy) { existing.add(Number(legacy[1])); continue; }
+    const m = /^(.+)--draft-\d{8}-\d{4,6}\.md$/.exec(nm);
+    if (m) {
+      const id = idByStem.get(m[1]) ?? (/^doc(\d+)$/.exec(m[1]) || [])[1];
+      if (id) existing.add(Number(id));
+    }
   }
 
   const cutoff = Date.now() - lookbackDays * 86400000;

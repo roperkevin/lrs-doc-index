@@ -36,6 +36,8 @@ jobs:
       - run: python3 ../../local/harness/check_local_sweep.py
       - run: python3 ../../local/harness/check_testplangen.py
       - run: python3 ../../local/harness/check_caseindex.py
+      - run: python3 ../../local/harness/check_slug.py
+      - run: python3 ../../local/harness/check_storyprofile.py
 
   full-format:
     runs-on: ubuntu-latest

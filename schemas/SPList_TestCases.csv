@@ -2,14 +2,17 @@ Display Name,Internal Name,Type,Details,Required
 Title,Title,Single line (native),"The case heading text, cleaned, truncated 255",Yes
 Document,Document,Lookup,"Target: Doc Index, show Title; INDEXED — create via CLASSIC list settings (modern-created lookups are broken: silent write drops, spinning pickers)",Yes
 CaseKey,CaseKey,Single line of text,"{DocRowId}|{ordinal} — INDEXED; the replace-set diff key (Case_Index_Plan.md D4): every (re)index of a plan replaces its full case-row set, so this is a within-run dedup key, never a durable case identity",Yes
-CaseNo,CaseNo,Single line of text,"The plan's own number: '2' (deck-derived) or 'TC-P4' (draft-style); display only, never identity",No
-SlideNo,SlideNo,Number,"0 decimals; from the sidecar's <!-- slide K --> provenance comment; empty for draft-style plans",No
+CaseNo,CaseNo,Single line of text,"The TC id ('TC-P04'; per-lane sequence in document order — caseindex v2.0) or the deck number ('2') on pre-3 sections; display only, never identity",No
+SlideNo,SlideNo,Number,"0 decimals; from the heading's src comment ('slide K'); empty for drafts and docx-derived cases",No
 Classification,Classification,Choice,"Positive; Negative; Unspecified — from the heading (deck) or the TC lane letter (draft)",No
 Scenario,Scenario,Single line of text,"The '### <scenario>' line (deck) / heading remainder after the TC id (draft)",No
 CaseText,CaseText,Multiple lines of text,"PLAIN text (not enhanced); the case section's body with tables/figure links/fences stripped, capped 4000 chars — skim/search aid, like TextPreview",No
 IssueRefs,IssueRefs,Single line of text,"'; '-joined repo#number found in this case's OWN text (devtopia url / explicit repo#n / hashtag via sweep.defaultRepo, url-claimed numbers suppress hashtags — the Doc IDs patterns minus the doc-level filename source); empty = none",No
 Anchor,Anchor,Single line of text,"GitHub-style anchor slug of the sidecar heading — deep link target {TextFileUrl}#{Anchor}",No
-Shape,Shape,Choice,"deck; draft — which case grammar the plan uses (caseindex v1.1): deck-derived '## Case N' sections vs the draft-style '### TC-[PN]n' contract",No
+Shape,Shape,Choice,"S1; S2; S3; S4; S5; S6; LLM; draft; deck — the detector that produced the case (caseindex v2.0 / casegrammar): S1 single-case slide, S2 titled case slide, S3 case table row, S4 Positive/Negative label list item, S5 labelled list (one case per label), S6 numbered case line; LLM = the opt-in --normalize-cases lane (verified, never mixed with deterministic rows); draft = TestPlanGen draft contract (no src comment); deck = pre-3 '## Case N' sections until the reformat converges",No
+Confidence,Confidence,Choice,"high; medium; low; llm — from the detector (S0–S4 high, S5/S6 medium, llm for the --normalize-cases lane; caseindex v2.0)",No
+Group,Group,Single line of text,"The case's group within its plan — the label the case came from ('Normal Routes' from 'Positive Tests: Normal Routes', the classification line's remainder on a case slide); empty = none (caseindex v2.0)",No
+SourceRef,SourceRef,Single line of text,"The heading's src comment verbatim — detector · slide · table row / label / case number — the audit trail from catalog row back to the source slide (caseindex v2.0)",No
 FigureCount,FigureCount,Number,"0 decimals; rendered figures + collapsed figure lines in this case's section (caseindex v1.1)",No
 TableCount,TableCount,Number,"0 decimals; markdown tables in this case's section — fixture/after-state data (caseindex v1.1)",No
 StepCount,StepCount,Number,"0 decimals; numbered step lines in the section (draft-style steps; deck cases usually 0 — their one numbered line was promoted into the heading) (caseindex v1.1)",No

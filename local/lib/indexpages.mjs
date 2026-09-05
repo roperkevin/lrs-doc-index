@@ -150,12 +150,13 @@ export function writeCaseCatalog(cfg, rows, caseRowsByDoc) {
       "",
       `[Sidecar](<${target}>) · ${clip(plan.Surface, 30) || "—"} · release ${clip(plan.TargetRelease, 20) || "—"}`,
       "",
-      "| Case | Classification | Scenario | Tools | Issues |",
-      "|---|---|---|---|---|",
+      "| Case | Classification | Group | Shape | Tools | Issues |",
+      "|---|---|---|---|---|---|",
       ...cases.map((c) => {
         const label = clip(c.Title, 90) || `Case ${ordinalOf(c)}`;
         const link = c.Anchor ? `[${label}](<${target}#${c.Anchor}>)` : label;
-        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Scenario, 60) || "—"} | ${clip(c.Tools, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
+        const shape = c.Shape ? `${c.Shape}${c.Confidence && c.Confidence !== "high" ? " · " + c.Confidence : ""}` : "—";
+        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Group, 40) || "—"} | ${shape} | ${clip(c.Tools, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
       }),
       ""
     );
@@ -176,5 +177,36 @@ export function writeCaseCatalog(cfg, rows, caseRowsByDoc) {
     fs.writeFileSync(path.join(dir, "_Case Catalog.md"), md);
   } catch (e) {
     process.stderr.write("case catalog write failed: " + e.message + "\n");
+  }
+}
+
+/**
+ * "_Manifest.json" — row id -> sidecar path, for every consumer that
+ * used to find a file by its `__doc<id>` suffix (phase 1b removed the
+ * id from filenames). Rebuilt with the browse pages on live runs and
+ * by --rename. `issueByDoc` is the Map rowId -> primary issue number.
+ */
+export function writeManifest(cfg, rows, issueByDoc) {
+  const dir = cfg?.paths?.sidecarLibrary;
+  if (!dir || cfg?.sweep?.indexPages === false) return;
+  const docs = {};
+  for (const r of rows || []) {
+    if (!r.ID || r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+    const parts = String(r.TextFileUrl).split("/");
+    const file = decodeURIComponent(parts[parts.length - 1] || "");
+    const folder = decodeURIComponent(parts[parts.length - 2] || "");
+    docs[String(r.ID)] = {
+      path: folder ? `${folder}/${file}` : file,
+      stem: file.replace(/\.md$/i, ""),
+      kind: r.DocKind || "",
+      issue: (issueByDoc && issueByDoc.get(r.ID)) || 0,
+      title: r.Title || "",
+    };
+  }
+  const out = { generated: new Date().toISOString(), format: "3.0", docs };
+  try {
+    fs.writeFileSync(path.join(dir, "_Manifest.json"), JSON.stringify(out, null, 1));
+  } catch (e) {
+    process.stderr.write("manifest write failed: " + e.message + "\n");
   }
 }
