@@ -1,0 +1,84 @@
+# LRS Data Products
+
+|   |   |
+| --- | --- |
+| **Kind** | Other · Pro |
+| **Release** | — |
+| **Product** | Roads & Highways · Pipeline Referencing |
+| **Issue** | [ArcGISPro/ps-location-referencing#6979](https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/6979) |
+| **Source** | [6979_LRSdataproducts.docx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Doc%20Reviews/Pro36_Ent12/6979_LRSdataproducts.docx>) |
+| **Edited** | 2025-09-08 01:44 by unknown |
+| **Extracted** | 2026-09-04 · lane `xmlstrip` |
+
+<!-- metadata
+```yaml
+title: "LRS Data Products"
+source_file: "6979_LRSdataproducts.docx"
+source_url: "https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Doc%20Reviews/Pro36_Ent12/6979_LRSdataproducts.docx"
+doc_id: 125
+doc_kind: "Other"
+surface: "Pro"
+doc_revision: ""
+target_release: ""
+pe: ""
+dev: ""
+author: ""
+last_edited_by: ""
+last_edited: "2025-09-08T01:44:31.7346307Z"
+extracted: 2026-09-04
+extraction_lane: xmlstrip
+prompt_version: "v2.0.2"
+keywords: ["data product", "template", "length", "route log", "feature count", "reporting", "routes"]
+tools: ["Generate LRS Data Product", "Generate Linear Referenced Length Summary", "Generate Linear Referenced Route Log", "Generate Linear Referenced Feature Count"]
+products: ["Roads & Highways", "Pipeline Referencing"]
+issues: ["ArcGISPro/ps-location-referencing#6979"]
+related: [{"doc":202,"file":"lrs-data-products__doc202.md","s":5.457},{"doc":239,"file":"lrs-data-products__doc239.md","s":5.144},{"doc":121,"file":"apr-rh-integration-and-location-referencing-toolbox-updates__doc121.md","s":4.176},{"doc":335,"file":"lrs-data-products-in-arcgis-pro__doc335.md","s":3.803},{"doc":112,"file":"whats-new-in-arcgis-roads-and-highways-and-arcgis-pipeline-referencing-november__doc112.md","s":3.528}]
+```
+-->
+
+## Summary
+
+Describes the creation of LRS data products in ArcGIS Roads and Highways and ArcGIS Pipeline Referencing. Covers workflows for creating data products using templates and without templates, including tools and output formats. Explains how data products can be used in reporting solutions such as ArcGIS Pro reporting tools.
+
+## Related documents
+
+<!-- related:begin -->
+- [LRS Data Products](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/Other/lrs-data-products__doc202.md>) — similar text 0.78 · 1 title word · same kind/surface <!-- rel:202 -->
+- [LRS Data Products](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/Other/lrs-data-products__doc239.md>) — similar text 0.77 · 1 title word · same kind/surface <!-- rel:239 -->
+- [APR/RH Integration and Location Referencing Toolbox Updates](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/Other/apr-rh-integration-and-location-referencing-toolbox-updates__doc121.md>) — similar text 0.30 · same kind/surface <!-- rel:121 -->
+- [LRS Data Products in ArcGIS Pro](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/Other/lrs-data-products-in-arcgis-pro__doc335.md>) — similar text 0.63 · 1 title word · same kind/surface <!-- rel:335 -->
+- [What’s New in ArcGIS Roads and Highways and ArcGIS Pipeline Referencing: November 2025](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/Other/whats-new-in-arcgis-roads-and-highways-and-arcgis-pipeline-referencing-november__doc112.md>) — similar text 0.17 · same kind/surface/folder <!-- rel:112 -->
+<!-- related:end -->
+
+<!-- docs:begin -->
+## Esri documentation
+
+[LRS data products](https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/lrs-data-products.html) · [Create a template for an LRS length data product](https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/create-a-template-for-an-lrs-length-data-product.html) · [Create a template for an LRS route log data product](https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/create-a-template-for-an-lrs-route-log-data-product.html) · [Create a template for an LRS feature count data product](https://doc.esri.com/en/arcgis-pro/latest/help/production/roads-highways/create-a-template-for-an-lrs-feature-count-data-product.html)
+
+_No page matched:_ [Generate LRS Data Product](https://www.google.com/search?q=%22Generate%20LRS%20Data%20Product%22+site%3Adoc.esri.com) · [Generate Linear Referenced Length Summary](https://www.google.com/search?q=%22Generate%20Linear%20Referenced%20Length%20Summary%22+site%3Adoc.esri.com) · [Generate Linear Referenced Route Log](https://www.google.com/search?q=%22Generate%20Linear%20Referenced%20Route%20Log%22+site%3Adoc.esri.com) · [Generate Linear Referenced Feature Count](https://www.google.com/search?q=%22Generate%20Linear%20Referenced%20Feature%20Count%22+site%3Adoc.esri.com)
+<!-- docs:end -->
+
+---
+
+## LRS data products
+LRS Data ProductsArcGIS Roads and Highways/ArcGIS Pipeline Referencing supports the creation of data products, which can be a .csv file or a geodatabase table that is generated by transforming LRS data. is a group of tools built on ArcGIS that converts LRS data into https://prodev.arcgis.com/en/pro-app/3.6/help/production/roads-highways/essential-roads-and-highways-vocabulary.htm#ESRI_SECTION1_3D7865B6A77E464FAC6C96C53C8CCBA2 data products that can be used to create reports.The output file can be added to a reporting solution of your choice such as the https://prodev.arcgis.com/en/pro-app/3.6/help/reports/reports-in-arcgis-pro.htm reporting tools in ArcGIS Pro and others to add totals, summaries, details, header, footer, notes, logos, and more to a report.
+
+### Create a data product by using a template
+The general workflow to producecreate a data product using a template is as follows:
+
+- Use the Data Product Designer to design and create reusable templates.
+  - Length—Create an LRS length data product that calculates length of routes based on their characteristics. You can provide a name and data source, add filters, and define the summary and length fields.
+  - Route Log—Create an LRS route log data product that provides measure locations for characteristics along the route. You can provide a name and data source, add filters, and define the route identifier, log, location, and referent fields.
+  - Feature Count—Create an LRS feature count data product that provides the information on the number of line events, point events, and intersections per route. You can provide a name and data source, add filters, and define the summary, route identifier, and feature count fields.
+- Templates are saved as shareable .json files.
+- Run the Generate LRS Data Product tool with the template on a set of routes in a network to produce the data product.
+
+### Create a data product without using a template
+
+### To create a data product without using a template, run one of the following tools in the https://prodev.arcgis.com/en/pro-app/latest/tool-reference/location-referencing/an-overview-of-the-data-products-toolset.htm Data Products toolset:
+
+- Generate Linear Referenced Length Summary
+- Generate Linear Referenced Route Log
+- https://prodev.arcgis.com/en/pro-app/3.6/tool-reference/location-referencing/generate-linear-referenced-feature-count.htm Generate Linear Referenced Feature Count
+
+This output file can be added to a reporting solution of your choice such as the https://prodev.arcgis.com/en/pro-app/3.6/help/reports/reports-in-arcgis-pro.htm reporting tools in ArcGIS Pro and others to add totals, summaries, details, header, footer, notes, logos, and more to a report.
