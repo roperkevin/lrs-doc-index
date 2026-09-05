@@ -1,8 +1,21 @@
 /**
- * llm.mjs v1.6 — LLM client for the Doc Index classify/keyword step
+ * llm.mjs v1.7 — LLM client for the Doc Index classify/keyword step
  * (and, since v1.4, a raw-text generation call — `generateText` — for
  * local/testplangen.mjs's anthropic lane: same auth/retry plumbing,
  * no JSON schema pin, caller-controlled maxTokens).
+ *
+ * v1.7: generateText takes an options object — `onDelta(kind, text)`
+ * receives every streamed chunk as it arrives (kind "text" for the
+ * reply, "thinking" for the model's reasoning summary) so a caller
+ * can echo the generation to a console; `showThinking: true` adds
+ * `thinking: {type: "adaptive", display: "summarized"}` to the
+ * request, which makes the API stream readable thinking summaries
+ * (the default display is "omitted": thinking still happens and is
+ * billed, but its blocks arrive empty). The raw chain of thought is
+ * never returned on any model; the summary is what exists. A retry
+ * restarts the stream from nothing — the partial echo is stale and
+ * the callback is told so with kind "restart". Accumulated text and
+ * the fail-closed posture are unchanged.
  *
  * v1.6: generateText STREAMS (SSE) — a non-streaming Messages call
  * emits nothing, headers included, until the whole generation is
@@ -281,12 +294,17 @@ function requestJson(cfg, prompt) {
  * (requestJson) stays non-streaming: its replies are small and its
  * JSON-schema pin has no streaming equivalent here.
  */
-export async function generateText(cfg, prompt) {
-  const { text, stopReason } = await postMessagesStream(cfg, {
+export async function generateText(cfg, prompt, opts = {}) {
+  const payload = {
     model: cfg.model || "claude-opus-5",
     max_tokens: cfg.maxTokens === undefined ? 4096 : Number(cfg.maxTokens),
     messages: [{ role: "user", content: prompt }],
-  });
+  };
+  // v1.7: only when asked — display "summarized" streams readable
+  // thinking blocks; sent only with a console listener so a config
+  // whose model predates adaptive thinking is never affected otherwise
+  if (opts.showThinking) payload.thinking = { type: "adaptive", display: "summarized" };
+  const { text, stopReason } = await postMessagesStream(cfg, payload, opts.onDelta);
   if (stopReason === "refusal") {
     throw new Error("LLM refused the generation request (stop_reason: refusal)");
   }
@@ -302,7 +320,7 @@ export async function generateText(cfg, prompt) {
 // mid-stream cut (idle timeout, connection reset, an SSE error
 // event) also riding the retry path: the partial text is discarded,
 // exactly as the marker slice would have failed closed on it.
-async function postMessagesStream(cfg, payload) {
+async function postMessagesStream(cfg, payload, onDelta) {
   const baseUrl = cfg.baseUrl || "https://api.anthropic.com";
   const maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
   const idleMs = cfg.timeoutMs === undefined ? LLM_TIMEOUT_MS : Number(cfg.timeoutMs);
@@ -310,7 +328,10 @@ async function postMessagesStream(cfg, payload) {
   let lastErr;
   let refresh = false;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    if (attempt > 0) await retryNotice(lastErr, attempt, maxRetries);
+    if (attempt > 0) {
+      await retryNotice(lastErr, attempt, maxRetries);
+      onDelta?.("restart", ""); // whatever was echoed so far is stale
+    }
     const ac = new AbortController();
     let idleTimer;
     const armIdle = () => {
@@ -363,6 +384,9 @@ async function postMessagesStream(cfg, payload) {
           const ev = JSON.parse(dataLine.slice(5).trim());
           if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
             text += ev.delta.text;
+            onDelta?.("text", ev.delta.text);
+          } else if (ev.type === "content_block_delta" && ev.delta?.type === "thinking_delta") {
+            onDelta?.("thinking", String(ev.delta.thinking ?? ""));
           } else if (ev.type === "message_delta" && ev.delta?.stop_reason) {
             stopReason = ev.delta.stop_reason;
           } else if (ev.type === "message_stop") {
