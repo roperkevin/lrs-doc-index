@@ -670,7 +670,9 @@ async function main() {
   if (ciEnabled) {
     const items = await graph.listItems(siteId, sp.lists.testCases, {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
-               "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor", "SweptOn"],
+               "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
+               "Shape", "FigureCount", "TableCount", "StepCount", "RouteRefs",
+               "ExpectedResult", "TraceText", "SweptOn"],
     });
     rawSnapshots.testCases = items; // rides the per-run list backup
     for (const it of items) {

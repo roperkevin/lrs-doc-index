@@ -86,6 +86,9 @@ Trace: story §2 (devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/999
 
 ### TC-P2 — Split at the route end
 Steps referencing ArcGISPro/ps-location-referencing#4855 explicitly.
+```arcade
+var sneaky = other/repo#4444; // fenced code never mints refs or meta
+```
 
 ### TC-N1: Reject a split outside the route measure range
 Steps.
@@ -142,6 +145,7 @@ process.stdout.write(JSON.stringify({
   fresh, same, changed, sweptOnly, grown, stale, archived,
   refsBare: caseIssueRefs("see #612 and #12", "A/b"),
   refsNoRepo: caseIssueRefs("see #612", ""),
+  refsDigits: caseIssueRefs("expr 40+5 a/b#0 and a/b#12, real a/b#4855", ""),
 }));
 """
 
@@ -248,6 +252,36 @@ def main():
           json.dumps(r["refsBare"]))
     check("hashtag without a defaultRepo yields nothing", r["refsNoRepo"] == [],
           json.dumps(r["refsNoRepo"]))
+    check("explicit repo#n needs 3-5 digits (the live #0 phantom)",
+          r["refsDigits"] == ["a/b#4855"], json.dumps(r["refsDigits"]))
+    check("fenced code never mints refs (TC-P2's arcade trap)",
+          dcases[1]["issueRefs"] == ["ArcGISPro/ps-location-referencing#4855"],
+          json.dumps(dcases[1]["issueRefs"]))
+
+    print("-- per-case metadata (v1.1) --")
+    check("deck case: shape/figure/table counts and routes from the fixture table",
+          c1.get("shape") == "deck" and c1.get("figureCount") == 1
+          and c1.get("tableCount") == 1 and c1.get("stepCount") == 0
+          and c1.get("routeRefs") == "R1L1", json.dumps(c1))
+    check("deck case: no draft contract lines",
+          c1.get("expectedResult") == "" and c1.get("traceText") == "",
+          json.dumps(c1))
+    d1 = dcases[0]
+    check("draft case: steps counted, shape stamped",
+          d1.get("shape") == "draft" and d1.get("stepCount") == 2
+          and d1.get("figureCount") == 0 and d1.get("tableCount") == 0,
+          json.dumps(d1))
+    check("draft case: Expected Result line captured",
+          d1.get("expectedResult") == "two events", json.dumps(d1))
+    check("draft case: Trace line captured (per-case grounding provenance)",
+          str(d1.get("traceText")).startswith("story §2"), json.dumps(d1))
+    row0 = r["fresh"][0]
+    check("row shaping carries the v1.1 columns",
+          row0.get("Shape") == "deck" and row0.get("TableCount") == 1
+          and row0.get("RouteRefs") == "R1L1"
+          and "ExpectedResult" in row0 and "TraceText" in row0
+          and "StepCount" in row0 and "FigureCount" in row0,
+          json.dumps(row0))
 
     print("-- replace-set planner --")
     fresh = r["fresh"]

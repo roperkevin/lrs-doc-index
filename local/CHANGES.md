@@ -1,5 +1,44 @@
 # Local sweep — release notes
 
+## caseindex v1.1 (2026-09-05 — precision + per-case metadata)
+
+**CaseIndexVersion bump — reflow with `--recase --live` after adding
+the columns.** Two changes driven by the first live backfill's export
+(463 cases / 43 plans, structurally clean):
+
+- **Issue-ref precision**: the explicit `owner/repo#n` form now
+  requires a 3–5 digit issue number — the same corpus assumption
+  RegexExtract's hashtag rule already encodes — and BOTH the
+  issue-ref and metadata scans run on UNFENCED text only. The live
+  list's single (and only) issue ref was a phantom
+  `ps-location-referencing#0` minted from an Arcade stationing
+  expression; neither form can produce it now. `IssueRefs` is the
+  gap report's tracing join key, so precision beats recall here.
+- **Per-case metadata** (seven new columns, `SPList_TestCases.csv`):
+  `Shape` (deck/draft — which case grammar the plan uses),
+  `FigureCount` / `TableCount` / `StepCount` (what the case carries),
+  `RouteRefs` ('; '-joined distinct fixture route ids, harvested
+  from prose AND table cells — the decks' route tables are where
+  fixture routes live), and the draft contract's `ExpectedResult` +
+  `TraceText` lines (per-case story-grounding provenance, capped
+  255; empty on deck-derived cases). Parent-plan metadata (surface,
+  products, release) stays one lookup away on the Doc Index row by
+  design — denormalizing it would go stale. The sweep's run-start
+  fetch selects the new fields so the replace-set diff stays
+  churn-free.
+
+TENANT STEP before the next nightly on this code: add the seven
+columns to the live Test Cases list (modern UI is fine — none are
+lookups; `Shape` choice values `deck; draft`), then
+`--recase --live` once to reflow. Until the columns exist, case
+writes fail LOUDLY into `case_errors` (documents still index
+normally).
+
+Gates: `check_caseindex.py` **53/53** (digit floor incl. the live
+`#0` phantom, the fenced-code trap, deck/draft metadata legs, row
+shaping), `check_local_sweep.py` **236/236** (the live-leg row
+contract asserts the v1.1 columns).
+
 ## v1.43 (2026-09-05 — Case_Index_Plan phase 3: the case catalog)
 
 **The case index gets its browse surface.** indexpages **v1.1** adds

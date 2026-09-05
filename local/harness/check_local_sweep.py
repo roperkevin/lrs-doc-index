@@ -1373,6 +1373,11 @@ def main():
           ac.get("CaseKey") == f"{alpha_id}|1" and ac.get("CaseNo") == "3"
           and ac.get("Classification") == "Positive" and ac.get("SlideNo") == 2
           and ac.get("Scenario") == "Loop Route", str(ac))
+    check("case row carries the v1.1 metadata columns",
+          ac.get("Shape") == "deck" and ac.get("FigureCount") == 0
+          and ac.get("TableCount") == 0 and ac.get("StepCount") == 0
+          and ac.get("RouteRefs") == "" and ac.get("ExpectedResult") == ""
+          and ac.get("TraceText") == "", str(ac))
     check("case row title is the visible heading",
           ac.get("Title") == "Case 3: Positive - Line Network",
           str(ac.get("Title")))

@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-05aa** — see "Current state" below.
+Last updated: **2026-09-05bb** — see "Current state" below.
 Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
 review r7): this file keeps the deployed-truth TABLES; the story of
 each change belongs to the component CHANGES files.
@@ -188,6 +188,21 @@ each change belongs to the component CHANGES files.
   `_Case Catalog.md` page, and the gap report's case tracing all
   activate from that config line with no other steps. Smoke row 9
   becomes runnable after the backfill.
+- **2026-09-05bb (caseindex v1.1 — precision + per-case metadata,
+  authored on main):** driven by the FIRST LIVE BACKFILL's export
+  (463 cases / 43 plans, zero dupes/gaps, scenarios+anchors 100%):
+  the explicit `repo#n` issue form now needs 3–5 digits and every
+  scan runs on unfenced text (the list's one issue ref was a phantom
+  `#0` from an Arcade stationing expression — killed), and seven
+  metadata columns join `SPList_TestCases.csv`: `Shape`,
+  `FigureCount`/`TableCount`/`StepCount`, `RouteRefs` (fixture
+  route ids from prose + table cells), `ExpectedResult`/`TraceText`
+  (the draft contract's per-case lines). CaseIndexVersion bump —
+  TENANT STEP: add the seven columns to the live list (modern UI
+  fine, no lookups; Shape choices `deck; draft`) BEFORE the sweep
+  machine picks this up, then `--recase --live` once to reflow.
+  Gates: `check_caseindex.py` **53/53**, `check_local_sweep.py`
+  **236/236**, testplangen 141/141 unaffected.
 
 ## Core sweep
 
@@ -309,7 +324,7 @@ v1.2 describes them — paste with the window, step 6).
 | check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
 | check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
 | check_testplangen.py (local/harness — testplangen.mjs v1.8: guard, lanes + G6 fallback, remaining-budget caps, fail-closed marker slice, verifier incl. draftlint↔check_draft_coverage agreement + grounding legs, lookup front door, notify, auto mode + provider override, issue trace, gap report incl. the v2.29 case-tracing + degrade legs, pinned lanes, figures incl. the link-absolutizing leg, web references; 141/141; CI fixture-free job) | 2026-09-05 (v2.29) |
-| check_caseindex.py (local/harness — caseindex.mjs v1.0: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression, replace-set planner incl. SweptOn-never-dirties, caps; 45/45; CI fixture-free job). Sweep-level case-index legs (write contract, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, and the phase-3 catalog + recase-rebuild legs) live in check_local_sweep.py, 235/235 since sweep v1.43 | 2026-09-05 (phases 0–3) |
+| check_caseindex.py (local/harness — caseindex.mjs v1.1: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression + the 3–5-digit floor + the fenced-code trap, the v1.1 metadata legs (Shape/counts/RouteRefs/ExpectedResult/TraceText), replace-set planner incl. SweptOn-never-dirties, caps; 53/53; CI fixture-free job). Sweep-level case-index legs (write contract incl. the v1.1 columns, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, catalog + recase-rebuild) live in check_local_sweep.py, 236/236 | 2026-09-05 (v1.1) |
 | check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
 | check_draft2pptx.py (local/harness — draft2pptx.mjs v1.1: python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |
 | check_svg2pptx.py (svg2pptx v1.4 — SVG figures → editable pptx shapes: package/shape/style/label contract, no-plate + title-band dress, case-heading titles + native case tables + metadata line from the sidecar, sidecar lookup + override + --no-tables legs, python-pptx open leg incl. table read-back; v1.4 exports the parser/emitter for draft2pptx's figure slides, CLI unchanged) | 2026-09-04 (v2.27) |

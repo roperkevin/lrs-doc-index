@@ -147,6 +147,15 @@ anywhere in this plan). SharePoint's role is storage: one new list.
 | Anchor | Anchor | Single line of text | The sidecar heading's GitHub-style anchor slug — deep link target `{TextFileUrl}#{Anchor}` |
 | SweptOn | SweptOn | Date and Time | Include time; when this row was last written |
 
+Since **caseindex v1.1** (2026-09-05, after the first live
+backfill) the list carries seven more per-case metadata columns —
+`Shape` (deck/draft), `FigureCount`/`TableCount`/`StepCount`,
+`RouteRefs` (distinct fixture route ids, prose + table cells), and
+the draft contract's `ExpectedResult`/`TraceText` lines — and the
+explicit `repo#n` issue form requires 3–5 digits with fenced code
+excluded from every scan (a live Arcade expression had minted a
+phantom `#0`). The CSV is authoritative for column details.
+
 Denormalized plan metadata (surface, products, release) is
 deliberately ABSENT — it lives one lookup away on the Doc Index row
 and would go stale here; list views that need it use the lookup's
