@@ -1,5 +1,57 @@
 # Local sweep — release notes
 
+## format 3.0 (2026-09-05 — the metadata table replaces the yaml block; sweep v1.48, SidecarPatch v1.7, Sidecar_Format_Plan phase 1)
+
+**One metadata representation, no code block.** The yaml block —
+fenced, comment-hidden, duplicating nine of its keys in the info
+table above it, regex-read by four consumers, YAML-parsed by none —
+is gone. The visible info table under the H1 is the sidecar's
+metadata (`local/lib/sidecarmeta.mjs`): ten rows, always present,
+fixed order (Doc / Product / Release / Issues / Source / People /
+Edited / Extracted / Keywords / Tools), lists joined by " · ",
+`|` escaped. The machine related list moved onto the Related
+region's own markers: `<!-- rel:578 s=1006.257 -->` (file = the
+bullet's link target).
+
+- sweep **v1.48**: `sidecarHead` (H1 + table) + `sidecarTail`
+  (Summary, Related, seam) replace the old template. **`--reformat`
+  now regenerates the head** from the Doc Index row plus the file's
+  own metadata (keywords/tools original casing, revision, and the
+  FIRST extraction date carried across, so a second reformat is
+  byte-idempotent), preserves the Summary/Related/docs stretch from
+  disk, stamps the yaml scores onto the rel markers, and drops the
+  yaml block — the whole corpus converges with one
+  `--reformat --live`, no AI spend, no PromptVersion bump. The
+  Extracted row records `format 3.0`.
+- **`local/lib/sidecarmeta.mjs`** (new): `renderMetaTable`,
+  `readMeta` (every field, from the table OR the legacy yaml
+  frames), `metaList`, `relEntries` (markers first, yaml line on
+  unmigrated files), `migrateRelMarkers`. The rerank pass, TestPlanGen
+  (`parseRelated`) and svg2pptx (case metadata line) read through it,
+  so both shapes answer identically during the backfill window.
+- **SidecarPatch v1.7** (`scripts/SidecarPatch.ts`, the local sweep
+  runs it directly — no tenant paste): fifth frame, the TABLE frame
+  (H1 + a `| **Doc** |` row, no yaml opener) — only the marker region
+  is rewritten; every bullet now carries `s=` on its marker in every
+  frame; merge mode reads a table-frame neighbour's entries from its
+  markers. Legacy frames still parse and keep their yaml line in
+  step.
+- Q&A agent instructions **v1.4** authored (`agent/`), paste with the
+  rollout. `flow/v2_8/definition.json`'s `Sidecar_header` is frozen at
+  the v2.8 shape — the cloud flow is retired in favour of the local
+  sweep and is not being updated for 3.0.
+
+Gates: `check_local_sweep.py` (header shape + row order, reformat
+byte-idempotency, the new format-3.0 migration leg: yaml frame in →
+table out, keywords/tools/rev/first-date carried, scores on markers,
+idempotent again), `check_related.py` (table-frame set/merge/idempotent
+legs, `has_rel` tolerant of scored markers), `check_testplangen.py`
+141/141 and `check_svg2pptx.py` on format-3.0 fixtures,
+`check_format.py`, `check_typecheck.py`.
+
+ROLLOUT: `node local/sweep.mjs --config local/config.json --reformat --live`
+once (every sidecar rewrites — ~755 files), then paste agent v1.4.
+
 ## caseaudit v1.0 (2026-09-05 — `--case-audit`, Sidecar_Format_Plan phase 0; sweep v1.47)
 
 **Instrument before changing the format.** The review in

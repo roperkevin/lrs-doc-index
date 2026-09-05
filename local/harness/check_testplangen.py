@@ -403,11 +403,20 @@ def make_handler(state):
 # ---- fixtures -------------------------------------------------------
 
 def sidecar(sidecar_dir, folder, name, body, related=None):
-    """A minimal v2.8-shaped sidecar: hidden metadata comment frame
-    with the machine-written related: line, then the body."""
-    rel = json.dumps(related or [], separators=(",", ":"))
-    text = (f"# {name}\n\n<!-- metadata\n```yaml\ndoc_id: 0\n"
-            f"related: {rel}\n```\n-->\n\n{body}\n")
+    """A minimal format-3.0 sidecar: H1 + metadata table (no yaml), the
+    Related region carrying the machine list on its markers, then the
+    body below the seam."""
+    bullets = "\n".join(
+        f"- [{r['file']}](<{r['file']}>) <!-- rel:{r['doc']} s={r['s']} -->"
+        for r in (related or [])) or "_None yet._"
+    text = (f"# {name}\n\n| Field | Value |\n| --- | --- |\n"
+            f"| **Doc** | 0 · Test Plan · Pro |\n| **Product** | — |\n| **Release** | — |\n"
+            f"| **Issues** | — |\n| **Source** | [{name}](<{name}>) |\n"
+            f"| **People** | author — · PE — · dev — |\n| **Edited** | — |\n"
+            f"| **Extracted** | 2026-09-05 · lane xmlstrip · format 3.0 · prompt v2.0 |\n"
+            f"| **Keywords** | — |\n| **Tools** | — |\n\n"
+            f"## Related documents\n\n<!-- related:begin -->\n{bullets}\n<!-- related:end -->\n\n"
+            f"---\n\n{body}\n")
     fpath = os.path.join(sidecar_dir, folder, name)
     os.makedirs(os.path.dirname(fpath), exist_ok=True)
     with open(fpath, "w", encoding="utf-8") as f:

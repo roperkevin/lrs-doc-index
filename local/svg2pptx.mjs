@@ -83,6 +83,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { readMeta } from "./lib/sidecarmeta.mjs";
 
 export const EMU_PX = 9525;          // 96 dpi
 const SLIDE_W = 12192000;            // 13.33 in (16:9)
@@ -126,10 +127,9 @@ function collectInputs(argv) {
 // figure's whole context: its H1 is the document title, its yaml block
 // carries the document metadata, and the figure's own case section
 // (heading + tables) sits around the figure's image link in the body.
-function yamlVal(md, key) {
-  const m = md.match(new RegExp(`^${key}:\\s*["']?(.*?)["']?\\s*$`, "m"));
-  return m ? m[1].trim() : "";
-}
+// the sidecar's metadata — the format-3.0 table, or the legacy yaml
+// block on a file the backfill has not rewritten yet (sidecarmeta.mjs
+// reads both)
 
 function sidecarFor(file, cache) {
   const m = basename(file).match(/^doc(\d+)_/);
@@ -159,17 +159,16 @@ function sidecarFor(file, cache) {
     sc.title = slug.replace(/[-_]+/g, " ").trim() || sc.title;
     try {
       const md = readFileSync(hits[0], "utf8");
+      const meta = readMeta(md);
       const h1 = md.match(/^# (.+)$/m);
       if (h1) sc.title = h1[1].trim();
-      else if (yamlVal(md, "title")) sc.title = yamlVal(md, "title");
+      else if (meta.title) sc.title = meta.title;
       // the metadata line: what a reviewer needs to place the case —
       // kind, surface, products, and how fresh the source is
-      const products = (md.match(/^products:\s*\[(.*)\]\s*$/m) || ["", ""])[1]
-        .split(",").map((s) => s.replace(/["']/g, "").trim()).filter(Boolean);
-      const edited = (yamlVal(md, "last_edited").match(/\d{4}-\d{2}-\d{2}/) || [""])[0];
-      const editor = yamlVal(md, "last_edited_by");
+      const edited = (meta.last_edited.match(/\d{4}-\d{2}-\d{2}/) || [""])[0];
+      const editor = meta.last_edited_by;
       sc.meta = [
-        yamlVal(md, "doc_kind"), yamlVal(md, "surface"), products.join(" / "),
+        meta.doc_kind, meta.surface, meta.products.join(" / "),
         edited ? `edited ${edited}${editor ? " by " + editor : ""}` : "",
       ].filter(Boolean).join("  ·  ").slice(0, 120);
       sc.lines = md.split("\n");

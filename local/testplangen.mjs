@@ -259,6 +259,7 @@ import { aiBuilderPredict, dataverseToken, generateText, loadPromptTemplate } fr
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
+import { relEntries } from "./lib/sidecarmeta.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
 const JOB_VERSION = "v1.8";
@@ -515,21 +516,13 @@ function normalizeRow(it) {
   };
 }
 
-// G4 — related-line parse (line-sliced; the label `related: ` is 9
-// characters). A missing or bracket-less line degrades to no
-// neighbors; a bracketed but internally invalid line throws and
-// fails the caller — the flow's accepted Catch residual (only
-// out-of-band sidecar edits produce it).
+// G4 — the sidecar's machine related list: format 3.0 keeps it in the
+// Related region's own markers (`<!-- rel:N s=SCORE -->`, file = the
+// bullet's link target); files not yet rewritten still carry the yaml
+// `related:` line, which relEntries reads first. A missing region
+// degrades to no neighbors.
 function parseRelated(storyMd) {
-  const relStart = storyMd.indexOf("related: [");
-  let relLine = "[]";
-  if (relStart > -1) {
-    const tail = storyMd.slice(relStart + 9);
-    const nl = tail.indexOf("\n");
-    relLine = (nl > -1 ? tail.slice(0, nl) : tail).trim();
-  }
-  const relJsonSafe = relLine.startsWith("[") && relLine.endsWith("]") ? relLine : "[]";
-  return JSON.parse(relJsonSafe);
+  return relEntries(storyMd);
 }
 
 async function run(cfg) {

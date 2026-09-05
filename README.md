@@ -51,7 +51,7 @@ keeps the old yaml-on-top layout).
 | scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures; UI screenshots — PNG in every variant, baseline JPEG, GIF, BMP — as standardized wireframes, with real OCR'd text when the sweep's Tesseract lane feeds transcriptions in) | v2.4 (deployed — the local sweep runs it directly) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
 | scripts/RelatedRank.ts | Related-doc scoring/ranking (all edge types, keyword kinds, metadata affinity + title-token affinity, PE/Dev name-set matching, recency, total id dominance, config-driven weights) | v2.1 (**pasted** — evidenced by the 2026-08-13 export) |
-| scripts/SidecarPatch.ts | Surgical related-section patching (four metadata frames) | v1.6 (paste pending — safe any time before the v2.8 window) |
+| scripts/SidecarPatch.ts | Surgical related-section patching (five metadata frames incl. the format-3.0 TABLE frame; scores ride the rel markers) | v1.7 (local sweep runs it directly) |
 | review/patches/DocIndex_Prompt_v1_2.md | AI Builder prompt (superseded by v1.3) | v1.2 |
 | review/patches/DocIndex_Prompt_v1_3.md | AI Builder prompt (current — pasted 2026-08-11 with PromptVersion → v1.8) | v1.3 |
 | review/patches/ZipTextExtract_v1_9.ts | Script batch patch (gated, pasted + promoted 2026-08-11) | v1.9 |
@@ -71,7 +71,8 @@ keeps the old yaml-on-top layout).
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | docs/Diagram_Style_Framework.md | The one visual language for slide diagrams: palette, hue-family colour mapping, geometry-led roles, component standardisation | v1.0 |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio; deployed) | v1.1 |
-| agent/QA_Agent_Instructions_v1_3.md | Q&A agent instructions (authored — describes the v2.8 layout + products; supersedes the unpasted v1.2; paste with the v2.8 window) | v1.3 |
+| agent/QA_Agent_Instructions_v1_3.md | Q&A agent instructions (authored — describes the v2.8 layout + products; superseded by v1.4) | v1.3 |
+| agent/QA_Agent_Instructions_v1_4.md | Q&A agent instructions (authored — format 3.0: the metadata table IS the metadata; paste with the format-3.0 `--reformat` rollout) | v1.4 |
 | agent/QA_Agent_Setup.md | Q&A agent deployment guide | current (component v1.1) |
 | agent/QA_Smoke_Questions.md | Q&A agent verification suite (row 9: case-level answers off `_Case Catalog.md` — runnable once test-case indexing is live) | v1.1 |
 | curation/Curation_Setup.md | Curation flow build + deploy guide | current (component v1.1) |
@@ -122,7 +123,8 @@ keeps the old yaml-on-top layout).
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
 | local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (ALL phases shipped: schema, parser, gate, sweep wiring incl. `--recase`, the `_Case Catalog.md` browse page, gap-report case tracing; list created on tenant — the open step is the sweep machine's config line + one `--recase --live`, Local_Setup §12) | — |
-| local/Sidecar_Format_Plan.md | Sidecar format review + enhancement plan — metadata table (no yaml block), filename convention (`<issue>-<slug>.md`), extractor structure fixes, one test-case grammar, six-shape case detector, phased rollout with decisions log | phase 0 shipped |
+| local/Sidecar_Format_Plan.md | Sidecar format review + enhancement plan — metadata table (no yaml block), filename convention (`<issue>-<slug>.md`), extractor structure fixes, one test-case grammar, six-shape case detector, phased rollout with decisions log | phases 0–1 shipped |
+| local/lib/sidecarmeta.mjs | Format-3.0 metadata table: renderer + the shared readers (`readMeta`, `metaList`, `relEntries`) that also read the legacy yaml frames | v1.0 |
 | local/lib/caseaudit.mjs + `sweep.mjs --case-audit` | Case-shape audit of every test plan — parser shape + latent-shape signals, `_Case Audit.md` beside the catalog | v1.0 |
 | local/harness/check_caseindex.py | Case-parser gate (both case shapes via the presentation layer's own emission, issue refs incl. the digit floor + fenced-code trap, v1.1 metadata legs, v1.2 vocabulary-tag legs, v1.3 figure-link + df-ordering legs, v1.4 hyperlink legs, replace-set planner; 68 checks; CI) | v1.4 |
 | review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |

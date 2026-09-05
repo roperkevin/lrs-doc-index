@@ -267,7 +267,7 @@ check(gym is not None and int(gym.group(1)) >= 1120140,
 
 # doc-title lookup: media naming doc{N}_*.svg -> sibling kind folder's
 # {slug}__doc{N}.md sidecar, H1 wins. The sidecar mirrors the sweep's
-# real layout (metadata comment + yaml, case heading with the slide
+# real layout (format-3.0 metadata table, case heading with the slide
 # comment, image link directly before its anchor table) so the v1.3
 # case-context extraction is exercised against the true format.
 os.makedirs('fixlib/media', exist_ok=True)
@@ -276,15 +276,15 @@ open('fixlib/media/doc7_slide3.svg', 'w', encoding='utf-8').write(FIXTURE)
 long_tbl = '\n'.join(f'| step {i} | do the thing |' for i in range(1, 15))
 open('fixlib/Test Plans/route-split-cases__doc7.md', 'w', encoding='utf-8').write(
     '# Route Split Cases\n\n'
-    '<!-- metadata\n```yaml\n'
-    'title: "Route Split Cases"\n'
-    'doc_id: 7\n'
-    'doc_kind: "Test Plan"\n'
-    'surface: "Pro"\n'
-    'last_edited_by: "K. Roper"\n'
-    'last_edited: "2026-08-12T17:03:00Z"\n'
-    'products: ["Roads & Highways"]\n'
-    '```\n-->\n\n'
+    '| Field | Value |\n| --- | --- |\n'
+    '| **Doc** | 7 · Test Plan · Pro |\n'
+    '| **Product** | Roads & Highways |\n'
+    '| **Release** | — |\n| **Issues** | — |\n'
+    '| **Source** | [split.pptx](<https://x/split.pptx>) |\n'
+    '| **People** | author K. Roper · PE — · dev — |\n'
+    '| **Edited** | 2026-08-12 17:03 by K. Roper |\n'
+    '| **Extracted** | 2026-08-13 · lane xmlstrip · format 3.0 · prompt v2.0 |\n'
+    '| **Keywords** | — |\n| **Tools** | — |\n\n'
     '## Summary\n\nSummary text.\n\n'
     '## Case 9 — Loop - Split measure: 20 <!-- slide 3 -->\n\n'
     'Case body.\n\n'

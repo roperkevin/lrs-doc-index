@@ -60,13 +60,14 @@ import {
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
 import { auditBody, summarizeAudit, renderAuditPage } from "./lib/caseaudit.mjs";
+import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
 import { writeIndexPages, writeCaseCatalog } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
-  upsertDocsBlock, bodySeamEnd, yamlList,
+  upsertDocsBlock, bodySeamEnd,
 } from "./lib/doclinks.mjs";
 import { placeFigure, tidyBody, caseHeadings, compactWhy } from "./lib/presentation.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
@@ -492,62 +493,22 @@ function normalizeRows(items, kind) {
   });
 }
 
-// ---- sidecar header (flow §4.3(e)/(f), byte-faithful) ---------------
+// ---- sidecar header (format 3.0 — Sidecar_Format_Plan phase 1) ------
+// H1 + the metadata TABLE (the only metadata representation; see
+// lib/sidecarmeta.mjs), then Summary, the Related region and the
+// header/body seam. `sidecarHead` is the part --reformat regenerates;
+// `sidecarTail` is the part it preserves from the file on disk.
 
-function sidecarHeader(p) {
-  const productRow = p.products.length
-    ? `| **Product** | ${p.products.join(" · ")} |\n`
-    : "";
-  const issueLinks = p.ids.map(
-    (id) => `[${id.repo}#${id.number}](https://devtopia.esri.com/${id.repo}/issues/${id.number})`
-  );
-  const issueRow = p.ids.length ? `| **Issue** | ${issueLinks.join(" · ")} |\n` : "";
-  const release = stripQuotes(pipeToSlash(p.targetRelease)) || "—";
-  const edited = fmtDate(p.srcEdited, true) || "unknown";
-  const editor = pipeToSlash(p.srcEditor) || "unknown";
-  const today = fmtDate(new Date().toISOString(), false);
+function sidecarHead(p) {
+  return `# ${p.h1Title}\n\n${renderMetaTable(p)}\n`;
+}
+
+function sidecarTail(p) {
   const summary =
     p.summary && p.summary.trim() !== ""
       ? p.summary
       : "> [!WARNING]\n> No AI summary was generated for this document.";
-
-  return `# ${p.h1Title}
-
-|   |   |
-| --- | --- |
-| **Kind** | ${p.docKind} · ${p.surface} |
-| **Release** | ${release} |
-${productRow}${issueRow}| **Source** | [${p.fileName}](<${p.sourceLink}>) |
-| **Edited** | ${edited} by ${editor} |
-| **Extracted** | ${today} · lane \`${p.lane}\` |
-
-<!-- metadata
-\`\`\`yaml
-title: "${yamlEscape(p.title)}"
-source_file: "${yamlEscape(p.fileName)}"
-source_url: "${p.sourceLink}"
-doc_id: ${p.rowId}
-doc_kind: "${p.docKind}"
-surface: "${p.surface}"
-doc_revision: "${p.docRevision}"
-target_release: "${stripQuotes(p.targetRelease)}"
-pe: "${stripQuotes(p.pe)}"
-dev: "${stripQuotes(p.dev)}"
-author: "${stripQuotes(p.srcAuthor)}"
-last_edited_by: "${stripQuotes(p.srcEditor)}"
-last_edited: "${p.srcEdited}"
-extracted: ${today}
-extraction_lane: ${p.lane}
-prompt_version: "${p.promptVersion}"
-keywords: [${p.keywords.map(quoteYamlItem).join(", ")}]
-tools: [${p.tools.map(quoteYamlItem).join(", ")}]
-products: [${p.products.map((x) => '"' + x + '"').join(", ")}]
-issues: [${p.ids.map((id) => `"${id.repo}#${id.number}"`).join(", ")}]
-related: []
-\`\`\`
--->
-
-## Summary
+  return `## Summary
 
 ${summary}
 
@@ -560,6 +521,10 @@ _None yet._
 ---
 
 `;
+}
+
+function sidecarHeader(p) {
+  return sidecarHead(p) + sidecarTail(p);
 }
 
 // ---- the sweep ------------------------------------------------------
@@ -963,10 +928,10 @@ async function main() {
         // sidecars gain/refresh links in the same pass
         const before = fs.readFileSync(local, "utf8");
         const rowProducts = String(r.Products || "").split("; ").filter(Boolean);
-        // prefer the sidecar's own yaml (original casing) over the
+        // prefer the sidecar's own metadata (original casing) over the
         // lowercased junction titles for display
-        const yTools = yamlList(before, "tools");
-        const yKeywords = yamlList(before, "keywords");
+        const yTools = metaList(before, "Tools");
+        const yKeywords = metaList(before, "Keywords");
         const rowTools = yTools.length ? yTools : toolsOf(r.ID);
         const rowTopics = yKeywords.length ? yKeywords : topicsOf(r.ID);
         const toolLinks = new Map();
@@ -1117,7 +1082,8 @@ async function main() {
           rfsum.no_seam++;
           continue;
         }
-        const { docText, figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
+        const { docText, lane: rfLane, srcAuthor, srcEditor, srcEdited,
+                figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath, ext, srcItemId, modified, withMedia: false,
         });
@@ -1130,7 +1096,38 @@ async function main() {
           continue;
         }
         const body = caseHeadings(tidyBody(docText));
-        const next = cur.slice(0, seam) + body;
+        // format 3.0: the head (H1 + metadata table) is regenerated from
+        // the row + the file's own metadata (whichever frame it carries),
+        // the Summary/Related/docs stretch is preserved from disk with
+        // the rel markers carrying their scores, and the yaml block —
+        // if any — is dropped. The first extraction date is carried, so
+        // a second --reformat is byte-idempotent.
+        const oldMeta = readMeta(cur);
+        const rowIds = docIdRows
+          .filter((d) => d.DocumentId === existing.ID)
+          .map((d) => ({ repo: d.Repo, number: d.IssueNumber }));
+        const head = sidecarHead({
+          h1Title: (existing.Title || name) === name ? name.replace(/\.[^.]*$/, "") : existing.Title,
+          rowId: existing.ID, fileName: name, sourceLink,
+          docKind: existing.DocKind || "", surface: existing.Surface || "",
+          targetRelease: existing.TargetRelease || "", pe: existing.PE || "", dev: existing.Dev || "",
+          srcAuthor, srcEditor, srcEditedText: fmtDate(srcEdited, true),
+          lane: rfLane || oldMeta.extraction_lane,
+          extractedOn: oldMeta.extracted || fmtDate(new Date().toISOString(), false),
+          docRevision: oldMeta.doc_revision, promptVersion: existing.PromptVersion || sw.promptVersion,
+          keywords: oldMeta.keywords, tools: oldMeta.tools,
+          products: String(existing.Products || "").split("; ").filter(Boolean),
+          ids: rowIds,
+        });
+        const sumAt = cur.indexOf("\n## Summary");
+        let tail = sumAt >= 0 && sumAt < seam
+          ? cur.slice(sumAt + 1, seam)
+          : sidecarTail({ summary: existing.Summary || "" });
+        if (!isFormat3(cur)) {
+          const region = relatedRegion(tail);
+          if (region) tail = tail.replace(region, migrateRelMarkers(region, relEntries(cur)));
+        }
+        const next = head + tail + body;
         if (next === cur) rfsum.unchanged++;
         else {
           writer.writeFile(scLocal, next);
@@ -1568,7 +1565,8 @@ async function indexDoc(ctx) {
     title, fileName: name, sourceLink, rowId,
     docKind, surface, targetRelease: ai.targetRelease || "",
     pe: ai.pe || "", dev: ai.dev || "",
-    srcAuthor, srcEditor, srcEdited, lane,
+    srcAuthor, srcEditor, srcEdited, srcEditedText: fmtDate(srcEdited, true), lane,
+    extractedOn: fmtDate(new Date().toISOString(), false),
     docRevision: rx.docRevision || "", promptVersion: sw.promptVersion,
     summary: ai.summary || "",
     keywords: ai.keywords || [], tools: ai.tools || [],

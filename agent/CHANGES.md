@@ -1,3 +1,15 @@
+# Instructions v1.4 — format 3.0 sidecar layout (authored, paste pending)
+
+`agent/QA_Agent_Instructions_v1_4.md` supersedes v1.3: SIDECAR
+STRUCTURE now describes the format-3.0 layout
+(`local/Sidecar_Format_Plan.md` phase 1) — no yaml block; the info
+table (Doc / Product / Release / Issues / Source / People / Edited /
+Extracted / Keywords / Tools) is the metadata, the rel markers carry
+the related scores. USING THE METADATA and CITATIONS name the table
+rows instead of yaml keys. The transition note covers the yaml-framed
+files until `--reformat --live` converges the corpus. Paste with the
+format 3.0 rollout; re-run `QA_Smoke_Questions.md` after pasting.
+
 # Smoke suite v1.1 — the case-catalog question (row 9)
 
 Suite-only bump (`agent/QA_Smoke_Questions.md` v1.1; no instructions

@@ -1189,10 +1189,18 @@ def main():
     check("alpha sidecar in kind folder", alpha_sc is not None and os.sep + "Test Plans" + os.sep in alpha_sc,
           str(alpha_sc))
     sc = open(alpha_sc).read() if alpha_sc else ""
-    check("sidecar header shape", sc.startswith("# Alpha Plan")
-          and "<!-- metadata" in sc and 'prompt_version: "v2.0"' in sc
-          and "| **Kind** | Test Plan · Pro |" in sc, sc[:300])
-    check("sidecar issue row + yaml", "#123" in sc and 'issues: ["' in sc)
+    check("sidecar header shape (format 3.0: H1 + metadata table, no yaml block)",
+          sc.startswith("# Alpha Plan")
+          and "<!-- metadata" not in sc and "```yaml" not in sc
+          and "| Field | Value |" in sc
+          and re.search(r"(?m)^\| \*\*Doc\*\* \| \d+ · Test Plan · Pro \|$", sc) is not None
+          and "· format 3.0 · prompt v2.0 |" in sc, sc[:400])
+    check("sidecar issue row links the issue", "#123](https://devtopia.esri.com/" in sc
+          and "| **Issues** | [" in sc, sc[:400])
+    check("sidecar table carries every row in order",
+          [m for m in re.findall(r"(?m)^\| \*\*([A-Za-z]+)\*\* \|", sc)][:10]
+          == ["Doc", "Product", "Release", "Issues", "Source", "People", "Edited",
+              "Extracted", "Keywords", "Tools"], sc[:600])
     check("sidecar body appended", "Alpha test plan covering lock acquisition" in sc)
     check("product detected on the row",
           alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
@@ -1760,6 +1768,53 @@ def main():
           int(out.get("cases_upserted", 0)) == 0
           and int(out.get("cases_removed", 0)) == 0
           and int(out.get("case_errors", 0)) == 0, str(out))
+    check("reformat is byte-idempotent on a format-3.0 head",
+          (run_sweep(cfg_path, ["--live", "--reformat"]).returncode == 0
+           and open(beta_sc).read() == after), open(beta_sc).read()[:300])
+
+    # ---- format-3.0 migration leg (Sidecar_Format_Plan phase 1) -----
+    # a sidecar still in the v2.8 yaml frame (comment-hidden ```yaml
+    # with the scored related: line, bare rel markers) must come out
+    # of --reformat as a 3.0 file: table head, no yaml, scores moved
+    # onto the markers, keywords/tools and the first extraction date
+    # carried across
+    print("== format-3.0 migration leg")
+    tbl_start = after.index("| Field | Value |")
+    tbl_end = after.index("\n## Summary")
+    legacy_yaml = ("<!-- metadata\n```yaml\n"
+                   'title: "Beta Story"\nsource_file: "Beta Story.pptx"\n'
+                   "doc_id: 0\ndoc_kind: \"User Story\"\nsurface: \"Pro\"\n"
+                   'doc_revision: "V9"\ntarget_release: ""\npe: ""\ndev: ""\n'
+                   'author: "Old Author"\nlast_edited_by: "Old Author"\n'
+                   'last_edited: "2026-08-01T00:00:00Z"\nextracted: 2026-01-02\n'
+                   "extraction_lane: xmlstrip\nprompt_version: \"v1.9\"\n"
+                   'keywords: ["Legacy Keyword", "locks"]\ntools: ["Old Tool"]\n'
+                   'products: []\nissues: []\n'
+                   'related: [{"doc":' + str(alpha_id) + ',"file":"x.md","s":42.5}]\n'
+                   "```\n-->\n")
+    legacy = after[:tbl_start] + legacy_yaml + after[tbl_end:]
+    legacy = re.sub(r"<!-- rel:(\d+) s=[-\d.]+ -->", r"<!-- rel:\1 -->", legacy)
+    with open(beta_sc, "w") as f:
+        f.write(legacy)
+    proc = run_sweep(cfg_path, ["--live", "--reformat"])
+    check("migration reformat exit 0", proc.returncode == 0, proc.stderr[-400:])
+    mig = open(beta_sc).read()
+    check("legacy yaml frame becomes the 3.0 table",
+          "<!-- metadata" not in mig and "```yaml" not in mig
+          and "| Field | Value |" in mig and "| **Doc** |" in mig, mig[:500])
+    check("migration carries keywords, tools, revision and the first extraction date",
+          "| **Keywords** | Legacy Keyword · locks |" in mig
+          and "| **Tools** | Old Tool |" in mig
+          and "· rev V9 |" in mig
+          and "| **Extracted** | 2026-01-02 · lane" in mig, mig[:700])
+    check("migration moves the related scores onto the markers",
+          f"<!-- rel:{alpha_id} s=42.5 -->" in mig, mig)
+    check("migration keeps the summary, related region and body",
+          "## Summary" in mig and "<!-- related:begin -->" in mig
+          and "## Slide 2" in mig, mig[-300:])
+    check("migrated file is byte-idempotent on the next reformat",
+          (run_sweep(cfg_path, ["--live", "--reformat"]).returncode == 0
+           and open(beta_sc).read() == mig), "")
 
     # ---- recase leg (Case_Index_Plan phase 2 — the backfill) -------
     # simulate a corpus indexed before the feature existed: wipe the
