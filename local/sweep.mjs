@@ -70,7 +70,8 @@ import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
   upsertDocsBlock, bodySeamEnd,
 } from "./lib/doclinks.mjs";
-import { placeFigure, tidyBody, caseHeadings, compactWhy } from "./lib/presentation.mjs";
+import { placeFigure, tidyBody, compactWhy } from "./lib/presentation.mjs";
+import { renderTestPlanBody, lintTestPlanBody } from "./lib/casegrammar.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
 
@@ -292,6 +293,27 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   // stays empty → Skip lane.
   return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
            figureCount, figureError, figureOcr, figureOcrOff, mediaFiles };
+}
+
+/** The sidecar BODY for a document (phase 3): tidyBody for every
+ *  kind, plus the `testplan/v1` case grammar for the case-indexed
+ *  kinds (casegrammar.mjs — a plan with no detectable case keeps its
+ *  tidied slide sections). The LLM input, TextPreview and the
+ *  similarity index keep the raw text. */
+function renderBody(docText, docKind, cfg, sum) {
+  const tidied = tidyBody(docText);
+  const kinds = (cfg.sweep.caseIndex && cfg.sweep.caseIndex.kinds) || ["Test Plan"];
+  if (!kinds.includes(docKind)) return tidied;
+  const r = renderTestPlanBody(tidied);
+  if (sum) {
+    if (r.shape !== "none") sum.plans_profiled = (sum.plans_profiled || 0) + 1;
+    const lint = lintTestPlanBody(r.body);
+    if (lint.length) {
+      sum.profile_lint_failures = (sum.profile_lint_failures || 0) + 1;
+      process.stderr.write(`PROFILE LINT: ${lint.slice(0, 3).join("; ")}\n`);
+    }
+  }
+  return r.body;
 }
 
 /** Write a document's media into media/<stem>/ (phase 1b). */
@@ -714,7 +736,8 @@ async function main() {
     const items = await graph.listItems(siteId, sp.lists.testCases, {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
                "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
-               "Shape", "FigureCount", "TableCount", "StepCount", "RouteRefs",
+               "Shape", "Confidence", "Group", "SourceRef",
+               "FigureCount", "TableCount", "StepCount", "RouteRefs",
                "ExpectedResult", "TraceText", "Tools", "Keywords", "FigureLinks",
                "FigureLink", "SweptOn"],
     });
@@ -1293,7 +1316,7 @@ async function main() {
         const docText = relinkMedia(rfRaw, stem);
         writeMedia(cfg, writer, stem, mediaFiles);
         rfsum.media_moved = (rfsum.media_moved || 0) + placeLegacyMedia(cfg, writer, srcItemId, stem);
-        const body = caseHeadings(tidyBody(docText));
+        const body = renderBody(docText, existing.DocKind || "", cfg, rfsum);
         // format 3.0: the head (H1 + metadata table) is regenerated from
         // the row + the file's own metadata (whichever frame it carries),
         // the Summary/Related/docs stretch is preserved from disk with
@@ -1798,9 +1821,10 @@ async function indexDoc(ctx) {
   for (const k of ai.keywords || []) {
     topicLinks.set(k, linkResolver.topicLink(k, products));
   }
-  // body gets the v1.20 presentation tidy + v1.25 case headings; the
-  // LLM input, preview and similarity index all keep the raw text
-  const bodyText = caseHeadings(tidyBody(docText));
+  // body gets the v1.20 presentation tidy + the phase-3 case grammar
+  // for test plans; the LLM input, preview and similarity index all
+  // keep the raw text
+  const bodyText = renderBody(docText, docKind, cfg, summary);
   const sidecarContent = upsertDocsBlock(
     header + bodyText,
     docsBlock(ai.tools || [], docLinks, toolLinks, topicLinks)

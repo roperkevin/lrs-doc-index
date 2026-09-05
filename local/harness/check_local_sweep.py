@@ -98,6 +98,26 @@ def make_pptx(fpath, text, with_media=False, with_diagram=False, with_case=False
                 "using Merge Events</a:t></a:r></a:p>"
                 "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
             )
+            # a checklist slide (2+ numbered verifications, not a case) and
+            # a LONG negative case line (the heading must take a short
+            # scenario title; the full text rides as the Case line) — the
+            # case-grammar legs (Sidecar_Format_Plan phase 3) read these
+            z.writestr(
+                "ppt/slides/slide3.xml",
+                "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+                "<a:p><a:r><a:t>17. Verify the effective date defaults to today</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>18. Verify route information is shown on hover</a:t></a:r></a:p>"
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
+            z.writestr(
+                "ppt/slides/slide4.xml",
+                "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
+                "<a:p><a:r><a:t>Negative - Merge option disabled</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>9. Merge Option disabled, coincident events that have "
+                "exact attributes from measures 0-4 and exist in both versions</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>current date: 3/29/2022</a:t></a:r></a:p>"
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
+            )
         if with_media:
             # media only counts when a slide references it via its rels
             z.writestr(
@@ -1309,40 +1329,40 @@ def main():
     check("body still carries the slide content",
           "Scope of testing" in beta_body and "## Slide 2" in beta_body, beta_body)
 
-    # case headings (caseHeadings, v1.25 TC-1 / v1.29 TC-3)
-    check("case heading carries the classification, not the case specifics",
-          "## Case 2: Positive - Non Spanning Line Event <!-- slide 4 -->"
-          in beta_body, beta_body)
-    check("scenario descriptor becomes an H3 under the case heading",
-          re.search(r"(?m)^### Loop$", beta_body) is not None, beta_body)
+    # case grammar (casegrammar testplan/v1, Sidecar_Format_Plan phase 3)
+    # — on the Test Plan fixture; the story fixture keeps its tidied
+    # slide sections (kinds-only by design)
+    alpha_content = open(alpha_sc).read()
+    alpha_body = alpha_content[alpha_content.rindex("\n---\n") + 5:]
+    check("case heading is a TC id + scenario with the detector/slide provenance",
+          "### TC-P01 — Loop Route <!-- src: S1 · slide 2 · case 3 -->" in alpha_body, alpha_body)
+    check("classification remainder becomes the Group line",
+          "- **Group:** Line Network" in alpha_body, alpha_body)
     check("full case line survives in the body (measures never lost)",
-          "**Loop – Split measure: 20**" in beta_body, beta_body)
+          "- **Case:** Loop route – Split measure: 40 using Merge Events" in alpha_body, alpha_body)
+    check("profile sections present and ordered",
+          "## Test Cases" in alpha_body and "## Other content" in alpha_body
+          and alpha_body.index("## Test Cases") < alpha_body.index("## Other content"), alpha_body)
     check("promoted case line removed from the body",
-          not re.search(r"(?m)^2\. Loop", beta_body), beta_body)
+          not re.search(r"(?m)^3\. Loop route", alpha_body), alpha_body)
     check("promoted classification line removed from the body",
-          not re.search(r"(?m)^Positive - Non spanning line event$", beta_body),
-          beta_body)
+          not re.search(r"(?m)^Positive - Line network$", alpha_body), alpha_body)
     check("no heading carries a split measure or route id",
-          not re.search(r"(?mi)^#{2,3} .*(split(ting)? measure|\bR\d+L\d+\b)",
-                        beta_body), beta_body)
-    check("checklist slide keeps its bare slide heading",
-          "## Slide 5" in beta_body
-          and "17. Verify the effective date defaults to today" in beta_body,
-          beta_body)
-
-    # long case lines: full-text subheader, no truncation (v1.27 TC-2
-    # under the v1.29 TC-3 heading shape)
-    check("long case line yields the classification heading",
-          "## Case 9: Negative - Merge Option Disabled <!-- slide 6 -->"
-          in beta_body, beta_body)
-    check("redundant scenario H3 suppressed (classification already says it)",
-          "### Merge Option Disabled" not in beta_body, beta_body)
-    check("full case text survives as a bold subheader line",
-          "**Merge Option disabled, coincident events that have exact "
-          "attributes from measures 0-4 and exist in both versions**" in beta_body,
-          beta_body)
+          not re.search(r"(?mi)^#{2,3} .*(split(ting)? measure|\bR\d+L\d+\b)", alpha_body), alpha_body)
+    check("checklist slide lands under Other content, not as a case",
+          "### Slide 3 <!-- slide 3 -->" in alpha_body.split("## Other content")[-1]
+          and "17. Verify the effective date defaults to today" in alpha_body, alpha_body)
+    check("long case line yields a short scenario title in the Negative lane",
+          "### TC-N01 — Merge Option Disabled <!-- src: S1 · slide 4 · case 9 -->" in alpha_body, alpha_body)
+    check("redundant Group suppressed (classification already says it)",
+          "- **Group:** Merge Option Disabled" not in alpha_body, alpha_body)
+    check("full case text survives as the Case line",
+          "- **Case:** Merge Option disabled, coincident events that have exact "
+          "attributes from measures 0-4 and exist in both versions" in alpha_body, alpha_body)
     check("nothing truncates mid-sentence into a heading",
-          not re.search(r"(?m)^## .*\band <!-- slide", beta_body), beta_body)
+          not re.search(r"(?m)^### .*\band <!-- src", alpha_body), alpha_body)
+    check("story fixture keeps tidied slide sections (no case grammar off the kinds list)",
+          "## Slide 4" in beta_body and "### TC-" not in beta_body, beta_body)
 
     # media
     media = os.listdir(stem_dir) if os.path.isdir(stem_dir) else []
@@ -1389,15 +1409,19 @@ def main():
     print("== case-index leg")
     tcs = list(state.lists.get(LISTS["testCases"], {}).values())
     alpha_cases = [r for r in tcs if r.get("DocumentLookupId") == alpha_id]
-    check("alpha (Test Plan) got exactly one case row", len(alpha_cases) == 1,
+    alpha_cases.sort(key=lambda r: str(r.get("CaseKey")))
+    check("alpha (Test Plan) got its two case rows (the checklist slide is not one)",
+          len(alpha_cases) == 2 and alpha_cases[1].get("CaseNo") == "TC-N01",
           str(tcs)[:400])
     ac = alpha_cases[0] if alpha_cases else {}
-    check("case row carries the caseHeadings-derived contract",
-          ac.get("CaseKey") == f"{alpha_id}|1" and ac.get("CaseNo") == "3"
+    check("case row carries the case-grammar contract",
+          ac.get("CaseKey") == f"{alpha_id}|1" and ac.get("CaseNo") == "TC-P01"
           and ac.get("Classification") == "Positive" and ac.get("SlideNo") == 2
-          and ac.get("Scenario") == "Loop Route", str(ac))
+          and ac.get("Scenario") == "Loop Route"
+          and ac.get("SourceRef") == "S1 · slide 2 · case 3"
+          and ac.get("Confidence") == "high", str(ac))
     check("case row carries the v1.1 metadata columns",
-          ac.get("Shape") == "deck" and ac.get("FigureCount") == 0
+          ac.get("Shape") == "S1" and ac.get("FigureCount") == 0
           and ac.get("TableCount") == 0 and ac.get("StepCount") == 0
           and ac.get("RouteRefs") == "" and ac.get("ExpectedResult") == ""
           and ac.get("TraceText") == "" and ac.get("FigureLinks") == ""
@@ -1406,10 +1430,10 @@ def main():
           ac.get("Tools") == "merge events"
           and ac.get("Keywords") == "split measure", str(ac))
     check("case row title is the visible heading",
-          ac.get("Title") == "Case 3: Positive - Line Network",
+          ac.get("Title") == "TC-P01 — Loop Route",
           str(ac.get("Title")))
     check("case anchor deep-links the sidecar heading",
-          ac.get("Anchor") == "case-3-positive---line-network",
+          ac.get("Anchor") == "tc-p01--loop-route",
           str(ac.get("Anchor")))
     check("case text keeps the specifics",
           "Split measure: 40" in str(ac.get("CaseText")), str(ac.get("CaseText")))
@@ -1430,14 +1454,16 @@ def main():
     check("case catalog written at the library root",
           cat.startswith("# Test cases — catalog"), cat[:200])
     check("catalog groups by plan with classification counts",
-          re.search(r"(?m)^## Alpha Plan \(1: 1 positive / 0 negative\)$", cat)
+          re.search(r"(?m)^## Alpha Plan \(2: 1 positive / 1 negative\)$", cat)
           is not None, cat)
     check("catalog case row deep-links the sidecar anchor",
-          "#case-3-positive---line-network>" in cat
+          "#tc-p01--loop-route>" in cat
           and "| Positive |" in cat and "Loop Route" in cat, cat)
-    check("caseless and non-plan docs stay off the catalog",
-          "Beta Story" not in cat and "Ghost" not in cat
-          and "1 case(s) across 1 plan(s)" in cat, cat)
+    check("catalog rows carry the group and the detector",
+          "| Line Network |" in cat and "| S1 |" in cat, cat)
+    check("caseless docs stay off the catalog",
+          "Ghost" not in cat
+          and "2 case(s) across 1 plan(s)" in cat, cat)
 
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")
@@ -1459,7 +1485,7 @@ def main():
           int(out.get("cases_upserted", 0)) == 0
           and int(out.get("cases_removed", 0)) == 0
           and len([r for r in state.lists.get(LISTS["testCases"], {}).values()
-                   if r.get("DocumentLookupId") == alpha_id]) == 1, str(out))
+                   if r.get("DocumentLookupId") == alpha_id]) == 2, str(out))
     # streaks: run 1 stamped 1 night; this full run makes it 2
     status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("error streaks advance on full runs",
@@ -1768,10 +1794,12 @@ def main():
     check("reformat body is freshly extracted and tidied",
           "## Slide 2" in after and "- Append Events" in after
           and "### Notes" not in after, after[-400:])
-    check("reformat re-derives case headings",
-          "## Case 2: Positive - Non Spanning Line Event <!-- slide 4 -->" in after
-          and re.search(r"(?m)^### Loop$", after) is not None,
-          after[-600:])
+    alpha_after = open(alpha_sc).read()
+    check("reformat re-derives the case grammar on the plan",
+          "### TC-P01 — Loop Route <!-- src: S1 · slide 2 · case 3 -->" in alpha_after
+          and "- **Group:** Line Network" in alpha_after, alpha_after[-600:])
+    check("reformat leaves the story on tidied slide sections",
+          "## Slide 4" in after and "### TC-" not in after, after[-400:])
     check("reformat spent no AI calls", state.llm_calls == llm_before_rf,
           f"{state.llm_calls} vs {llm_before_rf}")
     check("reformat re-synced case rows without churn",

@@ -1,5 +1,67 @@
 # Local sweep — release notes
 
+## casegrammar v1.0 / caseindex v2.0 (2026-09-05 — one case grammar, six detectors; sweep v1.51, Sidecar_Format_Plan phase 3)
+
+**From 43 covered plans to the whole shape inventory.** The case
+index read exactly two shapes — `## Case N <!-- slide N -->` (minted
+only for slides with an EMPTY title placeholder) and the draft
+contract — so 135 of 178 plans yielded nothing while 123 of them
+carried a readable case shape (`_Case Audit.md`). Now:
+
+- **`local/lib/casegrammar.mjs`** (new, pure): `renderTestPlanBody`
+  turns a tidied plan body into the `testplan/v1` profile —
+  `## Overview` (units before the first case), `## Test Cases`, and
+  `## Other content` — with every case as
+  `### TC-P01 — <title> <!-- src: S4 · slide 1 · Positive Tests: Normal Routes · 3 -->`
+  plus `- **Group:**` / `- **Case:**` (full text when the title was
+  shortened) / `- **Expected Result:**` lines and the case's own
+  tables and figures. Detectors, in precedence order per unit: S2
+  titled case slide (`Slide 4 — Test case 1: …`, `Slide 3 — 1. …`),
+  S3 case table (`# / Test / Expected result`, xlsx case sheets — lane
+  from the sheet name), S4 Positive/Negative label + list (one case
+  per bullet, Group from the label), S5 other label + list (one case
+  per label, bullets as numbered steps; stoplist labels stay prose),
+  S1 single-numbered case slide (caseHeadings' rules a/b, now with the
+  full case line as `- **Case:**`), S6 numbered case lines under a
+  Positive/Negative context. Ids are per-lane sequences (P/N/U). A
+  plan with no detectable case keeps its tidied sections (shape
+  `none`) — nothing is guessed. `lintTestPlanBody` checks src
+  comments and id sequences.
+- **caseindex v2.0**: ONE parser (`tcCases`) for the grammar AND the
+  draft contract; `Shape` = the detector (`S1`..`S6` / `draft`; `deck`
+  for pre-3 sections until the reformat), new `Confidence`, `Group`,
+  `SourceRef` columns; `Expected Result` read from the grammar's
+  bullet form too; anchors slug every space to a hyphen (GitHub's
+  rule — `tc-p01--loop`). Sections end at the next heading of any
+  level.
+- sweep **v1.51**: `renderBody` — tidyBody for every kind, the
+  profile for the case-indexed kinds (`sweep.caseIndex.kinds`,
+  default Test Plan); counters `plans_profiled` and
+  `profile_lint_failures`; `caseHeadings` retired from the pipeline.
+  `_Case Catalog.md` rows gain Group and Shape (· confidence when not
+  high) columns. `svg2pptx` reads the `### TC-` heading above a figure.
+
+Corpus trial (bodies on main, pre-v2.5 extraction): LRS Identify
+coordinates plan 0 → 78 cases (S3), Relocate Events 0 → 51 (S2),
+ExB Add Multiple Line Events (docx) 0 → 9 (S4/S5), Search by Route
+and Station (docx) 0 → 14, Coordinates Method 0 → 16 (S2), REST
+Geometry to Referent (xlsx) 0 → 55 (S3, P/N from the sheets). The S4
+yield on the 62 collapsed-cell decks arrives with the v2.5
+re-extraction.
+
+TENANT STEP: add `Confidence` (Choice: high; medium; low), `Group`,
+`SourceRef` (text) to the Test Cases list and extend `Shape`'s choices
+(S1..S6, draft, deck); then `--reformat --live` (bodies) and
+`--recase --live` (rows).
+
+Gates: `check_caseindex.py` **78/78** (the D1 coupling now pins
+`renderTestPlanBody(tidyBody(raw))`; S2–S6 legs on one deck; lane
+inheritance from a Positive divider; stoplist + checklist non-cases;
+row columns), `check_local_sweep.py` (grammar on the Test Plan
+fixture incl. a checklist slide and a long Negative case; the story
+fixture stays on tidied sections; catalog counts/columns; reformat
+re-derives the grammar), `check_svg2pptx.py`, `check_testplangen.py`.
+
 ## extract 2 (2026-09-05 — ZipTextExtract v2.5 + pdf re-flow; sweep v1.50, Sidecar_Format_Plan phase 2)
 
 **Structure the extractor used to throw away.** The review found the

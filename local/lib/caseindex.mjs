@@ -1,14 +1,22 @@
 /**
- * caseindex.mjs v1.1 — individual test cases out of a test plan's
- * sidecar body (Case_Index_Plan.md phases 0–1; v1.1 addendum). Pure
- * module, no I/O, no AI: it parses the RENDERED body below the
- * metadata seam — the per-case sections `caseHeadings`
- * (presentation.mjs, TC-1..TC-3) already emits for deck-derived
- * plans, and the draft-style `### TC-P<n>` / `### TC-N<n>` contract
- * draftlint.mjs checks — and returns rows for the Test Cases list
- * (schemas/SPList_TestCases.csv). A body with no recognizable case
- * structure yields ZERO cases, never guesses (the caseHeadings
- * determinism decision, applied here).
+ * caseindex.mjs v2.0 — individual test cases out of a test plan's
+ * sidecar body. Pure module, no I/O, no AI.
+ *
+ * v2.0 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`;
+ * Sidecar_Format_Plan phase 3): ONE case grammar. The body profile
+ * `testplan/v1` (casegrammar.mjs) renders every detected case —
+ * whatever the source shape — as
+ *     ### TC-P01 — <title> <!-- src: S3 · slide 4 · table · A-7 -->
+ * and TestPlanGen drafts already use the same `### TC-[PN]n` heading,
+ * so the parser is a single `tcCases` reader: lane letter → the
+ * Classification (P/N/U), heading remainder → Scenario, the src
+ * comment → SlideNo, Shape (the detector: S1..S6, or "draft" when
+ * there is none), SourceRef and Confidence, a `- **Group:**` line →
+ * Group. The pre-3 deck form (`## Case N <!-- slide N -->`) still
+ * parses (Shape "deck") until `--reformat --live` rewrites the corpus.
+ * Section = the heading through the next heading of ANY level.
+ *
+ * Earlier notes (v1.1–v1.4) kept below for the field derivations.
  *
  * v1.4 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
  *  - `FigureLink` (Hyperlink column): the case's PRIMARY figure as a
@@ -93,7 +101,7 @@ function slugger() {
       .trim()
       .toLowerCase()
       .replace(/[^\p{L}\p{N}\s_-]/gu, "")
-      .replace(/\s+/g, "-");
+      .replace(/\s/g, "-"); // each space → one hyphen (GitHub keeps them all)
     const n = seen.get(s) || 0;
     seen.set(s, n + 1);
     if (n > 0) s = `${s}-${n}`;
@@ -265,10 +273,12 @@ function sectionMeta(sectionLines) {
     const clean = s.replace(/<!--[\s\S]*?-->/g, "").trim();
     if (/^(?:- )?\d{1,3}[.)]\s+\S/.test(clean)) stepCount++;
     let m;
-    if (!expectedResult && (m = /^\**Expected Result\**\s*[:\-—]\s*(.+)$/i.exec(clean))) {
+    // the draft contract's `**Expected Result:** …` line, or the
+    // grammar's `- **Expected Result:** …` bullet (v2.0)
+    if (!expectedResult && (m = /^(?:- )?\**Expected Result:?\**\s*[:\-—]?\s*(.+)$/i.exec(clean))) {
       expectedResult = cap(m[1].replace(/\*+$/, "").trim(), 255);
     }
-    if (!traceText && (m = /^\**Trace\**\s*[:\-—]\s*(.+)$/i.exec(clean))) {
+    if (!traceText && (m = /^(?:- )?\**Trace:?\**\s*[:\-—]?\s*(.+)$/i.exec(clean))) {
       traceText = cap(m[1].replace(/\*+$/, "").trim(), 255);
     }
     takeRoutes(clean);
@@ -345,24 +355,40 @@ function deckCases(lines, opts) {
   return cases;
 }
 
-/** Draft-shape sections: the draftlint `^### TC-[PN]<n>` contract. */
-function draftCases(lines, opts) {
+/** Detector → confidence (Sidecar_Format_Plan §4.4). */
+export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: "high", S5: "medium", S6: "medium", draft: "high", deck: "high" };
+
+/** The one case grammar: `### TC-<lane><n> — <title> <!-- src: … -->`
+ *  (casegrammar profile output AND the draftlint draft contract). */
+function tcCases(lines, opts) {
   const cases = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = /^### (TC-([PN])\d+)\b\s*(.*)$/.exec(lines[i]);
+    const m = /^### (TC-([PNU])(\d+))\b\s*(?:[—:\-–]\s*)?(.*?)\s*(?:<!-- src: ([^>]*?) -->)?\s*$/.exec(lines[i]);
     if (!m) continue;
     let end = lines.length;
     for (let j = i + 1; j < lines.length; j++) {
-      if (/^##(#)? /.test(lines[j])) { end = j; break; }
+      if (/^#{2,6} /.test(lines[j])) { end = j; break; }
     }
     const section = lines.slice(i + 1, end);
+    const src = (m[5] || "").trim();
+    const parts = src ? src.split(/\s*·\s*/) : [];
+    const det = parts.length && /^S[0-6]$/.test(parts[0]) ? parts[0] : "draft";
+    const slide = /\bslide (\d+)\b/.exec(src);
+    let group = "";
+    for (const ln of section) {
+      const gm = /^- \*\*Group:\*\*\s*(.+)$/.exec(ln.trim());
+      if (gm) { group = gm[1].trim(); break; }
+    }
     const meta = sectionMeta(section);
     cases.push({
       caseNo: m[1],
-      slideNo: null,
-      classification: m[2] === "P" ? "Positive" : "Negative",
-      scenario: m[3].replace(/^[\s\-–—:]+/, "").trim(),
-      title: lines[i].replace(/^### /, ""),
+      slideNo: slide ? parseInt(slide[1], 10) : null,
+      classification: m[2] === "P" ? "Positive" : m[2] === "N" ? "Negative" : "Unspecified",
+      scenario: m[4].replace(/^[\s\-–—:]+/, "").trim(),
+      title: lines[i].replace(/^### /, "").replace(/<!--[\s\S]*?-->/g, "").trim(),
+      group: cap(group, 255),
+      sourceRef: cap(src, 255),
+      det,
       text: skimText(section, opts.caseTextCap),
       issueRefs: caseIssueRefs(meta._prose.join("\n"), opts.defaultRepo),
       figureCount: meta.figureCount,
@@ -397,10 +423,11 @@ export function extractCases(bodyText, opts = {}) {
     caseTextCap: opts.caseTextCap || 4000,
   };
   const lines = String(bodyText || "").replace(/\r\n?/g, "\n").split("\n");
-  const deck = deckCases(lines, o);
-  const draft = draftCases(lines, o);
-  const picked = draft.length > deck.length ? draft : deck;
-  const shape = picked.length === 0 ? "none" : picked === draft ? "draft" : "deck";
+  const tc = tcCases(lines, o);
+  const deck = tc.length ? [] : deckCases(lines, o);
+  const picked = tc.length ? tc : deck;
+  const dets = [...new Set(picked.map((c) => c.det || "deck"))];
+  const shape = picked.length === 0 ? "none" : dets.length === 1 ? dets[0] : "mixed";
   // anchors are slugged over EVERY heading in the body (an unrelated
   // section with the same text shifts a case's dedup suffix), in
   // document order — matching how a renderer would number them
@@ -412,7 +439,7 @@ export function extractCases(bodyText, opts = {}) {
   }
   return {
     shape,
-    mixed: deck.length > 0 && draft.length > 0,
+    mixed: dets.length > 1,
     cases: picked.map((c, k) => {
       const { _headAt, _prose, _figs, ...kase } = c;
       // tags (v1.2): the case's own title + scenario + unfenced body,
@@ -432,8 +459,11 @@ export function extractCases(bodyText, opts = {}) {
         const rel = at >= 0 ? str.slice(at + "media/".length) : str.split("/").pop();
         return `${opts.mediaUrlBase}/${rel}`;
       });
+      const det = c.det || "deck";
       return {
-        ordinal: k + 1, ...kase, shape,
+        ordinal: k + 1, ...kase, shape: det, det,
+        group: c.group || "", sourceRef: c.sourceRef || "",
+        confidence: CONFIDENCE[det] || "medium",
         tools: tags.tools, keywords: tags.keywords, figureLinks,
         anchor: anchorAt.get(_headAt) || "",
       };
@@ -459,6 +489,9 @@ export function toRowFields(docRowId, kase, nowIso) {
     IssueRefs: kase.issueRefs.join("; "),
     Anchor: cap(kase.anchor, 255),
     Shape: kase.shape,
+    Confidence: kase.confidence || "",
+    Group: cap(kase.group || "", 255),
+    SourceRef: cap(kase.sourceRef || "", 255),
     FigureCount: kase.figureCount,
     TableCount: kase.tableCount,
     StepCount: kase.stepCount,

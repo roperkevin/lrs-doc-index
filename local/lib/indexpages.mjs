@@ -150,12 +150,13 @@ export function writeCaseCatalog(cfg, rows, caseRowsByDoc) {
       "",
       `[Sidecar](<${target}>) · ${clip(plan.Surface, 30) || "—"} · release ${clip(plan.TargetRelease, 20) || "—"}`,
       "",
-      "| Case | Classification | Scenario | Tools | Issues |",
-      "|---|---|---|---|---|",
+      "| Case | Classification | Group | Shape | Tools | Issues |",
+      "|---|---|---|---|---|---|",
       ...cases.map((c) => {
         const label = clip(c.Title, 90) || `Case ${ordinalOf(c)}`;
         const link = c.Anchor ? `[${label}](<${target}#${c.Anchor}>)` : label;
-        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Scenario, 60) || "—"} | ${clip(c.Tools, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
+        const shape = c.Shape ? `${c.Shape}${c.Confidence && c.Confidence !== "high" ? " · " + c.Confidence : ""}` : "—";
+        return `| ${link} | ${c.Classification || "—"} | ${clip(c.Group, 40) || "—"} | ${shape} | ${clip(c.Tools, 60) || "—"} | ${clip(c.IssueRefs, 80) || "—"} |`;
       }),
       ""
     );

@@ -209,13 +209,16 @@ function caseSection(sc, svgName) {
     if (lines[i].indexOf("](") >= 0 && lines[i].indexOf(svgName) >= 0) { at = i; break; }
   }
   if (at < 0) return null;
+  // the case heading: phase-3 bodies put a case under "### TC-P01 — …"
+  // (its section ends at the next heading of any level); pre-3 bodies
+  // used "## Case N …" sections
   let s = at, e = lines.length;
-  while (s > 0 && !/^## /.test(lines[s])) s--;
+  while (s > 0 && !/^##(#)? /.test(lines[s])) s--;
   for (let i = at + 1; i < lines.length; i++) {
-    if (/^## /.test(lines[i])) { e = i; break; }
+    if (/^##(#)? /.test(lines[i])) { e = i; break; }
   }
-  const head = /^## /.test(lines[s])
-    ? lines[s].replace(/^## /, "").replace(/<!--[\s\S]*?-->/g, "").trim() : "";
+  const head = /^##(#)? /.test(lines[s])
+    ? lines[s].replace(/^##(#)? /, "").replace(/<!--[\s\S]*?-->/g, "").trim() : "";
   const isRow = (ln) => {
     const t = ln.trim();
     return t.length > 1 && t[0] === "|" && t[t.length - 1] === "|";
