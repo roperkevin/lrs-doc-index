@@ -122,6 +122,8 @@ keeps the old yaml-on-top layout).
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
 | local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (ALL phases shipped: schema, parser, gate, sweep wiring incl. `--recase`, the `_Case Catalog.md` browse page, gap-report case tracing; list created on tenant — the open step is the sweep machine's config line + one `--recase --live`, Local_Setup §12) | — |
+| local/Sidecar_Format_Plan.md | Sidecar format review + enhancement plan — metadata table (no yaml block), filename convention (`<issue>-<slug>.md`), extractor structure fixes, one test-case grammar, six-shape case detector, phased rollout with decisions log | phase 0 shipped |
+| local/lib/caseaudit.mjs + `sweep.mjs --case-audit` | Case-shape audit of every test plan — parser shape + latent-shape signals, `_Case Audit.md` beside the catalog | v1.0 |
 | local/harness/check_caseindex.py | Case-parser gate (both case shapes via the presentation layer's own emission, issue refs incl. the digit floor + fenced-code trap, v1.1 metadata legs, v1.2 vocabulary-tag legs, v1.3 figure-link + df-ordering legs, v1.4 hyperlink legs, replace-set planner; 68 checks; CI) | v1.4 |
 | review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |
 | STATUS_history.md | The per-day STATUS narratives, moved out of STATUS.md's head (2026-09-03) | — |

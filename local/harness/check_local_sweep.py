@@ -1819,6 +1819,44 @@ def main():
           proc.returncode != 0 and "Test Cases" in proc.stderr,
           proc.stderr[-400:])
 
+    # ---- case-audit leg (Sidecar_Format_Plan phase 0) ---------------
+    # --case-audit reads the sidecars on disk, runs the case parser plus
+    # the latent-shape signals, and writes `_Case Audit.md` only on a
+    # live run; no list writes, no AI, and no Test Cases GUID needed
+    print("== case-audit leg")
+    audit_pg = os.path.join(sidecar_dir, "_Case Audit.md")
+    if os.path.exists(audit_pg):
+        os.remove(audit_pg)
+    llm_before_au = state.llm_calls
+    proc = run_sweep(cfg_path, ["--case-audit"])
+    check("case-audit dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("case-audit dry run reports the walk and writes no page",
+          out.get("mode") == "case-audit" and out.get("dry_run") is True
+          and int(out.get("plans", 0)) >= 1 and int(out.get("covered", 0)) >= 1
+          and int(out.get("no_seam", 0)) == 0
+          and not os.path.exists(audit_pg), str(out))
+    proc = run_sweep(cfg_path, ["--case-audit", "--live"])
+    check("case-audit live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("case-audit live wrote the audit page listing the covered plan",
+          os.path.exists(audit_pg) and "Alpha Plan" in open(audit_pg).read()
+          and "## Covered plans (" in open(audit_pg).read(), str(out))
+    check("case-audit spent no AI calls and touched no list",
+          state.llm_calls == llm_before_au
+          and len(state.lists.get(LISTS["testCases"], {})) == len(tcs),
+          f"{state.llm_calls} vs {llm_before_au}")
+    check("case-audit log carries per-plan signals",
+          any(k in json.load(open(out["logFile"])).get("plans", [{}])[0].get("signals", {})
+              for k in ("caseTable", "posNegTable", "verifyBullets")), out.get("logFile", ""))
+    proc = run_sweep(cfg_nocases_path, ["--case-audit"])
+    check("case-audit runs without the Test Cases GUID",
+          proc.returncode == 0 and json.loads(proc.stdout.splitlines()[0]).get("mode") == "case-audit",
+          proc.stderr[-300:])
+    proc = run_sweep(cfg_path, ["--case-audit", "--recase"])
+    check("case-audit refuses to combine with --recase",
+          proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
+
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")
     pages_out = os.path.join(tmp, "pages.json")

@@ -59,6 +59,7 @@ import {
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
+import { auditBody, summarizeAudit, renderAuditPage } from "./lib/caseaudit.mjs";
 import { writeIndexPages, writeCaseCatalog } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
@@ -301,10 +302,11 @@ function loadConfig(argv) {
     else if (a === "--rerank") args.flags.rerank = true;
     else if (a === "--reformat") args.flags.reformat = true;
     else if (a === "--recase") args.flags.recase = true;
+    else if (a === "--case-audit") args.flags.caseAudit = true;
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -321,6 +323,10 @@ function loadConfig(argv) {
   if (args.flags.recase) cfg.sweep.recase = true;
   if (cfg.sweep.recase && (cfg.sweep.rerank || cfg.sweep.reformat)) {
     throw new Error("--recase is a standalone mode — do not combine it with --rerank or --reformat");
+  }
+  if (args.flags.caseAudit) cfg.sweep.caseAudit = true;
+  if (cfg.sweep.caseAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase)) {
+    throw new Error("--case-audit is a standalone mode — do not combine it with --rerank, --reformat or --recase");
   }
   if (args.flags.checkHeartbeat) cfg.sweep.checkHeartbeat = true;
   cfg.llm = cfg.llm || {};
@@ -793,6 +799,56 @@ async function main() {
     .filter((r) => !r.CanonicalRefId)
     .map((r) => r.Title)
     .join(", ");
+
+  // ---- --case-audit: which plans the case index covers, and what the
+  // uncovered ones contain (Sidecar_Format_Plan phase 0). Reads the
+  // sidecars on disk, runs the SAME parser --recase runs plus the
+  // latent-shape signals in caseaudit.mjs, and writes `_Case Audit.md`
+  // next to the catalog on a live run. No list writes, no extraction,
+  // no AI calls; the Test Cases GUID is not required.
+  if (sw.caseAudit) {
+    const entries = [];
+    let noSidecar = 0, noSeam = 0;
+    for (const r of docIndexRows) {
+      if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
+      if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) { noSidecar++; continue; }
+      const content = fs.readFileSync(local, "utf8");
+      const seam = bodySeamEnd(content);
+      if (seam < 0) { noSeam++; continue; }
+      const body = content.slice(seam);
+      const parsed = extractCases(body, { planTitle: r.Title || "" });
+      const parts = String(r.TextFileUrl).split("/");
+      const file = decodeURIComponent(parts[parts.length - 1] || "");
+      const folder = decodeURIComponent(parts[parts.length - 2] || "");
+      entries.push({
+        id: r.ID, title: r.Title || r.FileName || `doc ${r.ID}`,
+        target: folder ? `${folder}/${file}` : file,
+        shape: parsed.shape, cases: parsed.cases.length, signals: auditBody(body),
+      });
+    }
+    const asum = { mode: "case-audit", dry_run: dry, no_sidecar: noSidecar, no_seam: noSeam,
+                   ...summarizeAudit(entries) };
+    if (!dry && cfg.sweep.indexPages !== false) {
+      const pg = path.join(cfg.paths.sidecarLibrary, "_Case Audit.md");
+      fs.writeFileSync(pg, renderAuditPage(entries, new Date().toISOString()));
+      if (remote) {
+        remote.queuePut(pg);
+        await remote.flush().catch((e) =>
+          process.stderr.write(`remote flush of case audit: ${e.message}\n`));
+      }
+    }
+    const aDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(aDir, { recursive: true });
+    const aStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const aLog = path.join(aDir, `sweep-${aStamp}.json`);
+    fs.writeFileSync(aLog, JSON.stringify({ summary: asum, plans: entries }, null, 1));
+    pruneRunLogs(aDir);
+    process.stdout.write(JSON.stringify({ ...asum, logFile: aLog }) + "\n");
+    return;
+  }
 
   // ---- --recase: rebuild the Test Cases list from the sidecars on
   // disk (Case_Index_Plan phase 2 — the backfill). No extraction, no

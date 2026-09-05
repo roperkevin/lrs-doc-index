@@ -1,5 +1,32 @@
 # Local sweep — release notes
 
+## caseaudit v1.0 (2026-09-05 — `--case-audit`, Sidecar_Format_Plan phase 0; sweep v1.47)
+
+**Instrument before changing the format.** The review in
+`local/Sidecar_Format_Plan.md` found the case index covers 43 of the
+178 test plans (463 cases) and that 123 of the 135 uncovered plans
+carry a case shape the parser does not read yet. This round makes
+that visible on every run instead of once in a review:
+
+- **`local/lib/caseaudit.mjs`** (new, pure): `auditBody` counts eight
+  latent-shape signals in a sidecar body — `caseTable`,
+  `posNegTable`, `posNegLabel`, `titledCaseSlide`, `numberedCases`,
+  `verifyBullets`, `collapsedCells`, `expectedLines` — and
+  `renderAuditPage` writes them per plan.
+- sweep **v1.47**: new standalone mode **`--case-audit`** — walks the
+  eligible plans like `--recase`, runs the same `extractCases` plus
+  `auditBody`, prints the summary JSON (`plans`, `covered`,
+  `uncovered_with_signal`, `uncovered_no_signal`, per-signal plan
+  counts) and on `--live` writes **`_Case Audit.md`** beside
+  `_Case Catalog.md` (Uncovered plans first, signals named). No
+  list writes, no AI, no Test Cases GUID needed.
+- `LRSDocIndex/_Case Audit.md` committed from the corpus on main so
+  the phase-3 yield has a baseline to be measured against.
+
+Gates: `check_local_sweep.py` case-audit leg (dry writes nothing,
+live writes the page, no AI, no list touch, per-plan signals in the
+run log, runs without the GUID, refuses `--recase`).
+
 ## caseindex v1.4 (2026-09-05 — the primary figure becomes clickable; sweep v1.46)
 
 **CaseIndexVersion bump — add the FigureLink column (Hyperlink),
