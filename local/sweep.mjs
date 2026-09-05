@@ -672,7 +672,7 @@ async function main() {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
                "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
                "Shape", "FigureCount", "TableCount", "StepCount", "RouteRefs",
-               "ExpectedResult", "TraceText", "Tools", "Keywords", "SweptOn"],
+               "ExpectedResult", "TraceText", "Tools", "Keywords", "FigureLinks", "SweptOn"],
     });
     rawSnapshots.testCases = items; // rides the per-run list backup
     for (const it of items) {
@@ -703,10 +703,24 @@ async function main() {
   let ciVocab = null;
   if (ciEnabled) {
     const kwById2 = new Map(keywordRows.map((k) => [k.ID, k]));
+    // document frequency per canonical keyword (v1.3): its DocKeywords
+    // junction count — junctions are already minted against the
+    // canonical id, so no folding needed here. caseTags orders tags
+    // rarest-first with it, so the Keywords cap truncates the
+    // ubiquitous tail ("route") instead of the distinctive terms.
+    const dfById = new Map();
+    for (const j of docKwRows) {
+      if (j.KeywordId !== undefined) {
+        dfById.set(j.KeywordId, (dfById.get(j.KeywordId) || 0) + 1);
+      }
+    }
     ciVocab = prepareVocab(
       keywordRows.map((r) => {
         const canon = (r.CanonicalRefId && kwById2.get(r.CanonicalRefId)) || r;
-        return { title: r.Title, kind: canon.Kind || r.Kind, canonical: canon.Title };
+        return {
+          title: r.Title, kind: canon.Kind || r.Kind, canonical: canon.Title,
+          df: dfById.get(canon.ID) || 0,
+        };
       })
     );
   }
@@ -725,6 +739,7 @@ async function main() {
           caseTextCap: cfg.sweep.caseIndex && cfg.sweep.caseIndex.caseTextCap,
           vocab: ciVocab,
           planTitle: planTitle || "",
+          mediaUrlBase: `${sw.siteUrl}${sw.textsFolder}/media`,
         });
         if (parsed.mixed) sum.cases_shape_mixed++;
         if (parsed.shape === "none") sum.plans_caseless++;

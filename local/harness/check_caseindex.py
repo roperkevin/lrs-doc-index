@@ -52,6 +52,7 @@ Positive - Non spanning line event
 | --- | --- | --- |
 | R1L1 | 0 | 100 |
 ![fig](../media/doc12_slide4_fig1.svg)
+[figure: 10–22 · R1 · E1 · Output]
 See devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855 and #612
 
 ## Slide 5
@@ -109,7 +110,8 @@ import { extractCases, toRowFields, diffCaseRows, caseIssueRefs,
 import fs from "node:fs";
 
 const fx = JSON.parse(fs.readFileSync(process.env.CASEINDEX_FIXTURE, "utf8"));
-const opts = { defaultRepo: "A/b" };
+const MB = "https://mock.example/sites/l/LRS Doc Index/media";
+const opts = { defaultRepo: "A/b", mediaUrlBase: MB };
 const deckBody = caseHeadings(tidyBody(fx.rawDeck));
 const deck = extractCases(deckBody, opts);
 const draft = extractCases(fx.draft, opts);
@@ -146,6 +148,12 @@ process.stdout.write(JSON.stringify({
   refsBare: caseIssueRefs("see #612 and #12", "A/b"),
   refsNoRepo: caseIssueRefs("see #612", ""),
   refsDigits: caseIssueRefs("expr 40+5 a/b#0 and a/b#12, real a/b#4855", ""),
+  rawFig: extractCases(deckBody, { defaultRepo: "A/b" }).cases[0].figureLinks,
+  dfOrder: caseTags("route and split measure and self intersection", prepareVocab([
+    { title: "route", kind: "topic", canonical: "route", df: 439 },
+    { title: "split measure", kind: "topic", canonical: "split measure", df: 12 },
+    { title: "self intersection", kind: "topic", canonical: "self intersection", df: 3 },
+  ])).keywords,
   tags: (() => {
     const vocab = prepareVocab([
       { title: "merge events", kind: "tool", canonical: "merge events" },
@@ -275,7 +283,7 @@ def main():
 
     print("-- per-case metadata (v1.1) --")
     check("deck case: shape/figure/table counts and routes from the fixture table",
-          c1.get("shape") == "deck" and c1.get("figureCount") == 1
+          c1.get("shape") == "deck" and c1.get("figureCount") == 2
           and c1.get("tableCount") == 1 and c1.get("stepCount") == 0
           and c1.get("routeRefs") == "R1L1", json.dumps(c1))
     check("deck case: no draft contract lines",
@@ -311,6 +319,23 @@ def main():
     check("no vocabulary = empty tag columns, never a guess",
           r["fresh"][0].get("Tools") == "" and r["fresh"][0].get("Keywords") == "",
           json.dumps(r["fresh"][0]))
+
+    print("-- figure links + rarest-first ordering (v1.3) --")
+    MB = "https://mock.example/sites/l/LRS Doc Index/media"
+    check("rendered figure resolves onto the media folder URL; the "
+          "collapsed [figure:] label mints no link",
+          c1.get("figureLinks") == [f"{MB}/doc12_slide4_fig1.svg"],
+          json.dumps(c1.get("figureLinks")))
+    check("figure-less case has no links",
+          cases[1].get("figureLinks") == [], json.dumps(cases[1].get("figureLinks")))
+    check("no mediaUrlBase keeps the raw sidecar-relative target",
+          r["rawFig"] == ["../media/doc12_slide4_fig1.svg"], json.dumps(r["rawFig"]))
+    check("row shaping joins FigureLinks newline-separated",
+          r["fresh"][0].get("FigureLinks") == f"{MB}/doc12_slide4_fig1.svg",
+          json.dumps(r["fresh"][0].get("FigureLinks")))
+    check("keywords order rarest-first (ascending df, then name)",
+          r["dfOrder"] == ["self intersection", "split measure", "route"],
+          json.dumps(r["dfOrder"]))
 
     row0 = r["fresh"][0]
     check("row shaping carries the v1.1 columns",

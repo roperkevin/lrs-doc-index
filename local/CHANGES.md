@@ -1,5 +1,41 @@
 # Local sweep — release notes
 
+## caseindex v1.3 (2026-09-05 — figure links + rarest-first tags; sweep v1.45)
+
+**CaseIndexVersion bump — add the FigureLinks column, then reflow
+with `--recase --live`.** Two changes driven by the second live
+export (463 rows reflowed cleanly; 19 rows at the Keywords cap):
+
+- **`FigureLinks`** (new column, Multiple lines of text, PLAIN): the
+  absolute URLs of the figures/images rendered inside each case's
+  section — sidecar-relative `../media/…` targets resolved onto the
+  library's media folder (`{siteUrl}{textsFolder}/media`),
+  newline-joined, deduped, capped 4000. A case's diagrams open
+  straight from its list row. Collapsed `[figure: …]` label lines
+  (cloud-format sidecars) count in `FigureCount` but carry no file,
+  so they mint no link; without a `mediaUrlBase` the raw target
+  stands (module consumers).
+- **Rarest-first tag ordering**: `caseTags` now orders Tools and
+  Keywords by ascending document frequency (each canonical's
+  DocKeywords junction count, which the sweep already holds — the
+  RelatedRank local-IDF spirit at write time), then name. The
+  alphabetical join had 19 rows truncating at the 255 cap with the
+  DISTINCTIVE late-alphabet tags dropped while ubiquitous terms
+  ("route", 439/463 cases) survived; now the cap cuts the generic
+  tail. A term's rank shifts as the corpus grows — the replace-set
+  absorbs that as an occasional one-row update. Junctions still
+  pointing at a pre-merge alias id undercount df until
+  `curate.mjs --repoint` runs — the standing librarian posture.
+
+TENANT STEP (folds into the v1.1/v1.2 one): add `FigureLinks`
+(Multiple lines of text, PLAIN — ten columns total now), then one
+`--recase --live`.
+
+Gates: `check_caseindex.py` **64/64** (media-URL resolution, the
+collapsed-label no-link rule, raw-target passthrough, newline row
+shaping, df ordering), `check_local_sweep.py` **237/237**,
+`check_testplangen.py` 141/141.
+
 ## caseindex v1.2 (2026-09-05 — per-case tags from the curated vocabulary; sweep v1.44, indexpages v1.2)
 
 **Cases become searchable by tool.** CaseIndexVersion bump — add the

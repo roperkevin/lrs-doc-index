@@ -147,8 +147,8 @@ anywhere in this plan). SharePoint's role is storage: one new list.
 | Anchor | Anchor | Single line of text | The sidecar heading's GitHub-style anchor slug — deep link target `{TextFileUrl}#{Anchor}` |
 | SweptOn | SweptOn | Date and Time | Include time; when this row was last written |
 
-Since **caseindex v1.1–v1.2** (2026-09-05, after the first live
-backfill) the list carries nine more per-case columns — `Shape`
+Since **caseindex v1.1–v1.3** (2026-09-05, after the first live
+backfill) the list carries ten more per-case columns — `Shape`
 (deck/draft), `FigureCount`/`TableCount`/`StepCount`, `RouteRefs`
 (distinct fixture route ids, prose + table cells), the draft
 contract's `ExpectedResult`/`TraceText` lines, and the v1.2 tag
@@ -156,7 +156,10 @@ columns `Tools`/`Keywords` (canonical names from the curated
 Keywords vocabulary, matched word-boundary against the case's own
 text plus the plan title — alias rows fold to canonicals, so weekly
 curation merges sharpen case tags; flat '; '-joined columns by
-decision, never junction rows) — and the explicit `repo#n` issue
+decision, never junction rows; rarest-first ordering since v1.3, by
+each canonical's DocKeywords junction count, so the 255 cap
+truncates the ubiquitous tail), and v1.3's `FigureLinks` (the
+case's own figure URLs resolved onto the media folder) — and the explicit `repo#n` issue
 form requires 3–5 digits with fenced code excluded from every scan
 (a live Arcade expression had minted a phantom `#0`). The CSV is
 authoritative for column details.
