@@ -93,6 +93,29 @@ Words.
 
 PLAIN = "## Slide 1\nNo pictures here.\n"
 
+# a deck with a drawing slide (labels collapsed by the extractor, notes
+# after) and a picture slide — the drawings ShapeExtract returns for it
+DRAW_DECK = f"""## Slide 1 — Overview
+Intro.
+![image1.png]({PH}image1.png)
+
+## Slide 2 — Flow
+[figure: R1 · Split · R1A · R1B]
+### Notes
+speaker notes
+
+## Slide 3
+Only prose here.
+"""
+DRAWINGS = [
+    {"slide": 2, "name": "slide2-drawing.svg", "alt": "Slide 2 drawing — 4 shapes, 2 connectors",
+     "connections": "R1 → Split · Split → R1A"},
+    {"slide": 3, "name": "slide3-drawing.svg", "alt": "Slide 3 drawing — 3 shapes", "connections": ""},
+    {"slide": 9, "name": "slide9-drawing.svg", "alt": "no such slide", "connections": ""},
+]
+SVG_HEAD = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 320" width="560" height="320"><title>x</title></svg>'
+
+
 # a legacy sidecar body (pre-1b flat media, collapsed label, alt = file)
 LEGACY = """## Slide 4 — Old deck <!-- slide 4 -->
 ![doc12_image1.png](../media/doc12_image1.png)
@@ -114,7 +137,7 @@ import { tidyBody } from "file://%(lib)s/presentation.mjs";
 import { renderTestPlanBody } from "file://%(lib)s/casegrammar.mjs";
 import { relinkMedia } from "file://%(lib)s/slug.mjs";
 import { prepareVocab } from "file://%(lib)s/caseindex.mjs";
-import { prettifyMedia, extractFigures, toFigureRowFields, diffFigureRows,
+import { prettifyMedia, placeDrawings, extractFigures, toFigureRowFields, diffFigureRows,
   imageSize, figureName, isPrettyName, formatOf } from "file://%(lib)s/figureindex.mjs";
 import fs from "node:fs";
 
@@ -159,6 +182,13 @@ const hlDiffRows = asRows(fresh, 201);
 hlDiffRows[0].fields.ImageLink = { Url: "https://elsewhere/x.png", Description: "x" };
 const hlDiff = diffFigureRows(hlDiffRows, fresh);
 const b64 = (s) => Buffer.from(s, "base64");
+// drawings (v1.2): placed into the extracted text, then named and indexed
+const pl = placeDrawings(fx.drawDeck, fx.drawings);
+const plAgain = placeDrawings(pl.text, fx.drawings);
+const plPretty = prettifyMedia(pl.text);
+const drawBody = relinkMedia(plPretty.text, "77-flow");
+const drawIdx = extractFigures(drawBody, { mediaUrlBase: MB,
+  sizeOf: (rel) => rel.endsWith(".svg") ? { width: 560, height: 320, bytes: 900 } : { width: 100, height: 80, bytes: 10 } });
 
 process.stdout.write(JSON.stringify({
   pDeck, pAgainText: pAgain.text, pAgainRenames: pAgain.renames, pDocx, pPlain,
@@ -174,7 +204,11 @@ process.stdout.write(JSON.stringify({
   },
   pretty: [isPrettyName("fig-01-slide-02-loop.png"), isPrettyName("fig-01.png"), isPrettyName("image1.png")],
   formats: [formatOf("a.JPEG"), formatOf("b.svg"), formatOf("c.tiff"), formatOf("noext")],
+  placed: pl, placedAgainText: plAgain.text, plPrettyText: plPretty.text, drawBody,
+  drawFigures: drawIdx.figures,
+  drawRows: drawIdx.figures.map((f) => toFigureRowFields(77, f, now)),
   sizes: {
+    svg: imageSize(Buffer.from(fx.svgHead, "utf8")),
     png: imageSize(b64(fx.png)), gif: imageSize(b64(fx.gif)), bmp: imageSize(b64(fx.bmp)),
     jpg: imageSize(b64(fx.jpg)), junk: imageSize(Buffer.from("not an image at all, really")),
     empty: imageSize(Buffer.alloc(0)),
@@ -187,6 +221,7 @@ def main():
     tmp = os.path.join(HERE, "_figureindex_fixture.json")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"rawDeck": RAW_DECK, "rawDocx": RAW_DOCX, "plain": PLAIN, "legacy": LEGACY,
+                   "drawDeck": DRAW_DECK, "drawings": DRAWINGS, "svgHead": SVG_HEAD,
                    "png": PNG_1x1, "gif": GIF_3x2, "bmp": BMP_5x7, "jpg": JPG_9x11}, f)
     try:
         proc = subprocess.run(
@@ -300,6 +335,40 @@ def main():
     check("legacy diagram label indexed", lg[1]["kind"] == "diagram" and lg[1]["caption"] == "A · B", json.dumps(lg))
     check("without mediaUrlBase the raw target stands", r["noBase"][0]["url"] == "doc12_image1.png", json.dumps(r["noBase"]))
     check("contextCap honored", all(len(c) <= 12 for c in r["cappedCtx"]), json.dumps(r["cappedCtx"]))
+
+    print("-- drawings (placeDrawings + Kind drawing, v1.2) --")
+    pl = r["placed"]
+    check(pl["placed"] == ["slide2-drawing.svg", "slide3-drawing.svg"],
+          "drawings whose slide heading exists are placed; an unknown slide is skipped", json.dumps(pl["placed"]))
+    check("[figure: R1 · Split · R1A · R1B]\n\n![Slide 2 drawing — 4 shapes, 2 connectors](../media/__MEDIA__/slide2-drawing.svg)\n"
+          "[connections: R1 → Split · Split → R1A]\n\n### Notes" in pl["text"],
+          "the link lands at the end of its slide, before the Notes, with its connections line", pl["text"])
+    check("Only prose here.\n\n![Slide 3 drawing — 3 shapes](../media/__MEDIA__/slide3-drawing.svg)\n" in pl["text"]
+          and "[connections:" not in pl["text"].split("## Slide 3")[1],
+          "a drawing without connections gets the link alone, at the section end", pl["text"])
+    check(r["placedAgainText"] == pl["text"], "placing twice adds nothing (idempotent)", r["placedAgainText"])
+    check("![Figure 2 — Flow](../media/__MEDIA__/fig-02-slide-02-flow.svg)" in r["plPrettyText"]
+          and "![Figure 3 — Only prose here.](../media/__MEDIA__/fig-03-slide-03-only-prose-here.svg)" in r["plPrettyText"],
+          "prettifyMedia names drawings in the same ordinal sequence as pictures, .svg kept", r["plPrettyText"])
+    df = r["drawFigures"]
+    kinds = [(f["ordinal"], f["kind"], f["fileName"]) for f in df]
+    check(kinds == [(1, "image", "fig-01-slide-01-overview.png"), (2, "drawing", "fig-02-slide-02-flow.svg"),
+                    (3, "drawing", "fig-03-slide-03-only-prose-here.svg")],
+          "the label line and the drawing link fold into ONE drawing row; no separate diagram row", json.dumps(kinds))
+    d2 = df[1] if len(df) > 1 else {}
+    check(d2.get("caption") == "R1 · Split · R1A · R1B" and d2.get("format") == "svg"
+          and d2.get("filePath") == "77-flow/fig-02-slide-02-flow.svg" and d2.get("width") == 560
+          and d2.get("title") == "Drawing 2 — Flow" and d2.get("url", "").endswith("/media/77-flow/fig-02-slide-02-flow.svg"),
+          "drawing row: caption from the labels, file/format/url/size from the link, Drawing title", json.dumps(d2))
+    check("[connections: R1 → Split · Split → R1A]" in d2.get("context", ""),
+          "the connections line stays in the drawing's context", d2.get("context"))
+    d3 = df[2] if len(df) > 2 else {}
+    check(d3.get("caption") == "" and d3.get("kind") == "drawing" and d3.get("slideNo") == 3,
+          "a label-less, connection-less drawing is still a drawing row", json.dumps(d3))
+    check(r["drawRows"][1]["Kind"] == "drawing" and r["drawRows"][1]["Format"] == "svg"
+          and r["drawRows"][1]["ImageLink"]["Description"] == "fig-02-slide-02-flow.svg",
+          "drawing row fields", json.dumps(r["drawRows"][1]))
+    check(r["sizes"]["svg"] == {"width": 560, "height": 320}, "imageSize reads an SVG's own width/height", json.dumps(r["sizes"]["svg"]))
 
     print("-- sizing (imageSize) --")
     sz = r["sizes"]

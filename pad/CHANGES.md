@@ -1,5 +1,12 @@
 # PAD offload — release notes
 
+## ops v1.1 (2026-09-05 — the `shapes` op)
+
+`pad/runner/ops.mjs` gains `shapes` → `scripts/ShapeExtract.ts` (zip
+in, `{ drawings, count, skipped }` out — a pptx slide's drawn shapes
+and text as SVG + connections; sweep v1.61). `check_pad_runner.py`
+runs it on the one-textbox fixture (no drawing).
+
 ## v2.5 (2026-09-05)
 
 `runner/ops.mjs` / `run_job.mjs`: the `figures` op is removed with

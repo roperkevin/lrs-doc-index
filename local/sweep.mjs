@@ -59,7 +59,7 @@ import {
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
-import { prettifyMedia, extractFigures, toFigureRowFields, diffFigureRows, imageSize } from "./lib/figureindex.mjs";
+import { prettifyMedia, placeDrawings, extractFigures, toFigureRowFields, diffFigureRows, imageSize } from "./lib/figureindex.mjs";
 import { auditBody, summarizeAudit, renderAuditPage, hasSignal } from "./lib/caseaudit.mjs";
 import { buildNormalizePrompt, unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
 import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
@@ -100,6 +100,10 @@ const FLOW_DEFAULTS = {
   // sharePoint.lists.figures alone. kinds [] = every DocKind gets
   // figure rows; contextCap bounds the per-figure skim text.
   figureIndex: { kinds: [], contextCap: 2000 },
+  // drawn shapes + text (sweep v1.61 / ShapeExtract v1.0): every pptx
+  // slide that carries a drawing yields a faithful SVG in media/<stem>/
+  // plus a `[connections: A → B]` line; false turns the lane off.
+  drawings: true,
   textCap: 100000,
   previewCap: 5000,
   maxDocsPerRun: 150,
@@ -154,6 +158,11 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   // the caller as bytes: the document's stem (its media folder name)
   // is only known once the title is — phase 1b, media/<stem>/<asset>
   const mediaFiles = [];
+  // drawn shapes + text (v1.61): ShapeExtract's per-slide drawings —
+  // regenerated on every extraction (a reformat too: they are derived
+  // from the source, cheap, and the renderer may have moved on)
+  let drawings = [];
+  let drawingsSkipped = "";
   const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
   const oversize = size > sw.oversizeBytes && ext !== "xlsx";
   if (!fs.existsSync(localPath)) {
@@ -180,6 +189,14 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
       for (const img of md.images || []) {
         mediaFiles.push({ name: img.name, data: Buffer.from(img.b64 || img.base64 || "", "base64") });
       }
+    }
+    if (ext === "pptx" && sw.drawings !== false && docText) {
+      setStep("shapes");
+      const sd = op({ op: "shapes", zipFile: localPath });
+      const placed = placeDrawings(docText, sd.drawings || []);
+      docText = placed.text;
+      drawings = (sd.drawings || []).filter((d) => placed.placed.includes(d.name));
+      drawingsSkipped = sd.skipped || "";
     }
   } else if (!oversize && ext === "xlsx") {
     setStep("workbookdump");
@@ -246,7 +263,19 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   }
   // pdf(no tool)/image/other/oversize (and empty html/msg): DocText
   // stays empty → Skip lane.
-  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited, mediaFiles };
+  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited, mediaFiles, drawings, drawingsSkipped };
+}
+
+/** The drawing SVGs as media files, their picture placeholders pointing
+ *  at the pictures' STANDARDIZED names (the sweep renamed them after the
+ *  script ran). */
+function drawingFiles(drawings, renames) {
+  const to = new Map((renames || []).map((r) => [r.from, r.to]));
+  return (drawings || []).map((d) => {
+    let svg = String(d.svg || "");
+    for (const [from, dest] of to) svg = svg.split(`href="${from}"`).join(`href="${dest}"`);
+    return { name: d.name, data: Buffer.from(svg, "utf8") };
+  });
 }
 
 /** The sidecar BODY for a document (phase 3): tidyBody for every
@@ -283,9 +312,18 @@ function renderBody(docText, docKind, cfg, sum) {
  *  text never linked keeps its own name). */
 function writeMedia(cfg, writer, stem, mediaFiles, renames) {
   const to = new Map((renames || []).map((r) => [r.from, r.to]));
+  let written = 0;
   for (const m of mediaFiles || []) {
-    writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", stem, to.get(m.name) || m.name), m.data);
+    const fp = path.join(cfg.paths.sidecarLibrary, "media", stem, to.get(m.name) || m.name);
+    // byte-identical content is not a write (a reformat regenerates the
+    // drawings; in remote-files mode a write is an upload)
+    try {
+      if (fs.existsSync(fp) && fs.readFileSync(fp).equals(m.data)) continue;
+    } catch { /* unreadable: write it */ }
+    writer.writeFile(fp, m.data);
+    written++;
   }
+  return written;
 }
 
 /** Move a document's media already on disk into place — idempotent;
@@ -643,7 +681,7 @@ async function main() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-sweep-"));
   const mains = await loadScripts(
     cfg.scriptsDir || DEFAULT_SCRIPTS_DIR,
-    ["ziptext", "media", "regex", "workbookdump", "related", "sidecarpatch"],
+    ["ziptext", "media", "shapes", "regex", "workbookdump", "related", "sidecarpatch"],
     tmpDir
   );
   const op = (o) => runOp(mains, o);
@@ -1528,6 +1566,7 @@ async function main() {
     cases_upserted: 0, cases_removed: 0, case_errors: 0,
     plans_caseless: 0, cases_shape_mixed: 0,
     figures_upserted: 0, figures_removed: 0, figure_errors: 0, media_renamed: 0,
+    drawings: 0, drawings_written: 0,
   };
   const summary = {
     library_items_seen: files.length,
@@ -1550,6 +1589,7 @@ async function main() {
     figures_upserted: 0,
     figures_removed: 0,
     figure_errors: 0,
+    drawings: 0,
     list_backup: listBackup ? path.basename(listBackup) : "",
   };
 
@@ -1633,7 +1673,7 @@ async function main() {
           fs.writeFileSync(rfPath, buf);
           rfsum.graph_downloads = (rfsum.graph_downloads || 0) + 1;
         }
-        const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited, mediaFiles } = extractDocText({
+        const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited, mediaFiles, drawings: rfDrawings } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath: rfPath, ext, srcItemId, modified, withMedia: false,
         });
@@ -1649,7 +1689,9 @@ async function main() {
         // so the files already on disk move to match without re-extraction
         const pm = prettifyMedia(rfRaw);
         const docText = relinkMedia(pm.text, stem);
-        writeMedia(cfg, writer, stem, mediaFiles, pm.renames);
+        rfsum.drawings = (rfsum.drawings || 0) + rfDrawings.length;
+        rfsum.drawings_written = (rfsum.drawings_written || 0) +
+          writeMedia(cfg, writer, stem, [...mediaFiles, ...drawingFiles(rfDrawings, pm.renames)], pm.renames);
         const placed = placeLegacyMedia(cfg, writer, srcItemId, stem, pm.renames);
         rfsum.media_moved = (rfsum.media_moved || 0) + placed.legacy;
         rfsum.media_renamed += placed.renamed;
@@ -2035,7 +2077,7 @@ async function indexDoc(ctx) {
   }
 
   // Switch_ext lane dispatch (shared with the --reformat pass)
-  const { docText: rawDocText, relsText, lane, srcAuthor, srcEditor, srcEdited, mediaFiles } = extractDocText({
+  const { docText: rawDocText, relsText, lane, srcAuthor, srcEditor, srcEdited, mediaFiles, drawings } = extractDocText({
     sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
@@ -2129,7 +2171,8 @@ async function indexDoc(ctx) {
   const sidecarName = `${stem}.md`;
   // media lands in media/<stem>/; the body's placeholder links follow
   docText = relinkMedia(docText, stem);
-  writeMedia(cfg, writer, stem, mediaFiles, pretty.renames);
+  writeMedia(cfg, writer, stem, [...mediaFiles, ...drawingFiles(drawings, pretty.renames)], pretty.renames);
+  summary.drawings = (summary.drawings || 0) + drawings.length;
   const preview = cut(docText, sw.previewCap);
 
   // (e)+(f) header

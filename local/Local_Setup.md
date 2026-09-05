@@ -975,6 +975,13 @@ Setup, once:
    add `icon` to the `Kind` choices, then `--reformat --live` (untitled
    slides' pictures take a first-line slug; files under the v1.59
    names move by prefix) and `--refigure --live` once.
+7. **Drawn shapes and text (sweep v1.61, ShapeExtract v1.0):** add
+   `drawing` to the `Kind` choices, then `--reformat --live` (every
+   pptx gains one SVG per drawing slide in `media/<stem>/` plus a
+   `[connections: …]` line under the slide; no AI) and
+   `--refigure --live` once. `sweep.drawings: false` turns the lane
+   off. Drawings are regenerated on every reformat and only written
+   when their bytes change.
 
 A column the tenant list lacks is dropped from the write and noted
 once per run (`figure_fields_dropped`; the v1.56 fail-soft, shared

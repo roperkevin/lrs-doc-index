@@ -106,6 +106,8 @@
       "kinds": ["Test Plan"],
       "caseTextCap": 4000
     },
+    "drawings": true,
+    "$comment_drawings": "sweep v1.61: every pptx slide that carries a drawing (3+ drawn shapes / connectors / freeforms) yields a faithful SVG of its shapes and text in media/<stem>/ (scripts/ShapeExtract.ts) plus a [connections: A → B] line under the slide; indexed as Kind drawing in the Figures list. false turns the lane off.",
     "figureIndex": {
       "$comment": "Figure indexing (Figure_Index_Plan.md; sweep v1.59). Enabled by sharePoint.lists.figures carrying the Figures list GUID (schemas/SPList_Figures.csv); a config missing the key indexes documents normally with one loud note. Every indexed document's pasted pictures (media/<stem>/, now named fig-NN-slide-KK-<slug>.<ext>) and collapsed diagram labels become Figures rows — one replace-set per document, rebuilt by the nightly sweep, --reformat and the `sweep.mjs --refigure --live` backfill (Local_Setup §14). kinds = which DocKinds get figure rows ([] = all); contextCap bounds the per-figure skim text.",
       "kinds": [],

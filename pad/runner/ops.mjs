@@ -24,6 +24,7 @@ export const DEFAULT_SCRIPTS_DIR = path.resolve(HERE, "..", "..", "scripts");
 export const SCRIPT_FILES = {
   ziptext: "ZipTextExtract.ts",
   media: "MediaExtract.ts",
+  shapes: "ShapeExtract.ts",
   regex: "RegexExtract.ts",
   workbookdump: "WorkbookDump.ts",
   related: "RelatedRank.ts",
@@ -89,6 +90,8 @@ export function runOp(mains, op) {
     case "ziptext":
       return m(null, zipParam(op), strParam(op, "mediaPrefix", op.mediaPrefix, false));
     case "media":
+      return m(null, zipParam(op));
+    case "shapes":
       return m(null, zipParam(op));
     case "regex":
       return m(

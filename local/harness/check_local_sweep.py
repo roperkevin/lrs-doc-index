@@ -128,6 +128,30 @@ def make_pptx(fpath, text, with_media=False, with_case=False):
                 "<a:p><a:r><a:t>current date: 3/29/2022</a:t></a:r></a:p>"
                 "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
             )
+        if with_case:
+            # a DRAWING slide (v1.61 / ShapeExtract): four filled boxes with
+            # one-word labels and one connector glued R1 -> Split. The
+            # extractor collapses the labels into "[figure: R1 · R2 · Split
+            # · Merge]"; ShapeExtract renders the boxes + arrow as an SVG
+            # and reports the glued connection
+            def box(i, x, text, fill):
+                return ('<p:sp><p:nvSpPr><p:cNvPr id="%d" name="%s"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+                        '<p:spPr><a:xfrm><a:off x="%d" y="2743200"/><a:ext cx="914400" cy="548640"/></a:xfrm>'
+                        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="%s"/></a:solidFill></p:spPr>'
+                        '<p:txBody><a:bodyPr anchor="ctr"/><a:p><a:pPr algn="ctr"/><a:r><a:t>%s</a:t></a:r></a:p></p:txBody></p:sp>'
+                        % (i, text, x, fill, text))
+            z.writestr(
+                "ppt/slides/slide5.xml",
+                "<p:sld><p:cSld><p:spTree>"
+                + box(3, 914400, "R1", "1F4E79") + box(4, 914400 * 3, "R2", "1F4E79")
+                + box(5, 914400 * 5, "Split", "ED7D31") + box(6, 914400 * 7, "Merge", "ED7D31")
+                + '<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="7" name="Arrow"/><p:cNvCxnSpPr>'
+                  '<a:stCxn id="3" idx="3"/><a:endCxn id="5" idx="1"/></p:cNvCxnSpPr><p:nvPr/></p:nvCxnSpPr>'
+                  '<p:spPr><a:xfrm><a:off x="1828800" y="3017520"/><a:ext cx="2743200" cy="0"/></a:xfrm>'
+                  '<a:prstGeom prst="straightConnector1"><a:avLst/></a:prstGeom>'
+                  '<a:ln w="12700"><a:solidFill><a:srgbClr val="C00000"/></a:solidFill><a:tailEnd type="triangle"/></a:ln></p:spPr></p:cxnSp>'
+                + "</p:spTree></p:cSld></p:sld>",
+            )
         if with_media:
             # media only counts when a slide references it via its rels
             z.writestr(
@@ -1328,7 +1352,19 @@ def main():
     # no title, so v1.60 slugs its first text line) and the body links
     # it one per line with a Figure alt
     check("media extracted into the sidecar's media/<stem>/ folder under the standardized name",
-          media == ["fig-01-slide-01-alpha-test-plan-covering-lock.png"] and not any(m.startswith("doc10_") for m in media), str(media))
+          sorted(media) == ["fig-01-slide-01-alpha-test-plan-covering-lock.png", "fig-02-slide-05.svg"]
+          and not any(m.startswith("doc10_") for m in media), str(media))
+    # v1.61: the drawing slide's shapes + text, rendered and linked
+    svg_path = os.path.join(stem_dir, "fig-02-slide-05.svg")
+    svg = open(svg_path).read() if os.path.exists(svg_path) else ""
+    check("drawing rendered as a faithful SVG next to the picture",
+          svg.startswith("<svg ") and 'data-shapes="4" data-connectors="1"' in svg
+          and 'fill="#1F4E79"' in svg and ">Split</text>" in svg and 'marker-end="url(#ah-C00000)"' in svg, svg[:400])
+    check("body links the drawing under its slide with the labels line and the glued connection",
+          "[figure: R1 · R2 · Split · Merge]" in alpha_content
+          and "![Figure 2](../media/123-alpha-plan/fig-02-slide-05.svg)" in alpha_content
+          and "[connections: R1 → Split]" in alpha_content, alpha_content[-700:])
+    check("run summary counts drawings", int(out.get("drawings", 0)) == 1, str(out))
     check("body links the picture under its standardized name",
           "![Figure 1 — Alpha test plan covering lock acquisition #123 for Roads and Highways](../media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png)" in alpha_content
           and "image1.png" not in alpha_content, alpha_content[-400:])
@@ -1435,9 +1471,16 @@ def main():
     # (kinds [] = all) — beta simply has no figures
     print("== figure-index leg")
     figs = list(state.lists.get(LISTS["figures"], {}).values())
-    alpha_figs = [r for r in figs if r.get("DocumentLookupId") == alpha_id]
-    check("alpha got its one figure row", len(alpha_figs) == 1, str(figs)[:400])
+    alpha_figs = sorted([r for r in figs if r.get("DocumentLookupId") == alpha_id], key=lambda r: int(r.get("FigureNo") or 0))
+    check("alpha got its two figure rows (the picture and the drawing)", len(alpha_figs) == 2, str(figs)[:400])
     af = alpha_figs[0] if alpha_figs else {}
+    ad = alpha_figs[1] if len(alpha_figs) > 1 else {}
+    check("drawing row: the label line and the SVG link folded into one Kind drawing row",
+          ad.get("Kind") == "drawing" and ad.get("FileName") == "fig-02-slide-05.svg" and ad.get("Format") == "svg"
+          and ad.get("SlideNo") == 5 and ad.get("Caption") == "R1 · R2 · Split · Merge"
+          and ad.get("Title") == "Drawing 2" and "[connections: R1 → Split]" in str(ad.get("Context"))
+          and int(ad.get("Width") or 0) > 100 and int(ad.get("Bytes") or 0) > 500
+          and isinstance(ad.get("ImageLink"), dict) and ad["ImageLink"].get("Description") == "fig-02-slide-05.svg", str(ad))
     check("figure row carries the naming + placement contract",
           af.get("FigureKey") == f"{alpha_id}|1" and af.get("FigureNo") == 1
           and af.get("Kind") == "image" and af.get("FileName") == "fig-01-slide-01-alpha-test-plan-covering-lock.png"
@@ -1463,11 +1506,15 @@ def main():
     check("figure catalog written at the library root",
           fcat.startswith("# Figures — catalog"), fcat[:200])
     check("catalog groups by document with kind counts and links the picture + section",
-          re.search(r"(?m)^## Alpha Plan \(1: 1 image\)$", fcat) is not None
+          re.search(r"(?m)^## Alpha Plan \(2: 1 image / 1 drawing\)$", fcat) is not None
           and "[fig-01-slide-01-alpha-test-plan-covering-lock.png](<media/123-alpha-plan/fig-01-slide-01-alpha-test-plan-covering-lock.png>)" in fcat
           and "[Slide 1](<Test Plans/123-alpha-plan.md#slide-1>)" in fcat
           and "| 64×64 |" in fcat
-          and "1 figure(s) (1 image(s)) across 1 document(s)" in fcat, fcat)
+          and "2 figure(s) (1 image(s)) across 1 document(s)" in fcat, fcat)
+    check("catalog lists the drawing as a linked file with its labels",
+          re.search(r"(?m)^## Alpha Plan \(2: 1 image / 1 drawing\)$", fcat) is not None
+          and "[fig-02-slide-05.svg](<media/123-alpha-plan/fig-02-slide-05.svg>)" in fcat
+          and "| R1 · R2 · Split · Merge |" in fcat, fcat)
     status_fig = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("status page reports figure writes", "**Figures:**" in status_fig, status_fig[:800])
 
@@ -1496,7 +1543,7 @@ def main():
           int(out.get("figures_upserted", 0)) == 0
           and int(out.get("figures_removed", 0)) == 0
           and len([r for r in state.lists.get(LISTS["figures"], {}).values()
-                   if r.get("DocumentLookupId") == alpha_id]) == 1, str(out))
+                   if r.get("DocumentLookupId") == alpha_id]) == 2, str(out))
     # streaks: run 1 stamped 1 night; this full run makes it 2
     status2 = open(os.path.join(sidecar_dir, "_Sweep Status.md")).read()
     check("error streaks advance on full runs",
@@ -1829,7 +1876,10 @@ def main():
           and int(out.get("figures_removed", 0)) == 0
           and int(out.get("figure_errors", 0)) == 0
           and int(out.get("media_renamed", 0)) == 0
-          and len(fig_rows_rf) == 1 and fig_rows_rf[0].get("Keywords") == "acquisition", str(out) + str(fig_rows_rf)[:300])
+          and len(fig_rows_rf) == 2
+          and [r.get("Keywords") for r in fig_rows_rf if r.get("Kind") == "image"] == ["acquisition"], str(out) + str(fig_rows_rf)[:300])
+    check("reformat regenerates the drawing but rewrites nothing byte-identical",
+          int(out.get("drawings", 0)) == 1 and int(out.get("drawings_written", 0)) == 0, str(out))
     # v1.59: a corpus still on the archive names (image1.png) converges
     # under --reformat — the file on disk moves to its standardized name
     # (no re-extraction), the body link follows, the figure row updates
@@ -1854,8 +1904,8 @@ def main():
     # the row already carried the standardized name (only the sidecar
     # and the disk were reverted), so converging them writes no row
     check("figure row stays on the standardized name with no churn",
-          [r.get("FileName") for r in state.lists.get(LISTS["figures"], {}).values()
-           if r.get("DocumentLookupId") == alpha_id] == ["fig-01-slide-01-alpha-test-plan-covering-lock.png"]
+          sorted(r.get("FileName") for r in state.lists.get(LISTS["figures"], {}).values()
+                 if r.get("DocumentLookupId") == alpha_id) == ["fig-01-slide-01-alpha-test-plan-covering-lock.png", "fig-02-slide-05.svg"]
           and int(out.get("figures_upserted", 0)) == 0
           and int(out.get("media_moved", 0)) == 0, str(out))
     proc2 = run_sweep(cfg_path, ["--live", "--reformat"])
@@ -2026,7 +2076,7 @@ def main():
     check("refigure spent no AI calls", state.llm_calls == llm_before_rg,
           f"{state.llm_calls} vs {llm_before_rg}")
     check("refigure counters report the walk",
-          int(out.get("figures_upserted", 0)) == 1 and int(out.get("figures_removed", 0)) == 1
+          int(out.get("figures_upserted", 0)) == 2 and int(out.get("figures_removed", 0)) == 1
           and int(out.get("figure_errors", 0)) == 0, str(out))
     check("refigure live rebuilt the figure catalog",
           os.path.exists(fcat_path)
@@ -2037,19 +2087,20 @@ def main():
     with open(pretty_png, "wb") as f:
         f.write(ICON)
     proc = run_sweep(cfg_path, ["--refigure", "--live"])
-    irow = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
+    irow = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id and r.get("FigureNo") == 1]
     check("a 16x16 picture indexes as Kind icon with an Icon title",
           proc.returncode == 0 and len(irow) == 1 and irow[0].get("Kind") == "icon"
           and irow[0].get("Width") == 16 and irow[0].get("Title") == "Icon 1", str(irow)[:300])
     fcat_icon = open(fcat_path).read() if os.path.exists(fcat_path) else ""
     check("catalog sets icons aside (counted, not listed)",
-          "(1: 0 images / 1 icon)" in fcat_icon and "fig-01-slide-01-alpha" not in fcat_icon, fcat_icon[:400])
+          "(2: 0 images / 1 drawing / 1 icon)" in fcat_icon and "fig-01-slide-01-alpha" not in fcat_icon
+          and "fig-02-slide-05.svg" in fcat_icon, fcat_icon[:400])
     with open(pretty_png, "wb") as f:
         f.write(PNG)
     proc = run_sweep(cfg_path, ["--refigure", "--live"])
     check("restoring the picture flips the row back to Kind image",
-          proc.returncode == 0 and [r.get("Kind") for r in state.lists[LISTS["figures"]].values()
-                                    if r.get("DocumentLookupId") == alpha_id] == ["image"], "")
+          proc.returncode == 0 and sorted(r.get("Kind") for r in state.lists[LISTS["figures"]].values()
+                                          if r.get("DocumentLookupId") == alpha_id) == ["drawing", "image"], "")
     # the shared column-dropper covers the Figures list too
     state.lists[LISTS["figures"]] = {}
     state.reject_fields = {"Bytes"}
@@ -2057,8 +2108,8 @@ def main():
     out = json.loads(proc.stdout.splitlines()[0])
     frows = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
     check("figures missing column: row written without it, one note naming the schema",
-          proc.returncode == 0 and len(frows) == 1 and "Bytes" not in frows[0]
-          and int(out.get("figure_errors", 0)) == 0 and int(out.get("figure_fields_dropped", 0)) == 1
+          proc.returncode == 0 and len(frows) == 2 and all("Bytes" not in r for r in frows)
+          and int(out.get("figure_errors", 0)) == 0 and int(out.get("figure_fields_dropped", 0)) == 2
           and proc.stderr.count("Figures list has no 'Bytes' column") == 1
           and "SPList_Figures.csv" in proc.stderr and "--refigure --live" in proc.stderr,
           str(out) + proc.stderr[-400:])
@@ -2066,7 +2117,8 @@ def main():
     proc = run_sweep(cfg_path, ["--refigure", "--live"])
     frows = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
     check("figures column added: the next refigure fills it in",
-          proc.returncode == 0 and int(frows[0].get("Bytes") or 0) == len(PNG), str(frows)[:300])
+          proc.returncode == 0
+          and [int(r.get("Bytes") or 0) for r in frows if r.get("FigureNo") == 1] == [len(PNG)], str(frows)[:300])
     proc = run_sweep(cfg_path, ["--refigure", "--recase"])
     check("refigure refuses to combine with --recase",
           proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
