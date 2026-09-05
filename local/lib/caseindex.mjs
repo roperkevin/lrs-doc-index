@@ -577,10 +577,14 @@ export function diffCaseRows(existing, fresh, keyField = "CaseKey") {
       continue;
     }
     byKey.delete(f[keyField]);
-    const changed = Object.keys(f).some(
+    const changed = Object.keys(f).filter(
       (k) => k !== "SweptOn" && norm(f[k]) !== norm(have.fields[k])
     );
-    if (changed) plan.update.push({ id: have.id, fields: f });
+    // `changed` names the fields that differ, so a writer can patch
+    // ONLY those (plus SweptOn) — an unchanged hyperlink column never
+    // costs an SPO call (sweep v1.62, after SharePoint throttled a
+    // whole-list backfill)
+    if (changed.length) plan.update.push({ id: have.id, fields: f, changed });
   }
   for (const row of byKey.values()) plan.delete.push(row.id);
   return plan;

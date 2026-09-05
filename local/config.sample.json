@@ -43,6 +43,13 @@
     "testPlanModelId": "<run: testplangen.mjs --models — the 'LRS Test Plan Generation' GUID; only for provider 'aibuilder' (the tenant prompt must carry all five parameters + the current text — Coverage_Runbook.md step 2); provider 'anthropic' executes prompts/TestPlanGen_Prompt.md verbatim and needs no tenant prompt>"
   },
 
+  "spo": {
+    "$comment": "The SharePoint REST route the sweep uses for hyperlink columns (SourceLink, TextFileUrl, FigureLink, ImageLink — Graph rejects them). Auth inherits the graph section. v1.62: SharePoint throttles this route by cumulative request rate (429 / 503 with Retry-After — a whole-list --refigure / --recase backfill trips it): every call honors Retry-After (up to maxRetries), keeps paceMs between calls, and a throttle widens the pace for the rest of the run; the run summary reports spo_throttled. Raise paceMs (e.g. 500) if a backfill keeps getting throttled; updates already patch only the fields that changed, so a reflow that touches no hyperlink makes no SPO call.",
+    "paceMs": 150,
+    "maxRetries": 4,
+    "maxRetryAfterMs": 300000
+  },
+
   "alerts": {
     "$comment": "Optional push alerting (v1.32). webhookUrl = a Teams/Slack incoming-webhook URL (accepts {\"$env\": \"NAME\"}); the sweep posts {\"text\": ...} on a fatal abort and for docs stuck 3+ nights, and `sweep.mjs --check-heartbeat` (schedule local\\run_heartbeat.cmd as a second task) alerts when no successful live sweep is recorded within maxSilentHours. Absent section = alerts off.",
     "webhookUrl": {"$env": "DOCINDEX_ALERT_WEBHOOK"},

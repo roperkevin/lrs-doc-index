@@ -287,6 +287,8 @@ class MockState:
         self.content_downloads = []
         self.content_bytes = {}      # item id -> bytes served by the content fallback
         self.reject_fields = set()   # list columns the mock tenant "does not have"
+        self.spo_calls = 0           # ValidateUpdateListItem calls (hyperlink-column writes)
+        self.spo_throttle = 0        # answer this many SPO calls with 429 + Retry-After first
         self.embed_calls = 0
         self.embed_last_auth = None
         # remote-files mode: the sidecar drive, rel path -> {content, etag}
@@ -476,7 +478,19 @@ def make_handler(state, lib_guid, src_files):
             if m:
                 guid, iid = m.group(1), m.group(2)
                 state.spo_last_auth = self.headers.get("authorization")
+                state.spo_calls += 1
                 body = json.loads(self._read())
+                if state.spo_throttle > 0:
+                    # SharePoint's throttle shape: 429 + Retry-After
+                    state.spo_throttle -= 1
+                    payload = b'{"error":"429 TOO MANY REQUESTS"}'
+                    self.send_response(429)
+                    self.send_header("Retry-After", "1")
+                    self.send_header("content-type", "application/json")
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(payload)
+                    return
                 row = state.lists.setdefault(guid, {}).setdefault(iid, {})
                 out = []
                 for fv in body.get("formValues", []):
@@ -1840,6 +1854,7 @@ def main():
     with open(beta_sc, "w") as f:  # simulate an old, untidied body
         f.write(head_before + "\nOLD BODY MARKER\n\n- a\n\n- b\n7\n")
     llm_before_rf = state.llm_calls
+    spo_before_rf = state.spo_calls
     proc = run_sweep(cfg_path, ["--live", "--reformat"])
     check("reformat exit 0", proc.returncode == 0, proc.stderr[-400:])
     out = json.loads(proc.stdout.splitlines()[0])
@@ -1871,6 +1886,9 @@ def main():
     # was minted by alpha's own index run, so it reaches alpha's figure
     # tags on the next reflow (the caseindex v1.2 accepted degradation)
     fig_rows_rf = [r for r in state.lists.get(LISTS["figures"], {}).values() if r.get("DocumentLookupId") == alpha_id]
+    check("a keywords-only update patches only the changed fields: no hyperlink write, no SPO call (v1.62)",
+          state.spo_calls == spo_before_rf and fig_rows_rf and all(isinstance(r.get("ImageLink"), dict) or r.get("Kind") == "diagram" for r in fig_rows_rf),
+          f"spo calls {state.spo_calls} vs {spo_before_rf}; " + str(fig_rows_rf)[:300])
     check("reformat re-synced figure rows: no churn beyond the run-start vocabulary catch-up",
           int(out.get("figures_upserted", 0)) == 1
           and int(out.get("figures_removed", 0)) == 0
@@ -2101,6 +2119,32 @@ def main():
     check("restoring the picture flips the row back to Kind image",
           proc.returncode == 0 and sorted(r.get("Kind") for r in state.lists[LISTS["figures"]].values()
                                           if r.get("DocumentLookupId") == alpha_id) == ["drawing", "image"], "")
+    # v1.62: SharePoint throttling on the hyperlink route — the first two
+    # SPO calls answer 429 + Retry-After; the run must honor it, finish
+    # with every hyperlink written and no figure errors, and say so once
+    print("== spo-throttle leg")
+    state.lists[LISTS["figures"]] = {}
+    state.spo_throttle = 2
+    spo_before_th = state.spo_calls
+    # the gate's graph section runs with maxRetries 0 (fail fast) and the
+    # spo section inherits it; the throttle leg needs the real default
+    cfg_spo = json.loads(json.dumps(cfg))
+    cfg_spo["spo"]["maxRetries"] = 4
+    cfg_spo_path = os.path.join(tmp, "config-spo-retries.json")
+    with open(cfg_spo_path, "w") as f:
+        json.dump(cfg_spo, f)
+    proc = run_sweep(cfg_spo_path, ["--refigure", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    trows = [r for r in state.lists[LISTS["figures"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("throttled SPO writes are retried after Retry-After and succeed",
+          proc.returncode == 0 and int(out.get("figure_errors", 0)) == 0 and len(trows) == 2
+          and all(isinstance(r.get("ImageLink"), dict) for r in trows)
+          and state.spo_calls - spo_before_th == len(trows) + 2
+          and int(out.get("spo_throttled", 0)) == 2, str(out) + f" spo calls +{state.spo_calls - spo_before_th}")
+    check("throttling is noted once on stderr, naming the knob",
+          proc.stderr.count("SharePoint throttled the hyperlink-column route") == 1 and "spo.paceMs" in proc.stderr,
+          proc.stderr[-400:])
+    state.spo_throttle = 0
     # the shared column-dropper covers the Figures list too
     state.lists[LISTS["figures"]] = {}
     state.reject_fields = {"Bytes"}

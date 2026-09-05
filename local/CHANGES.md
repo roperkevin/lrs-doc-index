@@ -1,5 +1,34 @@
 # Local sweep — release notes
 
+## sweep v1.62 (2026-09-05 — SharePoint throttling on the hyperlink route; graph.mjs v1.4)
+
+The first `--refigure --live` after v1.61 died mid-corpus with
+`FIGURE-INDEX ERROR doc 172: SPO ValidateUpdateListItem 429: 429 TOO
+MANY REQUESTS`: every figure row's `ImageLink` is a separate SPO REST
+call on top of the Graph write, and a 1,300-row backfill trips
+SharePoint's cumulative rate limit. The SPO client retried only a 401.
+
+- **`SpoClient` (graph.mjs v1.4)** honors `Retry-After` on 429 / 503
+  (up to `spo.maxRetries`, default 4 — the Graph client's rule), backs
+  off on 5xx and network errors, keeps `spo.paceMs` (default 150 ms)
+  between calls, and after a throttle widens the pace for the rest of
+  the run (×2, 500 ms–5 s). Counts throttles (`spo_throttled` in the
+  nightly / `--recase` / `--refigure` summaries) and says so once on
+  stderr, naming the knob. `spo.maxRetryAfterMs` (5 min) caps a wait.
+- **Updates patch only the fields that changed.** `diffCaseRows` now
+  reports the differing fields on each update; `syncCases` /
+  `syncFigures` send those plus SweptOn — so a reflow that changes
+  Keywords on a thousand rows makes a thousand Graph patches and ZERO
+  SPO calls (before: every update re-sent the hyperlink).
+- Re-running `--refigure --live` after a throttled run is safe: rows
+  already written are unchanged and cost nothing; only the documents
+  that errored are written this time.
+- Gates: `check_local_sweep.py` spo-throttle leg (the first two SPO
+  calls answer 429 + Retry-After — the run honors it, every hyperlink
+  lands, `spo_throttled` 2, one stderr note) and the no-SPO-on-churn
+  leg (the vocabulary catch-up reformat makes zero SPO calls);
+  `check_caseindex.py` (the planner's `changed` list).
+
 ## sweep v1.61 (2026-09-05 — drawn shapes and text; ShapeExtract v1.0, figureindex v1.2, indexpages v1.4, ops v1.1)
 
 Owner request: "we need to extract drawn shapes and text". Until now a
