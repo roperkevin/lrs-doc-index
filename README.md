@@ -66,6 +66,7 @@ keeps the old yaml-on-top layout).
 | review/patches/SidecarPatch_v1_6.ts | r6 patch (gated + promoted 2026-08-13; safe to paste any time before the v2.8 window) | v1.6 |
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
+| prompts/TestPlanFigures_Prompt.md | Test-plan FIGURES prompt (authored v0.1, not wired): a second pass over a finished draft that picks the cases worth a schematic by rule (R1–R5, X1–X6, cap 6) and emits grounded closed-vocabulary figure specs for a deterministic SlideFigures-palette renderer — `testplangen/CHANGES.md` v2.31 addendum | v0.1 |
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.10 lets a case close with a story diagram's image link copied verbatim, the FIGURES rule; v1.9 makes every case's Trace cite a story statement, exemplar/reference support additive only; v1.8 makes cases name concrete fixture data with after-state tables) | v1.10 |
 | schemas/SPList_*.csv | The eight list definitions (lrsworkspace; Test Cases created 2026-09-05, GUID in config.sample.json; Figures authored 2026-09-05 — create per `SPList_Figures.csv`, Local_Setup §14) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |

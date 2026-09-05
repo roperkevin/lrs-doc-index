@@ -72,6 +72,25 @@ refusal names `sweep.remoteFiles`); leg 2 pins the seconds stamp.
 Docs: Local_Setup §11 (first-run order now starts with
 `--preview`; draft/idempotency names), README, STATUS.
 
+**Addendum — `prompts/TestPlanFigures_Prompt.md` v0.1 (authored,
+not wired, not pasted).** Owner question: can an LLM pick the test
+cases in a generated plan that are good candidates for a figure, and
+generate the figures? Yes, in two halves: the model SELECTS (five
+rules — measure geometry, state change, topology, temporality,
+interaction — six exclusions, a cap of six, ranked) and emits a
+closed-vocabulary FIGURE SPEC per selected case (route-measure
+panels with routes/calibration/events/marks; topology nodes/edges;
+sequence actors/steps), every value copied from the case or the
+Setup tables; a deterministic renderer draws the SVG in the
+SlideFigures vocabulary/palette so svg2pptx and draft2pptx consume
+it unchanged, and a grounding check (ids exist, measures inside
+their route, values verbatim) drops any spec that invents. The
+draft body is untouched (the v1.10 FIGURES rule stays
+story-figures-only); generated figures would ride a `## Generated
+Figures` addendum. Inputs PlanTitle + Draft; sentinel-wrapped JSON
+out; `TestPlanFiguresPromptVersion: v0.1`. Queued follow-on: the
+`--figures` pass + `lib/figurespec.mjs` renderer + harness leg.
+
 # TestPlanGen v2.30 — case-aware generation (testplangen.mjs v1.9, caseindex v2.1)
 
 Owner-requested (2026-09-05): "leverage the test case indexing to
