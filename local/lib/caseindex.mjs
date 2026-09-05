@@ -1,6 +1,12 @@
 /**
- * caseindex.mjs v2.0 — individual test cases out of a test plan's
+ * caseindex.mjs v2.1 — individual test cases out of a test plan's
  * sidecar body. Pure module, no I/O, no AI.
+ *
+ * v2.1 (no CaseIndexVersion bump — row output is unchanged): the
+ * `caseSpans` export gives TestPlanGen the line ranges of the same
+ * sections extractCases reports, so an exemplar plan that overflows
+ * ExemplarCap can be trimmed whole-case-at-a-time (the Case_Index_Plan
+ * "queued" item, built as testplangen.mjs v1.9).
  *
  * v2.0 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`;
  * Sidecar_Format_Plan phase 3): ONE case grammar. The body profile
@@ -348,6 +354,7 @@ function deckCases(lines, opts) {
       expectedResult: meta.expectedResult,
       traceText: meta.traceText,
       _headAt: i,
+      _endAt: end,
       _prose: meta._prose,
       _figs: meta.figureFiles,
     });
@@ -398,11 +405,36 @@ function tcCases(lines, opts) {
       expectedResult: meta.expectedResult,
       traceText: meta.traceText,
       _headAt: i,
+      _endAt: end,
       _prose: meta._prose,
       _figs: meta.figureFiles,
     });
   }
   return cases;
+}
+
+/**
+ * caseSpans(bodyText) → { lines, spans } — the line ranges of the
+ * same case sections extractCases reports (v2.1; TestPlanGen's
+ * case-aware exemplar trimming): `spans[k]` is `{ ordinal, start,
+ * end }` with `lines[start]` the case heading and `end` exclusive
+ * (the next heading of any level — TC grammar — or the next H2 —
+ * pre-3 deck sections), ordinals aligned with extractCases so the
+ * caller can join a span to its parsed case and its list row
+ * (`CaseKey = {docRowId}|{ordinal}`). Lines before the first span
+ * are the plan's head (metadata, Related, Overview); lines after the
+ * last span's end are its tail. Same shape pick as extractCases (TC
+ * grammar wins; deck sections otherwise).
+ */
+export function caseSpans(bodyText) {
+  const lines = String(bodyText || "").replace(/\r\n?/g, "\n").split("\n");
+  const o = { defaultRepo: "", caseTextCap: 1 };
+  const tc = tcCases(lines, o);
+  const picked = tc.length ? tc : deckCases(lines, o);
+  return {
+    lines,
+    spans: picked.map((c, k) => ({ ordinal: k + 1, start: c._headAt, end: c._endAt })),
+  };
 }
 
 /**
@@ -441,7 +473,7 @@ export function extractCases(bodyText, opts = {}) {
     shape,
     mixed: dets.length > 1,
     cases: picked.map((c, k) => {
-      const { _headAt, _prose, _figs, ...kase } = c;
+      const { _headAt, _endAt, _prose, _figs, ...kase } = c;
       // tags (v1.2): the case's own title + scenario + unfenced body,
       // plus the plan title — the tested tool's usual home
       const tags = caseTags(
