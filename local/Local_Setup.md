@@ -816,11 +816,16 @@ seventh list — design record and phased build order in
 (`local/lib/caseindex.mjs` — deck-derived `## Case N` sections and
 draft-style `### TC-P/TC-N` headings, per-case issue references,
 replace-set planner) under its own CI gate
-(`local/harness/check_caseindex.py`), and the sweep wiring (sweep
+(`local/harness/check_caseindex.py`), the sweep wiring (sweep
 v1.42): documents of the configured kinds sync their case rows at
 index time and on `--reformat`, ghost reconciliation prunes an
 archived doc's rows, and `--recase` backfills the whole corpus from
-the sidecars on disk.
+the sidecars on disk — and the consumers (sweep v1.43 / TestPlanGen
+v2.29): live runs rebuild **"_Case Catalog.md"** at the library root
+(every case grouped by plan, anchor deep links; the Q&A agent
+grounds on it automatically), and `testplangen.mjs --gap-report`
+traces story issue ids against the case rows, surfacing stories
+covered by adjacency only.
 
 Setup, once:
 

@@ -6,7 +6,20 @@
  * documentation as reference. Phases 1–4 of
  * `testplangen/Local_TestPlanGen_Plan.md` (component record:
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
- * lanes: v2.22; figures: v2.26; web references: v2.28).
+ * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
+ * gap tracing: v2.29).
+ *
+ * v1.8 (case-level gap tracing — Case_Index_Plan phase 3): with the
+ * sweep's Test Cases list configured (`sharePoint.lists.testCases`),
+ * `--gap-report` reads it (read-only, like every list here) and adds
+ * the truth adjacency cannot see: per covered story, whether ANY
+ * indexed test case cites its issue ids (`IssueRefs` ∩ the story's
+ * Doc IDs keys). The report head gains `caseRows= traced=
+ * coveredUntraced=`, a "Case-level tracing" section lists covered
+ * stories whose issues NO case cites (naming each covering plan and
+ * its case count), and a gap story whose issues some case already
+ * cites is flagged as case-level coverage without a doc link. The
+ * list absent = the report is exactly what it always was.
  *
  * v1.7 (web references — hyperlinks as pinned references): the
  * `--reference` pin also takes an http(s) URL — official product
@@ -248,7 +261,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.7";
+const JOB_VERSION = "v1.8";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -916,14 +929,21 @@ async function linkedToPlanSet(ctx) {
   const linkRows = await graph.listItems(siteId, cfg.sharePoint.lists.docLinks, {
     select: ["DocALookupId", "DocBLookupId"],
   });
-  const linked = new Set();
+  // a Map so the gap report can also name WHICH plans cover a story;
+  // the auto mode's `.has` membership test reads the same either way
+  const linked = new Map();
+  const add = (storyId, planId) => {
+    const list = linked.get(storyId) || [];
+    if (!list.includes(planId)) list.push(planId);
+    linked.set(storyId, list);
+  };
   for (const it of linkRows) {
     const f = it.fields || {};
     const a = num(f.DocALookupId) ?? num(f.DocAId);
     const b = num(f.DocBLookupId) ?? num(f.DocBId);
     if (a === undefined || b === undefined) continue;
-    if (isPlanId(b)) linked.add(a);
-    if (isPlanId(a)) linked.add(b);
+    if (isPlanId(b)) add(a, b);
+    if (isPlanId(a)) add(b, a);
   }
   return linked;
 }
@@ -1525,28 +1545,73 @@ async function runGapReport(ctx) {
     issuesByDoc.set(r.DocumentId, list);
   }
 
+  // case-level truth (Case_Index_Plan phase 3) — optional, read-only:
+  // with the Test Cases list configured, each story's issue ids are
+  // checked against every indexed case's own IssueRefs; absent, the
+  // report stays exactly the adjacency verdict it always was.
+  let caseRows = null;
+  if (cfg.sharePoint.lists?.testCases) {
+    caseRows = (
+      await graph.listItems(siteId, cfg.sharePoint.lists.testCases, {
+        select: ["Title", "DocumentLookupId", "CaseKey", "IssueRefs"],
+      })
+    ).map((it) => {
+      const f = it.fields || {};
+      return {
+        planId: num(f.DocumentLookupId) ?? num(f.DocumentId),
+        title: f.Title || "",
+        issues: new Set(
+          String(f.IssueRefs || "").split(";").map((s) => s.trim()).filter(Boolean)
+        ),
+      };
+    });
+  }
+  const tracingOf = (storyId) => {
+    if (!caseRows) return null;
+    const issues = issuesByDoc.get(storyId) || [];
+    if (!issues.length) return [];
+    return caseRows.filter((c) => issues.some((k) => c.issues.has(k)));
+  };
+
   const isPlanId = (id) => ctx.byId.get(id)?.DocKind === "Test Plan";
   const stories = rows.filter((r) => r.DocKind === "User Story" && r.IndexStatus === "Indexed");
   const gaps = [];
   const unassessable = [];
+  const coveredUntraced = []; // {story, planIds} — covered, issues cited by NO case
   let covered = 0;
+  let tracedStories = 0;
   for (const story of stories) {
     const local = story.TextFileUrl ? urlToLocal(story.TextFileUrl, sw, cfg) : null;
     if (!local || !fs.existsSync(local)) {
       unassessable.push(story);
       continue;
     }
-    let isCovered = linkedToPlan.has(story.ID);
-    if (!isCovered) {
-      try {
-        isCovered = parseRelated(fs.readFileSync(local, "utf8")).some((e) => isPlanId(num(e?.doc)));
-      } catch {
+    // covering plans: Doc Links edges + the sidecar's related: line —
+    // collected (not just tested) so the case-tracing section can name
+    // them; an edge-covered story with an unparseable related: line
+    // still counts covered, exactly as before
+    const planIds = (linkedToPlan.get(story.ID) || []).slice();
+    try {
+      for (const e of parseRelated(fs.readFileSync(local, "utf8"))) {
+        const d = num(e?.doc);
+        if (d !== undefined && isPlanId(d) && !planIds.includes(d)) planIds.push(d);
+      }
+    } catch {
+      if (planIds.length === 0) {
         unassessable.push(story);
         continue;
       }
     }
-    if (isCovered) covered++;
-    else gaps.push(story);
+    if (planIds.length > 0) {
+      covered++;
+      const tr = tracingOf(story.ID);
+      if (tr && (issuesByDoc.get(story.ID) || []).length) {
+        if (tr.length) tracedStories++;
+        else coveredUntraced.push({ story, planIds });
+      }
+    } else {
+      gaps.push(story);
+    }
   }
 
   const storyLine = (s) => {
@@ -1558,11 +1623,27 @@ async function runGapReport(ctx) {
       `)${s.TextFileUrl ? ` — sidecar: <${s.TextFileUrl}>` : ""}`
     );
   };
+  const caseStats = caseRows
+    ? ` caseRows=${caseRows.length} traced=${tracedStories} ` +
+      `coveredUntraced=${coveredUntraced.length}`
+    : "";
   const head =
     `# Test plan gap report\n\n` +
     `Run: ${new Date().toISOString()}  ·  local/testplangen.mjs ${JOB_VERSION}  ·  ` +
     `stories=${stories.length} covered=${covered} gaps=${gaps.length} ` +
-    `unassessable=${unassessable.length}\n\n`;
+    `unassessable=${unassessable.length}${caseStats}\n\n`;
+  // a gap story whose issues SOME case already cites is a special
+  // gap: case-level coverage exists, the doc-level link doesn't
+  const gapLine = (s) => {
+    const tr = tracingOf(s.ID);
+    return (
+      storyLine(s) +
+      (tr && tr.length
+        ? ` — ${tr.length} existing test case(s) already trace its issues ` +
+          "(case-level coverage without a doc link; see _Case Catalog.md)"
+        : "")
+    );
+  };
   const body =
     gaps.length === 0
       ? "NO GAPS — every assessable indexed User Story has a covering Test " +
@@ -1571,13 +1652,46 @@ async function runGapReport(ctx) {
       : "Indexed User Stories with NO covering Test Plan (no related-list " +
         "plan, no Doc Links edge) — draft with " +
         "`testplangen.mjs --story <doc>` or let `--auto` reach them:\n\n" +
-        gaps.map(storyLine).join("\n") + "\n";
+        gaps.map(gapLine).join("\n") + "\n";
+  // case-level tracing (Case_Index_Plan phase 3): adjacency says a
+  // plan sits NEXT TO the story; tracing says a case actually cites
+  // its issue ids — the gap adjacency cannot see
+  let caseSection = "";
+  if (caseRows) {
+    const noIssue = covered - tracedStories - coveredUntraced.length;
+    caseSection =
+      "\n## Case-level tracing\n\n" +
+      `${caseRows.length} indexed test case(s). Of the ${covered} covered ` +
+      `stor${covered === 1 ? "y" : "ies"}, ${tracedStories} have at least ` +
+      "one case citing their issue ids" +
+      (noIssue > 0 ? ` (${noIssue} carry no issue ids to trace)` : "") +
+      (coveredUntraced.length === 0
+        ? ".\n"
+        : `; **${coveredUntraced.length} are covered by adjacency ONLY** — ` +
+          "a plan sits next to them, but no case cites their issues:\n\n" +
+          coveredUntraced
+            .map(({ story, planIds }) => {
+              const plans = planIds
+                .map((id) => {
+                  const p = ctx.byId.get(id);
+                  const n = caseRows.filter((c) => c.planId === id).length;
+                  return `"${stripQuotes(p?.Title || String(id))}" (doc ${id}, ${n} case(s))`;
+                })
+                .join(", ");
+              return (
+                storyLine(story) +
+                `\n  covered by ${plans} — none cite ` +
+                (issuesByDoc.get(story.ID) || []).join(" ")
+              );
+            })
+            .join("\n") + "\n");
+  }
   const tail =
     unassessable.length === 0
       ? ""
       : "\nUnassessable (no sidecar in the local sync, or an unparseable " +
         "related: line):\n\n" + unassessable.map(storyLine).join("\n") + "\n";
-  const report = head + body + tail;
+  const report = head + body + caseSection + tail;
 
   const reportPath = `${tp.gapReportDrivePath}/${tp.gapReportName}`;
   ctx.plan.push({ action: "putFile", path: reportPath, bytes: report.length });
@@ -1585,7 +1699,7 @@ async function runGapReport(ctx) {
 
   const line =
     `mode=gap-report stories=${stories.length} covered=${covered} ` +
-    `gaps=${gaps.length} unassessable=${unassessable.length}`;
+    `gaps=${gaps.length} unassessable=${unassessable.length}${caseStats}`;
   const logDir = cfg.paths?.workDir || ".";
   fs.mkdirSync(logDir, { recursive: true });
   const logStamp = new Date().toISOString().replaceAll(":", "").slice(0, 17);

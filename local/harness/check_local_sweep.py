@@ -1392,6 +1392,20 @@ def main():
           int(out.get("cases_upserted", 0)) >= 1
           and int(out.get("cases_removed", 0)) >= 1
           and int(out.get("case_errors", 0)) == 0, str(out))
+    # the case catalog (phase 3): live runs rebuild the browse page
+    catalog_path = os.path.join(sidecar_dir, "_Case Catalog.md")
+    cat = open(catalog_path).read() if os.path.exists(catalog_path) else ""
+    check("case catalog written at the library root",
+          cat.startswith("# Test cases — catalog"), cat[:200])
+    check("catalog groups by plan with classification counts",
+          re.search(r"(?m)^## Alpha Plan \(1: 1 positive / 0 negative\)$", cat)
+          is not None, cat)
+    check("catalog case row deep-links the sidecar anchor",
+          "#case-3-positive---line-network>" in cat
+          and "| Positive |" in cat and "Loop Route" in cat, cat)
+    check("caseless and non-plan docs stay off the catalog",
+          "Beta Story" not in cat and "Ghost" not in cat
+          and "1 case(s) across 1 plan(s)" in cat, cat)
 
     # ---- leg 3: idempotency — second live run reindexes nothing ----
     print("== idempotency leg")
@@ -1742,6 +1756,7 @@ def main():
     state.lists[LISTS["testCases"]] = {}
     state.seed(LISTS["testCases"], {
         "Title": "orphan", "DocumentLookupId": 99999, "CaseKey": "99999|1"})
+    os.remove(os.path.join(sidecar_dir, "_Case Catalog.md"))
     llm_before_rc = state.llm_calls
     proc = run_sweep(cfg_path, ["--recase"])
     check("recase dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
@@ -1750,7 +1765,9 @@ def main():
           out.get("mode") == "recase" and out.get("dry_run") is True
           and int(out.get("cases_upserted", 0)) >= 1
           and int(out.get("cases_removed", 0)) >= 1
-          and len(state.lists[LISTS["testCases"]]) == 1, str(out))
+          and len(state.lists[LISTS["testCases"]]) == 1
+          and not os.path.exists(os.path.join(sidecar_dir, "_Case Catalog.md")),
+          str(out))
     proc = run_sweep(cfg_path, ["--recase", "--live"])
     check("recase live exit 0", proc.returncode == 0, proc.stderr[-400:])
     out = json.loads(proc.stdout.splitlines()[0])
@@ -1767,6 +1784,10 @@ def main():
           int(out.get("eligible", 0)) >= 1 and int(out.get("synced", 0)) >= 1
           and int(out.get("case_errors", 0)) == 0
           and int(out.get("no_seam", 0)) == 0, str(out))
+    cat_rc = os.path.join(sidecar_dir, "_Case Catalog.md")
+    check("recase live rebuilt the case catalog",
+          os.path.exists(cat_rc) and "Alpha Plan" in open(cat_rc).read(),
+          str(os.path.exists(cat_rc)))
 
     # ---- case-index missing-GUID leg (fail-soft) -------------------
     print("== case-index missing-GUID leg")

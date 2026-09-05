@@ -1,3 +1,16 @@
+# Smoke suite v1.1 — the case-catalog question (row 9)
+
+Suite-only bump (`agent/QA_Smoke_Questions.md` v1.1; no instructions
+change, no paste): row 9 asks which individual test cases cover a
+known issue id, expecting a case-level answer drawn from
+`_Case Catalog.md` (the sweep's new browse page,
+`local/Case_Index_Plan.md` phase 3) or the plan sidecars' `## Case N`
+sections — the catalog lives in the sidecar library the agent
+already grounds on, so no knowledge-source change either. The row is
+runnable only after test-case indexing goes live on the tenant
+(Test Cases list + one `--recase`, Local_Setup §12); until then
+record it as skipped, not failed.
+
 # Agent v1.3 — describe the v2.8 hidden-metadata layout + products
 
 Instructions-only bump (`agent/QA_Agent_Instructions_v1_3.md`,

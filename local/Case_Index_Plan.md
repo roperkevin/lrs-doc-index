@@ -1,22 +1,29 @@
 # Plan — indexing individual test cases (`local/lib/caseindex.mjs`)
 
-Status: **PHASES 0–2 BUILT** (2026-09-05 — `local/CHANGES.md`
-caseindex v1.0 + sweep v1.42): the schema
+Status: **ALL PHASES BUILT** (2026-09-05 — `local/CHANGES.md`
+caseindex v1.0, sweep v1.42, sweep v1.43 +
+`testplangen/CHANGES.md` v2.29): the schema
 (`schemas/SPList_TestCases.csv`), the parser
-`local/lib/caseindex.mjs` (`extractCases`, `caseIssueRefs`,
-`toRowFields`, `diffCaseRows`; own gate
+`local/lib/caseindex.mjs` (own gate
 `local/harness/check_caseindex.py`, 45/45, CI — parser legs in the
-per-component-gate mold rather than seats in the sweep suite), and
-the sweep wiring: `syncCases` at index time and on `--reformat`,
-ghost-pass pruning, the `--recase` backfill, the run-summary /
-status-page counters, and the missing-GUID fail-soft — gated by
-`check_local_sweep.py` **230/230** (CI). What remains on the tenant:
-create the Test Cases list (Local_Setup §12, classic lookup), paste
-the GUID, run `--recase --live` once — after auth restore (STATUS
-action 12) like everything else. Phase 3 (consumers) remains the
-build order below. This document stays the design record, the
-`Local_TestPlanGen_Plan.md` precedent; each phase lands with its
-gate legs and a CHANGES entry before the next starts.
+per-component-gate mold rather than seats in the sweep suite), the
+sweep wiring (`syncCases` at index time and on `--reformat`,
+ghost-pass pruning, the `--recase` backfill, counters, the
+missing-GUID fail-soft), and the consumers: `_Case Catalog.md`
+(indexpages v1.1, rebuilt by live full sweeps and live `--recase`),
+case-level tracing in `--gap-report` (testplangen.mjs v1.8 —
+`caseRows=/traced=/coveredUntraced=`, the covered-by-adjacency-only
+section, the flagged gap-with-cases line), and smoke row 9
+(`agent/QA_Smoke_Questions.md` v1.1). Gates:
+`check_local_sweep.py` **235/235**, `check_testplangen.py`
+**141/141**, `check_caseindex.py` 45/45 — all CI. What remains is
+TENANT work, queued behind auth restore (STATUS action 12): create
+the Test Cases list (Local_Setup §12, classic lookup), paste the
+GUID, run `--recase --live` once. This document stays the design
+record, the `Local_TestPlanGen_Plan.md` precedent; what remains
+below it is the record of the decisions, not backlog — except the
+"Queued, NOT in this plan's phases" list, which stays deliberately
+deferred.
 
 ## Why
 
@@ -284,9 +291,17 @@ reformat-no-churn / recase / missing-GUID legs. The first live
 Local_Setup §12, counts recorded in CHANGES, the gantt-first-run
 mold) — queued behind auth restore, STATUS action 12.
 
-**Phase 3 — consumers.** `_Case Catalog.md`; gap-report case
-columns; status-page counters. Gate: consumer legs; smoke question
-added to `QA_Smoke_Questions.md` exercising the catalog page.
+**Phase 3 — consumers** (BUILT — sweep v1.43 / TestPlanGen v2.29).
+`_Case Catalog.md` (indexpages v1.1: grouped by plan, classification
+counts, anchor deep links; rebuilt by live full sweeps and live
+`--recase`, dry runs never write it, `sweep.indexPages: false`
+disables); gap-report case tracing (testplangen.mjs v1.8: the
+covered-by-adjacency-only section, per-plan case counts, the
+flagged gap-with-cases line, byte-identical degrade without the
+list); status-page counters (shipped with phase 2); smoke row 9 in
+`QA_Smoke_Questions.md` v1.1. Gates: catalog + recase-rebuild legs
+in `check_local_sweep.py` (235/235), tracing + degrade legs in
+`check_testplangen.py` (141/141).
 
 Each phase: `local/CHANGES.md` entry + STATUS table row; phases 0–1
 are pure-repo work, safe while the pipeline is down (open action

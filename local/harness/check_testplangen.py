@@ -575,6 +575,25 @@ def main():
                                  "Repo": REPO_ID, "Source": "sidecar"}},
         {"id": "504", "fields": {"IssueNumber": 8888, "DocumentLookupId": 14,
                                  "Repo": REPO_ID, "Source": "sidecar"}},
+        # 6666 -> the edge-covered story 17, cited by NO test case —
+        # leg 11's covered-by-adjacency-only branch
+        {"id": "505", "fields": {"IssueNumber": 6666, "DocumentLookupId": 17,
+                                 "Repo": REPO_ID, "Source": "sidecar"}},
+    ]
+    # Test Cases rows (the sweep's case index — leg 11's tracing
+    # source): a plan-21 case cites 4855 (story 12 -> traced); a
+    # plan-22 case cites 7777 (story 13 is a GAP story -> flagged as
+    # case-level coverage without a doc link); nothing cites 6666
+    state.lists["list-testcases"] = [
+        {"id": "800", "fields": {"Title": "Case 1: Positive - Merge",
+                                 "DocumentLookupId": 21, "CaseKey": "21|1",
+                                 "IssueRefs": f"{REPO_ID}#4855"}},
+        {"id": "801", "fields": {"Title": "Case 2: Negative - Locked Route",
+                                 "DocumentLookupId": 21, "CaseKey": "21|2",
+                                 "IssueRefs": ""}},
+        {"id": "802", "fields": {"Title": "TC-P1 Realign", "DocumentLookupId": 22,
+                                 "CaseKey": "22|1",
+                                 "IssueRefs": f"{REPO_ID}#7777"}},
     ]
     # Issue Refs rows (gantt.mjs's schedule feed) — enrich the trace
     state.lists["list-issuerefs"] = [
@@ -591,7 +610,8 @@ def main():
                 "hostname": "mock.example",
                 "sitePath": "/sites/lrsworkspace",
                 "lists": {"docIndex": "list-docindex", "docIds": "list-docids",
-                          "docLinks": "list-doclinks", "issueRefs": "list-issuerefs"},
+                          "docLinks": "list-doclinks", "issueRefs": "list-issuerefs",
+                          "testCases": "list-testcases"},
             },
             "paths": {"sidecarLibrary": sidecar_dir, "workDir": work_dir},
             "alerts": {"webhookUrl": base + "/alert"},
@@ -1133,8 +1153,27 @@ def main():
           '- doc 13 — "Lonely Story"' in body and f"{REPO_ID}#7777" in body
           and '- doc 16 — "Enum Story"' in body
           and '- doc 26 — "Adjacent Story"' in body, body[:800])
-    check("covered stories stay out of the report",
-          "doc 12 —" not in body and "doc 17 —" not in body, body[:800])
+    gaps_sec = body.split("## Case-level tracing")[0]
+    check("covered stories stay out of the gap list",
+          "doc 12 —" not in gaps_sec and "doc 17 —" not in gaps_sec,
+          gaps_sec[:800])
+    # case-level tracing (Case_Index_Plan phase 3): story 12's issues
+    # are cited by a plan-21 case (traced); story 17's issue 6666 by
+    # none (covered by adjacency only); gap story 13's 7777 by a
+    # plan-22 case (case-level coverage without a doc link)
+    check("gap report: case tracing counters",
+          summ.get("caseRows") == "3" and summ.get("traced") == "1"
+          and summ.get("coveredUntraced") == "1", r.stdout)
+    check("covered-untraced story listed with its covering plan's case count",
+          "## Case-level tracing" in body and '- doc 17 — "Edge Linked"' in body
+          and '"Plan A" (doc 21, 2 case(s))' in body
+          and f"none cite {REPO_ID}#6666" in body, body)
+    check("traced story is counted, never listed",
+          "doc 12 —" not in body, body)
+    check("gap story with case-level coverage flagged on its line",
+          re.search(r'- doc 13 — "Lonely Story".*'
+                    r"1 existing test case\(s\) already trace its issues",
+                    body) is not None, body[:1200])
     r = run_job(cfg_main, ["--gap-report", "--live"])
     check("gap report live: fixed-name digest in the drive root",
           r.returncode == 0 and "/TestPlan_Gap_Report.md" in state.drafts
@@ -1143,6 +1182,20 @@ def main():
     n = len(state.drafts)
     r = run_job(cfg_main, ["--gap-report", "--live"])
     check("re-runs overwrite, never stack", len(state.drafts) == n, str(list(state.drafts)))
+    # degrade: without the Test Cases list the report is exactly the
+    # adjacency verdict it always was (Case_Index_Plan phase 3 rule)
+    with open(cfg_main) as f:
+        cfg_nc = json.load(f)
+    del cfg_nc["sharePoint"]["lists"]["testCases"]
+    cfg_nc_path = os.path.join(tmp, "config-nocases.json")
+    with open(cfg_nc_path, "w") as f:
+        json.dump(cfg_nc, f)
+    r = run_job(cfg_nc_path, ["--gap-report", "--live"])
+    body_nc = state.drafts.get("/TestPlan_Gap_Report.md", "")
+    check("no Test Cases list: pure adjacency report, no tracing keys",
+          r.returncode == 0 and "Case-level tracing" not in body_nc
+          and "caseRows" not in gr_summary(r.stdout)
+          and "existing test case" not in body_nc, body_nc[:400])
     check("gap-report excludes reference forms",
           run_job(cfg_main, ["--gap-report", "--story", "12"]).returncode != 0, "")
     check("gap-report and auto are exclusive",

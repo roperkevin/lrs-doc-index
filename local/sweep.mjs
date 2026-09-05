@@ -59,7 +59,7 @@ import {
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows } from "./lib/caseindex.mjs";
-import { writeIndexPages } from "./lib/indexpages.mjs";
+import { writeIndexPages, writeCaseCatalog } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
@@ -806,6 +806,17 @@ async function main() {
         await syncCases(docId, "", "", csum);
       }
     }
+    // a live backfill leaves the browse surface current too: rebuild
+    // the case catalog from the rows this run just converged
+    if (!dry) {
+      writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+      if (remote) {
+        const pg = path.join(cfg.paths.sidecarLibrary, "_Case Catalog.md");
+        if (fs.existsSync(pg)) remote.queuePut(pg);
+        await remote.flush().catch((e) =>
+          process.stderr.write(`remote flush of case catalog: ${e.message}\n`));
+      }
+    }
     const cDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(cDir, { recursive: true });
     const cStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1283,6 +1294,9 @@ async function main() {
     // browse pages (v1.35): the catalog as humans see it — root +
     // per-kind _Index.md, rebuilt from the rows this run already holds
     writeIndexPages(cfg, docIndexRows, sw.kindFolders);
+    // the case catalog (Case_Index_Plan phase 3): every indexed test
+    // case grouped by plan, from the case rows this run maintains
+    if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
     if (remote) {
       // the fs-written pages (status + indexes) ride the same
       // write-through; best-effort — a failed page upload is not a
@@ -1291,6 +1305,7 @@ async function main() {
       for (const p of [
         path.join(lib, "_Sweep Status.md"),
         path.join(lib, "_Index.md"),
+        path.join(lib, "_Case Catalog.md"),
         ...Object.values(sw.kindFolders || {}).map((f) => path.join(lib, f, "_Index.md")),
       ]) {
         if (fs.existsSync(p)) remote.queuePut(p);

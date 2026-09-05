@@ -1,5 +1,34 @@
 # Local sweep — release notes
 
+## v1.43 (2026-09-05 — Case_Index_Plan phase 3: the case catalog)
+
+**The case index gets its browse surface.** indexpages **v1.1** adds
+`writeCaseCatalog`: one **"_Case Catalog.md"** at the sidecar-library
+root — every indexed test case grouped by plan (newest plan first,
+cases in plan order), per-plan Positive/Negative counts, each case
+row deep-linking its sidecar section through the anchor its Test
+Cases row carries, scenario and per-case issue refs alongside. The
+`_Index.md` conventions apply: rebuilt by every live full sweep from
+the rows the run already holds (no extra fetches, no AI),
+`sweep.indexPages: false` disables it, remote-files mode uploads it
+with the other pages, and the Q&A agent gains the cross-plan view
+for free (the page lives in the library it grounds on). A live
+`--recase` also rebuilds it, so the backfill leaves the browse
+surface current; dry runs never write it. Plans with no case rows
+stay off the page (they're on `_Index.md`); zero cases writes the
+explicit "_None yet._" state.
+
+Companion consumer, recorded in `testplangen/CHANGES.md` v2.29:
+`--gap-report` now traces each story's issue ids against the case
+rows (testplangen.mjs v1.8) — covered-by-adjacency-only stories
+surface, and the smoke suite gains the case-catalog question
+(`agent/QA_Smoke_Questions.md` v1.1).
+
+Gates: `check_local_sweep.py` **235/235** (catalog contract —
+grouping, counts, anchors, exclusions, recase rebuild, dry never
+writes), `check_testplangen.py` **141/141**, `check_caseindex.py`
+45/45.
+
 ## v1.42 (2026-09-05 — Case_Index_Plan phase 2: the sweep writes case rows)
 
 **Individual test cases become list rows.** The caseindex parser
