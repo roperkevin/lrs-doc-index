@@ -2307,6 +2307,33 @@ def main():
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
 
+    # ---- synced-subfolder leg (v1.55): the sync roots at the library's
+    # General child, so paths.sourceLibrary IS General — with
+    # sharePoint.syncedSubfolder the local path resolves without any
+    # Graph download; a doc outside General still misses locally
+    print("== synced-subfolder leg")
+    saved_src = cfg["paths"]["sourceLibrary"]
+    general_dir = os.path.join(saved_src, "General")
+    if os.path.isdir(general_dir):
+        cfg["paths"]["sourceLibrary"] = general_dir
+        cfg["sharePoint"]["syncedSubfolder"] = "General"
+        with open(cfg_path, "w") as f:
+            json.dump(cfg, f)
+        dl_before_ss = len(state.content_downloads)
+        proc = run_sweep(cfg_path, ["--live", "--reformat", "--only", "Alpha Plan.pptx"])
+        out = json.loads(proc.stdout.splitlines()[0])
+        check("syncedSubfolder: the source resolves locally, no download, no error",
+              proc.returncode == 0 and int(out.get("eligible", 0)) == 1
+              and int(out.get("errors", 0)) == 0
+              and int(out.get("graph_downloads", 0)) == 0
+              and len(state.content_downloads) == dl_before_ss, str(out) + proc.stderr[-300:])
+        cfg["paths"]["sourceLibrary"] = saved_src
+        del cfg["sharePoint"]["syncedSubfolder"]
+        with open(cfg_path, "w") as f:
+            json.dump(cfg, f)
+    else:
+        check("syncedSubfolder leg precondition: a General child exists", False, general_dir)
+
     # ---- leg 3h: OCR lane for image-only PDFs (v1.36, opt-in) ------
     # scan.pdf sat Skipped at lane "plaintext" (pdftotext found no
     # text). With tesseract configured the OCR rescue re-enters it,
