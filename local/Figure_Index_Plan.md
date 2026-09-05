@@ -127,9 +127,10 @@ The CSV is authoritative for column details. Parent metadata
 (kind, products, release) stays one lookup away on the Doc Index
 row, as with cases.
 
-Volume: MediaExtract caps a document at 12 pictures; a few hundred
+Volume: the first live export ran to 24 pictures and 42 diagrams on
+the largest documents (1,302 rows over 139 documents); a few hundred
 documents keep the list well under every threshold, and the per-doc
-replace-set touches ≤ ~12 rows a night.
+replace-set touches a few dozen rows a night at most.
 
 ## Module and integration points
 
@@ -221,3 +222,17 @@ time); perceptual-hash dedup across documents; a thumbnail column
   `--refigure` dry/live/orphan/no-AI/catalog, the shared
   missing-column dropper on the Figures list, missing-GUID fail-soft
   and refusal, standalone-mode guard.
+
+## Addendum (2026-09-05) — the first live export (figureindex v1.1, sweep v1.60)
+
+1,302 rows / 139 documents an hour after the rollout: every picture
+on a standardized name, every one sized, TC attribution working. Two
+findings changed the module (`local/CHANGES.md` v1.60): pictures no
+larger than 48 px are Kind `icon` (90 of 687 were docx button
+glyphs), and untitled slides take their first text line as the slug
+(155 pictures were slug-less). One finding changed the sweep: a
+reformat converges an earlier standardized name by its
+`fig-NN[-slide-KK]` prefix. Left as found: the diagram captions are
+the DL-1 collapse verbatim, template assets repeat across documents
+(a cross-document flag stays deferred), and tag noise is curation
+work.

@@ -1,6 +1,7 @@
 /**
  * indexpages.mjs v1.3 (sweep v1.35; v1.43 adds the case catalog;
- * v1.44 adds its Tools column; v1.59 adds the figure catalog) —
+ * v1.44 adds its Tools column; v1.59 adds the figure catalog, v1.60
+ * sets icons aside in it) —
  * corpus browse pages: a root "_Index.md" in the sidecar library plus
  * one per kind folder, so a human can BROWSE the catalog (the Q&A
  * agent answers questions; these answer "what's in here?"), and —
@@ -244,10 +245,14 @@ export function writeFigureCatalog(cfg, rows, figureRowsByDoc) {
     const folder = decodeURIComponent(parts[parts.length - 2] || "");
     const target = folder ? `${folder}/${file}` : file;
     const nImg = figs.filter((f) => f.Kind === "image").length;
+    const nIco = figs.filter((f) => f.Kind === "icon").length;
     images += nImg;
-    const nDia = figs.length - nImg;
+    const nDia = figs.length - nImg - nIco;
     const counts = [`${nImg} image${nImg === 1 ? "" : "s"}`];
     if (nDia) counts.push(`${nDia} diagram${nDia === 1 ? "" : "s"}`);
+    // icons (figureindex v1.1: button glyphs ≤ 48 px) are counted, not
+    // listed — they are files, not figures a reader browses for
+    if (nIco) counts.push(`${nIco} icon${nIco === 1 ? "" : "s"}`);
     sections.push(
       `## ${clip(doc.Title || doc.FileName, 80)} (${figs.length}: ${counts.join(" / ")})`,
       "",
@@ -255,7 +260,7 @@ export function writeFigureCatalog(cfg, rows, figureRowsByDoc) {
       "",
       "| Figure | Slide | Section | Case | Size | Caption |",
       "|---|---|---|---|---|---|",
-      ...figs.map((f) => {
+      ...figs.filter((f) => f.Kind !== "icon").map((f) => {
         const url = String(f.ImageUrl || "");
         const at = url.indexOf("/media/");
         const rel = at >= 0 ? url.slice(at + 1) : "";

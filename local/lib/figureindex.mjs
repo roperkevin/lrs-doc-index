@@ -1,6 +1,19 @@
 /**
- * figureindex.mjs v1.0 — figures (pasted pictures and drawn diagrams)
+ * figureindex.mjs v1.1 — figures (pasted pictures and drawn diagrams)
  * out of a document, two halves. Pure module, no I/O, no AI.
+ *
+ * v1.1 (FigureIndexVersion bump — reflow with `sweep.mjs --refigure`;
+ * tuned on the first live export, 1,302 rows / 139 documents):
+ *  - Kind `icon`: a picture no larger than ICON_MAX px on its longest
+ *    side (90 of the export's 687 pictures were 16–32 px button icons
+ *    from docx documentation pages) — still a file, still named and
+ *    numbered, but set aside from the figures proper so views and the
+ *    catalog can skip it. Decided from the file header (sizeOf), so a
+ *    picture not on disk stays `image`.
+ *  - untitled slides name by their first text line: 155 pictures sat
+ *    under bare `## Slide N` headings and came out as
+ *    `fig-01-slide-02.png`; the slide's first prose line (list
+ *    markers and numbering stripped) now supplies the slug.
  *
  * 1. NAMING (`prettifyMedia`). ZipTextExtract links a slide's pictures
  *    under their OOXML part names (`image1.png`, `image7.jpeg`), which
@@ -44,8 +57,10 @@
 import { MEDIA_PLACEHOLDER, kebab } from "./slug.mjs";
 import { caseTags, diffCaseRows, slugger } from "./caseindex.mjs";
 
-export const FIGURE_INDEX_VERSION = "1.0";
-export const FIGURE_KINDS = ["image", "diagram"];
+export const FIGURE_INDEX_VERSION = "1.1";
+export const FIGURE_KINDS = ["image", "diagram", "icon"];
+/** A picture this small on its longest side is an icon, not a figure. */
+export const ICON_MAX = 48;
 export const FORMATS = ["png", "jpg", "gif", "bmp", "svg", "other", "none"];
 
 const SLUG_CAP = 40;
@@ -95,6 +110,18 @@ export function figureName({ ordinal, slideNo, title, source }) {
   return `${parts.join("-")}.${ext}`;
 }
 
+/** The title an untitled slide takes from its first text line: prose
+ *  only (no tables, labels, links, comments), list and numbering
+ *  markers stripped, bold unwrapped. "" when the line is not prose. */
+function firstLineTitle(line) {
+  const s = String(line).replace(/<!--[\s\S]*?-->/g, "").trim();
+  if (!s || /^[|!\[`#]/.test(s)) return "";
+  return s
+    .replace(/^(?:[-*+]\s+|\d{1,3}[.)]\s+)+/, "")
+    .replace(/\*\*/g, "")
+    .trim();
+}
+
 /** A markdown alt text: no brackets, no newlines. */
 const altText = (s) => String(s || "").replace(/[\[\]\r\n]+/g, " ").replace(/\s+/g, " ").trim();
 
@@ -119,6 +146,7 @@ export function prettifyMedia(docText) {
   const figures = [];
   let slideNo = null;
   let title = "";
+  let wantTitle = false; // an untitled slide: the first text line names it (v1.1)
   let fenced = false;
   const esc = MEDIA_PLACEHOLDER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const linkRe = new RegExp(`!\\[([^\\]]*)\\]\\(<?${esc}([^)>\\s]+)>?\\)`, "g");
@@ -135,16 +163,22 @@ export function prettifyMedia(docText) {
       if (sm) {
         slideNo = parseInt(sm[1], 10);
         title = (sm[2] || "").trim();
+        wantTitle = title === "";
       } else if (!/^Notes$/i.test(text)) {
         // a docx heading (or an author-titled section): the nearest
         // heading names the figure; slides are pptx-only
         if (hm[1].length <= 2) slideNo = null;
         title = text;
+        wantTitle = false;
       }
       out.push(line);
       continue;
     }
     if (!line.includes(MEDIA_PLACEHOLDER)) {
+      if (wantTitle) {
+        const t = firstLineTitle(line);
+        if (t) { title = t; wantTitle = false; }
+      }
       out.push(line);
       continue;
     }
@@ -323,6 +357,12 @@ export function extractFigures(bodyText, opts = {}) {
   return {
     figures: figures.map((f) => {
       const size = f.kind === "image" && typeof opts.sizeOf === "function" ? opts.sizeOf(f.filePath) : null;
+      // v1.1: a tiny picture is an icon (a docx page's button glyphs),
+      // decided from the header on disk — unknown size stays an image
+      if (size && Number.isFinite(size.width) && Number.isFinite(size.height) &&
+          Math.max(size.width, size.height) <= ICON_MAX) {
+        f = { ...f, kind: "icon" };
+      }
       const tags = caseTags([opts.docTitle || "", f.section, f.caption, f.context].join("\n"), opts.vocab);
       // the title names the figure by its caption (diagrams) or the
       // section it sits in, minus the generated `Slide N — ` prefix
@@ -330,13 +370,13 @@ export function extractFigures(bodyText, opts = {}) {
         : f.section.replace(/^Slide \d+(?:\s+[—–-]\s+|$)/, "").trim();
       return {
         ...f,
-        url: f.kind === "image" ? (opts.mediaUrlBase ? `${opts.mediaUrlBase}/${f.filePath}` : f.filePath) : "",
+        url: f.kind !== "diagram" ? (opts.mediaUrlBase ? `${opts.mediaUrlBase}/${f.filePath}` : f.filePath) : "",
         width: size && Number.isFinite(size.width) ? size.width : null,
         height: size && Number.isFinite(size.height) ? size.height : null,
         bytes: size && Number.isFinite(size.bytes) ? size.bytes : null,
         tools: tags.tools,
         keywords: tags.keywords,
-        title: cap(`Figure ${f.ordinal}${label ? " — " + label : ""}`, 255),
+        title: cap(`${f.kind === "icon" ? "Icon" : "Figure"} ${f.ordinal}${label ? " — " + label : ""}`, 255),
       };
     }),
   };
