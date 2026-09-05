@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.10 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.11 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -8,7 +8,35 @@
  * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29; case-aware generation: v2.30; first-run
- * review: v2.31).
+ * review: v2.31; generated figures: v2.32).
+ *
+ * v1.11 (generated figures — `--figures`, testplangen/CHANGES.md
+ * v2.32): an OPTIONAL second model pass over the VERIFIED draft
+ * (`prompts/TestPlanFigures_Prompt.md` v0.1): the model selects the
+ * cases a schematic would help (five rules, six exclusions, cap 6)
+ * and emits a closed-vocabulary FIGURE SPEC per case — it never
+ * draws. lib/figurespec.mjs then grounds every spec against the
+ * case's own section + the Setup tables (ids as whole words, every
+ * measure a value in the plan AND inside its route's range, enums,
+ * caps — a spec with any finding is DROPPED, never repaired) and
+ * renders the survivors to SVG in the SlideFigures vocabulary and
+ * palette (svg2pptx/draft2pptx consume them unchanged). Figures are
+ * uploaded beside the draft (`<draft stem>--fig-<case>.svg`, live)
+ * or written beside the local copy (dry) and linked from a
+ * deterministic `## Generated Figures` addendum — the draft BODY is
+ * untouched, so the v1.10 FIGURES rule (story figures only in
+ * `**Figure:**` lines), the contract lint, and draftlint check e are
+ * unaffected. Fail soft AFTER the draft is verified: a missing
+ * sentinel, bad JSON, or a transport error skips the pass with one
+ * stderr line and the draft still lands (`genFigures=0/0`); a
+ * misconfigured transport (aibuilder with no llm.figuresModelId)
+ * refuses BEFORE the generation call. Gen_summary gains
+ * `genFigures=<rendered>/<proposed>`; the run log lists every spec
+ * with its file or its findings. Knobs: testplangen.figures (default
+ * false; `--figures` forces on), figuresMaxTokens (8000), and
+ * llm.figuresModelId for the aibuilder lane (no tenant prompt exists
+ * yet — the anthropic lane executes the repo prompt verbatim).
+ * Manual runs only, like the pins.
  *
  * v1.10 (first-run review — testplangen/CHANGES.md v2.31):
  *   - `--preview`: a ZERO-SPEND single-story run — the guard, the
@@ -343,11 +371,18 @@ import { relEntries, metaList } from "./lib/sidecarmeta.mjs";
 import { extractCases, caseSpans } from "./lib/caseindex.mjs";
 import { stemOf } from "./lib/slug.mjs";
 import { storyTextFirst } from "./lib/storyprofile.mjs";
+import {
+  parseFiguresReply, draftCorpus, verifyFigureSpec, renderFigureSvg, figureFileName,
+} from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.10";
+const JOB_VERSION = "v1.11";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
+const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
+const FIG_PROMPT_VERSION = "v0.1"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
+const FIG_INPUT_KEYS = ["PlanTitle", "Draft"];
+const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 
 const DRAFT_BEGIN = "[[[DRAFT BEGIN]]]";
 const DRAFT_END = "[[[DRAFT END]]]";
@@ -372,7 +407,10 @@ const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
   "[--exemplar <docId>]... [--reference <docId>|<https-url>]... " +
-  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] | --models | --help\n" +
+  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] | --models | --help\n" +
+  "--figures adds a second model pass over the verified draft that selects the " +
+  "cases worth a schematic and renders grounded SVG figures beside the draft " +
+  "(prompts/TestPlanFigures_Prompt.md; manual runs only). " +
   "--preview resolves the story and builds every lane, writes the five " +
   "prompt inputs to workDir, and stops BEFORE the model call (zero AI " +
   "spend — the first-run check; manual runs only). " +
@@ -397,6 +435,7 @@ function loadConfig(argv) {
     else if (a === "--live") args.flags.live = true;
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--preview") args.flags.preview = true;
+    else if (a === "--figures") args.flags.figures = true;
     else if (a === "--help" || a === "-h") args.flags.help = true;
     else if (a === "--models") args.flags.models = true;
     else if (a === "--notify") args.flags.notify = true;
@@ -414,6 +453,12 @@ function loadConfig(argv) {
   }
   const refs = [args.story, args.issue, args.title].filter((v) => v !== undefined);
   const modeless = args.flags.models || args.flags.auto || args.flags.gapReport;
+  if (args.flags.figures && modeless) {
+    throw new Error(
+      "--figures is a MANUAL generation's second pass (one more model call " +
+      "per draft) — it cannot be combined with --auto, --gap-report, or --models\n" + USAGE
+    );
+  }
   if (args.flags.preview && modeless) {
     throw new Error(
       "--preview is a single-story check (the lanes for ONE story, no model " +
@@ -524,6 +569,8 @@ function loadConfig(argv) {
     // 16384 default (v1.3 raised it; claude-opus-5 allows up to 128k)
     maxTokens: 32000,
     webRefTimeoutMs: 30000,
+    figures: false, // v1.11: the generated-figures pass (--figures forces on for a run)
+    figuresMaxTokens: 8000,
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
     autoDraft: false,
@@ -537,6 +584,7 @@ function loadConfig(argv) {
   if (args.flags.live) cfg.testplangen.dryRun = false;
   if (args.flags.dry) cfg.testplangen.dryRun = true;
   if (args.flags.preview) cfg.testplangen.dryRun = true; // never writes, by construction
+  if (args.flags.figures) cfg.testplangen.figures = true;
   if (args.flags.notify) cfg.testplangen.notify = true;
   if (args.verify !== undefined) cfg.testplangen.verify = args.verify;
   if (!VERIFY_MODES.includes(cfg.testplangen.verify)) {
@@ -749,6 +797,16 @@ async function run(cfg) {
   // a human asked for these exact documents, so a silent degrade
   // (the lanes' Try_* posture for automatic picks) is wrong here
   ctx.pins = validatePins(ctx, story, cfg._pinEx, cfg._pinRef);
+  // the figures pass (v1.11) needs its transport BEFORE the generation
+  // spend: aibuilder has no tenant prompt for it unless one was pasted
+  if (tp.figures && !cfg._preview && providerOf(cfg) === "aibuilder" && !cfg.llm.figuresModelId) {
+    throw new Error(
+      "--figures on the aibuilder lane needs llm.figuresModelId (a tenant " +
+      "custom prompt pasted from prompts/TestPlanFigures_Prompt.md with inputs " +
+      "PlanTitle + Draft) — none exists yet; set testplangen.provider to " +
+      "\"anthropic\" for the figures pass, which executes the repo prompt verbatim"
+    );
+  }
   // web reference pins (v1.7) fetch now, under the same hard-guard
   // posture — any failure refuses the run with zero model spend
   for (const pin of ctx.pins.ref) {
@@ -791,7 +849,7 @@ async function run(cfg) {
     JSON.stringify(
       {
         line: res.line, dry_run: dry, draft: res.draftPath,
-        localDraft: res.localDraft, plan: dry ? ctx.plan : undefined,
+        localDraft: res.localDraft, figures: res.figures, plan: dry ? ctx.plan : undefined,
       },
       null,
       1
@@ -810,6 +868,11 @@ async function run(cfg) {
     );
   }
 }
+
+// the generation transport: testplangen.provider overrides llm.provider
+// for this job only (v1.2); the figures pass rides the same lane
+const providerOf = (cfg) =>
+  cfg.testplangen.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
 
 // Pinned-lane guards (v1.4). Returns { ex, ref } as normalized rows
 // — plus, since v1.7, {web: true, url} entries in ref, validated by
@@ -1529,8 +1592,7 @@ async function generateOne(ctx, story) {
   // testplangen.provider overrides llm.provider for the generation
   // call ONLY (v1.2) — so generation can run on the anthropic lane
   // while the sweep's classify step stays on AI Builder, or vice versa
-  const provider =
-    tp.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
+  const provider = providerOf(cfg);
   const inChars = Object.values(inputs).reduce((n, v) => n + String(v).length, 0);
   if (ctx.preview) {
     // --preview (v1.10): everything a generation does up to the model
@@ -1680,6 +1742,64 @@ async function generateOne(ctx, story) {
   );
   if (figureCount) prog(`figures — ${figureCount} story figure link(s) absolutized`);
 
+  // G11's timestamped name is decided here so the figures pass can
+  // name its files as the draft's siblings (v1.11)
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  const stamp =
+    `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
+    `-${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}`;
+  // phase 1b: drafts share the story sidecar's stem —
+  // <stem>--draft-<yyyymmdd-hhmmss>.md (the `--draft-` token is what
+  // the auto-mode idempotency scan keys on; seconds since v1.10 — a
+  // minute stamp let two runs on one story overwrite each other
+  // through the drive PUT, against the never-overwritten rule)
+  const draftName = `${stemOf(story.TextFileUrl) || `doc${story.ID}`}--draft-${stamp}.md`;
+  const draftPath = `${tp.draftFolder}/${draftName}`;
+  const localStamp = new Date().toISOString().replaceAll(":", "").slice(0, 17);
+  const localDraftName = `testplangen-draft-${localStamp}.md`;
+
+  // ---- generated figures (v1.11, --figures): the second model pass
+  // over the VERIFIED body — selection + grounded specs from the
+  // model, grounding check + rendering here; fail soft, the draft
+  // never depends on it
+  let figs = { proposed: 0, rendered: [], dropped: [], skipped: [], error: "" };
+  if (tp.figures) {
+    figs = await generateFigures(ctx, story, draftBody, provider, prog, {
+      draftStem: draftName.replace(/\.md$/, ""),
+      localStem: localDraftName.replace(/\.md$/, ""),
+    });
+  }
+  let figuresSection = "";
+  if (tp.figures && (figs.rendered.length || figs.dropped.length || figs.error)) {
+    const shown = figs.rendered
+      .map(
+        (r) =>
+          `\n### ${r.title}\n\n![${r.caption.replace(/[\[\]]/g, "")}](<${r.url}>)\n\n` +
+          `_${r.caption}_ (rule ${r.rule})\n`
+      )
+      .join("");
+    const dropped = figs.dropped.length
+      ? "\nDropped by the grounding check (the spec named a value the plan does not " +
+        "state, or left the vocabulary):\n\n" +
+        figs.dropped.map((d) => `- ${d.case} — ${d.findings.slice(0, 3).join("; ")}`).join("\n") + "\n"
+      : "";
+    const skipped = figs.skipped.length
+      ? "\nNot illustrated: " +
+        figs.skipped.map((k) => `${cellSafe(k.case, 12)} (${cellSafe(k.reason, 80)})`).join(", ") + "\n"
+      : "";
+    figuresSection =
+      "\n## Generated Figures\n\n" +
+      "_Deterministic addendum — figures PROPOSED by the TestPlanFigures prompt " +
+      `${FIG_PROMPT_VERSION} from this draft's own test data, grounding-checked and ` +
+      "rendered by local/testplangen.mjs (the model never drew). Reading aids for " +
+      "the §4 review only — they never ground a case. " +
+      `${figs.rendered.length} rendered of ${figs.proposed} proposed` +
+      (figs.dropped.length ? `, ${figs.dropped.length} dropped` : "") +
+      (figs.error ? ` — pass skipped: ${cellSafe(figs.error, 160)}` : "") +
+      "._\n" + shown + dropped + skipped;
+  }
+
   let verifyBlock = "";
   if (tp.verify === "annotate" && findings.length) {
     const listed = findings.slice(0, 20);
@@ -1740,22 +1860,11 @@ async function generateOne(ctx, story) {
   // and cross-check during the §4 review
   const existingCases = existingCasesSection(ctx, cc);
   const draft =
-    banner + verifyBlock + draftOut + "\n" + trace.section + existingCases.section + webRefSection;
+    banner + verifyBlock + draftOut + "\n" + trace.section + existingCases.section +
+    figuresSection + webRefSection;
 
   // G11 — timestamped save, never overwritten (drafts are work
   // products a PE may be mid-edit on; stale ones are deleted by hand)
-  const now = new Date();
-  const p = (n) => String(n).padStart(2, "0");
-  const stamp =
-    `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
-    `-${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}`;
-  // phase 1b: drafts share the story sidecar's stem —
-  // <stem>--draft-<yyyymmdd-hhmmss>.md (the `--draft-` token is what
-  // the auto-mode idempotency scan keys on; seconds since v1.10 — a
-  // minute stamp let two runs on one story overwrite each other
-  // through the drive PUT, against the never-overwritten rule)
-  const draftName = `${stemOf(story.TextFileUrl) || `doc${story.ID}`}--draft-${stamp}.md`;
-  const draftPath = `${tp.draftFolder}/${draftName}`;
   plan.push({ action: "putFile", path: draftPath, bytes: draft.length });
   let putRes = null;
   if (!dry) putRes = await graph.putFile(siteId, draftPath, draft);
@@ -1769,7 +1878,8 @@ async function generateOne(ctx, story) {
     `verify=${verify} issues=${trace.count} figures=${figureCount} ` +
     `pinnedEx=${pins.ex.length} pinnedRef=${docRefPins.length} webRefs=${webRefCount} ` +
     `existingCases=${existingCases.count} caseRouted=${routedIds.length} ` +
-    `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal}`;
+    `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal} ` +
+    `genFigures=${figs.rendered.length}/${figs.proposed}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run
@@ -1795,13 +1905,92 @@ async function generateOne(ctx, story) {
     // review/harness/check_draft_coverage.py) before any live run
     const logDir = cfg.paths?.workDir || ".";
     fs.mkdirSync(logDir, { recursive: true });
-    localDraft = path.join(
-      logDir,
-      `testplangen-draft-${new Date().toISOString().replaceAll(":", "").slice(0, 17)}.md`
-    );
+    localDraft = path.join(logDir, localDraftName);
     fs.writeFileSync(localDraft, draft);
   }
-  return { line, draftPath, draftName, localDraft, verify, findings };
+  const figures = tp.figures
+    ? {
+        proposed: figs.proposed, error: figs.error || undefined,
+        rendered: figs.rendered.map((r) => ({ case: r.case, rule: r.rule, kind: r.kind, file: r.url })),
+        dropped: figs.dropped, skipped: figs.skipped,
+      }
+    : undefined;
+  return { line, draftPath, draftName, localDraft, verify, findings, figures };
+}
+
+/**
+ * The generated-figures pass (v1.11, --figures). ONE model call with
+ * the verified draft body; the reply's specs are grounding-checked
+ * (lib/figurespec.mjs verifyFigureSpec) and the survivors rendered
+ * and placed beside the draft — uploaded (live) or written next to
+ * the local copy (dry). Returns { proposed, rendered: [{case, rule,
+ * kind, title, caption, url}], dropped: [{case, findings}], skipped,
+ * error } and never throws: a transport, sentinel, or JSON failure
+ * is reported in `error` (one stderr line) and the draft still
+ * lands — the pass is a reading aid, never the deliverable.
+ */
+async function generateFigures(ctx, story, draftBody, provider, prog, names) {
+  const { cfg, graph, siteId, tp, sw, dry, plan } = ctx;
+  const out = { proposed: 0, rendered: [], dropped: [], skipped: [], error: "" };
+  const corpus = draftCorpus(draftBody);
+  const inputs = {
+    PlanTitle: corpus.title || `Test Plan — ${stripQuotes(story.Title)}`,
+    Draft: draftBody,
+  };
+  let raw;
+  try {
+    prog(`figures — calling the model (provider ${provider}, ~${draftBody.length} chars of draft)`);
+    if (provider === "aibuilder") {
+      const response = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.figuresModelId);
+      raw = response?.responsev2?.predictionOutput?.text ?? "";
+    } else {
+      const template = loadPromptTemplate(FIG_PROMPT_FILE);
+      const prompt = template.replace(FIG_INPUTS_RE, (m, key) => inputs[key]);
+      raw = await generateText({ ...cfg.llm, maxTokens: Number(tp.figuresMaxTokens) }, prompt);
+    }
+    const reply = parseFiguresReply(raw);
+    out.proposed = reply.figures.length;
+    out.skipped = reply.skipped
+      .filter((k) => k && typeof k === "object")
+      .map((k) => ({ case: String(k.case ?? ""), reason: String(k.reason ?? "") }));
+    for (const spec of reply.figures) {
+      const findings = verifyFigureSpec(spec, corpus);
+      if (findings.length) {
+        out.dropped.push({ case: String(spec?.case ?? "(no case)"), findings });
+        continue;
+      }
+      const svg = renderFigureSvg(spec);
+      const name = figureFileName(names.draftStem, spec);
+      let url;
+      if (dry) {
+        const logDir = cfg.paths?.workDir || ".";
+        fs.mkdirSync(logDir, { recursive: true });
+        const local = path.join(logDir, figureFileName(names.localStem, spec));
+        fs.writeFileSync(local, svg);
+        url = path.basename(local); // sibling of the local draft copy
+        plan.push({ action: "putFile", path: `${tp.draftFolder}/${name}`, bytes: svg.length });
+      } else {
+        const drivePath = `${tp.draftFolder}/${name}`;
+        const res = await graph.putFile(siteId, drivePath, svg, "image/svg+xml");
+        url =
+          res?.webUrl ||
+          `${sw.siteUrl}/Shared Documents${tp.draftFolder}/${encodeURIComponent(name)}`;
+      }
+      out.rendered.push({
+        case: spec.case, rule: spec.rule, kind: spec.kind, title: spec.title,
+        caption: spec.caption, url,
+      });
+    }
+  } catch (e) {
+    out.error = String(e.message || e);
+    process.stderr.write(`figures skipped: ${out.error}\n`);
+  }
+  prog(
+    `figures — ${out.proposed} proposed, ${out.rendered.length} rendered, ` +
+    `${out.dropped.length} dropped by the grounding check` +
+    (out.skipped.length ? `, ${out.skipped.length} cases not illustrated` : "")
+  );
+  return out;
 }
 
 /**

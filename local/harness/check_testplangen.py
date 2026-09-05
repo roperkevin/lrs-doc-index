@@ -132,6 +132,21 @@ verifier the cloud flow could not have
                      eTag manifest) and the lanes come out exactly
                      as from the synced folder; a second run
                      downloads nothing
+  leg 18 figures     the generated-figures pass (v1.11, --figures):
+                     a second model call over the verified draft
+                     (aibuilder routed by llm.figuresModelId,
+                     anthropic by the repo prompt's text); two
+                     grounded specs (a before/after route-measure
+                     pair, a lock-conflict sequence) render to SVG
+                     in the SlideFigures vocabulary beside the draft
+                     (dry: next to the local copy; live: uploaded
+                     as image/svg+xml siblings) and the draft gains
+                     the Generated Figures addendum; an invented
+                     measure and an unknown case are DROPPED with
+                     their findings; genFigures=; a sentinel-less
+                     reply skips the pass and the draft still lands;
+                     --auto refuses; aibuilder without a model id
+                     refuses BEFORE the generation spend
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -153,6 +168,7 @@ JOB = os.path.join(REPO, "local", "testplangen.mjs")
 DRAFTLINT = os.path.join(REPO, "local", "lib", "draftlint.mjs")
 PY_LINT = os.path.join(REPO, "review", "harness", "check_draft_coverage.py")
 GEN_MODEL = "feedf00d-0000-4000-8000-000000000001"
+FIG_MODEL = "feedf00d-0000-4000-8000-000000000002"
 SITE_URL = "https://mock.example/sites/lrsworkspace"
 
 PASS = []
@@ -248,6 +264,68 @@ BAD_DRAFT = GOOD_DRAFT.replace(
 
 wrap = lambda body: "Here is your draft.\n[[[DRAFT BEGIN]]]\n" + body + "\n[[[DRAFT END]]]\nDone."
 
+# leg 18: GOOD_DRAFT with concrete fixture tables (the v1.8 CONCRETE
+# TEST DATA shape) so figure specs have values to ground against
+FIG_DRAFT = GOOD_DRAFT.replace(
+    "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n",
+    "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n\n"
+    "Routes:\n\n| Route | From | To | Calibration |\n| --- | --- | --- | --- |\n"
+    "| R1 | 0 | 100 | 0, 50, 100 |\n| R2 | 0 | 60 | 0, 60 |\n\n"
+    "Events:\n\n| Event | Route | From | To |\n| --- | --- | --- | --- |\n"
+    "| E1 | R1 | 10 | 40 |\n| E2 | R2 | 5 | 30 |\n",
+).replace(
+    "- [ ] 1. Run Merge Routes on route A and route B.\n- [ ] 2. Inspect the measures on the merged route.\n\n"
+    "**Expected Result:** The merged route keeps the source measures unchanged.",
+    "- [ ] 1. Run Merge Routes on route R1 and route R2.\n- [ ] 2. Inspect the measures on the merged route R1.\n\n"
+    "**Expected Result:** The merged route R1 spans 0 to 160 and keeps the source measures unchanged:\n\n"
+    "| Event | Route | From | To |\n| --- | --- | --- | --- |\n| E1 | R1 | 10 | 40 |\n| E2 | R1 | 105 | 130 |",
+).replace(
+    "- [ ] 1. As user B, attempt Merge Routes on a route locked by user A.",
+    "- [ ] 1. As User A, lock route R1.\n- [ ] 2. As User B, attempt Merge Routes on route R1.",
+)
+assert "| R1 | 0 | 100 |" in FIG_DRAFT and "As User B" in FIG_DRAFT
+
+FIG_REPLY = json.dumps({
+    "plan": "Test Plan — Route Merge",
+    "figures": [
+        {"case": "TC-P1", "rule": "R2", "kind": "route-measure",
+         "title": "TC-P1 — Merge preserves measures",
+         "caption": "R1 (0–100) and R2 (0–60) before the merge; after it R1 spans 0–160 with E1 at 10–40 and E2 at 105–130.",
+         "panels": [
+             {"label": "Before",
+              "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "tone": "ink", "arrow": True},
+                         {"id": "R2", "from": 0, "to": 60, "calibration": [0, 60], "tone": "ink", "arrow": True}],
+              "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40, "tone": "cool"},
+                         {"id": "E2", "route": "R2", "from": 5, "to": 30, "tone": "warm"}],
+              "marks": []},
+             {"label": "After",
+              "routes": [{"id": "R1", "from": 0, "to": 160, "calibration": [0, 100, 160], "tone": "ink", "arrow": True}],
+              "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40, "tone": "cool"},
+                         {"id": "E2", "route": "R1", "from": 105, "to": 130, "tone": "green"}],
+              "marks": [{"kind": "extend", "route": "R1", "at": 100, "to": 160, "label": "extended"}]}],
+         "legend": ["E1 10 → 40", "E2 105 → 130"],
+         "source": {"steps": [1, 2], "expected": True, "tables": ["Setup / Prerequisites › Routes"]}},
+        {"case": "TC-N1", "rule": "R5", "kind": "sequence",
+         "title": "TC-N1 — Merge denied on locked route",
+         "caption": "User A locks R1; User B's Merge Routes on R1 is denied with a lock conflict.",
+         "actors": [{"id": "A", "label": "User A"}, {"id": "B", "label": "User B"}],
+         "steps": [{"from": "A", "to": "A", "label": "lock route R1", "outcome": "ok", "step": 1},
+                   {"from": "B", "to": "A", "label": "Merge Routes on R1", "outcome": "denied", "step": 2}],
+         "source": {"steps": [1, 2], "expected": True, "tables": []}},
+        # an INVENTED measure (999 is nowhere in the plan) — must be dropped
+        {"case": "TC-P2", "rule": "R1", "kind": "route-measure",
+         "title": "TC-P2 — Merge produces one route",
+         "caption": "One route remains.",
+         "panels": [{"label": "", "routes": [{"id": "R1", "from": 0, "to": 100}],
+                     "events": [{"id": "E1", "route": "R1", "at": 999, "tone": "cool"}], "marks": []}]},
+        # an unknown case id — must be dropped
+        {"case": "TC-P9", "rule": "R1", "kind": "topology", "title": "TC-P9 — ghost", "caption": "x",
+         "nodes": [{"id": "R1"}, {"id": "R2"}], "edges": [{"from": "R1", "to": "R2"}]},
+    ],
+    "skipped": [{"case": "TC-P2", "reason": "X2 — geometry equals TC-P1"}],
+})
+FIG_REPLY_WRAPPED = "Sure.\n[[[FIGURES BEGIN]]]\n" + FIG_REPLY + "\n[[[FIGURES END]]]\n"
+
 # a strict-clean draft for the auto leg's "Lonely Story" (doc 13,
 # body "As an editor, I need to realign a route."): contract-valid AND
 # grounded — coverage rows quote the story, no tool-shaped phrases
@@ -308,6 +386,8 @@ class MockState:
         self.drive_downloads = 0
         self.lists = {}           # list guid -> items ([{id, fields}])
         self.gen_text = ""        # the model reply, both providers
+        self.fig_text = ""        # the figures-pass reply (leg 18)
+        self.fig_calls = 0
         self.gen_by_doc = {}      # doc id -> reply (routed by StoryMeta's doc_id)
         self.gen_calls = 0
         self.gen_last_inputs = {}     # Predict requestv2
@@ -347,11 +427,15 @@ def make_handler(state):
                 body = json.loads(self._read())
                 state.ant_calls += 1
                 state.ant_last_body = body
+                prompt_text = (body.get("messages") or [{}])[0].get("content", "")
+                is_fig = "FIGURE SPECIFICATION VOCABULARY" in str(prompt_text)
+                if is_fig:
+                    state.fig_calls += 1
                 if body.get("stream"):
                     # llm.mjs v1.6: generateText streams — serve SSE.
                     # Text goes out in two deltas so the client's
                     # accumulation across chunks is actually exercised.
-                    text = state.gen_text
+                    text = state.fig_text if is_fig else state.gen_text
                     half = len(text) // 2
                     events = [
                         {"type": "message_start", "message": {"id": "msg_mock"}},
@@ -385,9 +469,13 @@ def make_handler(state):
                 r"/Microsoft\.Dynamics\.CRM\.Predict$", p)
             if m:
                 body = json.loads(self._read())
-                state.gen_calls += 1
                 rv = dict(body.get("requestv2", {}))
                 rv.pop("@odata.type", None)
+                if m.group(1) == FIG_MODEL:
+                    state.fig_calls += 1
+                    state.fig_last_inputs = rv
+                    return self._json({"responsev2": {"predictionOutput": {"text": state.fig_text}}})
+                state.gen_calls += 1
                 state.gen_last_inputs = rv
                 dm = re.search(r"doc_id: (\d+)", rv.get("StoryMeta", ""))
                 text = state.gen_by_doc.get(int(dm.group(1)) if dm else -1,
@@ -1730,6 +1818,134 @@ def main():
     check("no sync, no remote flag: refuses and names sweep.remoteFiles",
           r.returncode != 0 and "story sidecar not found locally" in r.stderr
           and "sweep.remoteFiles: true" in r.stderr, r.stderr[:400])
+
+    # ---- leg 18: generated figures (v1.11, --figures) ---------------
+    print("== leg 18: generated figures")
+    state.gen_text = wrap(FIG_DRAFT)
+    state.fig_text = FIG_REPLY_WRAPPED
+    cfg_fig = write_cfg("config-fig.json",
+                        llm={"provider": "aibuilder", "environmentUrl": base,
+                             "testPlanModelId": GEN_MODEL, "figuresModelId": FIG_MODEL,
+                             "maxRetries": 0})
+    gen_before, fig_before = state.gen_calls, state.fig_calls
+    r = run_job(cfg_fig, ["--story", "12", "--dry-run", "--figures"])
+    summ = summary_of(r.stdout)
+    check("figures dry run: one generation call + one figures call",
+          r.returncode == 0 and state.gen_calls == gen_before + 1
+          and state.fig_calls == fig_before + 1, r.stdout + r.stderr)
+    check("figures inputs: PlanTitle from the draft H1, Draft = the verified body",
+          state.fig_last_inputs.get("PlanTitle") == "Test Plan — Route Merge"
+          and "### TC-P1 — Merge preserves measures" in state.fig_last_inputs.get("Draft", "")
+          and "[[[DRAFT" not in state.fig_last_inputs.get("Draft", "")
+          and "machine-generated" not in state.fig_last_inputs.get("Draft", ""),
+          json.dumps(state.fig_last_inputs)[:300])
+    check("genFigures= counts rendered/proposed (2 of 4; two dropped)",
+          summ.get("genFigures") == "2/4", str(summ))
+    local_drafts = sorted(
+        (f for f in os.listdir(work_dir)
+         if f.startswith("testplangen-draft-") and f.endswith(".md")),
+        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+    latest_name = local_drafts[-1]
+    latest = open(os.path.join(work_dir, latest_name), encoding="utf-8").read()
+    stem = latest_name[:-3]
+    svg_p1 = os.path.join(work_dir, f"{stem}--fig-tc-p1.svg")
+    svg_n1 = os.path.join(work_dir, f"{stem}--fig-tc-n1.svg")
+    check("dry run: the two grounded figures land beside the local draft copy",
+          os.path.isfile(svg_p1) and os.path.isfile(svg_n1)
+          and not os.path.isfile(os.path.join(work_dir, f"{stem}--fig-tc-p2.svg")),
+          str(sorted(f for f in os.listdir(work_dir) if "--fig-" in f)))
+    check("Generated Figures addendum: links, captions, rules, drop reasons, not-illustrated",
+          "## Generated Figures" in latest
+          and f"![R1 (0–100) and R2 (0–60) before the merge" in latest
+          and f"](<{stem}--fig-tc-p1.svg>)" in latest and f"](<{stem}--fig-tc-n1.svg>)" in latest
+          and "(rule R2)" in latest and "(rule R5)" in latest
+          and "2 rendered of 4 proposed, 2 dropped" in latest
+          and "- TC-P2 — TC-P2: panel 1 event E1 at 999 is not a value" in latest
+          and "- TC-P9 — TC-P9: not a TC case in the plan" in latest
+          and "Not illustrated: TC-P2 (X2 — geometry equals TC-P1)" in latest,
+          latest[latest.find("## Generated Figures"):][:1200])
+    check("addendum sits after Existing Test Cases / Issue Trace, body untouched",
+          latest.index("## Generated Figures") > latest.index("## Issue Trace")
+          and FIG_DRAFT.strip() in latest, "")
+    s_p1 = open(svg_p1, encoding="utf-8").read()
+    s_n1 = open(svg_n1, encoding="utf-8").read()
+    check("route-measure SVG: SlideFigures vocabulary, both panels, routes, events, extend mark",
+          s_p1.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
+          and "<title>TC-P1 — Merge preserves measures</title>" in s_p1
+          and ".route{stroke:#16302F" in s_p1 and 'marker id="ar"' in s_p1
+          and s_p1.count('class="ln route"') == 3
+          and ">Before<" in s_p1 and ">After<" in s_p1
+          and s_p1.count('class="ln event flat s-cool"') == 2
+          and 'class="ln event flat s-warm"' in s_p1 and 'class="ln event flat s-green"' in s_p1
+          and ">extended<" in s_p1 and ">160<" in s_p1
+          and 'class="ln swatch flat s-green"' in s_p1 and ">E2 105 → 130<" in s_p1,
+          s_p1[:400])
+    check("sequence SVG: actors, lifelines, the denied step in red",
+          ">User A<" in s_n1 and ">User B<" in s_n1
+          and s_n1.count('class="ln leader dashed"') == 2
+          and 'class="ln edge s-red dashed"' in s_n1
+          and ">2. Merge Routes on R1 — denied<" in s_n1 and ">1. lock route R1 — ok<" in s_n1,
+          s_n1[:400])
+    logs = sorted(f for f in os.listdir(work_dir)
+                  if f.startswith("testplangen-") and f.endswith(".json"))
+    with open(os.path.join(work_dir, logs[-1])) as f:
+        log = json.load(f)
+    check("run log records every spec: files for rendered, findings for dropped",
+          log.get("figures", {}).get("proposed") == 4
+          and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P1", "TC-N1"]
+          and [x["case"] for x in log["figures"]["dropped"]] == ["TC-P2", "TC-P9"]
+          and any(a["path"].endswith("--fig-tc-p1.svg") for a in log.get("plan") or []),
+          json.dumps(log.get("figures"))[:400])
+    # live: the SVGs upload as the draft's siblings with the svg content type
+    state.drafts.clear()
+    r = run_job(cfg_fig, ["--story", "12", "--live", "--figures"])
+    md = [pth for pth in state.drafts if pth.endswith(".md")]
+    svgs = sorted(pth for pth in state.drafts if pth.endswith(".svg"))
+    check("live run: draft + two SVG siblings uploaded",
+          r.returncode == 0 and len(md) == 1 and len(svgs) == 2
+          and svgs[0] == md[0][:-3] + "--fig-tc-n1.svg" and svgs[1] == md[0][:-3] + "--fig-tc-p1.svg"
+          and state.drafts[svgs[1]].startswith("<svg"), str(list(state.drafts)))
+    live_draft = state.drafts[md[0]] if md else ""
+    check("live addendum links the site URL of each figure",
+          f"](<{SITE_URL}/Shared Documents/Test Plan Drafts/" in live_draft
+          and "--fig-tc-p1.svg>)" in live_draft, live_draft[-800:])
+    # fail soft: a reply without sentinels skips the pass, the draft still lands
+    state.fig_text = "I could not decide."
+    state.drafts.clear()
+    r = run_job(cfg_fig, ["--story", "12", "--live", "--figures"])
+    summ = summary_of(r.stdout)
+    check("sentinel-less figures reply: pass skipped, draft written, genFigures=0/0",
+          r.returncode == 0 and summ.get("genFigures") == "0/0"
+          and "figures skipped: figures reply is missing the FIGURES BEGIN/END sentinels" in r.stderr
+          and len(state.drafts) == 1 and "pass skipped:" in list(state.drafts.values())[0],
+          r.stdout + r.stderr[-300:])
+    state.fig_text = FIG_REPLY_WRAPPED
+    # anthropic lane: the repo prompt verbatim, inputs substituted, its own maxTokens
+    cfg_fig_ant = write_cfg("config-fig-ant.json",
+                            llm={"provider": "anthropic", "apiKey": "mock-key",
+                                 "baseUrl": base, "maxRetries": 0},
+                            testplangen={"neighborCap": 8, "figures": True})
+    ant_before, fig_before = state.ant_calls, state.fig_calls
+    r = run_job(cfg_fig_ant, ["--story", "12", "--dry-run"])
+    summ = summary_of(r.stdout)
+    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    check("anthropic figures pass (testplangen.figures: true): prompt verbatim, inputs substituted",
+          r.returncode == 0 and state.ant_calls == ant_before + 2 and state.fig_calls == fig_before + 1
+          and "SELECTION RULES" in prompt and "<<<DRAFT BEGIN>>>" in prompt
+          and "### TC-P1 — Merge preserves measures" in prompt
+          and not re.search(r"\{(PlanTitle|Draft)\}", prompt)
+          and state.ant_last_body.get("max_tokens") == 8000
+          and summ.get("genFigures") == "2/4", r.stdout + r.stderr[-300:] + prompt[-200:])
+    # refusals: --auto, and aibuilder without a figures model BEFORE any spend
+    r = run_job(cfg_fig, ["--auto", "--figures"])
+    check("--figures refused with --auto",
+          r.returncode != 0 and "cannot be combined with --auto" in r.stderr, r.stderr[:200])
+    gen_before = state.gen_calls
+    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--figures"])
+    check("aibuilder without llm.figuresModelId refuses before the generation call",
+          r.returncode != 0 and "needs llm.figuresModelId" in r.stderr
+          and state.gen_calls == gen_before, r.stderr[:300])
+    state.gen_text = wrap(GOOD_DRAFT)
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

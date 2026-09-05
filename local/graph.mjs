@@ -333,7 +333,7 @@ export class GraphClient {
    *  "/Keyword_Curation_Digest.md". Used for files that live outside
    *  any synced folder (the curation digest, deliberately outside
    *  the LRS Doc Index library so the Q&A agent never ingests it). */
-  async putFile(siteId, drivePath, content) {
+  async putFile(siteId, drivePath, content, contentType = "text/markdown") {
     const url = `${this.baseUrl}/sites/${siteId}/drive/root:${drivePath}:/content`;
     let res;
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -341,7 +341,7 @@ export class GraphClient {
         method: "PUT",
         headers: {
           authorization: "Bearer " + (await this.token()),
-          "content-type": "text/markdown",
+          "content-type": contentType,
         },
         body: content,
         signal: timeout(this.cfg),

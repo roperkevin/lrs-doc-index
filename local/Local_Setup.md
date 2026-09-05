@@ -820,6 +820,32 @@ the flow orders by list Modified (same newest-first intent); a story
 sidecar missing from the synced library is a hard error naming the
 sync, not a silent degrade.
 
+**`--figures` — generated figures** (v1.11, `testplangen/CHANGES.md`
+v2.32; or `testplangen.figures: true`): one more model call after
+the draft is verified. `prompts/TestPlanFigures_Prompt.md` reads the
+draft, selects the cases a schematic would help (measure geometry,
+state change, topology, temporality, interaction; UI/validation-only
+cases, variants, story-figure duplicates and anything ungrounded are
+excluded; at most six) and emits a figure SPEC per case — the model
+never draws. `local/lib/figurespec.mjs` checks every spec against
+the case's own section and the Setup tables (every id a whole word
+there, every measure a value there and inside its route's range, a
+closed vocabulary of kinds/tones/marks) and DROPS any that fails,
+then renders the survivors to SVG in the SlideFigures palette as the
+draft's siblings (`<draft stem>--fig-<case>.svg`; dry runs write
+them beside the local copy) linked from a `## Generated Figures`
+addendum with caption, rule, the dropped specs' findings and the
+model's not-illustrated list. The draft body is untouched; the pass
+fails soft (a bad reply skips it, the draft still lands —
+`genFigures=<rendered>/<proposed>` in the summary, every spec in the
+run log). Transport: the anthropic lane executes the repo prompt
+verbatim (`figuresMaxTokens`, 8000); the aibuilder lane needs
+`llm.figuresModelId` and refuses before the generation spend without
+it (no tenant prompt exists yet — set `testplangen.provider` to
+`anthropic` for the pass). Manual runs only. To put the SVGs on
+slides today, run `svg2pptx.mjs` on them; draft2pptx's `--media`
+still renders story `**Figure:**` lines only.
+
 **No OneDrive on this machine?** (v1.10) Set `sweep.remoteFiles:
 true` — the sweep's v1.39 remote-files mode (§7, `Hosted_Runner.md`)
 — and the run mirrors the sidecar library down into

@@ -1,3 +1,66 @@
+# TestPlanGen v2.32 — generated figures (testplangen.mjs v1.11, figurespec v1.0, TestPlanFigures prompt v0.1 wired)
+
+Owner-requested (2026-09-05): "build the --figures pass and
+renderer." The v2.31 addendum's prompt is now a working pass:
+
+- **`--figures`** (or `testplangen.figures: true`) — after the draft
+  is verified, ONE more model call sends the draft body to
+  `prompts/TestPlanFigures_Prompt.md` (inputs PlanTitle + Draft; the
+  anthropic lane executes the repo prompt verbatim with
+  `figuresMaxTokens` 8000; the aibuilder lane needs
+  `llm.figuresModelId`, and refuses BEFORE the generation spend when
+  it is missing — no tenant prompt exists yet). The model SELECTS
+  the cases worth a schematic (R1–R5, X1–X6, cap 6) and emits a
+  closed-vocabulary FIGURE SPEC per case; it never draws.
+- **`local/lib/figurespec.mjs` v1.0** (pure, no I/O, no AI):
+  `parseFiguresReply` (the G9 fail-closed sentinel slice + JSON),
+  `draftCorpus` (each TC case's section + the Setup / Prerequisites
+  tables + the title), `verifyFigureSpec` (grounding: every id a
+  whole word in the case or Setup, every measure a value there AND
+  inside its route's range, from < to, panel dates verbatim, actor
+  labels in the case; vocabulary: kinds, tones, shapes, mark kinds,
+  outcomes, every cap — a spec with ANY finding is DROPPED, never
+  repaired), and `renderFigureSvg` (route-measure panels with
+  routes, calibration ticks, line/point events, ranged and point
+  marks; topology nodes/edges; sequence actors/lifelines/steps with
+  denied steps in red) in the SlideFigures vocabulary and palette —
+  the same `<style>` block, classes, markers and single translate
+  group svg2pptx and draft2pptx already consume.
+- **Placement**: figures are the draft's siblings —
+  `<draft stem>--fig-<case>.svg` uploaded as `image/svg+xml` (live;
+  `graph.putFile` gained a content-type argument, default unchanged)
+  or written beside the local copy (dry) — and linked from a
+  deterministic `## Generated Figures` addendum (title, image,
+  caption, rule; dropped specs with their findings; the model's
+  not-illustrated list). The draft BODY is untouched: the v1.10
+  FIGURES rule (story figures only in `**Figure:**` lines), the
+  contract lint and draftlint check e are unaffected.
+- **Fail soft after the verified draft**: a sentinel-less or
+  non-JSON reply, or a transport error, skips the pass with one
+  stderr line and the draft still lands (`genFigures=0/0`, the
+  addendum states the skip). `Gen_summary` gains
+  `genFigures=<rendered>/<proposed>`; the run log lists every spec
+  with its file or its findings. Manual runs only (refused with
+  `--auto`, `--gap-report`, `--models`); `--preview` never reaches
+  it. Knobs: `testplangen.figures` (false), `figuresMaxTokens`
+  (8000), `llm.figuresModelId`.
+- Not yet: draft2pptx renders story `**Figure:**` lines only — the
+  Generated Figures addendum's SVGs convert with `svg2pptx.mjs`
+  meanwhile; a `--generated` flag for draft2pptx is the queued
+  follow-on.
+
+Gate: `check_testplangen.py` **183/183** — leg 18 (one generation +
+one figures call; PlanTitle/Draft inputs; two grounded specs render
+with the vocabulary asserted — panels, routes, events, the extend
+mark, the denied step; an invented measure and an unknown case are
+dropped with their findings in the addendum and the run log; live
+upload as siblings with site-URL links; the sentinel-less skip; the
+anthropic lane with its own maxTokens; the `--auto` refusal; the
+missing-model-id refusal before any spend). `check_local_sweep.py`
+green on the putFile signature. Rendered output was eyeballed in
+Chromium: before/after route pairs, a lock-conflict sequence, a
+topology graph.
+
 # TestPlanGen v2.31 — first-run review of the local job (testplangen.mjs v1.10)
 
 Owner-requested (2026-09-05): "I'd like to try running the test plan
