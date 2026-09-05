@@ -1,4 +1,4 @@
-# TestPlanGen v2.34 — related cases: the retrieval lane (prompt v1.11, testplangen.mjs v1.13)
+# TestPlanGen v2.34 — related cases: the retrieval lane (prompt v1.11, testplangen.mjs v1.14)
 
 Owner-requested (2026-09-05), after the doc 910 review: the draft
 carried spanning-event and referent-method coverage only as
@@ -9,25 +9,43 @@ plan-level issue-id links; nothing retrieved individual cases by
 relevance. Now it does, with no file for a PE to maintain — the
 index the nightly sweep already keeps is the source:
 
-- **The lane (testplangen.mjs v1.13).** Every indexed case in the
-  catalog is scored against the story — shared Tools tags ×10 and
-  Keywords tags ×3 (the curated vocabulary, the story's from its
-  sidecar metadata table), a capped count of content-word stems
-  the case's title/scenario/text shares with the story text
-  (draftlint's stemmer, now exported), +100 when the case cites a
-  story issue id — and the top `relatedCasesSlots` (20) at or
-  above `relatedCasesMinScore` (4) are sent as RELATED CASES, each
-  headed by its plan title, surface, and case name, with its
-  section text sliced from the plan's sidecar (`caseSpans`; the
-  row's CaseText when the sidecar is not readable). Cases from
-  plans already in the exemplar or reference lanes are skipped —
-  the model sees those whole. Per-case (`relatedCaseChars` 900) and
-  per-lane (`relatedCasesCap` 12000) budgets, remaining-budget
-  take. Deterministic, read-only, no extra AI spend. Absent the
+- **The lane (testplangen.mjs v1.14 — plan-first).** The unit of
+  retrieval is the PLAN, because the team's coverage of a feature
+  area lives in plans. A query is built from the story — its Tools
+  tags (×2), its Keywords tags and its title's content-word stems,
+  each weighted by rarity across the indexed cases (idf) and, for
+  keyword/title terms, by how often the story text uses it — and
+  every Indexed Test Plan with indexed cases (outside the two lanes,
+  not the story) is scored on its title stems plus the union of its
+  cases' tags, ×1.25 for the story's own surface, ×(1 + 0.1·ln(1 +
+  matching cases)) for depth; duplicate-title uploads collapse to
+  the newest. The top `relatedCasesPlans` (5) each send their
+  `relatedCasesPerPlan` (3) best-matching cases WITH section text
+  (sliced from the plan's sidecar via `caseSpans`, heading dropped;
+  the row's CaseText as fallback; a case needs two matched query
+  terms to earn a body) plus one "Other cases in this plan:" line
+  listing up to `relatedCaseTitles` (20) remaining case titles — the
+  plan's variation structure at title cost. Per-case
+  (`relatedCaseChars` 700) and per-lane (`relatedCasesCap` 18000)
+  budgets. Deterministic, read-only, no extra AI spend. Absent the
   list, or `testplangen.relatedCases: false`, the block reads
   "(none)" and the draft is the v1.10 draft. Gen_summary gains
-  `relatedCases= relCaseChars=`; the manual progress line names
-  the plans drawn from; `--preview` shows the block.
+  `relatedCases= relatedPlans= relCaseChars=`; the manual progress
+  line names the plans with their relevance; `--preview` shows the
+  block. **Evaluated before release** on the owner's 2026-09-05
+  index (748 format-3.0 sidecars, 4,219 indexed cases in 142 plans)
+  for story 910: v1.13's case-first scoring (tags ×10/×3 + stems)
+  let two plans with generic tool tags fill every slot while the
+  referent-centric plans ranked 140th and lower; plan-first ranking
+  with depth puts DynSeg Merge Option, Merge Events Widget, Split
+  Event Widget, Merge Events Pro and the 64-bit OID event-editing
+  plan in the lane — the plans whose sibling case titles carry the
+  spanning / non-spanning and referent variations the doc 910 draft
+  lacked. Also seen in that evaluation and NOT fixed here: the
+  exemplar plan 906 has zero indexed cases (its slides are prose and
+  tables with no case headings — the `--normalize-cases` lane's
+  job), so the case index carries nothing from the one plan written
+  for this feature area.
 - **Prompt v1.11 — the SIXTH input `RelatedCases`** (a CONTRACT
   change like v1.3's ReferenceText: the tenant AI Builder prompt
   needs the parameter created before the paste; the anthropic lane

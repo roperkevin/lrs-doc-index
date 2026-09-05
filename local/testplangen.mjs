@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.13 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.14 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -11,28 +11,29 @@
  * review: v2.31; generated figures: v2.32; console streaming: v2.33;
  * related cases: v2.34).
  *
- * v1.13 (related cases — the retrieval lane, prompt v1.11's SIXTH
- * input, testplangen/CHANGES.md v2.34): with the Test Cases list
- * configured, every indexed case in the catalog is scored against
- * the story — shared Tools tags ×10, shared Keywords tags ×3 (the
- * curated vocabulary, from the story's sidecar metadata table), a
- * capped count of content-word stems the case's title/scenario/
- * text shares with the story text, and +100 when the case cites
- * one of the story's issue ids — and the top `relatedCasesSlots`
- * (20) with a score of at least `relatedCasesMinScore` (4) are sent
- * as RELATED CASES: each headed by its plan title, surface and case
- * name, with its section text sliced from the plan's sidecar
- * (caseSpans; the row's CaseText when the sidecar is not readable),
- * capped per case and per lane (remaining-budget take, the lane
- * rule). Cases from plans already in the exemplar or reference
+ * v1.13–v1.14 (related cases — the retrieval lane, prompt v1.11's
+ * SIXTH input, testplangen/CHANGES.md v2.34): with the Test Cases
+ * list configured, the catalog's PLANS are ranked against the story
+ * (plan-first — see relatedCasesLane: a tf·idf query from the
+ * story's tools, keywords and title; a plan's terms are its title
+ * plus its cases' tags; duplicate-title uploads collapse) and the
+ * top `relatedCasesPlans` each send their `relatedCasesPerPlan`
+ * best-matching cases WITH section text plus a one-line index of
+ * the plan's other case titles — the plan's variation structure —
+ * as RELATED CASES. Plans already in the exemplar or reference
  * lanes are skipped (the model sees those whole). Read-only,
  * deterministic, no extra AI spend. The prompt's VARIATION clause
  * makes them useful: a related case that varies an INPUT of a
  * story-stated behavior is a Yes with a parameterized case, one
  * whose behavior the story does not state stays Verify. Absent the
  * list, or with `testplangen.relatedCases: false`, the block reads
- * "(none)". Gen_summary gains `relatedCases= relCaseChars=`; the
- * manual progress line names the plans drawn from. The aibuilder
+ * "(none)". Gen_summary gains `relatedCases= relatedPlans=
+ * relCaseChars=`; the manual progress line names the plans drawn
+ * from. v1.13's case-first scoring (tags ×10/×3 + stems) was
+ * evaluated on the 2026-09-05 index for story 910 and replaced
+ * before release: generic tool tags let two plans flood every
+ * slot while the referent-centric plans ranked 140th and lower;
+ * plan-level ranking put those plans in the top six. The aibuilder
  * lane needs the sixth parameter RelatedCases on the tenant prompt
  * (Coverage_Runbook step 2's pattern).
  *
@@ -423,7 +424,7 @@ import {
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.13";
+const JOB_VERSION = "v1.14";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -624,11 +625,12 @@ function loadConfig(argv) {
     figuresMaxTokens: 8000,
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
-    relatedCases: true, // v1.13: the RELATED CASES retrieval lane (needs the same list)
-    relatedCasesSlots: 20,
-    relatedCasesMinScore: 4,
-    relatedCaseChars: 900,
-    relatedCasesCap: 12000,
+    relatedCases: true, // v1.13/v1.14: the RELATED CASES retrieval lane (needs the same list)
+    relatedCasesPlans: 5,
+    relatedCasesPerPlan: 3,
+    relatedCaseChars: 700,
+    relatedCaseTitles: 20,
+    relatedCasesCap: 18000,
     autoDraft: false,
     autoMaxPerRun: 3,
     autoLookbackDays: 7,
@@ -1201,40 +1203,114 @@ async function caseRowsOf(ctx) {
 }
 
 /**
- * RELATED CASES (v1.13): the individual indexed cases most similar
- * to the story, from plans NOT already in the exemplar/reference
- * lanes. Deterministic scoring — Tools ×10, Keywords ×3, shared
- * content stems (capped at 12), +100 for a case citing a story
- * issue id — then the top slots at or above the minimum score, in
- * score order (ties: plan id, ordinal). Each case's text is its
- * section sliced from the plan's sidecar (caseSpans, cached per
- * plan), falling back to the row's CaseText; per-case and per-lane
- * caps hold the budget. Returns { text, count, chars, plans }.
+ * RELATED CASES (v1.14 — plan-first retrieval). The team's coverage
+ * of a feature area lives in PLANS, so the unit of retrieval is the
+ * plan: every Indexed Test Plan with indexed cases (outside the
+ * exemplar/reference lanes, not the story) is scored against a
+ * QUERY built from the story — its Tools tags (×2), its Keywords
+ * tags and its TITLE's content-word stems, every term weighted by
+ * its rarity across the indexed cases (idf) and, for keyword/title
+ * terms, by how often the story text itself uses it (1 + ln(1+tf)),
+ * so "referent" outweighs "widgets". A plan's terms are its title
+ * stems plus the union of its cases' tags; plans sharing a title
+ * (duplicate uploads) collapse to the newest. The top
+ * `relatedCasesPlans` (5) each contribute their `relatedCasesPerPlan`
+ * (3) best-matching cases WITH section text (sliced from the plan's
+ * sidecar via caseSpans, the row's CaseText as fallback; a case
+ * needs at least two matched query terms to earn a body) and a
+ * one-line index of the plan's OTHER case titles (up to
+ * `relatedCaseTitles`, 20) — the plan's variation structure, cheap.
+ * Per-case (`relatedCaseChars`) and per-lane (`relatedCasesCap`)
+ * budgets hold. A same-surface plan scores ×1.25; a plan's score
+ * scales by 1 + 0.1·ln(1 + its matching cases) so depth beats a
+ * broad tag union. Deterministic, read-only, no AI spend.
+ * Returns { text, count, plans: [ids], chars, planScores }.
  */
-function relatedCasesLane(ctx, story, storyText, cc, laneUrls) {
+export function relatedCasesLane(ctx, story, storyText, cc, laneUrls) {
   const { cfg, byId, sw, tp } = ctx;
-  const out = { text: "", count: 0, chars: 0, plans: [] };
-  if (!cc || tp.relatedCases === false) return out;
-  const storyStems = contentStems(`${stripQuotes(story.Title)}\n${storyText}`);
+  const out = { text: "", count: 0, chars: 0, plans: [], planScores: [] };
+  if (!cc || tp.relatedCases === false || !cc.rows.length) return out;
   const laneSet = new Set(laneUrls.filter(Boolean));
-  const scored = [];
+  const stemsOf = (s) => contentStems(s);
+  // each case's term set: tags + stems of its title/scenario/text head
+  const termsOf = (c) => {
+    const set = new Set();
+    for (const t of c.tools) set.add("t|" + t);
+    for (const k of c.keywords) set.add("k|" + k);
+    for (const st of stemsOf(`${c.title}\n${c.scenario}\n${c.caseText.slice(0, 600)}`)) set.add("s|" + st);
+    return set;
+  };
+  const N = cc.rows.length;
+  const df = new Map();
+  const byPlan = new Map();
   for (const c of cc.rows) {
-    const plan = byId.get(c.planId);
+    if (c.planId === undefined) continue;
+    c._terms = termsOf(c);
+    for (const t of c._terms) df.set(t, (df.get(t) || 0) + 1);
+    if (!byPlan.has(c.planId)) byPlan.set(c.planId, []);
+    byPlan.get(c.planId).push(c);
+  }
+  const idf = (t) => Math.log(1 + N / (df.get(t) || 1));
+  // the query: story tools ×2·idf; keywords and title stems idf·(1+ln(1+tf in the story))
+  const tf = new Map();
+  for (const st of stemsOf(`${stripQuotes(story.Title)}\n${storyText}`.split(/\s+/).join("\n"))) tf.set(st, 0);
+  for (const w of `${stripQuotes(story.Title)}\n${storyText}`.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (w.length < 3) continue;
+    const st = [...stemsOf(w)][0];
+    if (st && tf.has(st)) tf.set(st, tf.get(st) + 1);
+  }
+  const boost = (st) => 1 + Math.log(1 + (tf.get(st) || 0));
+  const query = new Map();
+  for (const t of cc.storyTools) query.set("t|" + t, 2 * idf("t|" + t));
+  for (const k of cc.storyKeywords) query.set("k|" + k, idf("k|" + k) * boost([...stemsOf(k)][0] || ""));
+  for (const st of stemsOf(stripQuotes(story.Title))) query.set("s|" + st, idf("s|" + st) * boost(st));
+  // matched query terms against a term set (stems match by the shared prefix rule)
+  const matchTerms = (terms) => {
+    const hit = new Map();
+    const stemTerms = [...terms].filter((t) => t.startsWith("s|")).map((t) => t.slice(2));
+    const stemSet = new Set(stemTerms);
+    for (const [q, w] of query) {
+      if (terms.has(q)) { hit.set(q, w); continue; }
+      if (q.startsWith("s|") && stemMatches(q.slice(2), stemSet)) hit.set(q, w);
+    }
+    return hit;
+  };
+  const scoreSum = (hit) => [...hit.values()].reduce((a, b) => a + b, 0);
+  // plan-level ranking
+  const plansScored = [];
+  for (const [planId, cases] of byPlan) {
+    const plan = byId.get(planId);
     if (!plan || plan.DocKind !== "Test Plan" || plan.IndexStatus !== "Indexed") continue;
     if (plan.ID === story.ID || laneSet.has(plan.TextFileUrl)) continue;
-    let score = 0;
-    score += 10 * c.tools.filter((t) => cc.storyTools.includes(t)).length;
-    score += 3 * c.keywords.filter((k) => cc.storyKeywords.includes(k)).length;
-    const caseStems = contentStems(`${c.title}\n${c.scenario}\n${c.caseText.slice(0, 600)}`);
-    let hits = 0;
-    for (const t of caseStems) if (stemMatches(t, storyStems)) hits++;
-    score += Math.min(hits, 12);
-    if (c.issueList.some((k) => cc.keySet.has(k))) score += 100;
-    if (score >= Number(tp.relatedCasesMinScore)) scored.push({ c, plan, score });
+    const terms = new Set([...stemsOf(stripQuotes(plan.Title))].map((st) => "s|" + st));
+    for (const c of cases) { for (const t of c.tools) terms.add("t|" + t); for (const k of c.keywords) terms.add("k|" + k); }
+    const hit = matchTerms(terms);
+    if (hit.size < 2) continue;
+    // a same-surface plan tests the story's own widgets/tools — a
+    // modest edge over a cross-surface plan with the same term match
+    const surfaceBoost = (plan.Surface || "") === (story.Surface || "") ? 1.25 : 1;
+    // DEPTH: breadth alone let a three-case plan whose tags happen to
+    // name every widget outrank an 80-case plan about the feature
+    // (the 2026-09-05 story-910 evaluation) — scale by how many of
+    // the plan's cases match the query themselves
+    const matchedCases = cases.filter((c) => matchTerms(c._terms).size >= 2).length;
+    const depth = 1 + 0.1 * Math.log(1 + matchedCases);
+    plansScored.push({ plan, cases, score: scoreSum(hit) * surfaceBoost * depth });
   }
-  scored.sort(
-    (a, b) => b.score - a.score || a.plan.ID - b.plan.ID || (a.c.ordinal ?? 0) - (b.c.ordinal ?? 0)
+  plansScored.sort(
+    (a, b) => b.score - a.score ||
+      String(b.plan.SourceModified).localeCompare(String(a.plan.SourceModified)) || a.plan.ID - b.plan.ID
   );
+  // duplicate uploads (same title) collapse to the first (highest score, then newest)
+  const seenTitle = new Set();
+  const chosen = [];
+  for (const p of plansScored) {
+    const key = lower(stripQuotes(p.plan.Title)).replace(/\s+/g, " ").trim();
+    if (seenTitle.has(key)) continue;
+    seenTitle.add(key);
+    chosen.push(p);
+    if (chosen.length >= Number(tp.relatedCasesPlans)) break;
+  }
   const spansCache = new Map();
   const sectionOf = (plan, c) => {
     if (c.ordinal === undefined) return c.caseText;
@@ -1246,21 +1322,52 @@ function relatedCasesLane(ctx, story, storyText, cc, laneUrls) {
     }
     const sp = spansCache.get(plan.ID);
     const span = sp && sp.spans[c.ordinal - 1];
-    return span ? sp.lines.slice(span.start, span.end).join("\n").trim() : c.caseText;
+    if (!span) return c.caseText;
+    // the section minus its own heading (and any label line the
+    // detector kept ahead of it) — the lane writes its own heading
+    const lines = sp.lines.slice(span.start, span.end);
+    const at = lines.slice(0, 3).findIndex((l) => /^###? /.test(l));
+    return (at >= 0 ? lines.slice(at + 1) : lines).join("\n").trim();
+  };
+  const nameOf = (c) => {
+    const t = String(c.title || "");
+    const no = String(c.caseNo || "");
+    return (no && !t.startsWith(no) ? `${no} — ${t}` : t) || `case ${c.ordinal}`;
   };
   const cap = Number(tp.relatedCasesCap);
-  for (const { c, plan } of scored.slice(0, Number(tp.relatedCasesSlots))) {
+  for (const { plan, cases, score } of chosen) {
     if (out.text.length >= cap) break;
+    const ranked = cases
+      .map((c) => ({ c, hit: matchTerms(c._terms) }))
+      .map((x) => ({ ...x, score: x.hit.size >= 2 ? scoreSum(x.hit) : -1 }))
+      .sort((a, b) => b.score - a.score || (a.c.ordinal ?? 0) - (b.c.ordinal ?? 0));
+    const withText = ranked.filter((x) => x.score >= 0).slice(0, Number(tp.relatedCasesPerPlan));
+    const sent = new Set(withText.map((x) => x.c));
+    let block =
+      `--- RELATED PLAN: ${stripQuotes(plan.Title)} — surface ${plan.Surface || ""} ` +
+      `(doc ${plan.ID}; ${cases.length} indexed cases; relevance ${score.toFixed(1)}) ---\n`;
+    for (const { c } of withText) {
+      block +=
+        `### ${nameOf(c)}${c.classification ? ` [${c.classification}]` : ""}` +
+        `${c.group ? ` (${cellSafe(c.group, 60)})` : ""}\n` +
+        cut(sectionOf(plan, c), Number(tp.relatedCaseChars)) + "\n\n";
+      out.count++;
+    }
+    const others = cases
+      .filter((c) => !sent.has(c))
+      .sort((a, b) => (a.ordinal ?? 0) - (b.ordinal ?? 0));
+    const maxTitles = Number(tp.relatedCaseTitles);
+    if (others.length) {
+      block +=
+        "Other cases in this plan: " +
+        others.slice(0, maxTitles).map((c) => cellSafe(nameOf(c), 90)).join("; ") +
+        (others.length > maxTitles ? `; (+${others.length - maxTitles} more)` : "") + "\n";
+    }
+    block += "\n";
     const remaining = cap - out.text.length;
-    const body = cut(sectionOf(plan, c), Number(tp.relatedCaseChars));
-    const name = [c.caseNo, c.title].filter(Boolean).join(" ") || `case ${c.ordinal}`;
-    const head =
-      `--- RELATED CASE: ${stripQuotes(plan.Title)} — surface ${plan.Surface || ""} — ` +
-      `${name}${c.classification ? ` [${c.classification}]` : ""}` +
-      `${c.group ? ` (${cellSafe(c.group, 60)})` : ""} ---\n`;
-    out.text += head + cut(body, Math.max(0, remaining - head.length)) + "\n\n";
-    out.count++;
-    if (!out.plans.includes(plan.ID)) out.plans.push(plan.ID);
+    out.text += cut(block, remaining);
+    out.plans.push(plan.ID);
+    out.planScores.push(Math.round(score * 10) / 10);
   }
   out.chars = out.text.length;
   return out;
@@ -1752,8 +1859,8 @@ async function generateOne(ctx, story) {
   );
   if (related.count) {
     prog(
-      `related cases — ${related.count} (${related.chars} chars) from plans ` +
-      `[${related.plans.join(",")}]`
+      `related cases — ${related.count} (${related.chars} chars) from ${related.plans.length} plan(s) ` +
+      `[${related.plans.map((id, i) => `${id}:${related.planScores[i]}`).join(",")}]`
     );
   }
   const inputs = {
@@ -1808,7 +1915,7 @@ async function generateOne(ctx, story) {
       `pinnedRef=${docRefPins.length} webRefs=${webRefCount} ` +
       `caseRouted=${routedIds.length} caseTrim=${caseTrim} ` +
       `exCases=${exCasesKept}/${exCasesTotal} relatedCases=${related.count} ` +
-      `relCaseChars=${related.chars} inputChars=${inChars} ` +
+      `relatedPlans=${related.plans.length} relCaseChars=${related.chars} inputChars=${inChars} ` +
       `provider=${provider} preview=1`;
     return { line, preview: true, localInputs, provider, inputChars: inChars };
   }
@@ -2062,8 +2169,8 @@ async function generateOne(ctx, story) {
     `pinnedEx=${pins.ex.length} pinnedRef=${docRefPins.length} webRefs=${webRefCount} ` +
     `existingCases=${existingCases.count} caseRouted=${routedIds.length} ` +
     `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal} ` +
-    `relatedCases=${related.count} relCaseChars=${related.chars} ` +
-    `genFigures=${figs.rendered.length}/${figs.proposed}`;
+    `relatedCases=${related.count} relatedPlans=${related.plans.length} ` +
+    `relCaseChars=${related.chars} genFigures=${figs.rendered.length}/${figs.proposed}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run
@@ -2564,7 +2671,9 @@ async function main() {
   return run(cfg);
 }
 
-main().catch((e) => {
-  process.stderr.write("testplangen: " + (e.stack || e.message) + "\n");
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch((e) => {
+    process.stderr.write("testplangen: " + (e.stack || e.message) + "\n");
+    process.exit(1);
+  });
+}

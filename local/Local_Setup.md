@@ -846,23 +846,24 @@ it (no tenant prompt exists yet — set `testplangen.provider` to
 slides today, run `svg2pptx.mjs` on them; draft2pptx's `--media`
 still renders story `**Figure:**` lines only.
 
-**Related cases — the retrieval lane** (v1.13, prompt v1.11,
+**Related cases — the retrieval lane** (v1.14, prompt v1.11,
 `testplangen/CHANGES.md` v2.34): with §12's Test Cases list in
-config, every indexed case in the catalog is scored against the
-story (shared Tools/Keywords tags from the curated vocabulary, story
-text overlap, a story issue id cited) and the best `relatedCasesSlots`
-(20) from plans OUTSIDE the exemplar/reference lanes are sent as the
-prompt's sixth input, RELATED CASES — each with its plan, surface,
-case name, and section text. The prompt sweeps them like exemplar
+config, the catalog's test PLANS are ranked against the story (a
+rarity-weighted query from its tools, keywords and title; a plan's
+terms are its title plus its cases' tags; same-surface and deep plans
+edge ahead) and the top `relatedCasesPlans` (5) from OUTSIDE the
+exemplar/reference lanes each send their `relatedCasesPerPlan` (3)
+best-matching cases with section text plus an index of their other
+case titles, as the prompt's sixth input, RELATED CASES. The prompt sweeps them like exemplar
 cases, and its VARIATION clause lets a related case that varies an
 input of a story-stated behavior (a spanning event, another referent
 method) become a parameterized case rather than a [VERIFY] item — a
 behavior the story never states still lands in Open Questions. This
 is how the team's existing coverage of a feature area reaches a
 draft without anyone curating a list: the nightly sweep's index is
-the source. `relatedCases=`/`relCaseChars=` in the summary; the
-progress line names the plans drawn from; `--preview` shows the
-block. `testplangen.relatedCases: false` (or no list) = "(none)".
+the source. `relatedCases=`/`relatedPlans=`/`relCaseChars=` in the summary; the
+progress line names the plans drawn from with their relevance;
+`--preview` shows the block. `testplangen.relatedCases: false` (or no list) = "(none)".
 The aibuilder lane's tenant prompt needs the `RelatedCases`
 parameter created before the v1.11 paste; the anthropic lane runs
 the repo prompt as-is.

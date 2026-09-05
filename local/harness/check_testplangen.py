@@ -157,13 +157,15 @@ verifier the cloud flow could not have
                      draft identical; without --stream no thinking
                      key is sent and nothing is echoed; on the
                      aibuilder lane --stream prints one note
-  leg 20 related     the RELATED CASES retrieval lane (v1.13, prompt
-                     v1.11's sixth input): indexed cases from plans
-                     outside the exemplar/reference lanes are scored
-                     by shared Tools/Keywords tags + story stems and
-                     sent with their sidecar section text, score
-                     order, plan/surface/case headers; below-threshold
-                     and in-lane plans' cases excluded; slots knob;
+  leg 20 related     the RELATED CASES retrieval lane (v1.14, prompt
+                     v1.11's sixth input): plans outside the
+                     exemplar/reference lanes are ranked against the
+                     story (tf·idf query over tools/keywords/title;
+                     plan terms = title + its cases' tags) and each
+                     top plan sends its best-matching cases with
+                     sidecar section text plus an index of its other
+                     case titles; an under-matched case rides the
+                     index only; in-lane plans excluded; per-plan knob;
                      relatedCases false and no list read "(none)";
                      the anthropic prompt carries the block, the
                      VARIATION clause, and no leftover placeholder;
@@ -743,7 +745,7 @@ def main():
         plan_case("TC-N01", "Denied on a locked route",
                   "See ArcGISPro/ps-location-referencing#4855."),
         plan_case("TC-N02", "Denied without a network"),
-        plan_case("TC-P04", "Measures survive a reload"),
+        plan_case("TC-P04", "Measures survive a reload", "Reload the route."),
     ]
     plan_f_body = ("## Overview\n\nPlan F overview paragraph.\n\n## Test Cases\n\n"
                    + "".join(plan_f_cases)
@@ -835,7 +837,8 @@ def main():
                                  "Tools": "Merge Routes", "IssueRefs": ""}},
         {"id": "804", "fields": {"Title": "TC-P04 — Measures survive a reload",
                                  "DocumentLookupId": 27, "CaseKey": "27|6",
-                                 "Keywords": "measures; route", "IssueRefs": ""}},
+                                 "Keywords": "measures; route", "IssueRefs": "",
+                                 "CaseText": "Do the thing for measures survive a reload. Reload the route."}},
         # leg 20: an untagged Plan F case sharing only the word "route"
         # with story 12 — under the retrieval threshold, never sent
         {"id": "806", "fields": {"Title": "TC-P01 — Create a route",
@@ -2034,33 +2037,35 @@ def main():
           and "--- draft:" not in r.stderr, r.stderr[-400:])
     state.gen_text = wrap(GOOD_DRAFT)
 
-    # ---- leg 20: the RELATED CASES retrieval lane (v1.13) ----------
+    # ---- leg 20: the RELATED CASES retrieval lane (v1.14) ----------
     print("== leg 20: related cases")
     r = run_job(cfg_main, ["--story", "12", "--dry-run"])
     summ = summary_of(r.stdout)
     rc = state.gen_last_inputs.get("RelatedCases", "")
-    p02 = "--- RELATED CASE: Plan F — surface Pro — TC-P02 — Merge keeps measures ---"
-    p04 = "--- RELATED CASE: Plan F — surface Pro — TC-P04 — Measures survive a reload ---"
-    check("related cases: Plan F's tagged cases sent, tools-scored case first",
-          r.returncode == 0 and p02 in rc and p04 in rc and rc.index(p02) < rc.index(p04)
-          and summ.get("relatedCases") == "2" and int(summ.get("relCaseChars", "0")) == len(rc),
-          rc[:400] + str(summ))
-    check("related cases: section text sliced from the plan's sidecar",
-          "**Expected Result:** Merge keeps measures succeeds." in rc
-          and "**Steps:**" in rc, rc[:600])
-    check("related cases: in-lane plans and below-threshold cases excluded",
-          "Plan A" not in rc and "Plan B" not in rc and "TC-P01" not in rc
-          and "Plan C" not in rc and "Plan D" not in rc, rc)
-    check("related cases: progress line names the plans drawn from",
-          "progress: related cases — 2 (" in r.stderr and "from plans [27]" in r.stderr,
+    head = "--- RELATED PLAN: Plan F — surface Pro (doc 27; 3 indexed cases; relevance "
+    p02, p04 = "### TC-P02 — Merge keeps measures", "### TC-P04 — Measures survive a reload"
+    check("related cases: Plan F ranked in, its two matching cases sent with text, tools-scored first",
+          r.returncode == 0 and head in rc and p02 in rc and p04 in rc and rc.index(p02) < rc.index(p04)
+          and summ.get("relatedCases") == "2" and summ.get("relatedPlans") == "1"
+          and int(summ.get("relCaseChars", "0")) == len(rc), rc[:500] + str(summ))
+    check("related cases: section text sliced from the plan's sidecar, heading line dropped",
+          "**Expected Result:** Merge keeps measures succeeds." in rc and "**Steps:**" in rc
+          and rc.count("### TC-P02") == 1, rc[:600])
+    check("related cases: the untagged case rides the title index only; in-lane plans excluded",
+          "Other cases in this plan: TC-P01 — Create a route" in rc
+          and rc.index("Other cases in this plan:") > rc.index(p04)
+          and "Plan A" not in rc and "Plan B" not in rc and "Plan C" not in rc and "Plan D" not in rc, rc)
+    check("related cases: progress line names the plan and its relevance",
+          "progress: related cases — 2 (" in r.stderr and "from 1 plan(s) [27:" in r.stderr,
           r.stderr[-500:])
     cfg_rc1 = write_cfg("config-rc1.json",
-                        testplangen={"neighborCap": 8, "relatedCasesSlots": 1})
+                        testplangen={"neighborCap": 8, "relatedCasesPerPlan": 1})
     r = run_job(cfg_rc1, ["--story", "12", "--dry-run"])
     rc = state.gen_last_inputs.get("RelatedCases", "")
-    check("relatedCasesSlots caps the lane in score order",
+    check("relatedCasesPerPlan caps the bodies per plan; the rest join the title index",
           r.returncode == 0 and p02 in rc and p04 not in rc
-          and summary_of(r.stdout).get("relatedCases") == "1", rc[:300])
+          and "TC-P04 — Measures survive a reload" in rc.split("Other cases in this plan:")[1]
+          and summary_of(r.stdout).get("relatedCases") == "1", rc[:400])
     cfg_rc0 = write_cfg("config-rc0.json",
                         testplangen={"neighborCap": 8, "relatedCases": False})
     r = run_job(cfg_rc0, ["--story", "12", "--dry-run"])
@@ -2074,7 +2079,7 @@ def main():
     r = run_job(cfg_ant, ["--story", "12", "--dry-run"])
     prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
     check("anthropic prompt: the RELATED CASES block, the VARIATION clause, no leftover placeholder",
-          r.returncode == 0 and "<<<RELATED CASES BEGIN>>>\n--- RELATED CASE: Plan F" in prompt
+          r.returncode == 0 and "<<<RELATED CASES BEGIN>>>\n--- RELATED PLAN: Plan F" in prompt
           and "**VARIATION**" in prompt and "{RelatedCases}" not in prompt
           and "(related case)" in prompt, prompt[-600:])
     r = run_job(cfg_main, ["--story", "12", "--preview"])
