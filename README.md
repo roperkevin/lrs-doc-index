@@ -67,7 +67,7 @@ keeps the old yaml-on-top layout).
 | prompts/DocIndex_Prompt.md | AI Builder prompt (deployed copy) | v1.3 |
 | prompts/KeywordCuration_Prompt.md | Keyword curation prompt (deployed copy) | v1.0 |
 | prompts/TestPlanGen_Prompt.md | Test-plan generation prompt (deployed copy; tenant paste pending — v1.10 lets a case close with a story diagram's image link copied verbatim, the FIGURES rule; v1.9 makes every case's Trace cite a story statement, exemplar/reference support additive only; v1.8 makes cases name concrete fixture data with after-state tables) | v1.10 |
-| schemas/SPList_*.csv | The seven list definitions (lrsworkspace; Test Cases is authored — create with Case_Index_Plan phase 2, Local_Setup §12) | — |
+| schemas/SPList_*.csv | The seven list definitions (lrsworkspace; Test Cases created 2026-09-05, GUID in config.sample.json) | — |
 | docs/SP_Adaptation_Notes.md | Architecture + SharePoint quirks | — |
 | docs/Diagram_Style_Framework.md | The one visual language for slide diagrams: palette, hue-family colour mapping, geometry-led roles, component standardisation | v1.0 |
 | agent/QA_Agent_Instructions_v1_1.md | Q&A agent instructions (Copilot Studio; deployed) | v1.1 |
@@ -121,7 +121,7 @@ keeps the old yaml-on-top layout).
 | local/Hosted_Runner.md | Remote-files mode + hosted GitHub Actions sweep — setup, prerequisites, and the credentials policy decision | v1.39 |
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
-| local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (ALL phases shipped: schema, parser, gate, sweep wiring incl. `--recase`, the `_Case Catalog.md` browse page, gap-report case tracing; tenant list creation per Local_Setup §12 is the one open step) | — |
+| local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (ALL phases shipped: schema, parser, gate, sweep wiring incl. `--recase`, the `_Case Catalog.md` browse page, gap-report case tracing; list created on tenant — the open step is the sweep machine's config line + one `--recase --live`, Local_Setup §12) | — |
 | local/harness/check_caseindex.py | Case-parser gate (both case shapes via the presentation layer's own emission, issue refs, replace-set planner; 45 checks; CI) | v1.0 |
 | review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |
 | STATUS_history.md | The per-day STATUS narratives, moved out of STATUS.md's head (2026-09-03) | — |

@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-05z** — see "Current state" below.
+Last updated: **2026-09-05aa** — see "Current state" below.
 Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
 review r7): this file keeps the deployed-truth TABLES; the story of
 each change belongs to the component CHANGES files.
@@ -176,6 +176,18 @@ each change belongs to the component CHANGES files.
   ALL Case_Index_Plan phases are now built; the plan's tenant step
   (list + GUID + one `--recase --live`) stays queued behind auth
   (action 12).
+- **2026-09-05aa (Test Cases list CREATED on tenant, owner):** the
+  seventh list exists on lrsworkspace per
+  `schemas/SPList_TestCases.csv` — GUID
+  `ae9374ab-295a-4321-8afa-a83a08e17711`, recorded in
+  `config.sample.json` beside the other six. The remaining go-live
+  is machine + run work, still queued behind auth (action 12): copy
+  the `testCases` line into the sweep machine's `config.json`, then
+  `sweep.mjs --config config.json --recase --live` once (dry first
+  if you want the planned counts); the nightly sweep, the
+  `_Case Catalog.md` page, and the gap report's case tracing all
+  activate from that config line with no other steps. Smoke row 9
+  becomes runnable after the backfill.
 
 ## Core sweep
 

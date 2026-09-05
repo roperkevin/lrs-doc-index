@@ -14,6 +14,7 @@
       "docKeywords": "4eabc799-c856-49ea-bf25-65942b363ec6",
       "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
       "issueRefs": "4d0e6561-80e3-49f4-aa20-e5889cc88414",
+      "testCases": "ae9374ab-295a-4321-8afa-a83a08e17711",
       "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
     }
   },
@@ -89,7 +90,7 @@
     "relatedShortlist": 12,
     "maxCellsWorkbookDump": 60000,
     "caseIndex": {
-      "$comment": "Test-case indexing (Case_Index_Plan.md; sweep v1.42). OFF until sharePoint.lists.testCases carries the Test Cases list GUID (create the list per Local_Setup §12 / schemas/SPList_TestCases.csv — classic-created lookup; then backfill once with `sweep.mjs --recase --live`). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text.",
+      "$comment": "Test-case indexing (Case_Index_Plan.md; sweep v1.42). Enabled by sharePoint.lists.testCases carrying the Test Cases list GUID — the list was created on lrsworkspace 2026-09-05 per schemas/SPList_TestCases.csv and its GUID is in the lists block above; a machine config missing the key indexes documents normally with one loud note. Backfill once with `sweep.mjs --recase --live` (Local_Setup §12). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text.",
       "kinds": ["Test Plan"],
       "caseTextCap": 4000
     },

@@ -833,10 +833,14 @@ Setup, once:
    `schemas/SPList_TestCases.csv`. The `Document` lookup targets Doc
    Index and MUST be created via CLASSIC list settings (the standing
    modern-lookup quirk: silent write drops, spinning pickers).
-2. Paste the new list's GUID into config as
-   `sharePoint.lists.testCases`. Absent or empty GUID = feature off:
-   the sweep prints one loud note and indexes documents normally —
-   a case-write failure never fails the document row.
+   DONE 2026-09-05 — the live list's GUID is
+   `ae9374ab-295a-4321-8afa-a83a08e17711` (recorded in
+   `config.sample.json` with the other six).
+2. Carry the GUID into the sweep machine's `config.json` as
+   `sharePoint.lists.testCases` (copy the line from the sample).
+   Absent or empty GUID = feature off: the sweep prints one loud
+   note and indexes documents normally — a case-write failure never
+   fails the document row.
 3. Knobs under `sweep.caseIndex`: `kinds` (default
    `["Test Plan"]` — which DocKinds get case rows) and `caseTextCap`
    (4000 — the per-case skim-text bound).

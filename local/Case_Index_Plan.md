@@ -16,10 +16,12 @@ case-level tracing in `--gap-report` (testplangen.mjs v1.8 —
 section, the flagged gap-with-cases line), and smoke row 9
 (`agent/QA_Smoke_Questions.md` v1.1). Gates:
 `check_local_sweep.py` **235/235**, `check_testplangen.py`
-**141/141**, `check_caseindex.py` 45/45 — all CI. What remains is
-TENANT work, queued behind auth restore (STATUS action 12): create
-the Test Cases list (Local_Setup §12, classic lookup), paste the
-GUID, run `--recase --live` once. This document stays the design
+**141/141**, `check_caseindex.py` 45/45 — all CI. The Test Cases
+list was CREATED on the tenant 2026-09-05 (GUID
+`ae9374ab-295a-4321-8afa-a83a08e17711`, in `config.sample.json`);
+what remains, queued behind auth restore (STATUS action 12), is the
+sweep machine's config line plus one `--recase --live`
+(Local_Setup §12). This document stays the design
 record, the `Local_TestPlanGen_Plan.md` precedent; what remains
 below it is the record of the decisions, not backlog — except the
 "Queued, NOT in this plan's phases" list, which stays deliberately
