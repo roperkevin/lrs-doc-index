@@ -552,7 +552,23 @@ sidecar library; the sidecars ARE the retrieval source):
      authored. `testplangen.maxTokens` (default 32000) bounds the
      reply; a token-truncated draft loses its END marker and fails
      CLOSED, loudly.
-2. Dry run against a real story:
+2. **Preview first (v1.10 — zero AI spend):**
+   `node --experimental-strip-types local\testplangen.mjs --config local\config.json --story <docId> --preview`
+   runs everything a generation does up to the model call — the
+   guard, the lookup, the pins, the remote mirror, every lane, the
+   provider resolution (and the aibuilder model-id check) — then
+   writes the five prompt inputs to workDir
+   (`testplangen-preview-<stamp>.md`, one delimited block per input
+   with its size) and stops. The summary line keeps the lane
+   counters (`neighbors= exemplars= references= exChars= …`) and adds
+   `inputChars= provider= preview=1`. This is the first-run check on
+   any machine: auth, config, the sidecar mapping, and the related
+   routing are all proven before a credit is spent, and the inputs
+   file shows exactly which exemplar/reference bodies the model
+   would see — tune caps or pins on it, then generate. Manual runs
+   only (not with `--auto`/`--gap-report`/`--models`); `--help`
+   prints the usage.
+3. Dry run against a real story:
    `node --experimental-strip-types local\testplangen.mjs --config local\config.json --story <docId> --dry-run`
    — instead of a Doc Index row id, `--issue <n>` (a devtopia issue
    number, `#`-prefix tolerated) or `--title "<words>"` resolve the
@@ -573,8 +589,11 @@ sidecar library; the sidecars ARE the retrieval source):
    (`TestPlanGen_Setup.md` §3 G13; `neighbors=0` on a story with
    plain peers means its sidecar's `related:` line is stale — let
    the nightly backfill converge, or reindex the story).
-3. `--live` writes the draft to
-   `Shared Documents/Test Plan Drafts/TestPlanDraft__doc<ID>__<stamp>.md`.
+4. `--live` writes the draft to
+   `Shared Documents/Test Plan Drafts/<story stem>--draft-<yyyymmdd-hhmmss>.md`
+   (the story sidecar's stem, v2.30; seconds since v1.10 so two runs
+   on one story inside a minute never overwrite each other — drafts
+   stack by design, §4 housekeeping deletes them).
    Review per `TestPlanGen_Setup.md` §4 (start from the Coverage
    Map — and from the draft's own `[!IMPORTANT]` verifier block when
    one is present), finalize, upload to the source library; the
@@ -706,8 +725,9 @@ sweep). Guard rails, all forced or built in:
   nothing.
 - **Budget**: `autoMaxPerRun` (3) caps model calls per run; further
   gap stories defer to the next night (`deferred=` in the summary).
-- **Idempotency**: a story with ANY existing
-  `TestPlanDraft__doc{ID}__*` file in the drafts folder is skipped —
+- **Idempotency**: a story with ANY existing `<stem>--draft-*.md`
+  file (or a legacy `TestPlanDraft__doc{ID}__*` one) in the drafts
+  folder is skipped —
   deleting the draft after finalize (§4 housekeeping) is what
   re-arms auto-drafting for that story; `--force` disables the skip
   for one run.
@@ -799,6 +819,44 @@ per-item Get calls; the G6 fallback orders by SourceModified where
 the flow orders by list Modified (same newest-first intent); a story
 sidecar missing from the synced library is a hard error naming the
 sync, not a silent degrade.
+
+**`--figures` — generated figures** (v1.11, `testplangen/CHANGES.md`
+v2.32; or `testplangen.figures: true`): one more model call after
+the draft is verified. `prompts/TestPlanFigures_Prompt.md` reads the
+draft, selects the cases a schematic would help (measure geometry,
+state change, topology, temporality, interaction; UI/validation-only
+cases, variants, story-figure duplicates and anything ungrounded are
+excluded; at most six) and emits a figure SPEC per case — the model
+never draws. `local/lib/figurespec.mjs` checks every spec against
+the case's own section and the Setup tables (every id a whole word
+there, every measure a value there and inside its route's range, a
+closed vocabulary of kinds/tones/marks) and DROPS any that fails,
+then renders the survivors to SVG in the SlideFigures palette as the
+draft's siblings (`<draft stem>--fig-<case>.svg`; dry runs write
+them beside the local copy) linked from a `## Generated Figures`
+addendum with caption, rule, the dropped specs' findings and the
+model's not-illustrated list. The draft body is untouched; the pass
+fails soft (a bad reply skips it, the draft still lands —
+`genFigures=<rendered>/<proposed>` in the summary, every spec in the
+run log). Transport: the anthropic lane executes the repo prompt
+verbatim (`figuresMaxTokens`, 8000); the aibuilder lane needs
+`llm.figuresModelId` and refuses before the generation spend without
+it (no tenant prompt exists yet — set `testplangen.provider` to
+`anthropic` for the pass). Manual runs only. To put the SVGs on
+slides today, run `svg2pptx.mjs` on them; draft2pptx's `--media`
+still renders story `**Figure:**` lines only.
+
+**No OneDrive on this machine?** (v1.10) Set `sweep.remoteFiles:
+true` — the sweep's v1.39 remote-files mode (§7, `Hosted_Runner.md`)
+— and the run mirrors the sidecar library down into
+`paths.sidecarLibrary` at start through the same `RemoteLibrary` the
+sweep uses, sharing its eTag manifest (`workDir/mirror-manifest.json`),
+so a run after the nightly sweep downloads nothing and the lanes are
+byte-identical to a synced-folder run (`remote mirror: N sidecar
+file(s), M downloaded` on stderr). Lists stay read-only; the drafts
+folder write is unchanged. Without the flag, an empty workspace
+refuses with the sidecar-not-found message, which now names this
+switch.
 
 **The Test Cases lane** (v1.9, `testplangen/CHANGES.md` v2.30) —
 once §12's list GUID is in config, the sweep's per-case index feeds
