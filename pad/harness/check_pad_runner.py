@@ -3,7 +3,7 @@
 Proves the runner drives the UNMODIFIED scripts/ versions correctly:
 
   1. all seven op shapes execute through one batch job file
-     (ziptext pptx + docx, media, regex, workbookdump, related
+     (ziptext pptx + docx, media, shapes, regex, workbookdump, related
      shortlist + final, sidecarpatch) with zero op failures
   2. spot behavior: extraction text/kind/props, media count, regex
      ids + slug, WorkbookDump GFM (shared string, number, date
@@ -176,6 +176,7 @@ def main():
              "mediaPrefix": "../media/doc42_"},
             {"id": "zt-docx", "op": "ziptext", "zipFile": docx},
             {"id": "media", "op": "media", "zipFile": pptx},
+            {"id": "shapes", "op": "shapes", "zipFile": pptx},
             {"id": "regex", "op": "regex",
              "fileName": "ExB - Fixture Doc V3.pptx",
              "content": "#456 and https://devtopia.esri.com/A/b/issues/26161",
@@ -237,6 +238,8 @@ def main():
         else md["images"][0].get("base64", "")) == PNG
         if md["count"] == 1 and any(k in md["images"][0] for k in ("b64", "base64"))
         else True)
+    sh = by_id["shapes"]["result"]
+    check("shapes: a one-textbox slide is no drawing", sh["count"] == 0 and sh["drawings"] == [], str(sh)[:200])
     rx = by_id["regex"]["result"]
     check("regex found ids", rx["idCount"] >= 2, json.dumps(rx)[:200])
     check("regex slug nonempty", isinstance(rx["slug"], str) and rx["slug"] != "")

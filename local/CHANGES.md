@@ -1,5 +1,81 @@
 # Local sweep — release notes
 
+## sweep v1.61 (2026-09-05 — drawn shapes and text; ShapeExtract v1.0, figureindex v1.2, indexpages v1.4, ops v1.1)
+
+Owner request: "we need to extract drawn shapes and text". Until now a
+slide's drawing layer reached the index only as ZipTextExtract's
+`[figure: …]` label line; the geometry, fills, arrows and the words in
+the boxes were lost (the v1.58 removal took the stylised SVG redraw
+with it). This round extracts the drawing FAITHFULLY:
+
+- **`scripts/ShapeExtract.ts`** (new, ES2017, zero dependencies; the
+  shared zip reader under the KEEP-IN-SYNC banner): per pptx slide
+  that carries a drawing — at least three drawn primitives (a shape
+  with a visible fill or outline, a connector, a freeform) — one SVG
+  of the drawing layer at the shapes' TRUE positions and sizes:
+  preset geometries as their primitives (rect, rounded rect with its
+  adj radius, ellipse, diamond, triangles, block arrows, chevrons,
+  hexagons, parallelograms, terminators… anything else as its box
+  with `data-prst`), freeform custGeom paths, groups through their
+  child-space transform, rotations, fills / outlines / dash patterns
+  / arrowheads with colours resolved through the deck's own theme
+  (lumMod / lumOff / tint / shade; p:style lnRef / fillRef / fontRef
+  fallbacks), and every shape's text wrapped inside its box the way
+  PowerPoint lays it out. Placeholders never draw (they are prose); a
+  plain text box is a label and renders on a qualifying slide;
+  tables / charts / SmartArt are not drawn; a pasted picture renders
+  as a placeholder box that also references the sibling picture file
+  by basename (an annotated screenshot keeps its annotations in
+  place). Slides are numbered in presentation order like
+  ZipTextExtract's headings. Alongside the SVG: **`connections`** —
+  the connectors PowerPoint glued to shapes (`a:stCxn` / `a:endCxn`)
+  as `A → B` text (`—label→` for a labelled connector, `←`/`↔` by
+  arrowhead) — and **`labels`**, every shape's text in reading order.
+  Bounded: 96 drawings per deck, 400 shapes per slide, 250 KB per
+  SVG; the rest is listed in `skipped`.
+- **Sweep**: the `shapes` op runs after ZipTextExtract on every pptx
+  extraction — index AND `--reformat` (drawings are derived, cheap,
+  and follow the renderer) — unless `sweep.drawings: false`.
+  `placeDrawings` (figureindex v1.2) links each drawing at the end of
+  its slide's section, before its Notes, followed by a
+  `[connections: A → B · …]` line; prettifyMedia then names it with
+  the pictures (`fig-NN-slide-KK-<slug>.svg`) and the SVG's picture
+  hrefs are rewritten to the standardized names. `writeMedia` no
+  longer rewrites byte-identical files (a reformat's regenerated
+  drawings are not uploads). Counters `drawings` (placed) and
+  `drawings_written` (reformat).
+- **Figures list**: Kind **`drawing`** — an `.svg` link is a rendered
+  drawing; when its section also carries the `[figure: …]` label line
+  the two FOLD into one row (file from the drawing, Caption from the
+  labels), so a diagram is one figure whether or not it could be
+  drawn; a label-less drawing takes its connections as Caption; the
+  connections line stays in Context; Width/Height from the SVG's own
+  attributes. Title `Drawing N — …`. Tenant: add `drawing` to Kind.
+  `_Figure Catalog.md` links drawings and counts them per document.
+- `pad/runner/ops.mjs`: the `shapes` op (`ShapeExtract.ts`, zip in).
+- Gates: new `review/harness/check_shapes.py` **28/28** (CI
+  fixture-free: qualification + presentation order, geometry + style
+  incl. theme tints / style refs / group transform + rotation /
+  freeform / picture href, text wrapping + colours, connectors +
+  connections string, labels, viewBox crop), `check_figureindex.py`
+  **61/61** (placeDrawings placement / idempotency / naming, the
+  drawing fold, connections caption + context, SVG sizing),
+  `check_local_sweep.py` (a drawing slide on the alpha fixture: SVG
+  on disk with its data attributes, body link + labels + connections,
+  the folded drawing row with size and hyperlink, catalog, reformat
+  regenerates without rewriting, refigure / icon / missing-column
+  legs on two rows), `check_pad_runner.py` (the op on a drawing-less
+  slide), `check_typecheck.py` (ShapeExtract at ES2017).
+- Not in this round: svg2pptx.mjs / draft2pptx `--media` read the
+  removed renderer's SVG vocabulary and will not convert these
+  drawings back into editable shapes (the drawings carry `data-prst`
+  and plain SVG primitives — a converter for them is a separate
+  decision); SmartArt and chart frames stay undrawn.
+
+ROLLOUT: add `drawing` to the Figures list's Kind choices;
+`--reformat --live` (every pptx gains its drawings and connections
+lines; no AI) then `--refigure --live`.
+
 ## sweep v1.60 (2026-09-05 — figureindex v1.1, tuned on the first live Figures export)
 
 The first `Figures` export after the rollout (1,302 rows / 139

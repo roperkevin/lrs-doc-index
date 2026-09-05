@@ -1,6 +1,24 @@
 /**
- * figureindex.mjs v1.1 — figures (pasted pictures and drawn diagrams)
+ * figureindex.mjs v1.2 — figures (pasted pictures and drawn diagrams)
  * out of a document, two halves. Pure module, no I/O, no AI.
+ *
+ * v1.2 (FigureIndexVersion bump — reflow with `sweep.mjs --refigure`;
+ * sweep v1.61 / ShapeExtract v1.0 — drawn shapes and text):
+ *  - `placeDrawings(docText, drawings)`: the drawings ShapeExtract
+ *    returns (one SVG per slide that carries a drawing, plus the glued
+ *    connections as text) are linked into the extracted text at the
+ *    end of their slide's section — before its Notes — as an image
+ *    link on the media placeholder (so prettifyMedia names them
+ *    `fig-NN-slide-KK-<slug>.svg` with the pictures) followed by a
+ *    `[connections: A → B · …]` line when the drawing has any.
+ *  - Kind `drawing`: an `.svg` link is a rendered drawing. When its
+ *    section also carries a `[figure: …]` label line (ZipTextExtract's
+ *    collapse of the same shapes' short labels) the two fold into ONE
+ *    row — the file from the link, the Caption from the labels — so a
+ *    diagram is one figure whether or not it could be drawn. The
+ *    `[connections: …]` line stays in the row's Context (it is prose
+ *    to the skim), and a drawing with no label line takes it as its
+ *    Caption. Sizes come from the SVG's own width/height.
  *
  * v1.1 (FigureIndexVersion bump — reflow with `sweep.mjs --refigure`;
  * tuned on the first live export, 1,302 rows / 139 documents):
@@ -57,8 +75,8 @@
 import { MEDIA_PLACEHOLDER, kebab } from "./slug.mjs";
 import { caseTags, diffCaseRows, slugger } from "./caseindex.mjs";
 
-export const FIGURE_INDEX_VERSION = "1.1";
-export const FIGURE_KINDS = ["image", "diagram", "icon"];
+export const FIGURE_INDEX_VERSION = "1.2";
+export const FIGURE_KINDS = ["image", "diagram", "icon", "drawing"];
 /** A picture this small on its longest side is an icon, not a figure. */
 export const ICON_MAX = 48;
 export const FORMATS = ["png", "jpg", "gif", "bmp", "svg", "other", "none"];
@@ -214,6 +232,61 @@ export function isPrettyName(name) {
   return /^fig-\d{2,}(?:-slide-\d{2,})?(?:-[a-z0-9-]+)?\.[a-z0-9]+$/.test(String(name || ""));
 }
 
+/**
+ * placeDrawings(docText, drawings) → { text, placed }
+ *
+ * `drawings` are ShapeExtract's `{ slide, name, alt, connections }`
+ * records; `docText` is ZipTextExtract's output (headings `## Slide N`
+ * / `## Slide N — title`, media links on MEDIA_PLACEHOLDER). Each
+ * drawing whose slide heading exists is linked at the end of that
+ * slide's section — before a `### Notes` sub-section — as
+ * `![<alt>](<placeholder><name>)` plus a `[connections: …]` line when
+ * it has any; `placed` lists the names that found their slide (the
+ * caller writes exactly those files). Idempotent: a link already
+ * present is not added twice.
+ */
+export function placeDrawings(docText, drawings) {
+  const src = String(docText ?? "");
+  const placed = [];
+  if (!drawings || !drawings.length) return { text: src, placed };
+  const lines = src.split("\n");
+  // slide number -> its section's line range (and its Notes line)
+  const sections = new Map();
+  let cur = null;
+  for (let i = 0; i < lines.length; i++) {
+    const hm = /^## Slide (\d+)\b/.exec(lines[i]);
+    if (hm) {
+      if (cur) cur.end = i;
+      cur = { start: i, end: lines.length, notes: -1 };
+      sections.set(parseInt(hm[1], 10), cur);
+    } else if (/^## /.test(lines[i]) && cur) {
+      cur.end = i;
+      cur = null;
+    } else if (cur && cur.notes < 0 && /^### Notes\b/.test(lines[i])) {
+      cur.notes = i;
+    }
+  }
+  const inserts = [];
+  for (const d of drawings) {
+    const sec = sections.get(Number(d.slide));
+    if (!sec || !d.name) continue;
+    placed.push(d.name);
+    if (src.includes(`(${MEDIA_PLACEHOLDER}${d.name})`)) continue;
+    const link = `![${altText(d.alt || `Slide ${d.slide} drawing`)}](${MEDIA_PLACEHOLDER}${d.name})`;
+    const block = ["", link];
+    if (d.connections) block.push(`[connections: ${bracketLine(d.connections)}]`);
+    block.push("");
+    inserts.push({ at: sec.notes >= 0 ? sec.notes : sec.end, block });
+  }
+  // bottom-up, so earlier line indexes stay valid
+  inserts.sort((a, b) => b.at - a.at);
+  for (const ins of inserts) lines.splice(ins.at, 0, ...ins.block);
+  return { text: lines.join("\n").replace(/\n{3,}/g, "\n\n"), placed };
+}
+
+/** The inside of a bracketed structure line: one line, no `]`. */
+const bracketLine = (s) => String(s || "").replace(/[\r\n]+/g, " ").replace(/\]/g, ")").replace(/\s+/g, " ").trim();
+
 // ---- the index ----------------------------------------------------------
 
 /**
@@ -223,6 +296,13 @@ export function isPrettyName(name) {
  */
 export function imageSize(buf) {
   const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf || []);
+  // an SVG (a rendered drawing): its own width/height attributes
+  if (b.length > 5 && b[0] === 0x3c) {
+    const head = String.fromCharCode.apply(null, Array.from(b.subarray(0, Math.min(b.length, 600))));
+    const sm = /<svg\b[^>]*\bwidth="(\d+(?:\.\d+)?)"[^>]*\bheight="(\d+(?:\.\d+)?)"/.exec(head);
+    if (sm) return { width: Math.round(parseFloat(sm[1])), height: Math.round(parseFloat(sm[2])) };
+    return null;
+  }
   const be32 = (i) => ((b[i] << 24) >>> 0) + (b[i + 1] << 16) + (b[i + 2] << 8) + b[i + 3];
   const be16 = (i) => (b[i] << 8) + b[i + 1];
   const le16 = (i) => b[i] + (b[i + 1] << 8);
@@ -315,6 +395,8 @@ export function extractFigures(bodyText, opts = {}) {
     const secLines = lines.slice(sec.start, sec.end);
     let context = null; // computed lazily, once per section
     let fenced = false;
+    let pendingDiagram = -1; // this section's label-line row, until a drawing claims it
+    let connections = "";
     for (const raw of secLines) {
       const s = raw.trim();
       if (s.startsWith("```")) { fenced = !fenced; continue; }
@@ -334,6 +416,13 @@ export function extractFigures(bodyText, opts = {}) {
       if (s.startsWith("[figure:") && s.endsWith("]")) {
         push({ kind: "diagram", fileName: "", filePath: "", format: "none",
                caption: cap(s.slice("[figure:".length, -1).trim(), 255), alt: "" });
+        pendingDiagram = figures.length - 1;
+        continue;
+      }
+      if (s.startsWith("[connections:") && s.endsWith("]")) {
+        connections = s.slice("[connections:".length, -1).trim();
+        const last = figures[figures.length - 1];
+        if (last && last.kind === "drawing" && !last.caption) last.caption = cap(connections, 255);
         continue;
       }
       let m;
@@ -348,18 +437,33 @@ export function extractFigures(bodyText, opts = {}) {
         // a meaningful alt text is a caption; the file name and the
         // generated `Figure N — …` form are not
         const alt = m[1].trim();
-        const generated = alt === fileName || /^Figure \d+\b/.test(alt) || alt === "fig" || alt === "figure";
-        push({ kind: "image", fileName, filePath, format: formatOf(fileName),
+        const generated = alt === fileName || /^(Figure|Icon|Drawing) \d+\b/.test(alt) ||
+          /^Slide \d+ drawing\b/.test(alt) || alt === "fig" || alt === "figure";
+        const format = formatOf(fileName);
+        if (format === "svg") {
+          // a rendered drawing (v1.2): the section's label line, if
+          // any, is the SAME diagram — fold them into one row
+          if (pendingDiagram >= 0) {
+            const row = figures[pendingDiagram];
+            row.kind = "drawing"; row.fileName = fileName; row.filePath = filePath; row.format = "svg";
+            pendingDiagram = -1;
+            continue;
+          }
+          push({ kind: "drawing", fileName, filePath, format: "svg",
+                 caption: cap(connections, 255), alt: cap(generated ? "" : alt, 255) });
+          continue;
+        }
+        push({ kind: "image", fileName, filePath, format,
                caption: "", alt: cap(generated ? "" : alt, 255) });
       }
     }
   }
   return {
     figures: figures.map((f) => {
-      const size = f.kind === "image" && typeof opts.sizeOf === "function" ? opts.sizeOf(f.filePath) : null;
+      const size = (f.kind === "image" || f.kind === "drawing") && typeof opts.sizeOf === "function" ? opts.sizeOf(f.filePath) : null;
       // v1.1: a tiny picture is an icon (a docx page's button glyphs),
       // decided from the header on disk — unknown size stays an image
-      if (size && Number.isFinite(size.width) && Number.isFinite(size.height) &&
+      if (f.kind === "image" && size && Number.isFinite(size.width) && Number.isFinite(size.height) &&
           Math.max(size.width, size.height) <= ICON_MAX) {
         f = { ...f, kind: "icon" };
       }
@@ -376,7 +480,7 @@ export function extractFigures(bodyText, opts = {}) {
         bytes: size && Number.isFinite(size.bytes) ? size.bytes : null,
         tools: tags.tools,
         keywords: tags.keywords,
-        title: cap(`${f.kind === "icon" ? "Icon" : "Figure"} ${f.ordinal}${label ? " — " + label : ""}`, 255),
+        title: cap(`${f.kind === "icon" ? "Icon" : f.kind === "drawing" ? "Drawing" : "Figure"} ${f.ordinal}${label ? " — " + label : ""}`, 255),
       };
     }),
   };

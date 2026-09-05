@@ -246,9 +246,11 @@ export function writeFigureCatalog(cfg, rows, figureRowsByDoc) {
     const target = folder ? `${folder}/${file}` : file;
     const nImg = figs.filter((f) => f.Kind === "image").length;
     const nIco = figs.filter((f) => f.Kind === "icon").length;
+    const nDrw = figs.filter((f) => f.Kind === "drawing").length;
     images += nImg;
-    const nDia = figs.length - nImg - nIco;
+    const nDia = figs.length - nImg - nIco - nDrw;
     const counts = [`${nImg} image${nImg === 1 ? "" : "s"}`];
+    if (nDrw) counts.push(`${nDrw} drawing${nDrw === 1 ? "" : "s"}`);
     if (nDia) counts.push(`${nDia} diagram${nDia === 1 ? "" : "s"}`);
     // icons (figureindex v1.1: button glyphs ≤ 48 px) are counted, not
     // listed — they are files, not figures a reader browses for
@@ -265,7 +267,7 @@ export function writeFigureCatalog(cfg, rows, figureRowsByDoc) {
         const at = url.indexOf("/media/");
         const rel = at >= 0 ? url.slice(at + 1) : "";
         const name = clip(f.FileName, 60);
-        const label = f.Kind === "image"
+        const label = f.Kind === "image" || f.Kind === "drawing"
           ? (rel ? `[${name}](<${decodeURIComponent(rel)}>)` : name || `Figure ${ordinalOf(f)}`)
           : `_diagram_ ${ordinalOf(f)}`;
         const section = clip(f.Section, 50) || "—";

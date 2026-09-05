@@ -32,6 +32,7 @@ jobs:
       - run: pip install PyYAML
       - run: python3 check_related.py
       - run: python3 check_regex.py
+      - run: python3 check_shapes.py
       - run: python3 ../../pad/harness/check_pad_runner.py
       - run: python3 ../../local/harness/check_local_sweep.py
       - run: python3 ../../local/harness/check_testplangen.py

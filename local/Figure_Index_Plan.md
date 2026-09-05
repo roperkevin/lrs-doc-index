@@ -236,3 +236,21 @@ reformat converges an earlier standardized name by its
 the DL-1 collapse verbatim, template assets repeat across documents
 (a cross-document flag stays deferred), and tag noise is curation
 work.
+
+## Addendum (2026-09-05) — drawn shapes and text (ShapeExtract v1.0, sweep v1.61)
+
+Owner request after the first export: "we need to extract drawn shapes
+and text". D3's `diagram` rows carried only the collapsed labels; the
+drawing itself was lost since the v1.58 removal of the stylised
+renderer. `scripts/ShapeExtract.ts` now extracts the drawing layer
+FAITHFULLY — the shapes at their true positions with their fills,
+outlines, arrows, rotations and text — as one SVG per qualifying
+slide, plus the glued connections as `A → B` words. The sweep links
+each drawing under its slide with a `[connections: …]` line, names it
+with the pictures, and the Figures row folds the label line and the
+drawing into ONE Kind `drawing` row (file + labels + connections).
+Decisions: faithful, never restyled (the removed renderer redrew;
+this one draws what the slide draws); qualification by drawn
+primitives (≥ 3), never by text; pictures as placeholders that also
+reference their sibling file; SmartArt/charts undrawn; svg2pptx not
+retargeted. Details in `local/CHANGES.md` v1.61.

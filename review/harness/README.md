@@ -7,6 +7,7 @@
 | `check_format.py` + `render_sample.py` | **live** (CI full-format) | ZipTextExtract/WorkbookDump/RegexExtract format contract |
 | `check_related.py` | **live** (CI fixture-free) | RelatedRank + SidecarPatch |
 | `check_regex.py` | **live** (CI fixture-free) | RegexExtract IdResult contract |
+| `check_shapes.py` | **live** (CI fixture-free) | ShapeExtract drawing contract (hand-written OOXML deck) |
 | `check_typecheck.py` | **live** (CI, own job) | every `scripts/*.ts` type-checks at ES2017 |
 | `../../pad/harness/check_pad_runner.py` | **live** (CI fixture-free) | PAD runner + ops.mjs loader |
 | `../../local/harness/check_local_sweep.py` | **live** (CI fixture-free) | the whole local pipeline: sweep (all lanes incl. msg/OCR), curate (+`--repoint`), gantt, auth, alerts, embeddings, remote-files mode |
