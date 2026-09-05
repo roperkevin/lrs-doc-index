@@ -1,6 +1,9 @@
 /**
  * casegrammar.mjs — the `testplan/v1` body profile and the six
  * deterministic case detectors (Sidecar_Format_Plan §4.3/§4.4, phase 3).
+ * v1.57 tuning: data tables stay prose, a name column prefixes a
+ * data-shaped test, a Type column sets the lane, duplicate titles take
+ * a suffix, Environments/Data-to-Test labels are stoplisted.
  *
  * Input: a test plan's TIDIED body (tidyBody output — `## Slide N`
  * / `## Slide N — title` sections for decks, `##`/`###` headings for
@@ -43,6 +46,9 @@ export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: 
 
 const TITLE_MAX = 80;
 const STOPLIST = /^(notes?|test notes|general notes|environments?|test environments?( & data)?|data|test data|scope|in scope|out of scope|objectives?|background|summary|assumptions?|pre-?requisites?|setup|references?|resources|automation( notes)?|documentation( impacts)?|assignment|schedule|open questions?|coverage map|tools?|story points?|dev|pe)$/i;
+// a label ABOUT the test setup rather than a test ("Environments/Data to
+// Test with", "Test data & environments", "Setup notes") stays prose too
+const STOPLIST_ANY = /\b(environments?|test data|data to test|setup|prerequisites?|assumptions|out of scope|in scope|references)\b/i;
 const POSNEG = /^(positive|negative)\b/i;
 
 // ---- small helpers ----------------------------------------------------
@@ -182,7 +188,12 @@ function tablesOf(lines) {
 
 const ID_COL = /^(#|no\.?|id|tc|test\s*case(?:\s*(?:#|id|no\.?))?|case(?:\s*(?:#|id|no\.?))?)$/i;
 const DESC_COL = /^(test|tests|test\s*description|description|scenario|case description|test scenario|steps?|action|test steps?|what to test|verify)$/i;
-const EXP_COL = /^(expected(?:\s*results?)?|result|results|response|outcome|expected outcome|expected behaviou?r)$/i;
+const EXP_COL = /^(expected(?:\s*(?:results?|output|outcome|behaviou?r))?|result|results|response|outcome|output|behaviou?r)$/i;
+const LANE_COL = /^(type|test type|classification|category|kind|case type|lane|positive\s*\/\s*negative|pos\s*\/\s*neg)$/i;
+// a description cell that is DATA, not a test: numbers, dates, times,
+// tuples, route ids, a lone token — such rows belong to a fixture table
+const DATA_CELL = /^(?:[\d\s.,:;()\/\-–+%°"']+|R\d+(?:L\d+)?|[A-Z]{1,3}\d*|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}(?::\d{2})?|(?:null|none|n\/a|yes|no|true|false|on|off))$/i;
+const wordy = (t) => (String(t).match(/[A-Za-z]{3,}/g) || []).length >= 2;
 
 /** S3 — case tables: an id column and/or a description + expected column. */
 function detectS3(unit, ctxLane) {
@@ -204,12 +215,29 @@ function detectS3(unit, ctxLane) {
       if (POSNEG.test(clean(s))) { const lp = labelParts(s); lane = lp.lane; group = lp.group; }
       break;
     }
+    const laneCol = h.findIndex((c, k) => k !== idCol && k !== descCol && k !== expCol && LANE_COL.test(c));
+    // a first text column that NAMES what the row tests ("Field",
+    // "Parameter", "Feature", "Area") prefixes a short or data-shaped
+    // description: "Confidence threshold: (0.90,1000)"
+    const nameCol = h.findIndex((c, k) => k !== idCol && k !== descCol && k !== expCol && k !== laneCol && /^(field|parameter|param|feature|area|component|widget|tool|control|setting|option|input)$/i.test(c));
+    // a table whose description column is data in most rows is a fixture
+    // table, not a case table
+    const dataRows = t.rows.filter((row) => DATA_CELL.test((row[descCol] || "").replace(/<br>/g, " ").trim()) || !wordy(row[descCol] || "")).length;
+    if (nameCol < 0 && t.rows.length && dataRows / t.rows.length > 0.5) continue;
     for (let r = 0; r < t.rows.length; r++) {
       const row = t.rows[r];
-      const desc = (row[descCol] || "").replace(/<br>/g, "; ").trim();
+      let desc = (row[descCol] || "").replace(/<br>/g, "; ").trim();
       if (!desc) continue;
+      const dataLike = DATA_CELL.test(desc) || !wordy(desc);
+      if (dataLike) {
+        const nm = nameCol >= 0 ? (row[nameCol] || "").trim() : "";
+        if (!nm) continue;                          // data with no name = not a case
+        desc = `${nm}: ${desc}`;
+      }
       const id = idCol >= 0 ? (row[idCol] || "").trim() : "";
-      const rowLane = lane !== "U" ? lane : laneOf(desc + " " + id);
+      const laneCell = laneCol >= 0 ? (row[laneCol] || "") : "";
+      const rowLane = laneCol >= 0 && laneOf(laneCell) !== "U" ? laneOf(laneCell)
+        : lane !== "U" ? lane : laneOf(desc + " " + id);
       const body = [];
       if (id) body.push(`- **ID:** ${id}`);
       if (group) body.push(`- **Group:** ${group}`);
@@ -219,7 +247,8 @@ function detectS3(unit, ctxLane) {
         body.push(`- **Expected Result:** ${(row[expCol] || "").replace(/<br>/g, "; ").trim()}`);
       }
       for (let c = 0; c < t.header.length; c++) {
-        if (c === idCol || c === descCol || c === expCol) continue;
+        if (c === idCol || c === descCol || c === expCol || c === laneCol) continue;
+        if (c === nameCol && dataLike) continue;
         const v = (row[c] || "").replace(/<br>/g, "; ").trim();
         const hdr = stripComments(t.header[c]).replace(/\*\*/g, "").trim();
         if (v && hdr) body.push(`- **${hdr}:** ${v}`);
@@ -289,7 +318,8 @@ function detectLabels(unit, ctxLane) {
         });
       });
     } else {
-      if (STOPLIST.test(label.replace(/:$/, "").trim()) || items.length < 2) return false;
+      const lbl = label.replace(/:$/, "").trim();
+      if (STOPLIST.test(lbl) || STOPLIST_ANY.test(lbl) || items.length < 2) return false;
       const steps = [];
       items.forEach((it, n) => {
         steps.push(`${n + 1}. ${clean(it.text)}`);
@@ -502,6 +532,22 @@ export function renderTestPlanBody(tidied, opts = {}) {
   const all = found.flatMap((f) => f.cases);
   if (!all.length) return { body: text, cases: [], shape: "none", profile: PROFILE };
 
+  // titles that repeat within the plan (case slides sharing a scenario,
+  // a table row repeated per slide) take their source as a suffix so
+  // the catalog reads distinct lines: "… (case 7)", "… (A-3)", "… (2)"
+  const titleCount = new Map();
+  for (const c of all) titleCount.set(c.title.toLowerCase(), (titleCount.get(c.title.toLowerCase()) || 0) + 1);
+  const dupSeen = new Map();
+  for (const c of all) {
+    const key = c.title.toLowerCase();
+    if ((titleCount.get(key) || 0) < 2) continue;
+    const n = (dupSeen.get(key) || 0) + 1;
+    dupSeen.set(key, n);
+    const caseTok = c.src.find((x) => /^case \S+$/.test(x));
+    const rowTok = c.src.indexOf("table") >= 0 ? c.src[c.src.indexOf("table") + 1] : "";
+    const tag = caseTok ? caseTok : rowTok && !/^row /.test(rowTok) ? rowTok : String(n);
+    c.title = `${c.title} (${tag})`;
+  }
   // ids per lane, document order
   const counters = { P: 0, N: 0, U: 0 };
   for (const c of all) {

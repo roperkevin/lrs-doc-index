@@ -1,5 +1,38 @@
 # Local sweep — release notes
 
+## sweep v1.57 (2026-09-05 — case grammar tuned on the first full-library export)
+
+The first `TestCases` export after the rollout (2,163 cases / 90
+plans) showed where S3 over-captured and where titles collided. Read
+from the export, fixed in `casegrammar.mjs`:
+
+- **Data tables are not case tables.** A table whose description
+  column is data in most rows (numbers, tuples, dates, times, route
+  ids, lone tokens: `16:9`, `R21`, `(0.90,1000)`) is a fixture table
+  and stays prose. 68 titles in the export were data cells.
+- **A name column prefixes a data-shaped test.** `| Field | Test |
+  Output |` rows whose test is a value read as `Confidence threshold:
+  (0.90,1000)`; a wordy test in the same table keeps its own title
+  with the field riding as a body line. `Output` / `Behaviour` now
+  count as expected-result columns (the Detect-Objects plans yielded
+  nothing before).
+- **A Type / Classification / Category column classifies the row**
+  and is not repeated in the body. 65% of the export was
+  Unspecified; tables with a lane column now land in P / N.
+- **Duplicate titles within a plan take a suffix** — `… (case 7)`,
+  `… (A-3)`, `… (2)` — so the catalog reads distinct lines (376
+  duplicates in the export).
+- **Stoplist:** `Environments`, `Data to Test with`, `Setup`,
+  `Prerequisites`, `Assumptions`, `In/Out of scope`, `References`
+  labels (anywhere in the label) are prose, not S5 cases.
+- Gate: `check_caseindex.py` 87/87 (new tuning fixture: data tables
+  stay prose, Field prefix + Output column, Type column lanes,
+  duplicate-title suffix, stoplist).
+
+Rollout: `--recase --live` re-renders every plan through the tuned
+grammar (S3 bodies are regenerated from the source on each recase);
+the 21 plans still on `deck` need `--reformat --live` first.
+
 ## sweep v1.56 (2026-09-05 — missing Test Cases columns fail soft; heading-safe src comments)
 
 - The first live run on the new code hit `CASE-INDEX ERROR … Field
