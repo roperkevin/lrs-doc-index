@@ -1,5 +1,18 @@
 # Local sweep — release notes
 
+## sweep v1.54 (2026-09-05 — `--reformat` takes the Graph download fallback)
+
+The first `--reformat --live` on the sweep machine failed every
+document with `source file not found locally`: the machine's synced
+folder is the library's `General` child, so the computed local path
+doubles that segment, and the nightly index has been covering it with
+the v1.33 Graph download fallback (`graph_downloads`) all along —
+which the reformat branch never took. It does now: a source missing
+on disk downloads on demand into the run's temp dir (counter
+`graph_downloads` on the reformat summary), same as the nightly path.
+Gate: `check_local_sweep.py` fallback leg — a reformat with the
+source moved aside re-extracts through Graph with zero errors.
+
 ## story 5 (2026-09-05 — the story/v1 profile; sweep v1.53, storyprofile v1.0, TestPlanGen local job v1.10, Sidecar_Format_Plan phase 5)
 
 - **`local/lib/storyprofile.mjs`** (new, pure): `renderStoryBody`
