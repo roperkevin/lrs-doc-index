@@ -17,6 +17,24 @@ on:
     # 00:00 UTC ≈ the 17:00 Mountain slot the pipeline has always run
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: >-
+          What to run. nightly = the normal --live sweep. The others are
+          the Sidecar_Format_Plan rollout steps (Local_Setup §13), in
+          order: reformat, rename-plan (dry table), rename, recase,
+          case-audit, normalize-cases (needs sweep.normalizeCases.enabled
+          in the config secret). Each is a standalone --live mode.
+        type: choice
+        default: nightly
+        options:
+          - nightly
+          - reformat
+          - rename-plan
+          - rename
+          - recase
+          - case-audit
+          - normalize-cases
 
 permissions:
   contents: read
@@ -58,4 +76,17 @@ jobs:
         env:
           DOCINDEX_GRAPH_SECRET: ${{ secrets.DOCINDEX_GRAPH_SECRET }}
           DOCINDEX_ALERT_WEBHOOK: ${{ secrets.DOCINDEX_ALERT_WEBHOOK }}
-        run: node --experimental-strip-types local/sweep.mjs --config local/config.hosted.json --live
+          MODE: ${{ github.event.inputs.mode || 'nightly' }}
+        run: |
+          case "$MODE" in
+            nightly)         FLAGS="--live" ;;
+            reformat)        FLAGS="--reformat --live" ;;
+            rename-plan)     FLAGS="--rename-plan" ;;
+            rename)          FLAGS="--rename --live" ;;
+            recase)          FLAGS="--recase --live" ;;
+            case-audit)      FLAGS="--case-audit --live" ;;
+            normalize-cases) FLAGS="--normalize-cases --live" ;;
+            *) echo "unknown mode: $MODE"; exit 1 ;;
+          esac
+          echo "mode=$MODE flags=$FLAGS"
+          node --experimental-strip-types local/sweep.mjs --config local/config.hosted.json $FLAGS
