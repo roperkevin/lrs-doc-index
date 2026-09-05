@@ -1,3 +1,85 @@
+# TestPlanGen v2.34 — related cases: the retrieval lane (prompt v1.11, testplangen.mjs v1.14)
+
+Owner-requested (2026-09-05), after the doc 910 review: the draft
+carried spanning-event and referent-method coverage only as
+[VERIFY] items, although the team's own cases for those dimensions
+sit in the catalog — in plans the story's `related:` routing never
+reached. Generation consumed the Test Cases index only through
+plan-level issue-id links; nothing retrieved individual cases by
+relevance. Now it does, with no file for a PE to maintain — the
+index the nightly sweep already keeps is the source:
+
+- **The lane (testplangen.mjs v1.14 — plan-first).** The unit of
+  retrieval is the PLAN, because the team's coverage of a feature
+  area lives in plans. A query is built from the story — its Tools
+  tags (×2), its Keywords tags and its title's content-word stems,
+  each weighted by rarity across the indexed cases (idf) and, for
+  keyword/title terms, by how often the story text uses it — and
+  every Indexed Test Plan with indexed cases (outside the two lanes,
+  not the story) is scored on its title stems plus the union of its
+  cases' tags, ×1.25 for the story's own surface, ×(1 + 0.1·ln(1 +
+  matching cases)) for depth; duplicate-title uploads collapse to
+  the newest. The top `relatedCasesPlans` (5) each send their
+  `relatedCasesPerPlan` (3) best-matching cases WITH section text
+  (sliced from the plan's sidecar via `caseSpans`, heading dropped;
+  the row's CaseText as fallback; a case needs two matched query
+  terms to earn a body) plus one "Other cases in this plan:" line
+  listing up to `relatedCaseTitles` (20) remaining case titles — the
+  plan's variation structure at title cost. Per-case
+  (`relatedCaseChars` 700) and per-lane (`relatedCasesCap` 18000)
+  budgets. Deterministic, read-only, no extra AI spend. Absent the
+  list, or `testplangen.relatedCases: false`, the block reads
+  "(none)" and the draft is the v1.10 draft. Gen_summary gains
+  `relatedCases= relatedPlans= relCaseChars=`; the manual progress
+  line names the plans with their relevance; `--preview` shows the
+  block. **Evaluated before release** on the owner's 2026-09-05
+  index (748 format-3.0 sidecars, 4,219 indexed cases in 142 plans)
+  for story 910: v1.13's case-first scoring (tags ×10/×3 + stems)
+  let two plans with generic tool tags fill every slot while the
+  referent-centric plans ranked 140th and lower; plan-first ranking
+  with depth puts DynSeg Merge Option, Merge Events Widget, Split
+  Event Widget, Merge Events Pro and the 64-bit OID event-editing
+  plan in the lane — the plans whose sibling case titles carry the
+  spanning / non-spanning and referent variations the doc 910 draft
+  lacked. Also seen in that evaluation and NOT fixed here: the
+  exemplar plan 906 has zero indexed cases (its slides are prose and
+  tables with no case headings — the `--normalize-cases` lane's
+  job), so the case index carries nothing from the one plan written
+  for this feature area.
+- **Prompt v1.11 — the SIXTH input `RelatedCases`** (a CONTRACT
+  change like v1.3's ReferenceText: the tenant AI Builder prompt
+  needs the parameter created before the paste; the anthropic lane
+  needs nothing). One new text block, one lane rule (treat each
+  related case exactly like an exemplar case — a pattern, never
+  feature content or tool names), the Source Case Sweep condition
+  widened to the three lanes, the CASE SWEEP covering every related
+  case with "(related case)" in its Source plan cell, and the new
+  **VARIATION clause**: a source case that exercises a behavior
+  THIS STORY STATES over a different input value — a spanning line
+  event, another referent method, point where the story says point
+  and line, an option on — is a variation of a stated behavior:
+  Applies, mint the parameterized case for that value, Trace citing
+  the story statement first and the source case second. A source
+  case whose BEHAVIOR the story never states stays Verify. The
+  story-first posture is unchanged; what changed is the definition
+  of "the story says nothing" — it no longer covers inputs the
+  story's own statement already ranges over. Section order,
+  sentinels, and the lint's structural asserts are untouched.
+- Not done here, deliberately: axis mining from sibling case titles
+  (judged too noisy for the verifier); the verifier noise items
+  from the same review (Coverage Map rows citing Automation Notes,
+  the Title Case tools heuristic on step phrases) — separate.
+
+Gate: `check_testplangen.py` **198/198** — leg 20 (Plan F's tagged
+cases sent in score order with sidecar section text and headers;
+in-lane plans' cases and a below-threshold case excluded; the slots
+knob; `relatedCases: false` and no-list "(none)"; the anthropic
+prompt carries the block, the VARIATION clause and no leftover
+placeholder; the preview shows the sixth input). Tenant step queued:
+create the `RelatedCases` parameter on the AI Builder prompt, then
+paste v1.11 (`Coverage_Runbook.md` step 2's pattern) — the cloud
+flow packages are NOT re-cut here (the local job is the live path).
+
 # TestPlanGen v2.33 — console streaming (testplangen.mjs v1.12, llm.mjs v1.7)
 
 Owner question (2026-09-05): "Is it possible to stream the LLM's

@@ -293,7 +293,7 @@ function stem(w) {
   return w;
 }
 
-function contentStems(s) {
+export function contentStems(s) {
   const out = new Set();
   for (const w of normText(s).split(" ")) {
     if (w.length >= 3 && !STOPWORDS.has(w)) out.add(stem(w));
@@ -303,7 +303,7 @@ function contentStems(s) {
 
 // a stem matches when present, or when it prefixes / is prefixed by a
 // story stem (>= 4 chars both ways — "route"/"routes", "lock"/"locked")
-function stemMatches(t, storyStems) {
+export function stemMatches(t, storyStems) {
   if (storyStems.has(t)) return true;
   if (t.length < 4) return false;
   for (const s of storyStems) {
