@@ -10,6 +10,25 @@
  * structure yields ZERO cases, never guesses (the caseHeadings
  * determinism decision, applied here).
  *
+ * v1.3 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
+ *  - `FigureLinks` (multi-line column): the case's own figure/image
+ *    links, resolved against `mediaUrlBase` (the sidecar library's
+ *    media folder URL) — newline-joined absolute URLs, so a list
+ *    view or the Q&A agent can open a case's diagrams directly.
+ *    Collapsed `[figure: …]` label lines (cloud-format sidecars)
+ *    carry no file target, so they count in FigureCount but mint no
+ *    link.
+ *  - tag ordering goes RAREST-FIRST: prepareVocab entries carry an
+ *    optional `df` (document frequency — the sweep passes each
+ *    canonical's DocKeywords junction count), and caseTags orders
+ *    matches by ascending df, then name. The first live reflow put
+ *    19 rows at the Keywords 255 cap with ALPHABETICAL truncation —
+ *    dropping distinctive late-alphabet tags while ubiquitous terms
+ *    ("route", 439/463 cases) survived; rarest-first makes the cap
+ *    cut the generic tail instead (the RelatedRank local-IDF spirit,
+ *    at write time). A term's rank can shift as the corpus grows —
+ *    the replace-set absorbs that as an occasional one-row update.
+ *
  * v1.2 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
  *  - per-case TAGS from the curated Keywords vocabulary
  *    (prepareVocab/caseTags below): canonical tool names land in a
@@ -148,6 +167,7 @@ export function prepareVocab(entries) {
       re: new RegExp(`\\b${pattern}\\b`, "i"),
       kind: String(e.kind || "topic").toLowerCase(),
       canonical: String(e.canonical || title),
+      df: Number(e.df) || 0,
     });
   }
   return { entries: compiled };
@@ -155,18 +175,25 @@ export function prepareVocab(entries) {
 
 /**
  * caseTags — the vocabulary terms present in one case's scan text.
- * Returns { tools, keywords }: sorted, deduped canonical names —
- * Kind "tool" in tools, everything else (topic, product) in keywords.
+ * Returns { tools, keywords }: deduped canonical names — Kind "tool"
+ * in tools, everything else (topic, product) in keywords — ordered
+ * RAREST-FIRST (ascending df, then name; v1.3), so a capped join
+ * truncates the ubiquitous tail, never the distinctive terms.
  */
 export function caseTags(scanText, vocab) {
-  const tools = new Set();
-  const keywords = new Set();
+  const tools = new Map(); // canonical -> df
+  const keywords = new Map();
   const text = String(scanText || "");
   for (const e of vocab?.entries || []) {
     if (!e.re.test(text)) continue;
-    (e.kind === "tool" ? tools : keywords).add(e.canonical);
+    const bucket = e.kind === "tool" ? tools : keywords;
+    if (!bucket.has(e.canonical) || e.df < bucket.get(e.canonical)) {
+      bucket.set(e.canonical, e.df);
+    }
   }
-  return { tools: [...tools].sort(), keywords: [...keywords].sort() };
+  const order = (m) =>
+    [...m].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).map(([n]) => n);
+  return { tools: order(tools), keywords: order(keywords) };
 }
 
 /** Section lines outside fenced code blocks — the scan surface for
@@ -202,6 +229,7 @@ function sectionMeta(sectionLines) {
   const prose = unfenced(sectionLines);
   let figureCount = 0, tableCount = 0, stepCount = 0;
   const routes = [];
+  const figureFiles = [];
   let expectedResult = "", traceText = "";
   const takeRoutes = (t) => {
     for (const r of t.match(/\bR\d+(?:L\d+)?\b/g) || []) {
@@ -210,7 +238,14 @@ function sectionMeta(sectionLines) {
   };
   for (const raw of prose) {
     const s = raw.trim();
-    if (s.startsWith("![") || s.startsWith("[figure:")) { figureCount++; continue; }
+    if (s.startsWith("![") || s.startsWith("[figure:")) {
+      figureCount++;
+      // rendered figures link their file; collapsed "[figure: …]"
+      // label lines (cloud-format sidecars) carry no target
+      const fm = /^!\[[^\]]*\]\(<?([^)>\s]+)>?\)/.exec(s);
+      if (fm && !figureFiles.includes(fm[1])) figureFiles.push(fm[1]);
+      continue;
+    }
     if (/^\|[\s:|-]+\|$/.test(s)) { tableCount++; continue; } // header separator row
     if (s.startsWith("|")) { takeRoutes(s); continue; } // route ids live in fixture tables too
     const clean = s.replace(/<!--[\s\S]*?-->/g, "").trim();
@@ -228,6 +263,7 @@ function sectionMeta(sectionLines) {
     figureCount, tableCount, stepCount,
     routeRefs: cap(routes.join("; "), 255),
     expectedResult, traceText,
+    figureFiles,
     _prose: prose,
   };
 }
@@ -289,6 +325,7 @@ function deckCases(lines, opts) {
       traceText: meta.traceText,
       _headAt: i,
       _prose: meta._prose,
+      _figs: meta.figureFiles,
     });
   }
   return cases;
@@ -322,13 +359,15 @@ function draftCases(lines, opts) {
       traceText: meta.traceText,
       _headAt: i,
       _prose: meta._prose,
+      _figs: meta.figureFiles,
     });
   }
   return cases;
 }
 
 /**
- * extractCases(bodyText, { defaultRepo, caseTextCap, vocab, planTitle }) →
+ * extractCases(bodyText, { defaultRepo, caseTextCap, vocab,
+ *   planTitle, mediaUrlBase }) →
  *   { cases, shape: "deck" | "draft" | "none", mixed }
  *
  * `cases` in document order, each { ordinal (1-based), caseNo,
@@ -361,16 +400,21 @@ export function extractCases(bodyText, opts = {}) {
     shape,
     mixed: deck.length > 0 && draft.length > 0,
     cases: picked.map((c, k) => {
-      const { _headAt, _prose, ...kase } = c;
+      const { _headAt, _prose, _figs, ...kase } = c;
       // tags (v1.2): the case's own title + scenario + unfenced body,
       // plus the plan title — the tested tool's usual home
       const tags = caseTags(
         [opts.planTitle || "", c.title, c.scenario, ..._prose].join("\n"),
         opts.vocab
       );
+      // figure links (v1.3): sidecar-relative targets resolved onto
+      // the media folder's URL; without a base the raw target stands
+      const figureLinks = _figs.map((t) =>
+        opts.mediaUrlBase ? `${opts.mediaUrlBase}/${String(t).split("/").pop()}` : t
+      );
       return {
         ordinal: k + 1, ...kase, shape,
-        tools: tags.tools, keywords: tags.keywords,
+        tools: tags.tools, keywords: tags.keywords, figureLinks,
         anchor: anchorAt.get(_headAt) || "",
       };
     }),
@@ -403,6 +447,7 @@ export function toRowFields(docRowId, kase, nowIso) {
     TraceText: kase.traceText,
     Tools: cap(kase.tools.join("; "), 255),
     Keywords: cap(kase.keywords.join("; "), 255),
+    FigureLinks: cap(kase.figureLinks.join("\n"), 4000),
     SweptOn: nowIso,
   };
 }

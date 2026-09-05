@@ -1382,7 +1382,7 @@ def main():
           ac.get("Shape") == "deck" and ac.get("FigureCount") == 0
           and ac.get("TableCount") == 0 and ac.get("StepCount") == 0
           and ac.get("RouteRefs") == "" and ac.get("ExpectedResult") == ""
-          and ac.get("TraceText") == "", str(ac))
+          and ac.get("TraceText") == "" and ac.get("FigureLinks") == "", str(ac))
     check("case row tagged from the run-start vocabulary (v1.2)",
           ac.get("Tools") == "merge events"
           and ac.get("Keywords") == "split measure", str(ac))

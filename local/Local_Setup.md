@@ -848,20 +848,23 @@ Setup, once:
    (dry-run default prints the planned create/update/delete counts;
    no AI spend, no re-extraction, no sidecar writes). The nightly
    sweep keeps the list converged after that.
-5. **caseindex v1.1 + v1.2 columns** (2026-09-05, after the first
-   live backfill): add the NINE metadata columns to the live list
+5. **caseindex v1.1–v1.3 columns** (2026-09-05, after the first
+   live backfill): add the TEN metadata columns to the live list
    per the updated `schemas/SPList_TestCases.csv` — `Shape` (Choice:
    `deck; draft`), `FigureCount`/`TableCount`/`StepCount` (Number,
    0 decimals), `RouteRefs`/`ExpectedResult`/`TraceText`/`Tools`/
-   `Keywords` (Single line of text). Modern list settings are fine
-   here — none are lookups. Then run `--recase --live` once to
-   reflow (the CaseIndexVersion convention). Order matters: add the
-   columns BEFORE the sweep machine picks up the v1.1+ code, or
-   case writes fail loudly into `case_errors` until they exist
-   (documents still index normally). `Tools`/`Keywords` fill from
-   the curated Keywords vocabulary (tool → Tools, topic/product →
-   Keywords; plan title included in the scan), so each weekly
-   curation merge sharpens them on the next reflow.
+   `Keywords` (Single line of text), `FigureLinks` (Multiple lines
+   of text, PLAIN). Modern list settings are fine here — none are
+   lookups. Then run `--recase --live` once to reflow (the
+   CaseIndexVersion convention). Order matters: add the columns
+   BEFORE the sweep machine picks up the v1.1+ code, or case writes
+   fail loudly into `case_errors` until they exist (documents still
+   index normally). `Tools`/`Keywords` fill from the curated
+   Keywords vocabulary (tool → Tools, topic/product → Keywords;
+   plan title included in the scan; rarest-first ordering from the
+   DocKeywords junction counts), so each weekly curation merge
+   sharpens them on the next reflow; `FigureLinks` opens a case's
+   own diagrams straight from its row.
 
 Case rows are a REPLACE-SET per document (`CaseKey =
 {docRowId}|{ordinal}`): every (re)index of a plan rewrites its full
