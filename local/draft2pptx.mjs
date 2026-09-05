@@ -234,8 +234,8 @@ function parseDraft(md) {
 const countVerify = (md) => (String(md).match(/\[VERIFY:/g) || []).length;
 
 // ------------------------------------------------------------ palette
-// docs/Diagram_Style_Framework.md — the SlideFigures palette, so this
-// deck and the figure deck read as one design.
+// the figure palette svg2pptx uses, so this deck and the figure deck
+// read as one design.
 
 const INK = "16302F";       // dominant: dark slides + all body text
 const INK_SOFT = "23423F";  // raised panels on ink

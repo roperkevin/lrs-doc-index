@@ -1,5 +1,35 @@
 # Local sweep — release notes
 
+## sweep v1.58 (2026-09-05 — SVG figure generation removed)
+
+The slide-diagram → SVG pipeline is gone from the project:
+`scripts/SlideFigures.ts`, the sweep's `figures` step (and the
+wireframe-OCR re-render loop it drove, v1.40/v1.41), `placeFigure`
+in `presentation.mjs`, the `figures` / `figure_errors` /
+`figures_ocr` / `figures_ocr_off` run-summary counters, the
+status page's Figures column, the PAD `figures` op, the
+`check_figures.py` gate with its `figure_deck.pptx` fixture, and
+`docs/Diagram_Style_Framework.md`.
+
+- **Sidecar bodies** keep ZipTextExtract's `[figure: ...]` caption
+  for a diagram slide instead of replacing it with a rendered SVG;
+  pictures still extract into `media/<stem>/` as before. A
+  `--reformat` pass drops the `slideN.svg` links from existing
+  sidecars; the SVG files already in the media folders are not
+  deleted by the sweep.
+- **OCR lane** (`sweep.tesseractPath`) is now the scanned-PDF lane
+  only; a machine without pdftoppm gets the same "lane disabled"
+  note as before, minus the wireframe clause.
+- Downstream consumers of figure links are untouched: caseindex's
+  `FigureCount` / `FigureLinks` / `FigureLink` still count and link
+  whatever image links a case section carries, `svg2pptx.mjs` and
+  `draft2pptx.mjs --media` still convert any figure SVG they are
+  pointed at, and prompt v1.10's FIGURES rule still copies a story's
+  image links verbatim.
+- Gates: `check_local_sweep.py` loses the figure, wireframe-OCR and
+  placeholder-note legs; the rename leg moves the extracted picture
+  instead of a figure. `check_figures.py` is removed from CI.
+
 ## sweep v1.57 (2026-09-05 — case grammar tuned on the first full-library export)
 
 The first `TestCases` export after the rollout (2,163 cases / 90

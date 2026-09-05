@@ -35,7 +35,6 @@ import sys
 import tempfile
 import threading
 import zipfile
-import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -76,15 +75,14 @@ CORE_XML = (
 )
 
 
-def make_pptx(fpath, text, with_media=False, with_diagram=False, with_case=False):
+def make_pptx(fpath, text, with_media=False, with_case=False):
     with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
         embed = '<p:pic><a:blip r:embed="rId2"/></p:pic>' if with_media else ""
-        diagram = diagram_shapes() if with_diagram else ""
         z.writestr(
             "ppt/slides/slide1.xml",
             "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
             f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
-            f"</p:txBody></p:sp>{diagram}{embed}</p:spTree></p:cSld></p:sld>",
+            f"</p:txBody></p:sp>{embed}</p:spTree></p:cSld></p:sld>",
         )
         if with_case:
             # one case slide in the corpus's own shape (classification
@@ -128,107 +126,6 @@ def make_pptx(fpath, text, with_media=False, with_diagram=False, with_case=False
                 'relationships/image" Target="../media/image1.png"/></Relationships>',
             )
             z.writestr("ppt/media/image1.png", PNG)
-        z.writestr("docProps/core.xml", CORE_XML)
-
-
-def diagram_shapes():
-    """A slide drawn the way this corpus draws them: a route line, evenly
-    spaced tick stubs and measure labels, with the table stating the case's
-    numbers sitting under the diagram. SlideFigures renders the drawing
-    through its vector path and anchors the figure to the table (v1.3), so
-    the sweep must write an .svg and link it directly BEFORE that table —
-    the end-to-end leg a script-level gate cannot cover. Planted into an
-    EXISTING fixture rather than a new document, so no count-based
-    assertion in this gate has to move."""
-    IN = 914400
-    parts = []
-    # route line
-    parts.append('<p:cxnSp><p:spPr><a:xfrm>'
-                 f'<a:off x="{IN}" y="{2 * IN}"/><a:ext cx="{3 * IN}" cy="0"/>'
-                 '</a:xfrm></p:spPr></p:cxnSp>')
-    for k in range(7):
-        x = IN + k * (IN // 2)
-        parts.append('<p:cxnSp><p:spPr><a:xfrm>'
-                     f'<a:off x="{x}" y="{2 * IN - 57150}"/><a:ext cx="0" cy="114300"/>'
-                     '</a:xfrm></p:spPr></p:cxnSp>')
-        parts.append('<p:sp><p:spPr><a:xfrm>'
-                     f'<a:off x="{x - 100000}" y="{2 * IN - 400000}"/>'
-                     '<a:ext cx="200000" cy="150000"/></a:xfrm></p:spPr>'
-                     f'<p:txBody><a:p><a:r><a:t>{10 + k}</a:t></a:r></a:p></p:txBody></p:sp>')
-    # the diagram's table, half an inch below the route
-    def tc(t):
-        return f'<a:tc><a:txBody><a:p><a:r><a:t>{t}</a:t></a:r></a:p></a:txBody></a:tc>'
-    parts.append('<p:graphicFrame><p:xfrm>'
-                 f'<a:off x="{IN}" y="{int(2.5 * IN)}"/>'
-                 f'<a:ext cx="{2 * IN}" cy="{IN // 2}"/></p:xfrm>'
-                 '<a:graphic><a:graphicData><a:tbl>'
-                 f'<a:tr>{tc("Route ID")}{tc("R9")}</a:tr>'
-                 f'<a:tr>{tc("Measure")}{tc("10")}</a:tr>'
-                 '</a:tbl></a:graphicData></a:graphic></p:graphicFrame>')
-    return "".join(parts)
-
-
-def ui_png():
-    """A 240x160 UI screenshot: a bordered panel holding a heading row, a
-    labelled input field and one body text row — the minimal picture that
-    passes the wireframe tier's structural gate (>=1 assembled rectangle,
-    >=2 boxes, >=3 text rows on a flat light ground)."""
-    W, H = 240, 160
-    img = [[(255, 255, 255)] * W for _ in range(H)]
-
-    def rect(x0, x1, y0, y1, v):
-        for y in range(y0, y1):
-            for x in range(x0, x1):
-                img[y][x] = (v, v, v)
-
-    def box(x0, x1, y0, y1):
-        rect(x0, x1, y0, y0 + 2, 110)
-        rect(x0, x1, y1 - 2, y1, 110)
-        rect(x0, x0 + 2, y0, y1, 110)
-        rect(x1 - 2, x1, y0, y1, 110)
-
-    def text(x, y, n, h=7):
-        for k in range(n):
-            rect(x + k * 7, x + k * 7 + 4, y, y + h, 50)
-
-    box(10, 230, 10, 150)   # the panel
-    text(24, 24, 8, h=10)   # heading row
-    text(24, 46, 6)         # field label
-    box(24, 120, 60, 84)    # the input field
-    text(24, 100, 6)        # body row
-    raw = b"".join(b"\x00" + b"".join(bytes(c) for c in row) for row in img)
-
-    def chunk(t, d):
-        return struct.pack(">I", len(d)) + t + d + \
-            struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
-
-    return (b"\x89PNG\r\n\x1a\n"
-            + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 2, 0, 0, 0))
-            + chunk(b"IDAT", zlib.compress(raw))
-            + chunk(b"IEND", b""))
-
-
-def make_ui_pptx(fpath, text):
-    """A deck whose only picture is the UI screenshot — the wireframe-OCR
-    leg's fixture (sweep v1.40 / SlideFigures DF-12)."""
-    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
-        z.writestr(
-            "ppt/slides/slide1.xml",
-            "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
-            f"<a:p><a:r><a:t>{text}</a:t></a:r></a:p>"
-            "</p:txBody></p:sp>"
-            '<p:pic><p:blipFill><a:blip r:embed="rId2"/></p:blipFill>'
-            '<p:spPr><a:xfrm><a:off x="914400" y="914400"/>'
-            '<a:ext cx="4572000" cy="3048000"/></a:xfrm></p:spPr></p:pic>'
-            "</p:spTree></p:cSld></p:sld>",
-        )
-        z.writestr(
-            "ppt/slides/_rels/slide1.xml.rels",
-            '<Relationships><Relationship Id="rId2" '
-            'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
-            'relationships/image" Target="../media/image1.png"/></Relationships>',
-        )
-        z.writestr("ppt/media/image1.png", ui_png())
         z.writestr("docProps/core.xml", CORE_XML)
 
 
@@ -903,7 +800,7 @@ def main():
     # fixture corpus
     make_pptx(os.path.join(src_dir, "Alpha Plan.pptx"),
               "Alpha test plan covering lock acquisition #123 for Roads and Highways",
-              with_media=True, with_diagram=True, with_case=True)
+              with_media=True, with_case=True)
     make_messy_pptx(os.path.join(src_dir, "Beta Story.pptx"),
                     "Beta user story about locks and issue #123")
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
@@ -1336,37 +1233,6 @@ def main():
     check("no duplicate page links anywhere in the block",
           len(re.findall(r"\]\((http[^)]+)\)", docs_sec)) ==
           len(set(re.findall(r"\]\((http[^)]+)\)", docs_sec))), docs_sec)
-    # ---- slide figures actually reach the library ------------------------
-    # A script-level gate proves SlideFigures RENDERS; only this proves the
-    # SWEEP writes and links what it renders. Registering the script in the
-    # runner's load list was missed once, and because a figure failure is
-    # non-fatal by design it vanished silently: a whole corpus pass rewrote
-    # 123 bodies and produced zero figures with no error anywhere.
-    # media files are prefixed with the SOURCE item id (10 here), not the
-    # Doc Index row id — that distinction is deliberate and easy to get wrong
-    # phase 1b: media/<stem>/<asset> — the stem is the sidecar's own
-    media_dir = os.path.join(sidecar_dir, "media")
-    stem_dir = os.path.join(media_dir, "123-alpha-plan")
-    svgs = [f for f in os.listdir(stem_dir)] if os.path.isdir(stem_dir) else []
-    check("sweep wrote an SVG figure for the diagram deck into media/<stem>/",
-          "slide1.svg" in svgs, str(svgs))
-    check("figure linked from the sidecar body",
-          "](../media/123-alpha-plan/slide1.svg)" in sc, sc[:600])
-    check("figure link sits directly before its anchor table (v1.26)",
-          re.search(r"!\[[^\]]*\]\(\.\./media/123-alpha-plan/slide1\.svg\)\n\n\| Route ID \| R9 \|",
-                    sc) is not None, sc[:600])
-    check("figure link no longer stacks under the slide heading",
-          re.search(r"## Slide 1[^\n]*\n\n!\[", sc) is None, sc[:600])
-    check("the figure replaced the [figure: ...] caption",
-          "[figure:" not in sc, sc[:600])
-    check("alt text describes the diagram",
-          re.search(r"!\[[^\]]{20,}\]\(\.\./media/123-alpha-plan/slide1\.svg\)", sc) is not None,
-          sc[:600])
-    check("run summary reports figures written",
-          int(out.get("figures", 0)) >= 1, str(out.get("figures")))
-    check("run summary reports no figure errors",
-          int(out.get("figure_errors", 0)) == 0, str(out.get("figure_errors")))
-
     alpha_id = int(by_name["Alpha Plan.pptx"][0])
     beta_id = int(by_name["Beta Story.pptx"][0])
     rel_region = sc.split("<!-- related:begin -->")[-1].split("<!-- related:end -->")[0]
@@ -1436,6 +1302,9 @@ def main():
           "## Slide 4" in beta_body and "### TC-" not in beta_body, beta_body)
 
     # media
+    # phase 1b: media/<stem>/<asset> — the stem is the sidecar's own
+    media_dir = os.path.join(sidecar_dir, "media")
+    stem_dir = os.path.join(media_dir, "123-alpha-plan")
     media = os.listdir(stem_dir) if os.path.isdir(stem_dir) else []
     check("media extracted into the sidecar's media/<stem>/ folder (no src-id prefix)",
           "image1.png" in media and not any(m.startswith("doc10_") for m in media), str(media))
@@ -1567,7 +1436,7 @@ def main():
     # run of this minute survives as a row — assert shape, not count)
     check("status page carries the recent-runs trend table (v1.34)",
           "## Recent runs (" in status2
-          and re.search(r"\| 2026-\d\d-\d\d \d\d:\d\d \| \d+ \| \d+ \| \d+ \|", status2) is not None,
+          and re.search(r"\| 2026-\d\d-\d\d \d\d:\d\d \| \d+ \| \d+ \|", status2) is not None,
           status2[-500:])
 
     run_logs = [f for f in os.listdir(work_dir) if f.startswith("sweep-") and f.endswith(".json")]
@@ -2052,7 +1921,7 @@ def main():
 
     # ---- rename leg (Sidecar_Format_Plan phase 1b) -------------------
     # a corpus still on the pre-1b naming: alpha's sidecar sits at
-    # {slug}__doc{id}.md with a flat media/doc10_*.svg figure, beta's
+    # {slug}__doc{id}.md with a flat media/doc10_*.png image, beta's
     # Related bullet links that old file. --rename-plan lists the move
     # and touches nothing; --rename --live renames the file, moves the
     # media into media/<stem>/, rewrites alpha's own links AND beta's
@@ -2062,11 +1931,11 @@ def main():
     old_name = f"alpha-plan-old__doc{alpha_id}.md"
     old_path = os.path.join(alpha_dir, old_name)
     cur = open(alpha_sc).read()
-    legacy_media = os.path.join(sidecar_dir, "media", "doc10_slide1.svg")
+    legacy_media = os.path.join(sidecar_dir, "media", "doc10_image1.png")
     os.makedirs(os.path.dirname(legacy_media), exist_ok=True)
-    shutil.copyfile(os.path.join(stem_dir, "slide1.svg"), legacy_media)
+    shutil.copyfile(os.path.join(stem_dir, "image1.png"), legacy_media)
     with open(old_path, "w") as f:
-        f.write(cur.replace("../media/123-alpha-plan/slide1.svg", "../media/doc10_slide1.svg"))
+        f.write(cur.replace("../media/123-alpha-plan/image1.png", "../media/doc10_image1.png"))
     os.remove(alpha_sc)
     shutil.rmtree(stem_dir)
     old_url = state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"]
@@ -2092,10 +1961,10 @@ def main():
           os.path.exists(alpha_sc) and not os.path.exists(old_path)
           and int(out.get("renamed", 0)) == 1 and int(out.get("errors", 0)) == 0, str(out))
     check("rename moved the flat media into media/<stem>/ and relinked the body",
-          os.path.exists(os.path.join(stem_dir, "slide1.svg"))
+          os.path.exists(os.path.join(stem_dir, "image1.png"))
           and not os.path.exists(legacy_media)
-          and "](../media/123-alpha-plan/slide1.svg)" in renamed
-          and "doc10_slide1.svg" not in renamed, renamed[-500:])
+          and "](../media/123-alpha-plan/image1.png)" in renamed
+          and "doc10_image1.png" not in renamed, renamed[-500:])
     check("rename rewrote beta's inbound link",
           "123-alpha-plan.md" in open(beta_sc).read()
           and old_name not in open(beta_sc).read(), open(beta_sc).read()[-500:])
@@ -2862,100 +2731,6 @@ def main():
           and "roles{" in proc.stdout
           and not state.lists.get(LISTS["issueRefs"], {}).get("-1"),
           proc.stdout[-600:] + proc.stderr[-200:])
-
-    # ---- leg: wireframe OCR (sweep v1.40 / SlideFigures DF-12) -----------
-    # A deck whose only picture is a UI screenshot renders as a wireframe;
-    # with the OCR lane configured the sweep must transcribe exactly the
-    # media the figures op names (ocrWanted), re-render once, and write a
-    # figure whose covered text rows carry the screenshot's REAL text. The
-    # tesseract stub answers ONLY the TSV call — proving the figures path
-    # asks for word boxes, not the PDF lane's plain text — and one word
-    # arrives under the script's confidence floor to prove it stays a bar.
-    print("== wireframe ocr leg")
-    # the auth legs left interactive auth (and a deleted token cache) in
-    # cfg — restore the app-auth mock the mainline legs ran under
-    cfg["graph"] = {"tenantId": "mock", "clientId": "mock",
-                    "clientSecret": "mock-secret", "baseUrl": base + "/v1.0",
-                    "tokenUrl": base + "/token", "maxRetries": 0}
-    cfg["llm"] = {"provider": "aibuilder", "environmentUrl": base,
-                  "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6",
-                  "curationModelId": CURATION_MODEL, "maxRetries": 0}
-    cfg["spo"] = {"auth": "app", "tenantId": "mock", "clientId": "mock",
-                  "clientSecret": "mock-secret", "tokenUrl": base + "/token",
-                  "siteUrl": "https://mock.example/sites/lrsworkspace",
-                  "baseUrl": base + "/sites/lrsworkspace"}
-    ui_dir = os.path.join(cfg["paths"]["sourceLibrary"], "General") \
-        if os.path.basename(cfg["paths"]["sourceLibrary"]) != "source" \
-        else cfg["paths"]["sourceLibrary"]
-    os.makedirs(ui_dir, exist_ok=True)
-    make_ui_pptx(os.path.join(ui_dir, "Panel UI.pptx"),
-                 "Panel UI deck describing the search panel.")
-    src_files.append(src_item(21, "Panel UI.pptx", "2026-08-22T10:00:00Z"))
-    # v1.41: pdftoppm deliberately points NOWHERE — the wireframe OCR
-    # loop must run on tesseract alone (pdftoppm is only the PDF lane's
-    # renderer), with a note saying only the PDF lane is disabled
-    ppm2 = os.path.join(tmp, "no-such-pdftoppm")
-    tess2 = os.path.join(tmp, "tesseract2")
-    with open(tess2, "w") as f:
-        f.write(
-            '#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\n'
-            'want=no\nfor a in "$@"; do [ "$a" = "tsv" ] && want=yes; done\n'
-            'if [ "$want" != "yes" ]; then echo "figures OCR must ask for tsv" >&2; exit 1; fi\n'
-            'printf "level\\tpage\\tblock\\tpar\\tline\\tword\\tleft\\ttop\\twidth\\theight\\tconf\\ttext\\n"\n'
-            'printf "5\\t1\\t1\\t1\\t1\\t1\\t24\\t24\\t40\\t10\\t95\\tSearch\\n"\n'
-            'printf "5\\t1\\t1\\t1\\t1\\t2\\t70\\t24\\t30\\t10\\t93\\tPanel\\n"\n'
-            'printf "5\\t1\\t1\\t1\\t2\\t1\\t24\\t46\\t28\\t7\\t90\\tRoute\\n"\n'
-            'printf "5\\t1\\t1\\t1\\t3\\t1\\t24\\t100\\t30\\t7\\t12\\tR1L3\\n"\n')
-    os.chmod(tess2, 0o755)
-    cfg["sweep"]["tesseractPath"] = tess2
-    cfg["sweep"]["pdftoppmPath"] = ppm2
-    with open(cfg_path, "w") as f:
-        json.dump(cfg, f)
-    proc = run_sweep(cfg_path, ["--live", "--only", "Panel UI.pptx"])
-    out = json.loads(proc.stdout.splitlines()[0]) if proc.stdout.strip() else {}
-    check("screenshot deck indexed with a figure and no figure errors",
-          proc.returncode == 0 and out.get("processed") == 1
-          and int(out.get("figures", 0)) >= 1
-          and int(out.get("figure_errors", 0)) == 0,
-          str(out) + " " + proc.stderr[-300:])
-    panel_row = next(f_ for f_ in state.lists[LISTS["docIndex"]].values()
-                     if f_.get("FileName") == "Panel UI.pptx")
-    panel_stem = str(panel_row.get("TextFileUrl", {}).get("Url", "")).rsplit("/", 1)[-1][:-3]
-    wf_path = os.path.join(sidecar_dir, "media", panel_stem, "slide1.svg")
-    wf = open(wf_path, encoding="utf-8").read() if os.path.exists(wf_path) else ""
-    check("wireframe figure written for the screenshot",
-          "interface wireframe" in wf, wf[:300])
-    check("transcribed rows carry the screenshot's REAL text (TSV word boxes)",
-          ">Search Panel</text>" in wf and ">Route</text>" in wf, wf[:600])
-    check("a word under the confidence floor stays a placeholder bar",
-          "R1L3" not in wf and 'class="wf-gk' in wf, wf[:600])
-    check("figure alt states the transcription",
-          "transcribed" in wf, wf[:600])
-    check("v1.41: wireframe OCR ran on tesseract ALONE (no runnable pdftoppm)",
-          int(out.get("figures_ocr", 0)) == 1 and int(out.get("figures_ocr_off", 0)) == 0,
-          str(out))
-    check("v1.41: the missing pdftoppm disables ONLY the PDF lane, and says so",
-          "scanned-PDF OCR lane is disabled" in proc.stderr, proc.stderr[-400:])
-    del cfg["sweep"]["tesseractPath"]
-    del cfg["sweep"]["pdftoppmPath"]
-    with open(cfg_path, "w") as f:
-        json.dump(cfg, f)
-
-    # ---- leg: placeholder wireframes are never silent (v1.41) ------------
-    # With NO OCR configured, reformatting the screenshot deck must render
-    # its wireframe with greek bars, COUNT it (figures_ocr_off) and say so
-    # on stderr — the invisible degradation that left a corpus wondering
-    # where its text went.
-    print("== wireframe placeholder-note leg")
-    proc = run_sweep(cfg_path, ["--live", "--reformat", "--only", "Panel UI.pptx"])
-    out = json.loads(proc.stdout.splitlines()[0]) if proc.stdout.strip() else {}
-    check("reformat without OCR counts the placeholder wireframe",
-          proc.returncode == 0 and int(out.get("figures_ocr_off", 0)) >= 1
-          and int(out.get("figures_ocr", 0)) == 0,
-          str(out) + " " + proc.stderr[-300:])
-    check("placeholder wireframes surface a loud note naming the fix",
-          "PLACEHOLDER text" in proc.stderr and "tesseractPath" in proc.stderr,
-          proc.stderr[-400:])
 
     server.shutdown()
     report()

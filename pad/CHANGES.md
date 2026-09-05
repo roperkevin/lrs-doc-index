@@ -1,5 +1,12 @@
 # PAD offload — release notes
 
+## v2.5 (2026-09-05)
+
+`runner/ops.mjs` / `run_job.mjs`: the `figures` op is removed with
+`scripts/SlideFigures.ts` (SVG figure generation dropped from the
+project, local sweep v1.58). SCRIPT_FILES, the `file=` alias table
+and the op dispatch no longer know it; every other op is unchanged.
+
 ## v2.4 (2026-09-03)
 
 `runner/ops.mjs`: the `figures` op takes an optional `ocrJson` param

@@ -76,7 +76,7 @@ repository variable `HOSTED_SWEEP_ENABLED` is `"true"`.
   Actions cache keeps the manifest + workspace warm; a cold cache
   just re-downloads the corpus (small — sidecars are text).
   Locally-mirrored .md files deleted remotely are pruned.
-- **Writes**: sidecars, media, figures, status/index pages upload
+- **Writes**: sidecars, media, status/index pages upload
   through the drive API after each document (≤4 MB each — all
   corpus writes fit). An upload failure lands that doc in the Error
   lane (retried next run); status/index page upload failures only
