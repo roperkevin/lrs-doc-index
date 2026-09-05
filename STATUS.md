@@ -3,7 +3,7 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-05dd** — see "Current state" below.
+Last updated: **2026-09-05ee** — see "Current state" below.
 Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
 review r7): this file keeps the deployed-truth TABLES; the story of
 each change belongs to the component CHANGES files.
@@ -237,6 +237,21 @@ each change belongs to the component CHANGES files.
   is CURATION work, not code — fix Kind/aliases on the Keywords
   list, then reflow. Gates: `check_caseindex.py` **64/64**,
   `check_local_sweep.py` **237/237**, testplangen 141/141.
+- **2026-09-05ee (caseindex v1.4 — the primary figure becomes
+  clickable; sweep v1.46, authored on main):** the third live export
+  verified v1.3 (FigureLinks on 360 cases, rarest-first holding on
+  the 19 capped rows); owner wants clickable links. New
+  **`FigureLink`** (Hyperlink column): the case's primary figure,
+  description = file name + "(+N more)"; empty write clears; the
+  full inventory stays in FigureLinks. Image/Thumbnail column
+  REJECTED (single image, brittle write format, SVG thumbnails
+  unreliable). FigureLink joins `HYPERLINK_FIELDS` (the standing
+  SPO ValidateUpdateListItem route), and `diffCaseRows` compares
+  hyperlink values by Url so Description drift never churns.
+  TENANT STEP folds into the standing one: ELEVEN columns total,
+  then one `--recase --live`. Gates: `check_caseindex.py`
+  **68/68**, `check_local_sweep.py` **237/237** (mock Graph now
+  rejects FigureLink like the real tenant), testplangen 141/141.
 
 ## Core sweep
 
@@ -358,7 +373,7 @@ v1.2 describes them — paste with the window, step 6).
 | check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
 | check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
 | check_testplangen.py (local/harness — testplangen.mjs v1.8: guard, lanes + G6 fallback, remaining-budget caps, fail-closed marker slice, verifier incl. draftlint↔check_draft_coverage agreement + grounding legs, lookup front door, notify, auto mode + provider override, issue trace, gap report incl. the v2.29 case-tracing + degrade legs, pinned lanes, figures incl. the link-absolutizing leg, web references; 141/141; CI fixture-free job) | 2026-09-05 (v2.29) |
-| check_caseindex.py (local/harness — caseindex.mjs v1.2: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression + the 3–5-digit floor + the fenced-code trap, the v1.1 metadata legs (Shape/counts/RouteRefs/ExpectedResult/TraceText), the v1.2 vocabulary-tag legs (plan-title tool tagging, alias folding, word-boundary, fenced-vocab trap, no-vocab empty), the v1.3 legs (figure-link resolution incl. the collapsed-label no-link rule, rarest-first df ordering), replace-set planner incl. SweptOn-never-dirties, caps; 64/64; CI fixture-free job). Sweep-level case-index legs (write contract incl. the v1.1–v1.3 columns, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, catalog + recase-rebuild) live in check_local_sweep.py, 237/237 | 2026-09-05 (v1.3) |
+| check_caseindex.py (local/harness — caseindex.mjs v1.2: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression + the 3–5-digit floor + the fenced-code trap, the v1.1 metadata legs (Shape/counts/RouteRefs/ExpectedResult/TraceText), the v1.2 vocabulary-tag legs (plan-title tool tagging, alias folding, word-boundary, fenced-vocab trap, no-vocab empty), the v1.3 legs (figure-link resolution incl. the collapsed-label no-link rule, rarest-first df ordering), the v1.4 legs (primary-figure hyperlink shaping incl. "(+N more)" and the figure-less clear, Url-only hyperlink diff), replace-set planner incl. SweptOn-never-dirties, caps; 68/68; CI fixture-free job). Sweep-level case-index legs (write contract incl. the v1.1–v1.4 columns, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, catalog + recase-rebuild) live in check_local_sweep.py, 237/237 | 2026-09-05 (v1.4) |
 | check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
 | check_draft2pptx.py (local/harness — draft2pptx.mjs v1.1: python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |
 | check_svg2pptx.py (svg2pptx v1.4 — SVG figures → editable pptx shapes: package/shape/style/label contract, no-plate + title-band dress, case-heading titles + native case tables + metadata line from the sidecar, sidecar lookup + override + --no-tables legs, python-pptx open leg incl. table read-back; v1.4 exports the parser/emitter for draft2pptx's figure slides, CLI unchanged) | 2026-09-04 (v2.27) |

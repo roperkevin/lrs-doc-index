@@ -52,6 +52,7 @@ Positive - Non spanning line event
 | --- | --- | --- |
 | R1L1 | 0 | 100 |
 ![fig](../media/doc12_slide4_fig1.svg)
+![fig2](../media/doc12_slide4_fig2.svg)
 [figure: 10–22 · R1 · E1 · Output]
 See devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855 and #612
 
@@ -138,13 +139,21 @@ const stale = diffCaseRows(
   asRows(fresh, 101).concat([{ id: "999", fields: { CaseKey: "12|9" } }]),
   fresh);
 const archived = diffCaseRows(asRows(fresh, 101), []);
+// hyperlink norm (v1.4): FigureLink compares by Url — a differing
+// Description alone never dirties; a differing Url does
+const hlSameRows = asRows(fresh, 301);
+hlSameRows[0].fields.FigureLink = { Url: fresh[0].FigureLink.Url, Description: "other desc" };
+const hlSame = diffCaseRows(hlSameRows, fresh);
+const hlDiffRows = asRows(fresh, 301);
+hlDiffRows[0].fields.FigureLink = { Url: "https://elsewhere/x.svg", Description: "x" };
+const hlDiff = diffCaseRows(hlDiffRows, fresh);
 
 process.stdout.write(JSON.stringify({
   deckBody, deck, draft, prose,
   mixed: { shape: mixed.shape, mixed: mixed.mixed, count: mixed.cases.length },
   cappedTextLens: capped.cases.map((c) => c.text.length),
   longTitleLen: toRowFields(1, longTitle.cases[0], now).Title.length,
-  fresh, same, changed, sweptOnly, grown, stale, archived,
+  fresh, same, changed, sweptOnly, grown, stale, archived, hlSame, hlDiff,
   refsBare: caseIssueRefs("see #612 and #12", "A/b"),
   refsNoRepo: caseIssueRefs("see #612", ""),
   refsDigits: caseIssueRefs("expr 40+5 a/b#0 and a/b#12, real a/b#4855", ""),
@@ -283,7 +292,7 @@ def main():
 
     print("-- per-case metadata (v1.1) --")
     check("deck case: shape/figure/table counts and routes from the fixture table",
-          c1.get("shape") == "deck" and c1.get("figureCount") == 2
+          c1.get("shape") == "deck" and c1.get("figureCount") == 3
           and c1.get("tableCount") == 1 and c1.get("stepCount") == 0
           and c1.get("routeRefs") == "R1L1", json.dumps(c1))
     check("deck case: no draft contract lines",
@@ -322,17 +331,34 @@ def main():
 
     print("-- figure links + rarest-first ordering (v1.3) --")
     MB = "https://mock.example/sites/l/LRS Doc Index/media"
-    check("rendered figure resolves onto the media folder URL; the "
+    check("rendered figures resolve onto the media folder URL; the "
           "collapsed [figure:] label mints no link",
-          c1.get("figureLinks") == [f"{MB}/doc12_slide4_fig1.svg"],
+          c1.get("figureLinks") == [f"{MB}/doc12_slide4_fig1.svg",
+                                    f"{MB}/doc12_slide4_fig2.svg"],
           json.dumps(c1.get("figureLinks")))
     check("figure-less case has no links",
           cases[1].get("figureLinks") == [], json.dumps(cases[1].get("figureLinks")))
     check("no mediaUrlBase keeps the raw sidecar-relative target",
-          r["rawFig"] == ["../media/doc12_slide4_fig1.svg"], json.dumps(r["rawFig"]))
+          r["rawFig"] == ["../media/doc12_slide4_fig1.svg",
+                          "../media/doc12_slide4_fig2.svg"], json.dumps(r["rawFig"]))
     check("row shaping joins FigureLinks newline-separated",
-          r["fresh"][0].get("FigureLinks") == f"{MB}/doc12_slide4_fig1.svg",
+          r["fresh"][0].get("FigureLinks")
+          == f"{MB}/doc12_slide4_fig1.svg\n{MB}/doc12_slide4_fig2.svg",
           json.dumps(r["fresh"][0].get("FigureLinks")))
+    check("FigureLink is the primary figure as a hyperlink value (v1.4)",
+          r["fresh"][0].get("FigureLink")
+          == {"Url": f"{MB}/doc12_slide4_fig1.svg",
+              "Description": "doc12_slide4_fig1.svg (+1 more)"},
+          json.dumps(r["fresh"][0].get("FigureLink")))
+    check("figure-less row clears the hyperlink",
+          r["fresh"][1].get("FigureLink") == "",
+          json.dumps(r["fresh"][1].get("FigureLink")))
+    check("hyperlink diff compares by Url: description drift never dirties",
+          r["hlSame"] == {"create": [], "update": [], "delete": []},
+          json.dumps(r["hlSame"]))
+    check("hyperlink diff compares by Url: a moved link updates",
+          len(r["hlDiff"]["update"]) == 1 and not r["hlDiff"]["create"]
+          and not r["hlDiff"]["delete"], json.dumps(r["hlDiff"]))
     check("keywords order rarest-first (ascending df, then name)",
           r["dfOrder"] == ["self intersection", "split measure", "route"],
           json.dumps(r["dfOrder"]))

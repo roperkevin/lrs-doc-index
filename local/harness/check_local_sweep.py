@@ -484,7 +484,7 @@ def make_handler(state, lib_guid, src_files):
                 guid = m.group(2)
                 state.graph_last_auth = self.headers.get("authorization")
                 fields = json.loads(self._read()).get("fields", {})
-                if any(k in fields for k in ("SourceLink", "TextFileUrl")):
+                if any(k in fields for k in ("SourceLink", "TextFileUrl", "FigureLink")):
                     # real Graph rejects hyperlink columns — keep the mock honest
                     return self._json({"error": {"code": "invalidRequest",
                                                  "message": "hyperlink column via Graph"}}, 400)
@@ -1382,7 +1382,8 @@ def main():
           ac.get("Shape") == "deck" and ac.get("FigureCount") == 0
           and ac.get("TableCount") == 0 and ac.get("StepCount") == 0
           and ac.get("RouteRefs") == "" and ac.get("ExpectedResult") == ""
-          and ac.get("TraceText") == "" and ac.get("FigureLinks") == "", str(ac))
+          and ac.get("TraceText") == "" and ac.get("FigureLinks") == ""
+          and ac.get("FigureLink") == "", str(ac))
     check("case row tagged from the run-start vocabulary (v1.2)",
           ac.get("Tools") == "merge events"
           and ac.get("Keywords") == "split measure", str(ac))

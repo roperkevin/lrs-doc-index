@@ -363,8 +363,9 @@ function loadConfig(argv) {
 // ---- write layer (real vs dry-run plan) -----------------------------
 
 // Graph cannot write hyperlink columns (400 invalidRequest in every
-// shape) — those two fields route through SPO ValidateUpdateListItem.
-const HYPERLINK_FIELDS = new Set(["SourceLink", "TextFileUrl"]);
+// shape) — these fields route through SPO ValidateUpdateListItem
+// (FigureLink: the Test Cases primary-figure link, caseindex v1.4).
+const HYPERLINK_FIELDS = new Set(["SourceLink", "TextFileUrl", "FigureLink"]);
 
 function splitHyperlinks(fields) {
   const rest = {};
@@ -672,7 +673,8 @@ async function main() {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
                "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
                "Shape", "FigureCount", "TableCount", "StepCount", "RouteRefs",
-               "ExpectedResult", "TraceText", "Tools", "Keywords", "FigureLinks", "SweptOn"],
+               "ExpectedResult", "TraceText", "Tools", "Keywords", "FigureLinks",
+               "FigureLink", "SweptOn"],
     });
     rawSnapshots.testCases = items; // rides the per-run list backup
     for (const it of items) {

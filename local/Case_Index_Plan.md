@@ -158,8 +158,9 @@ text plus the plan title — alias rows fold to canonicals, so weekly
 curation merges sharpen case tags; flat '; '-joined columns by
 decision, never junction rows; rarest-first ordering since v1.3, by
 each canonical's DocKeywords junction count, so the 255 cap
-truncates the ubiquitous tail), and v1.3's `FigureLinks` (the
-case's own figure URLs resolved onto the media folder) — and the explicit `repo#n` issue
+truncates the ubiquitous tail), and v1.3–v1.4's `FigureLinks`/`FigureLink` (the
+case's own figure URLs resolved onto the media folder, plus the
+primary one as a clickable Hyperlink column) — and the explicit `repo#n` issue
 form requires 3–5 digits with fenced code excluded from every scan
 (a live Arcade expression had minted a phantom `#0`). The CSV is
 authoritative for column details.
