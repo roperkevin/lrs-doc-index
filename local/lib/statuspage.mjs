@@ -33,7 +33,6 @@ function recentRuns(runLogDir, keep = 14) {
         when: m ? `${m[1]} ${m[2]}:${m[3]}` : f,
         processed: s.processed ?? 0,
         errors: s.errors ?? 0,
-        figures: s.figures ?? 0,
         smoke: s.smoke ? "smoke" : "",
       });
     } catch { /* skip unreadable */ }
@@ -99,17 +98,17 @@ export function writeStatusPage(cfg, { summary, logFile, errorLane, streaks, fat
       : ["(empty)"]),
     "",
     ...(() => {
-      // trend table (v1.34): drift — creeping errors, dying figure
-      // counts, shrinking throughput — visible where the team looks
+      // trend table (v1.34): drift — creeping errors, shrinking
+      // throughput — visible where the team looks
       const runs = runLogDir ? recentRuns(runLogDir) : [];
       if (!runs.length) return [];
       return [
         `## Recent runs (${runs.length})`,
         "",
-        "| Run | Processed | Errors | Figures | |",
-        "|---|---|---|---|---|",
+        "| Run | Processed | Errors | |",
+        "|---|---|---|---|",
         ...runs.map((r) =>
-          `| ${r.when} | ${r.processed} | ${r.errors} | ${r.figures} | ${r.smoke} |`),
+          `| ${r.when} | ${r.processed} | ${r.errors} | ${r.smoke} |`),
         "",
       ];
     })(),

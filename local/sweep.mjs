@@ -47,7 +47,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import zlib from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../pad/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
@@ -72,7 +71,7 @@ import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
   upsertDocsBlock, bodySeamEnd,
 } from "./lib/doclinks.mjs";
-import { placeFigure, tidyBody, compactWhy } from "./lib/presentation.mjs";
+import { tidyBody, compactWhy } from "./lib/presentation.mjs";
 import { renderTestPlanBody, lintTestPlanBody } from "./lib/casegrammar.mjs";
 import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
@@ -145,8 +144,6 @@ const IMAGE_EXT = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"];
  */
 function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, localPath, ext, srcItemId, modified, withMedia }) {
   let docText = "", relsText = "", lane = "none";
-  let figureCount = 0, figureError = "";
-  let figureOcr = 0, figureOcrOff = 0;
   let srcAuthor = "", srcEditor = "", srcEdited = "";
   // media is minted against a PLACEHOLDER folder and handed back to
   // the caller as bytes: the document's stem (its media folder name)
@@ -177,66 +174,6 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
       const md = op({ op: "media", zipFile: localPath });
       for (const img of md.images || []) {
         mediaFiles.push({ name: img.name, data: Buffer.from(img.b64 || img.base64 || "", "base64") });
-      }
-    }
-    // v1.23: slide diagrams as SVG figures. ZipTextExtract still collapses a
-    // slide's loose diagram labels to its "[figure: ...]" caption (so a
-    // cloud-flow rollback keeps that behaviour); here the caption is replaced
-    // by the rendered figure. Always re-rendered, never AI: --reformat picks
-    // up figure changes for free.
-    if (ext === "pptx") {
-      try {
-        setStep("figures");
-        let fg = op({ op: "figures", zipFile: localPath });
-        // v1.40 (DF-12): a wireframe figure comes back naming the media
-        // entries that still lack transcriptions (ocrWanted). With the
-        // OCR lane configured (sweep.tesseractPath — the v1.36 opt-in),
-        // transcribe exactly those pictures and re-render once, so the
-        // wireframes carry the screenshot's real text instead of greek
-        // bars. No OCR tools, or OCR finding nothing, keeps the
-        // placeholder render — an enhancement, never a failure.
-        if (fg && fg.ocrWanted) {
-          const wantedN = fg.ocrWanted.split(",").filter(Boolean).length;
-          if (ocrTools && ocrTools.tess) {
-            setStep("figures-ocr");
-            try {
-              const ocrJson = ocrFigureMedia(ocrTools, localPath, fg.ocrWanted);
-              if (ocrJson) {
-                fg = op({ op: "figures", zipFile: localPath, ocrJson });
-                const left = fg && fg.ocrWanted
-                  ? fg.ocrWanted.split(",").filter(Boolean).length : 0;
-                figureOcr = Math.max(0, wantedN - left);
-              }
-            } catch (e) {
-              process.stderr.write(`FIGOCR ${path.basename(localPath)}: ${e.message}\n`);
-            }
-          } else {
-            // v1.41: never silent — a wireframe rendered with greek bars
-            // because OCR is not configured is a per-run note + counter,
-            // not an invisible degradation
-            figureOcrOff = wantedN;
-          }
-        }
-        const figs = (fg && fg.figures) || [];
-        const bySlide = new Map();
-        for (const f of figs) {
-          mediaFiles.push({ name: f.name, data: f.svg });
-          if (!bySlide.has(f.slide)) bySlide.set(f.slide, []);
-          bySlide.get(f.slide).push({ href: `${MEDIA_PLACEHOLDER}${f.name}`, alt: f.alt, anchor: f.anchor });
-        }
-        for (const [slide, items] of bySlide) {
-          docText = placeFigure(docText, slide, items);
-        }
-        figureCount = figs.length;
-        if (figs.length) setStep(`figures-${figs.length}`);
-      } catch (e) {
-        // a figure is an enhancement, never a reason to fail an index — but
-        // it must not fail SILENTLY either: swallowing this hid a missing
-        // script registration for a whole corpus pass (123 bodies rewritten,
-        // zero figures, no error anywhere).
-        figureError = e.message;
-        process.stderr.write(`FIGURES ${path.basename(localPath)}: ${e.message}\n`);
-        setStep("figures-skipped");
       }
     }
   } else if (!oversize && ext === "xlsx") {
@@ -304,8 +241,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   }
   // pdf(no tool)/image/other/oversize (and empty html/msg): DocText
   // stays empty → Skip lane.
-  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-           figureCount, figureError, figureOcr, figureOcrOff, mediaFiles };
+  return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited, mediaFiles };
 }
 
 /** The sidecar BODY for a document (phase 3): tidyBody for every
@@ -668,7 +604,7 @@ async function main() {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-sweep-"));
   const mains = await loadScripts(
     cfg.scriptsDir || DEFAULT_SCRIPTS_DIR,
-    ["ziptext", "media", "figures", "regex", "workbookdump", "related", "sidecarpatch"],
+    ["ziptext", "media", "regex", "workbookdump", "related", "sidecarpatch"],
     tmpDir
   );
   const op = (o) => runOp(mains, o);
@@ -1375,7 +1311,6 @@ async function main() {
   const rfsum = {
     mode: "reformat", dry_run: dry, eligible: 0, rewritten: 0,
     unchanged: 0, no_sidecar: 0, no_seam: 0, no_text: 0, errors: 0,
-    figures: 0, figure_errors: 0, figures_ocr: 0, figures_ocr_off: 0,
     cases_upserted: 0, cases_removed: 0, case_errors: 0,
     plans_caseless: 0, cases_shape_mixed: 0,
   };
@@ -1391,10 +1326,6 @@ async function main() {
     dockey_misses: 0,
     out_of_scope: 0,
     archived: 0,
-    figures: 0,
-    figure_errors: 0,
-    figures_ocr: 0,
-    figures_ocr_off: 0,
     graph_downloads: 0,
     cases_upserted: 0,
     cases_removed: 0,
@@ -1484,22 +1415,17 @@ async function main() {
           fs.writeFileSync(rfPath, buf);
           rfsum.graph_downloads = (rfsum.graph_downloads || 0) + 1;
         }
-        const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited,
-                figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
+        const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited, mediaFiles } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath: rfPath, ext, srcItemId, modified, withMedia: false,
         });
-        rfsum.figures += figureCount || 0;
-        if (figureError) rfsum.figure_errors++;
-        rfsum.figures_ocr += figureOcr || 0;
-        rfsum.figures_ocr_off += figureOcrOff || 0;
         if (!rfRaw) {
           rfsum.no_text++;
           continue;
         }
-        // phase 1b: media links point at media/<stem>/ — figures are
-        // re-rendered into it here; images (not re-extracted on a
-        // reformat) move out of the flat doc<srcItemId>_ naming once
+        // phase 1b: media links point at media/<stem>/ — images (not
+        // re-extracted on a reformat) move out of the flat
+        // doc<srcItemId>_ naming once
         const stem = stemOf(existing.TextFileUrl);
         const docText = relinkMedia(rfRaw, stem);
         writeMedia(cfg, writer, stem, mediaFiles);
@@ -1700,7 +1626,6 @@ async function main() {
     const rLog = path.join(rDir, `sweep-${rStamp}.json`);
     fs.writeFileSync(rLog, JSON.stringify({ summary: rfsum, plan: dry ? writer.plan : undefined }, null, 1));
     pruneRunLogs(rDir);
-    ocrOffNote(rfsum.figures_ocr_off);
     process.stdout.write(JSON.stringify({ ...rfsum, logFile: rLog }) + "\n");
     if (dry) process.stdout.write(`dry run: ${writer.plan.length} planned writes recorded in ${rLog}\n`);
     return;
@@ -1832,7 +1757,6 @@ async function main() {
     }
   }
 
-  ocrOffNote(summary.figures_ocr_off);
   process.stdout.write(JSON.stringify({ ...summary, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) {
@@ -1882,16 +1806,11 @@ async function indexDoc(ctx) {
   }
 
   // Switch_ext lane dispatch (shared with the --reformat pass)
-  const { docText: rawDocText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-          figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
+  const { docText: rawDocText, relsText, lane, srcAuthor, srcEditor, srcEdited, mediaFiles } = extractDocText({
     sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
   let docText = rawDocText;
-  summary.figures = (summary.figures || 0) + (figureCount || 0);
-  if (figureError) summary.figure_errors = (summary.figure_errors || 0) + 1;
-  summary.figures_ocr = (summary.figures_ocr || 0) + (figureOcr || 0);
-  summary.figures_ocr_off = (summary.figures_ocr_off || 0) + (figureOcrOff || 0);
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
@@ -2257,25 +2176,12 @@ function detectPdfTool(sw) {
   return r.error ? null : p;
 }
 
-const ocrOffNote = (n) => {
-  if (n > 0) {
-    process.stderr.write(
-      `note: ${n} screenshot(s) wireframed with PLACEHOLDER text this run — ` +
-      `set sweep.tesseractPath (install Tesseract) to transcribe them, ` +
-      `then re-run with --reformat\n`
-    );
-  }
-};
-
 /** OCR tools (v1.36) — OPT-IN by explicit config: OCR runs only when
  *  sweep.tesseractPath is set (no PATH auto-detection, so machines
  *  that happen to have Tesseract don't silently change lanes).
- *  pdftoppm defaults to Poppler's, next to pdftotext on PATH.
- *  v1.41: pdftoppm is only the PDF lane's page renderer — the
- *  wireframe-OCR loop (v1.40) needs tesseract alone, so a machine
- *  without Poppler still transcribes screenshots. An unrunnable
- *  tesseract still disables all OCR loudly; an unrunnable pdftoppm
- *  now disables only the scanned-PDF lane, and says so. */
+ *  pdftoppm defaults to Poppler's, next to pdftotext on PATH. An
+ *  unrunnable tesseract disables OCR loudly; an unrunnable pdftoppm
+ *  disables the scanned-PDF lane, and says so. */
 function detectOcrTools(sw) {
   if (!sw.tesseractPath) return null;
   const tess = sw.tesseractPath;
@@ -2289,7 +2195,7 @@ function detectOcrTools(sw) {
   if (spawnSync(ppm, ["-v"], { encoding: "utf8" }).error) {
     process.stderr.write(
       `note: pdftoppm ("${ppm}") is not runnable — the scanned-PDF OCR lane is disabled ` +
-      `(wireframe OCR still runs; install Poppler to OCR image-only PDFs)\n`
+      `(install Poppler to OCR image-only PDFs)\n`
     );
     return { tess, ppm: null };
   }
@@ -2319,84 +2225,6 @@ function ocrPdf(tools, pdfPath, sw) {
       if (t.status === 0 && String(t.stdout).trim() !== "") out.push(t.stdout.trim());
     }
     return out.join("\n\n").trim();
-  } finally {
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
-  }
-}
-
-/** DF-12 (v1.40): pull NAMED ppt/media entries out of the pptx — a
- *  minimal central-directory read (the xlsx_grid.mjs stance, node:zlib
- *  only). MediaExtract is not used here on purpose: its 350 KB
- *  per-image cap refuses exactly the hi-dpi screenshots OCR is for. */
-function pptxMediaEntries(pptxPath, names) {
-  const buf = fs.readFileSync(pptxPath);
-  let eocd = -1;
-  const scanFrom = Math.max(0, buf.length - 65557);
-  for (let i = buf.length - 22; i >= scanFrom; i--) {
-    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
-  }
-  if (eocd < 0) return [];
-  let off = buf.readUInt32LE(eocd + 16);
-  const count = buf.readUInt16LE(eocd + 10);
-  const out = [];
-  for (let k = 0; k < count && off + 46 <= buf.length; k++) {
-    if (buf.readUInt32LE(off) !== 0x02014b50) break;
-    const method = buf.readUInt16LE(off + 10);
-    const csize = buf.readUInt32LE(off + 20);
-    const nameLen = buf.readUInt16LE(off + 28);
-    const extraLen = buf.readUInt16LE(off + 30);
-    const cmtLen = buf.readUInt16LE(off + 32);
-    const lho = buf.readUInt32LE(off + 42);
-    const name = buf.toString("latin1", off + 46, off + 46 + nameLen);
-    off += 46 + nameLen + extraLen + cmtLen;
-    const base = name.replace(/^.*\//, "");
-    if (!/^ppt\/media\//.test(name) || !names.includes(base)) continue;
-    if (lho + 30 > buf.length) continue;
-    const nl = buf.readUInt16LE(lho + 26), el = buf.readUInt16LE(lho + 28);
-    const ds = lho + 30 + nl + el;
-    const raw = buf.subarray(ds, ds + csize);
-    try {
-      out.push({ name: base, data: method === 8 ? zlib.inflateRawSync(raw) : raw });
-    } catch { /* a corrupt entry contributes nothing — OCR is best-effort */ }
-  }
-  return out;
-}
-
-/** DF-12 (v1.40): transcribe the wireframed screenshots the figures op
- *  named (ocrWanted, comma-separated media basenames) with Tesseract's
- *  TSV output — word boxes in the picture's own pixel space, --psm 11
- *  (sparse text: UI labels are scattered, not a prose block). Returns
- *  the ocrJson payload SlideFigures takes, or null when there is
- *  nothing usable; confidence rides along and the script applies its
- *  own floor. */
-function ocrFigureMedia(tools, pptxPath, wantedCsv) {
-  const names = String(wantedCsv || "").split(",").filter(Boolean).slice(0, 16);
-  if (!names.length) return null;
-  const entries = pptxMediaEntries(pptxPath, names);
-  if (!entries.length) return null;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-figocr-"));
-  try {
-    const out = [];
-    for (const e of entries) {
-      const p = path.join(dir, e.name);
-      fs.writeFileSync(p, e.data);
-      const r = spawnSync(tools.tess, [p, "stdout", "--psm", "11", "tsv"], {
-        encoding: "utf8", maxBuffer: 32 * 1024 * 1024,
-      });
-      if (r.error || r.status !== 0) continue;
-      const words = [];
-      for (const line of String(r.stdout || "").split("\n")) {
-        const c = line.split("\t");
-        if (c.length < 12 || c[0] !== "5") continue;
-        const t = c[11].trim();
-        const conf = Number(c[10]);
-        if (!t || !(conf > 0)) continue;
-        words.push({ x: Number(c[6]), y: Number(c[7]), w: Number(c[8]),
-                     h: Number(c[9]), t: t, c: conf });
-      }
-      if (words.length) out.push({ entry: e.name, words });
-    }
-    return out.length ? JSON.stringify(out) : null;
   } finally {
     try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* temp */ }
   }

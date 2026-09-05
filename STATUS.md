@@ -306,7 +306,7 @@ as of the handover; resume the paste plan only if rolling back.
 | RelatedRank | **v2.2** (2026-08-15 — body-sim/filename/folder as dormant optional fields for the local sweep; flow-shaped output byte-identical to v2.1, `check_related` PASSED) | **PASTED v2.1** with the v2.6 window — sufficient on rollback (v2.2's fields stay dormant on the flow); paste v2.2 only if desired |
 | SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
 | RegexExtract | **v1.4** (r6) | tenant runs v1.2 (pre-v2.2); v1.3 superseded in-repo before its paste — v1.4 is additive-safe under any flow, products surface with the v2.8 window |
-| SlideFigures | **v2.4** (2026-09-04 — DF-1 slide diagrams as SVG; DF-2 multi-figure/graph lane; DF-3 routing, grid snap, legends, rotation, raster tracing; DF-4 one SVG per redraw diagram + table anchors; DF-5 label-collision fixes, degenerate splits, title boxes dropped; DF-6 arrowheads snapped to line tips; DF-7 spanning events as route chains; DF-8 route to the front as a dash, smaller heads on solid carriers, hash marks for labelled anchors; DF-9 two-tone palette; DF-10 calm soft-band style + figure cap 40→96; DF-11 UI screenshots redrawn as standardized wireframes; DF-12 wireframe fidelity — real OCR'd text via the sweep's Tesseract lane, anti-aliasing artifact suppression; DF-13 every pasted raster decodes — full PNG (all depths/palettes/transparency/interlace), baseline JPEG, GIF, BMP, budget lifted to 4K; DF-14 large-font text survives the glyph sweep and dense control glyphs render as icon chips; DF-15 screenshots render ALONGSIDE diagram figures (the waterfall skipped them) and rounded-corner fields assemble; `check_figures.py` PASSED) | **N/A on the cloud flow** — a local-sweep-only step; a rollback simply keeps ZipTextExtract's `[figure: ...]` caption |
+| SlideFigures | **removed** (2026-09-05 — SVG figure generation dropped from the project: no `scripts/SlideFigures.ts`, no `figures` op, no wireframe OCR loop; the sweep keeps ZipTextExtract's `[figure: ...]` caption and extracts pictures as before) | N/A — never a tenant script |
 | WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
 
 The r2 batch passed `check_batch_r2.py` (all equivalence IDENTICAL,
@@ -407,7 +407,6 @@ v1.2 describes them — paste with the window, step 6).
 | check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
 | check_draft2pptx.py (local/harness — draft2pptx.mjs v1.1: python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |
 | check_svg2pptx.py (svg2pptx v1.4 — SVG figures → editable pptx shapes: package/shape/style/label contract, no-plate + title-band dress, case-heading titles + native case tables + metadata line from the sidecar, sidecar lookup + override + --no-tables legs, python-pptx open leg incl. table read-back; v1.4 exports the parser/emitter for draft2pptx's figure slides, CLI unchanged) | 2026-09-04 (v2.27) |
-| check_figures.py (SlideFigures v2.4 / DF-15 — screenshots beside diagrams + rounded-field assembly, 29 figures; plus the DF-5..DF-13 contract: label collisions, degenerate splits, title boxes, arrowheads, spanning-event chains, wireframes, OCR text, artifact suppression, all-raster decode) | 2026-09-04 (DF-15) |
 | check_batch_v2_2.py (ZipTextExtract v2.2 / DL-1) + the standing suites (check_format incl. the new §12 diagram-label contract, check_related, check_regex) + render_sample.py + check_pad_runner.py (27/27) + check_local_sweep.py (128/128) | 2026-09-03 (see `review/harness/README.md` run records) |
 | check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) | 2026-08-13 (historical — r6 skips as superseded since the v2.2 promotion) |
 | check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r4.py / check_batch_r5.py / check_batch_r6.py | skip as superseded by design (v1.9 / r2 / r3 / r4 / r5 / r6 generations). **r4 has skipped since the RelatedRank v2.2 promotion (2026-08-15)** — the 2026-08-13 row above claimed it still passed, which stopped being true then; verified skipping 2026-09-03 |
@@ -433,11 +432,12 @@ v1.2 describes them — paste with the window, step 6).
     the `---` seam, preserving header, metadata yaml, related region
     and docs block byte-for-byte. No PromptVersion bump: the metadata
     format is unchanged, so this must NOT trigger a full reindex.
-11. **Re-run `sweep.mjs --reformat` for figures** — SlideFigures v1.0 adds an
-    SVG per diagram slide, written into the media folder and linked directly
-    after the slide heading. New and re-indexed docs get them on the nightly
-    run; existing sidecars need the one reformat pass (no AI spend, no
-    PromptVersion bump). This supersedes open action 10 — one pass covers both.
+11. **Re-run `sweep.mjs --reformat`** — SVG figure generation was removed
+    from the project on 2026-09-05 (sweep v1.58): a reformat pass now
+    re-extracts diagram slides to ZipTextExtract's `[figure: ...]` caption
+    and stops linking `slideN.svg` files; the SVGs already in the media
+    folders are left in place but no longer referenced. This supersedes
+    open action 10 — one pass covers both.
     Since sweep v1.25 the same pass also applies the test-case slide
     headings (`local/CHANGES.md` v1.25; reshaped v1.29 / TC-3 —
     classification H2 + scenario H3, specifics kept in the body, so

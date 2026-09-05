@@ -28,7 +28,6 @@ export const SCRIPT_FILES = {
   workbookdump: "WorkbookDump.ts",
   related: "RelatedRank.ts",
   sidecarpatch: "SidecarPatch.ts",
-  figures: "SlideFigures.ts",
 };
 
 // ---- param plumbing -------------------------------------------------
@@ -91,12 +90,6 @@ export function runOp(mains, op) {
       return m(null, zipParam(op), strParam(op, "mediaPrefix", op.mediaPrefix, false));
     case "media":
       return m(null, zipParam(op));
-    case "figures":
-      // ocrJson (DF-12) is optional: [{ entry, words: [{x,y,w,h,t,c?}] }]
-      // transcriptions for wireframed screenshots; omitted = placeholder
-      // bars, exactly the pre-DF-12 render.
-      return m(null, zipParam(op),
-        op.ocrJson === undefined ? undefined : jsonParam(op, "ocrJson", op.ocrJson, false));
     case "regex":
       return m(
         null,
