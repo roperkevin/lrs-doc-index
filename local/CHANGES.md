@@ -1,5 +1,24 @@
 # Local sweep — release notes
 
+## sweep v1.56 (2026-09-05 — missing Test Cases columns fail soft; heading-safe src comments)
+
+- The first live run on the new code hit `CASE-INDEX ERROR … Field
+  'SourceRef' is not recognized`: the tenant list predates the v2.0
+  columns. Case-row writes now drop a column Graph does not recognise
+  and retry (`case_fields_dropped`), with one note per run per column
+  naming the tenant step; the next `--recase --live` after the columns
+  exist fills them in through the replace-set.
+- `PROFILE LINT: TC-U31: no src comment` on a plan whose table held a
+  `<Null>` id: angle brackets rendered as HTML and broke the src
+  comment's parse. casegrammar now writes headings with `‹›` and src
+  comments without `<>` / `--`; the parser and lint read `<!-- src: … -->`
+  tolerantly, and a pure draft-contract body (no src comments at all)
+  is no longer a lint failure.
+- Gates: `check_local_sweep.py` missing-column leg (rows written
+  without the unknown columns, counted, one note each; the next recase
+  fills them), `check_caseindex.py` 79/79 (a `<Null>` table id parses
+  with its src).
+
 ## sweep v1.55 (2026-09-05 — `sharePoint.syncedSubfolder`)
 
 The sweep machine's OneDrive sync roots at the library's `General`

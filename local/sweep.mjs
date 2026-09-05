@@ -758,6 +758,7 @@ async function main() {
   const ciKinds = (cfg.sweep.caseIndex && cfg.sweep.caseIndex.kinds) || ["Test Plan"];
   const ciEnabled = !!sp.lists.testCases;
   const caseRowsByDoc = new Map(); // docRowId -> [{id, fields}]
+  const missingCaseColumns = new Set(); // v1.56: columns the tenant list lacks (noted once per run)
   if (ciEnabled) {
     const items = await graph.listItems(siteId, sp.lists.testCases, {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
@@ -843,14 +844,42 @@ async function main() {
       if (!fresh.length && !existing.length) return;
       const plan = diffCaseRows(existing, fresh);
       const next = existing.filter((r) => !plan.delete.includes(r.id));
+      // fail-soft on a column the tenant list does not have yet (v1.56):
+      // Graph answers 400 "Field 'X' is not recognized" — drop X, retry,
+      // count it, and say once per run which columns to add
+      // (schemas/SPList_TestCases.csv). The row is written with the
+      // columns that exist; the next --recase after the columns are
+      // added fills them in (the replace-set sees the difference).
+      const withKnownColumns = async (fields, write) => {
+        let f = { ...fields };
+        for (let attempt = 0; attempt < 8; attempt++) {
+          try {
+            return { result: await write(f), fields: f };
+          } catch (e) {
+            const m = /Field '([^']+)' is not recognized/.exec(String(e.message));
+            if (!m || !(m[1] in f)) throw e;
+            delete f[m[1]];
+            sum.case_fields_dropped = (sum.case_fields_dropped || 0) + 1;
+            if (!missingCaseColumns.has(m[1])) {
+              missingCaseColumns.add(m[1]);
+              process.stderr.write(
+                `note: Test Cases list has no '${m[1]}' column — case rows are written without it. ` +
+                `Add it per schemas/SPList_TestCases.csv (Confidence, Group, SourceRef; Shape choices S1–S6/LLM/draft/deck), ` +
+                `then run --recase --live once.\n`
+              );
+            }
+          }
+        }
+        throw new Error("case row write kept failing on unrecognized fields");
+      };
       for (const f of plan.create) {
-        const created = await writer.createRow("testCases", f);
-        next.push({ id: String(created.id), fields: f });
+        const { result: created, fields: wrote } = await withKnownColumns(f, (x) => writer.createRow("testCases", x));
+        next.push({ id: String(created.id), fields: wrote });
       }
       for (const u of plan.update) {
-        await writer.patchRow("testCases", u.id, u.fields);
+        const { fields: wrote } = await withKnownColumns(u.fields, (x) => writer.patchRow("testCases", u.id, x));
         const row = next.find((r) => r.id === u.id);
-        if (row) row.fields = u.fields;
+        if (row) row.fields = wrote;
       }
       for (const id of plan.delete) await writer.deleteRow("testCases", id);
       caseRowsByDoc.set(rowId, next);
