@@ -1,5 +1,5 @@
 /**
- * draftlint.mjs v1.3 — in-process draft verification for
+ * draftlint.mjs v1.4 — in-process draft verification for
  * local/testplangen.mjs, two layers:
  *
  * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
@@ -18,7 +18,9 @@
  *   2 every TC case carries a **Trace:** line
  *   3 Negative Tests opens with the fixed CAUTION alert
  *   4 Open Questions has at least one task-list item
- *   5 Coverage Map table integrity (rows, citations, completeness)
+ *   5 Coverage Map table integrity (rows, citations, completeness;
+ *     v1.4 — a Covered by cell may cite a present "Automation Notes"
+ *     / "Documentation Impacts" section, the prompt's own rule)
  *   6 TC numbering sequential per lane
  *   7 granularity, structural half (one Expected Result, >=1 step)
  *   8 Source Case Sweep, structural half (when present)
@@ -50,13 +52,18 @@
  *      tools rule, made checkable. Section/terminology phrases are
  *      allowlisted; Trace lines, [VERIFY items, and the Source Case
  *      Sweep are NOT scanned (they legitimately cite source-plan
- *      titles — the CASE SWEEP rule requires it). Note:
+ *      titles — the CASE SWEEP rule requires it). v1.4: a trailing
+ *      value word is trimmed ("To Date Null"), and a run that is a
+ *      known multi-word term abutting story words ("Experience
+ *      Builder Split") passes — the doc 910 false positives. Note:
  *      the plan sketched a cites-a-reference exception, dropped here
  *      deliberately — the prompt's tools rule admits no tool names
  *      from reference documents at all;
  *   c) enumeration echo: a comma/and list of 3+ short items in a
  *      workflow-shaped story sentence must have every item mentioned
  *      somewhere in the draft (a cheap ENUMERATION COVERAGE screen);
+ *      v1.4: the sidecar's machine sections (## Summary, the link
+ *      lists) are not story sentences and are skipped;
  *   d) STORY-FIRST TRACE (prompt v1.9): every TC case's **Trace:**
  *      line must cite the story — a quoted span found verbatim in
  *      the story passes outright; otherwise at least half the
@@ -80,6 +87,9 @@ const CORE_SECTIONS = [
   "## Negative Tests",
   "## Open Questions",
 ];
+
+// the CONDITIONAL sections a Coverage Map cell may cite (v1.12)
+const COND_SECTIONS = ["Automation Notes", "Documentation Impacts"];
 
 // segment up to the next "\n## " (the Python re.split(r'\n## ', s, 1)[0])
 function untilNextH2(segment) {
@@ -188,10 +198,18 @@ export function lintDraft(text, { baseline = false } = {}) {
       const covered = cs.length ? cs[cs.length - 1] : "";
       const idsInCell = new Set(covered.match(/TC-[PN]\d+/g) || []);
       for (const cid of idsInCell) citedIds.add(cid);
+      // v1.12: the prompt's Coverage Map rule lets a Covered by cell
+      // name "Automation Notes" / "Documentation Impacts" where those
+      // sections' bullets carry the requirement — accepted only when
+      // the named section is present
+      const sectionsInCell = COND_SECTIONS.filter((sec) => covered.includes(sec));
       check(
-        idsInCell.size > 0 || covered.includes("Open Questions"),
-        `Coverage Map row ${i}: Covered by cites a case or Open Questions`
+        idsInCell.size > 0 || covered.includes("Open Questions") || sectionsInCell.length > 0,
+        `Coverage Map row ${i}: Covered by cites a case, Open Questions, Automation Notes, or Documentation Impacts`
       );
+      for (const sec of sectionsInCell) {
+        check(text.includes(`## ${sec}`), `Coverage Map row ${i}: cited ${sec} section exists in draft`);
+      }
       for (const cid of idsInCell) {
         check(draftIds.has(cid), `Coverage Map row ${i}: cited ${cid} exists in draft`);
       }
@@ -312,6 +330,11 @@ export function stemMatches(t, storyStems) {
   return false;
 }
 
+// sidecar sections written by the sweep, not by the story's author
+// (format 3.0: the digest + the two link lists) — skipped by the
+// enumeration check (c)
+const SIDECAR_MACHINE_SECTIONS = new Set(["summary", "related documents", "esri documentation"]);
+
 // phrases the tools check must never flag: draft-shape terms + the
 // prompt's ESRI terminology (official product casing)
 const TOOL_ALLOW = new Set([
@@ -333,6 +356,35 @@ const LEAD_TRIM = new Set([
   "At", "For", "With", "From", "To", "And", "Or", "Inspect", "Attempt",
   "Select", "Click", "Do", "Verify", "Confirm", "Then", "Repeat",
 ]);
+
+// trailing VALUE words trimmed off a matched Title Case phrase
+// ("To Date Null" -> "Date"; a single word left is never a tool)
+const TRAIL_TRIM = new Set([
+  "Null", "None", "Empty", "True", "False", "Yes", "No", "On", "Off",
+  "Enabled", "Disabled", "Checked", "Unchecked", "Unchanged",
+]);
+
+// a Title Case run passes the tools check when it is a known
+// multi-word term (allowlisted or in the story) abutting words that
+// each appear in the story on their own — the phrase is two things
+// written next to each other, not one invented tool name
+const wordInStory = (w, normStory) => normStory.includes(" " + normText(w) + " ");
+const knownTerm = (words, normStory) => {
+  const key = normText(words.join(" "));
+  return TOOL_ALLOW.has(key) || normStory.includes(" " + key + " ");
+};
+function splitsIntoKnown(parts, normStory) {
+  for (let k = 1; k < parts.length; k++) {
+    const left = parts.slice(0, k);
+    const right = parts.slice(k);
+    const leftOk = left.length >= 2 ? knownTerm(left, normStory) : wordInStory(left[0], normStory);
+    const rightOk = right.length >= 2 ? knownTerm(right, normStory) : wordInStory(right[0], normStory);
+    // at least one side must be a multi-word known term; a run of
+    // single story words ("Merge Routes") is still a tool-shaped name
+    if (leftOk && rightOk && (left.length >= 2 || right.length >= 2)) return true;
+  }
+  return false;
+}
 
 /**
  * Heuristic grounding spot-checks of a draft against its own story
@@ -385,11 +437,19 @@ export function groundDraft(draftText, storyCorpus) {
       const parts = m[0].split(" ");
       while (parts.length > 2 && LEAD_TRIM.has(parts[0])) parts.shift();
       if (parts.length >= 2 && LEAD_TRIM.has(parts[0])) parts.shift();
+      // v1.4: a trailing VALUE word ("To Date Null", "Merge Option
+      // True") is data, not part of a tool name
+      while (parts.length >= 2 && TRAIL_TRIM.has(parts[parts.length - 1])) parts.pop();
       if (parts.length < 2) continue;
       const phrase = parts.join(" ");
       const key = normText(phrase);
       if (TOOL_ALLOW.has(key) || flaggedTools.has(key)) continue;
       if (normStory.includes(" " + key + " ")) continue;
+      // v1.4: a Title Case run that merely ABUTS a known term and a
+      // story word ("Experience Builder Split", "Split ArcGIS Pro") is
+      // not a tool name — pass when it splits into a known multi-word
+      // term plus story words on the other side
+      if (splitsIntoKnown(parts, normStory)) continue;
       flaggedTools.add(key);
       if (flaggedTools.size <= 10) {
         findings.push(
@@ -406,8 +466,17 @@ export function groundDraft(draftText, storyCorpus) {
     .replace(/<!--\s*metadata[\s\S]*?-->/g, " ")
     .replace(/```yaml[\s\S]*?```/g, " ");
   const seenItems = new Set();
+  // v1.4: the sidecar's machine-written sections — the AI digest
+  // (## Summary), the related-documents and Esri-documentation lists
+  // — are not story statements; an enumeration there ("Includes
+  // testing, automation, and documentation plans") never obliges
+  // the draft. Only the story's own sections are scanned.
+  let section = "";
   for (const rawLine of storyBody.split("\n")) {
     const line = rawLine.trim();
+    if (/^## /.test(line)) section = line.slice(3).trim().toLowerCase();
+    else if (/^-{3,}$/.test(line)) section = ""; // the header/body seam
+    if (SIDECAR_MACHINE_SECTIONS.has(section)) continue;
     if (line === "" || line.startsWith("|") || line.includes("](")) continue;
     if (/^[a-z_]+:\s/.test(line)) continue; // yaml-ish metadata lines
     if (!CUES.test(line.toLowerCase())) continue;

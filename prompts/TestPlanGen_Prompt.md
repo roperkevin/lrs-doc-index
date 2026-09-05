@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.11
+# Test Plan Generation Prompt — v1.12
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.11`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.12`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -12,6 +12,18 @@ SIX item/requestv2 input keys, exact names: **StoryMeta**,
 **RelatedCases** (the fifth added in v1.3, the sixth in v1.11 — the
 AI Builder prompt needs each parameter created, not just the text
 re-pasted; the local job's anthropic lane needs nothing).
+
+v1.12 (lane placement of PRESERVED-VALUE behaviors — one sentence
+in the Negative Tests rule; no input, section, sentinel, or lint
+change): the 2026-09-05 review of the doc 910 draft found four
+"referents are NOT updated on an attribute-only / date-only / same-
+value edit" cases filed as Negative cases under the CAUTION alert
+whose text — "a pass is the described denial or error, never the
+edit succeeding" — contradicts them: those edits SUCCEED and the
+pass is an unchanged value. Such a statement is a Positive case; the
+Negative lane keeps invalid input, conflicts, denials, and
+boundaries. The tenant paste is unchanged in contract (still six
+parameters).
 
 v1.11 (related cases — a SIXTH input, one new text block, one lane
 rule, one clause in the CASE SWEEP; section order, sentinels, and
@@ -349,7 +361,11 @@ verbatim:
 Then cases proving correct behavior on invalid input, conflicts,
 denied permissions, and boundary conditions. Same shape, numbered
 TC-N1, TC-N2, ... Every case carries the same mandatory **Trace:**
-line.
+line. A story statement that a value is PRESERVED or NOT updated on
+a valid edit that succeeds (an attribute-only edit leaves referents
+unchanged; a date edit keeps measures) is a POSITIVE case whose
+Expected Result names the unchanged value — never a Negative case,
+whose pass is a denial or error.
 
 ## Automation Notes
 CONDITIONAL — include ONLY when the story contains automation plans

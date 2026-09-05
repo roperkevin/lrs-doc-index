@@ -287,6 +287,25 @@ BAD_DRAFT = GOOD_DRAFT.replace(
 
 wrap = lambda body: "Here is your draft.\n[[[DRAFT BEGIN]]]\n" + body + "\n[[[DRAFT END]]]\nDone."
 
+# v1.15 (contract amendment v1.12): a Coverage Map row covered by a
+# PRESENT Automation Notes section passes; one citing an ABSENT
+# Documentation Impacts section fails, in both lints alike
+COND_DRAFT = GOOD_DRAFT.replace(
+    "## Open Questions\n",
+    "## Automation Notes\n- Extend the merge automation to cover measure preservation. "
+    "**Trace:** \"automate the merge cases\" — story automation section.\n\n"
+    "## Open Questions\n",
+).replace(
+    "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |\n",
+    "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |\n"
+    "| 4 | \"automate the merge cases\" (automation section) | Automation Notes |\n",
+)
+COND_BAD_DRAFT = COND_DRAFT.replace(
+    "| 4 | \"automate the merge cases\" (automation section) | Automation Notes |\n",
+    "| 4 | \"automate the merge cases\" (automation section) | Automation Notes |\n"
+    "| 5 | \"document the merge rules\" (documentation section) | Documentation Impacts |\n",
+)
+
 # leg 18: GOOD_DRAFT with concrete fixture tables (the v1.8 CONCRETE
 # TEST DATA shape) so figure specs have values to ground against
 FIG_DRAFT = GOOD_DRAFT.replace(
@@ -410,6 +429,7 @@ class MockState:
         self.lists = {}           # list guid -> items ([{id, fields}])
         self.gen_text = ""        # the model reply, both providers
         self.fig_text = ""        # the figures-pass reply (leg 18)
+        self.fig_stop_reason = "end_turn"  # v1.15: "max_tokens" = a cut figures reply
         self.fig_calls = 0
         self.gen_by_doc = {}      # doc id -> reply (routed by StoryMeta's doc_id)
         self.gen_calls = 0
@@ -487,7 +507,7 @@ def make_handler(state):
                          "delta": {"type": "text_delta", "text": text[half:]}},
                         {"type": "content_block_stop", "index": 0},
                         {"type": "message_delta",
-                         "delta": {"stop_reason": "end_turn"},
+                         "delta": {"stop_reason": state.fig_stop_reason if is_fig else "end_turn"},
                          "usage": {"output_tokens": 1}},
                         {"type": "message_stop"},
                     ]
@@ -598,10 +618,13 @@ def make_handler(state):
 
 # ---- fixtures -------------------------------------------------------
 
-def sidecar(sidecar_dir, folder, name, body, related=None, tools="—", keywords="—"):
+def sidecar(sidecar_dir, folder, name, body, related=None, tools="—", keywords="—",
+            summary=None):
     """A minimal format-3.0 sidecar: H1 + metadata table (no yaml), the
-    Related region carrying the machine list on its markers, then the
-    body below the seam."""
+    machine digest (## Summary, when given), the Related region
+    carrying the machine list on its markers, then the body below the
+    seam."""
+    digest = f"## Summary\n\n{summary}\n\n" if summary else ""
     bullets = "\n".join(
         f"- [{r['file']}](<{r['file']}>) <!-- rel:{r['doc']} s={r['s']} -->"
         for r in (related or [])) or "_None yet._"
@@ -611,6 +634,7 @@ def sidecar(sidecar_dir, folder, name, body, related=None, tools="—", keywords
             f"| **People** | author — · PE — · dev — |\n| **Edited** | — |\n"
             f"| **Extracted** | 2026-09-05 · lane xmlstrip · format 3.0 · prompt v2.0 |\n"
             f"| **Keywords** | {keywords} |\n| **Tools** | {tools} |\n\n"
+            f"{digest}"
             f"## Related documents\n\n<!-- related:begin -->\n{bullets}\n<!-- related:end -->\n\n"
             f"---\n\n{body}\n")
     fpath = os.path.join(sidecar_dir, folder, name)
@@ -756,8 +780,11 @@ def main():
                          "As an editor, I need to realign a route.", [])
     enum_body = ("The route can be created via Create Route, Extend Route, "
                  "and Realign Route. Test each pathway.")
+    # v1.15: the machine digest carries an enumeration of its own that
+    # the draft never has to echo (the doc 910 false positive)
     url_enum = sidecar(sidecar_dir, "User Stories", "enum__doc16.md",
-                       enum_body, [])
+                       enum_body, [],
+                       summary="Includes testing, automation, and documentation plans.")
     url_edge = sidecar(sidecar_dir, "User Stories", "edge__doc17.md",
                        "A tale with an edge-linked plan.", [])
 
@@ -946,7 +973,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.11")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -1084,6 +1111,23 @@ def main():
     check("agreement: the seeded findings surface",
           "TC-N1 carries a **Trace:** line" in js_bad["failures"]
           and any("row 3" in x for x in js_bad["failures"]), str(js_bad["failures"]))
+    cond_md = os.path.join(tmp, "cond.md")
+    cond_bad_md = os.path.join(tmp, "cond_bad.md")
+    with open(cond_md, "w") as f:
+        f.write(COND_DRAFT)
+    with open(cond_bad_md, "w") as f:
+        f.write(COND_BAD_DRAFT)
+    py_rc_cond, py_labels_cond = run_py_lint(cond_md)
+    py_rc_cbad, py_labels_cbad = run_py_lint(cond_bad_md)
+    js_cond = run_draftlint(cond_md)
+    js_cbad = run_draftlint(cond_bad_md)
+    check("agreement: a row covered by a present Automation Notes section passes both",
+          py_rc_cond == 0 and js_cond["failures"] == [],
+          f"py={py_labels_cond} js={js_cond['failures']}")
+    check("agreement: a row citing an absent Documentation Impacts section fails both, same label",
+          py_rc_cbad != 0 and sorted(js_cbad["failures"]) == sorted(py_labels_cbad)
+          and js_cbad["failures"] == ["Coverage Map row 5: cited Documentation Impacts section exists in draft"],
+          f"py={sorted(py_labels_cbad)} js={sorted(js_cbad['failures'])}")
 
     # strict: refuse to write
     state.gen_text = wrap(BAD_DRAFT)
@@ -1216,6 +1260,9 @@ def main():
           r.returncode == 0
           and 'enumerated item "Realign Route"' in draft
           and 'enumerated item "Create Route"' in draft, draft[:900])
+    check("an enumeration in the sidecar's machine digest (## Summary) is not flagged",
+          r.returncode == 0 and 'enumerated item "Includes testing"' not in draft
+          and 'enumerated item "documentation plans"' not in draft, draft[:900])
     state.drafts.clear()
     state.gen_text = wrap(
         GOOD_DRAFT +
@@ -1244,6 +1291,20 @@ def main():
     r = run_job(cfg_main, ["--story", "12", "--live"])
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("source-plan title inside a [VERIFY] item not flagged as a tool",
+          r.returncode == 0 and "tool-like name" not in draft, draft[:900])
+    state.drafts.clear()
+    # v1.15 (draftlint v1.4): a known term abutting a story word, and a
+    # trailing value word, are not tool names — the doc 910 false
+    # positives "Experience Builder Split" and "Date Null"
+    abutting = GOOD_DRAFT.replace(
+        "- [ ] 2. Inspect the measures on the merged route.",
+        "- [ ] 2. Inspect the measures on the merged route "
+        "(From Date 1/1/2000, To Date Null).\n"
+        "- [ ] 3. Confirm the Experience Builder Merge result matches.")
+    state.gen_text = wrap(abutting)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("known term abutting a story word / trailing value word not flagged as a tool",
           r.returncode == 0 and "tool-like name" not in draft, draft[:900])
     state.gen_text = wrap(GOOD_DRAFT)
     r = run_job(cfg_main, ["--story", "16", "--dry-run"])
@@ -1980,8 +2041,19 @@ def main():
           and "SELECTION RULES" in prompt and "<<<DRAFT BEGIN>>>" in prompt
           and "### TC-P1 — Merge preserves measures" in prompt
           and not re.search(r"\{(PlanTitle|Draft)\}", prompt)
-          and state.ant_last_body.get("max_tokens") == 8000
+          and state.ant_last_body.get("max_tokens") == 24000
           and summ.get("genFigures") == "2/4", r.stdout + r.stderr[-300:] + prompt[-200:])
+    # v1.15: a cut figures reply names THIS pass's knob, and the draft still lands
+    state.fig_stop_reason = "max_tokens"
+    r = run_job(cfg_fig_ant, ["--story", "12", "--dry-run"])
+    summ = summary_of(r.stdout)
+    check("cut figures reply names testplangen.figuresMaxTokens, pass skipped, draft lands",
+          r.returncode == 0 and summ.get("genFigures") == "0/0"
+          and "figures skipped: LLM output truncated (stop_reason: max_tokens)" in r.stderr
+          and "testplangen.figuresMaxTokens (currently 24000" in r.stderr
+          and "testplangen.maxTokens bounds only the draft call" in r.stderr,
+          r.stdout + r.stderr[-400:])
+    state.fig_stop_reason = "end_turn"
     # refusals: --auto, and aibuilder without a figures model BEFORE any spend
     r = run_job(cfg_fig, ["--auto", "--figures"])
     check("--figures refused with --auto",

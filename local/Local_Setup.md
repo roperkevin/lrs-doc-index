@@ -839,7 +839,9 @@ model's not-illustrated list. The draft body is untouched; the pass
 fails soft (a bad reply skips it, the draft still lands —
 `genFigures=<rendered>/<proposed>` in the summary, every spec in the
 run log). Transport: the anthropic lane executes the repo prompt
-verbatim (`figuresMaxTokens`, 8000); the aibuilder lane needs
+verbatim (`figuresMaxTokens`, 24000 since v1.15 — the pass reads
+THIS knob, never `maxTokens`; a cut reply says so, and with
+`--stream` the thinking summary shares the cap); the aibuilder lane needs
 `llm.figuresModelId` and refuses before the generation spend without
 it (no tenant prompt exists yet — set `testplangen.provider` to
 `anthropic` for the pass). Manual runs only. To put the SVGs on

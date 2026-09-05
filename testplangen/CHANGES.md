@@ -1,3 +1,85 @@
+# TestPlanGen v2.35 — doc 910 draft review: the figures cap, four verifier false positives, the preserved-value lane (prompt v1.12, testplangen.mjs v1.15, draftlint v1.4)
+
+Owner-requested (2026-09-05), reviewing the first `--figures` draft
+for user story doc 910 ("Auto-Populate Referents for Merge, Split,
+DynSeg, and Table Widgets"): the draft's verifier banner carried 7
+findings and the figures pass produced nothing ("0 rendered of 0
+proposed — pass skipped: LLM output truncated (stop_reason:
+max_tokens)") even after the owner raised the token knob. All
+seven findings were the VERIFIER's, not the draft's (three Coverage
+Map rows, two tool-like names, two enumeration items); the figures
+failure was a knob the error message never named.
+
+- **Figures pass truncation (testplangen.mjs v1.15).** The pass
+  bounds its reply with `testplangen.figuresMaxTokens` (8000) and
+  ignores `testplangen.maxTokens` (the DRAFT cap) — but the
+  truncation error it surfaced was llm.mjs's generic "raise the
+  caller's maxTokens knob", so the owner raised the draft cap to its
+  maximum and the figures reply was still cut at 8000. Two fixes:
+  the pass now rewraps a max_tokens error naming its own knob, its
+  current value, and the fact that `--stream`'s thinking summary
+  spends the same budget (the draft call already did this for its
+  knob); and the default rises to **24000** — a 22-case draft's six
+  specs plus the prompt's mandatory per-case `skipped` list is on
+  the order of 9k tokens of JSON, so 8000 could never complete a
+  full-size plan. The pass still fails soft; the draft still lands.
+- **Coverage Map rows covered by a conditional section (lint
+  contract amendment v1.12 — Python authority first, draftlint v1.4
+  mirrors).** The prompt's Coverage Map rule has said since the
+  automation/documentation sections arrived that a Covered by cell
+  may name "Automation Notes" / "Documentation Impacts" where those
+  sections' bullets carry the requirement; both lints accepted only
+  a TC id or "Open Questions", so every draft with an automation or
+  documentation row (doc 910: rows 18–20) failed check 5. Both now
+  accept a cited conditional section WHEN IT IS PRESENT in the draft
+  (new label `Coverage Map row N: cited <section> section exists in
+  draft`, the TC-id precedent); the citation label reads `… cites a
+  case, Open Questions, Automation Notes, or Documentation Impacts`.
+  Agreement leg extended with the pass/fail pair.
+- **Grounding check b false positives (draftlint v1.4).** "The
+  Experience Builder Split widget and the ArcGIS Pro operation …"
+  was flagged as tool-like name "Experience Builder Split": the
+  Title Case regex runs across an allowlisted product name into the
+  next capitalized story word. A run now passes when it splits into
+  a known multi-word term (allowlisted or in the story) abutting
+  words that each appear in the story on their own; a run of single
+  story words ("Quantum Route Wizard") is still flagged. "(From Date
+  1/1/2000, To Date Null)" was flagged as "Date Null": a trailing
+  VALUE word (Null, None, True, False, Yes, No, On, Off, …) is now
+  trimmed before the length test.
+- **Grounding check c false positives (draftlint v1.4).** "Includes
+  testing" and "documentation plans" were flagged as dropped
+  enumeration items — they come from the sidecar's machine-written
+  `## Summary` ("Includes testing, automation, and documentation
+  plans."), the AI digest, not from any story statement. The
+  enumeration scan now skips the sidecar's machine sections
+  (Summary, Related documents, Esri documentation) and resumes at the
+  `---` seam / the first story H2. The story text the MODEL receives
+  is unchanged.
+- **Prompt v1.12 — preserved-value behaviors are Positive cases.**
+  The doc 910 draft filed "attribute-only edit leaves referents
+  unchanged", "date-only edit …", "re-entering the same measure …"
+  (TC-N3–TC-N6) under the Negative lane, whose mandatory CAUTION
+  alert says a pass is a denial or error, never the edit succeeding
+  — those edits succeed and the pass is an unchanged value. One
+  sentence in the Negative Tests rule sends a story statement that a
+  value is PRESERVED / NOT updated on a valid, successful edit to the
+  Positive lane. No input, section, sentinel, or lint change; the
+  six-parameter tenant contract is unchanged (the v1.12 paste
+  supersedes the pending v1.11 one).
+- **Seen in the doc 910 draft and NOT fixed here (draft-level, for
+  the §4 review):** the test-data table lists E12 ("referents NOT
+  configured") inside the "referent fields configured" line-event
+  table although Setup step 3 puts it on a second layer; TC-P15's
+  point-event referent semantics, the add-event pathway in the
+  Dynamic Segmentation / Table widgets, and merge with changed
+  measures stay [VERIFY] items because the story is silent. Under
+  lint v1.4 the draft's banner would carry no finding.
+
+Gates: `check_testplangen.py` **203/203** (leg 5 agreement pair,
+the two grounding checks, the figures truncation check),
+`check_draft_coverage.py` on the fixtures via the agreement leg.
+
 # TestPlanGen v2.34 — related cases: the retrieval lane (prompt v1.11, testplangen.mjs v1.14)
 
 Owner-requested (2026-09-05), after the doc 910 review: the draft
