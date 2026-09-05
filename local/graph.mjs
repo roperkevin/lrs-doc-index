@@ -1,8 +1,10 @@
 /**
- * graph.mjs v1.3 — minimal Microsoft Graph client for the local Doc
+ * graph.mjs v1.4 — minimal Microsoft Graph client for the local Doc
  * Index sweep. List rows only: document content and sidecars move
  * through the OneDrive-synced library (plain file I/O), so Graph is
- * needed solely for the six SharePoint lists. (v1.3: `listFolder` —
+ * needed solely for the six SharePoint lists. (v1.4: SpoClient honors
+ * Retry-After, paces its calls and counts throttles — a whole-list
+ * hyperlink backfill tripped SharePoint's 429; v1.3: `listFolder` —
  * default-drive folder children, for testplangen.mjs's auto-mode
  * idempotency scan of the drafts folder.)
  *
@@ -383,6 +385,16 @@ export class SpoClient {
   constructor(cfg) {
     this.cfg = cfg;
     this.baseUrl = cfg.baseUrl || cfg.siteUrl;
+    // v1.4: SharePoint throttles the REST route by cumulative request
+    // rate (429 / 503 with Retry-After — a whole-list backfill of
+    // hyperlink columns trips it). Every call honors Retry-After (up
+    // to maxRetries, like Graph), keeps a minimum gap between calls
+    // (paceMs), and a throttle widens that gap for the rest of the run.
+    this.maxRetries = cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries);
+    this.paceMs = cfg.paceMs === undefined ? 150 : Number(cfg.paceMs);
+    this.maxRetryAfterMs = cfg.maxRetryAfterMs === undefined ? 300000 : Number(cfg.maxRetryAfterMs);
+    this.throttled = 0;
+    this._lastAt = 0;
     this.mode = cfg.auth || (cfg.clientSecret !== undefined ? "app" : "device");
     const origin = new URL(cfg.siteUrl).origin;
     if (this.mode === "device" || this.mode === "interactive") {
@@ -446,20 +458,63 @@ export class SpoClient {
       `${this.baseUrl}/_api/web/lists(guid'${listGuid}')/items(${itemId})` +
       `/ValidateUpdateListItem`;
     let res;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      res = await fetch(url, {
-        method: "POST",
-        headers: {
-          accept: "application/json;odata=nometadata",
-          "content-type": "application/json;odata=nometadata",
-          authorization: "Bearer " + (await this.token()),
-        },
-        body: JSON.stringify({ formValues, bNewDocumentUpdate: false }),
-        signal: timeout(this.cfg),
-      });
-      if (res.status !== 401) break;
-      if (this.delegated) this.delegated.invalidate();
-      this._token = null;
+    let lastErr;
+    let refreshed = false;
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+      // pace: never closer than paceMs to the previous SPO call
+      const gap = this._lastAt + this.paceMs - Date.now();
+      if (gap > 0) await sleep(gap);
+      this._lastAt = Date.now();
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            accept: "application/json;odata=nometadata",
+            "content-type": "application/json;odata=nometadata",
+            authorization: "Bearer " + (await this.token()),
+          },
+          body: JSON.stringify({ formValues, bNewDocumentUpdate: false }),
+          signal: timeout(this.cfg),
+        });
+      } catch (e) {
+        lastErr = new Error(`SPO ValidateUpdateListItem: ${e.message}`);
+        await sleep(Math.min(2000 * 2 ** attempt, 30000));
+        continue;
+      }
+      if (res.status === 401 && !refreshed) {
+        // token may have expired mid-run — refresh once and retry
+        refreshed = true;
+        if (this.delegated) this.delegated.invalidate();
+        this._token = null;
+        attempt--;
+        continue;
+      }
+      if (res.status === 429 || res.status === 503) {
+        const ra = Number(res.headers.get("retry-after"));
+        const waitMs = Math.min((ra > 0 ? ra : 5 * 2 ** attempt) * 1000, this.maxRetryAfterMs);
+        this.throttled++;
+        if (this.throttled === 1) {
+          process.stderr.write(
+            `note: SharePoint throttled the hyperlink-column route (${res.status}, Retry-After ${ra > 0 ? ra + "s" : "unset"}) — ` +
+            "honoring it and pacing the rest of this run; raise spo.paceMs in config to stay under the limit\n"
+          );
+        }
+        // widen the pace for the rest of the run: throttling is cumulative
+        this.paceMs = Math.min(Math.max(this.paceMs * 2, 500), 5000);
+        lastErr = new Error(`SPO ValidateUpdateListItem ${res.status}: throttled`);
+        await sleep(waitMs);
+        continue;
+      }
+      if (res.status >= 500) {
+        lastErr = new Error(`SPO ValidateUpdateListItem ${res.status}`);
+        await sleep(Math.min(2000 * 2 ** attempt, 30000));
+        continue;
+      }
+      break;
+    }
+    if (!res) throw lastErr || new Error("SPO ValidateUpdateListItem: no response");
+    if (res.status === 429 || res.status === 503 || res.status >= 500) {
+      throw new Error(`${lastErr ? lastErr.message : "SPO ValidateUpdateListItem " + res.status} after ${this.maxRetries + 1} attempts`);
     }
     if (!res.ok) {
       throw new Error(`SPO ValidateUpdateListItem ${res.status}: ${(await res.text()).slice(0, 400)}`);

@@ -104,6 +104,17 @@ each change belongs to the component CHANGES files.
   `check_figureindex.py` **61/61**, `check_local_sweep.py`
   **317/317**, PAD 28/28, typecheck 8/8, caseindex 87/87,
   testplangen 156/156.
+- **2026-09-05jj (SharePoint throttling — sweep v1.62, graph.mjs
+  v1.4; authored on branch `claude/figure-indexing-3n2o1b`):** the
+  first live `--refigure` hit `SPO ValidateUpdateListItem 429` on the
+  hyperlink route (one SPO call per figure row on top of Graph; the
+  client retried only 401). SpoClient now honors Retry-After (429/503,
+  `spo.maxRetries`), paces calls (`spo.paceMs`, widened after a
+  throttle), counts `spo_throttled` into the summaries and notes it
+  once; updates patch only changed fields, so a reflow with no
+  hyperlink change makes no SPO call. Re-run `--refigure --live`; it
+  resumes where the throttle stopped it. Gates: `check_local_sweep.py`
+  **320/320** (spo-throttle + no-SPO-on-churn legs).
 - **Pipeline: DOWN — auth expired** (open action 12): Conditional
   Access rejects device-code sign-in; fix is `"auth": "interactive"`
   + one console sign-in on the sweep machine. Nothing indexes until

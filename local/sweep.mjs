@@ -896,6 +896,15 @@ async function main() {
       }
       throw new Error(`${rowsLabel.replace(/s$/, "")} write kept failing on unrecognized fields`);
     };
+  // an update patches ONLY the fields that differ (plus SweptOn) — an
+  // unchanged hyperlink column never costs an SPO call (v1.62)
+  const changedOnly = (u) => {
+    if (!u.changed) return u.fields;
+    const out = {};
+    for (const k of u.changed) out[k] = u.fields[k];
+    if ("SweptOn" in u.fields) out.SweptOn = u.fields.SweptOn;
+    return out;
+  };
   const caseColumns = columnDropper({
     listLabel: "Test Cases", rowsLabel: "case rows",
     schemaHint: "schemas/SPList_TestCases.csv (Confidence, Group, SourceRef; Shape choices S1–S6/LLM/draft/deck)",
@@ -938,9 +947,9 @@ async function main() {
         next.push({ id: String(created.id), fields: wrote });
       }
       for (const u of plan.update) {
-        const { fields: wrote } = await caseColumns(u.fields, (x) => writer.patchRow("testCases", u.id, x), sum);
+        const { fields: wrote } = await caseColumns(changedOnly(u), (x) => writer.patchRow("testCases", u.id, x), sum);
         const row = next.find((r) => r.id === u.id);
-        if (row) row.fields = wrote;
+        if (row) row.fields = { ...row.fields, ...wrote };
       }
       for (const id of plan.delete) await writer.deleteRow("testCases", id);
       caseRowsByDoc.set(rowId, next);
@@ -991,9 +1000,9 @@ async function main() {
         next.push({ id: String(created.id), fields: wrote });
       }
       for (const u of plan.update) {
-        const { fields: wrote } = await figureColumns(u.fields, (x) => writer.patchRow("figures", u.id, x), sum);
+        const { fields: wrote } = await figureColumns(changedOnly(u), (x) => writer.patchRow("figures", u.id, x), sum);
         const row = next.find((r) => r.id === u.id);
-        if (row) row.fields = wrote;
+        if (row) row.fields = { ...row.fields, ...wrote };
       }
       for (const id of plan.delete) await writer.deleteRow("figures", id);
       figureRowsByDoc.set(rowId, next);
@@ -1365,6 +1374,7 @@ async function main() {
       }
     }
     if (!dry) await flushFigureCatalog();
+    fsum.spo_throttled = (writer.spo && writer.spo.throttled) || 0;
     const fDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(fDir, { recursive: true });
     const fStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1438,6 +1448,7 @@ async function main() {
           process.stderr.write(`remote flush of case catalog: ${e.message}\n`));
       }
     }
+    csum.spo_throttled = (writer.spo && writer.spo.throttled) || 0;
     const cDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(cDir, { recursive: true });
     const cStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1950,6 +1961,7 @@ async function main() {
   }
 
   summary.related_flags = summary.related_flags.trim();
+  summary.spo_throttled = (writer.spo && writer.spo.throttled) || 0;
   const line =
     `library_items_seen=${summary.library_items_seen} ` +
     `after_smoke_filter=${summary.after_smoke_filter} ` +

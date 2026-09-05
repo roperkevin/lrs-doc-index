@@ -982,6 +982,12 @@ Setup, once:
    `--refigure --live` once. `sweep.drawings: false` turns the lane
    off. Drawings are regenerated on every reformat and only written
    when their bytes change.
+8. **If a backfill reports `SPO ValidateUpdateListItem 429`** (sweep
+   v1.62): SharePoint throttled the hyperlink route. The client now
+   waits out `Retry-After` and paces itself; simply re-run the same
+   `--refigure --live` / `--recase --live` — rows already written cost
+   nothing, only the documents that errored are written. If it keeps
+   happening, raise `spo.paceMs` (e.g. 500) in `config.json`.
 
 A column the tenant list lacks is dropped from the write and noted
 once per run (`figure_fields_dropped`; the v1.56 fail-soft, shared
