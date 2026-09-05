@@ -10,6 +10,21 @@
  * structure yields ZERO cases, never guesses (the caseHeadings
  * determinism decision, applied here).
  *
+ * v1.2 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
+ *  - per-case TAGS from the curated Keywords vocabulary
+ *    (prepareVocab/caseTags below): canonical tool names land in a
+ *    `Tools` column, topic + product keywords in a `Keywords`
+ *    column — matched word-boundary against the case's own title,
+ *    scenario, and unfenced body PLUS the plan title (the plan
+ *    title is what names "the tool being tested" when the slide
+ *    itself doesn't; it refreshes with every replace-set, so it
+ *    never goes stale). Alias rows fold to their canonical, matches
+ *    sort alphabetically for stable diffs, and no vocabulary means
+ *    empty columns — never a guess. Deliberately NOT stored as
+ *    DocKeywords-style junction rows: flat '; '-joined columns are
+ *    the Products-column precedent, filter fine in list views, and
+ *    don't triple the list's row volume.
+ *
  * v1.1 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
  *  - the explicit `owner/repo#n` issue form requires 3–5 digits,
  *    matching the corpus assumption RegexExtract's hashtag rule
@@ -110,6 +125,48 @@ function skimText(sectionLines, capChars) {
     if (ln) out.push(ln);
   }
   return cap(out.join("\n"), capChars);
+}
+
+/**
+ * prepareVocab — compile the Keywords vocabulary into word-boundary
+ * matchers, once per run (v1.2). `entries` are
+ * `{ title, kind, canonical }`: title is the text to match (alias
+ * rows pass their own title), canonical the name to report (their
+ * canonical's title), kind the canonical's Kind (tool/topic/product).
+ * Multi-word titles match across any whitespace; regex specials in
+ * titles are escaped; matching is case-insensitive.
+ */
+export function prepareVocab(entries) {
+  const compiled = [];
+  for (const e of entries || []) {
+    const title = String(e?.title || "").trim();
+    if (!title) continue;
+    const pattern = title
+      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\s+/g, "\\s+");
+    compiled.push({
+      re: new RegExp(`\\b${pattern}\\b`, "i"),
+      kind: String(e.kind || "topic").toLowerCase(),
+      canonical: String(e.canonical || title),
+    });
+  }
+  return { entries: compiled };
+}
+
+/**
+ * caseTags — the vocabulary terms present in one case's scan text.
+ * Returns { tools, keywords }: sorted, deduped canonical names —
+ * Kind "tool" in tools, everything else (topic, product) in keywords.
+ */
+export function caseTags(scanText, vocab) {
+  const tools = new Set();
+  const keywords = new Set();
+  const text = String(scanText || "");
+  for (const e of vocab?.entries || []) {
+    if (!e.re.test(text)) continue;
+    (e.kind === "tool" ? tools : keywords).add(e.canonical);
+  }
+  return { tools: [...tools].sort(), keywords: [...keywords].sort() };
 }
 
 /** Section lines outside fenced code blocks — the scan surface for
@@ -231,6 +288,7 @@ function deckCases(lines, opts) {
       expectedResult: meta.expectedResult,
       traceText: meta.traceText,
       _headAt: i,
+      _prose: meta._prose,
     });
   }
   return cases;
@@ -263,13 +321,14 @@ function draftCases(lines, opts) {
       expectedResult: meta.expectedResult,
       traceText: meta.traceText,
       _headAt: i,
+      _prose: meta._prose,
     });
   }
   return cases;
 }
 
 /**
- * extractCases(bodyText, { defaultRepo, caseTextCap }) →
+ * extractCases(bodyText, { defaultRepo, caseTextCap, vocab, planTitle }) →
  *   { cases, shape: "deck" | "draft" | "none", mixed }
  *
  * `cases` in document order, each { ordinal (1-based), caseNo,
@@ -302,8 +361,18 @@ export function extractCases(bodyText, opts = {}) {
     shape,
     mixed: deck.length > 0 && draft.length > 0,
     cases: picked.map((c, k) => {
-      const { _headAt, ...kase } = c;
-      return { ordinal: k + 1, ...kase, shape, anchor: anchorAt.get(_headAt) || "" };
+      const { _headAt, _prose, ...kase } = c;
+      // tags (v1.2): the case's own title + scenario + unfenced body,
+      // plus the plan title — the tested tool's usual home
+      const tags = caseTags(
+        [opts.planTitle || "", c.title, c.scenario, ..._prose].join("\n"),
+        opts.vocab
+      );
+      return {
+        ordinal: k + 1, ...kase, shape,
+        tools: tags.tools, keywords: tags.keywords,
+        anchor: anchorAt.get(_headAt) || "",
+      };
     }),
   };
 }
@@ -332,6 +401,8 @@ export function toRowFields(docRowId, kase, nowIso) {
     RouteRefs: kase.routeRefs,
     ExpectedResult: kase.expectedResult,
     TraceText: kase.traceText,
+    Tools: cap(kase.tools.join("; "), 255),
+    Keywords: cap(kase.keywords.join("; "), 255),
     SweptOn: nowIso,
   };
 }

@@ -1,5 +1,43 @@
 # Local sweep — release notes
 
+## caseindex v1.2 (2026-09-05 — per-case tags from the curated vocabulary; sweep v1.44, indexpages v1.2)
+
+**Cases become searchable by tool.** CaseIndexVersion bump — add the
+two columns, then reflow with `--recase --live` (folds into the v1.1
+reflow if done together). Two new `SPList_TestCases.csv` columns,
+filled deterministically from the corpus's own curated **Keywords
+vocabulary** (no AI, no new config):
+
+- `Tools` — canonical Kind=tool names found in the case's title,
+  scenario, and unfenced body, PLUS the plan title — the plan title
+  is what names "the tool being tested" when the slide itself
+  doesn't, and it refreshes with every replace-set, so it never goes
+  stale. `Keywords` — topic + product keywords from the same scan.
+- Matching is `prepareVocab`/`caseTags` (caseindex.mjs): compiled
+  once per run from the run-start Keywords snapshot (the kwSnapshot
+  precedent — keywords minted THIS run reach tags on the next
+  reindex/recase), word-boundary, case-insensitive, multi-word
+  across any whitespace, alias rows matching under their own title
+  but reporting their CANONICAL's name and kind — so every weekly
+  curation merge sharpens case tags corpus-wide for free. Matches
+  sort alphabetically (stable diffs); no vocabulary = empty columns,
+  never a guess. Deliberately flat '; '-joined columns (the Products
+  precedent), NOT DocKeywords-style junction rows — list views
+  filter fine without tripling row volume.
+- sweep **v1.44** builds the vocabulary and passes each plan's title
+  into `syncCases`; indexpages **v1.2** adds a Tools column to the
+  `_Case Catalog.md` rows.
+
+TENANT STEP (with the v1.1 columns): add `Tools` and `Keywords`
+(Single line of text, modern UI fine) to the live list — nine v1.1+
+v1.2 columns total — then one `--recase --live`.
+
+Gates: `check_caseindex.py` **59/59** (plan-title tool tagging,
+word-boundary + alias folding + flexible whitespace, the
+fenced-vocab trap, no-vocab empty columns), `check_local_sweep.py`
+**237/237** (the live-leg row tagged from run-start vocabulary),
+`check_testplangen.py` 141/141.
+
 ## caseindex v1.1 (2026-09-05 — precision + per-case metadata)
 
 **CaseIndexVersion bump — reflow with `--recase --live` after adding

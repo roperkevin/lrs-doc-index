@@ -87,7 +87,7 @@ Trace: story §2 (devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/999
 ### TC-P2 — Split at the route end
 Steps referencing ArcGISPro/ps-location-referencing#4855 explicitly.
 ```arcade
-var sneaky = other/repo#4444; // fenced code never mints refs or meta
+var sneaky = other/repo#4444; // merge events in a fence never tags
 ```
 
 ### TC-N1: Reject a split outside the route measure range
@@ -104,8 +104,8 @@ PROSE = "Just a prose document.\n\n## Background\n\nWords about nothing.\n"
 
 NODE_SCRIPT = """
 import { tidyBody, caseHeadings } from "file://%(lib)s/presentation.mjs";
-import { extractCases, toRowFields, diffCaseRows, caseIssueRefs }
-  from "file://%(lib)s/caseindex.mjs";
+import { extractCases, toRowFields, diffCaseRows, caseIssueRefs,
+  prepareVocab, caseTags } from "file://%(lib)s/caseindex.mjs";
 import fs from "node:fs";
 
 const fx = JSON.parse(fs.readFileSync(process.env.CASEINDEX_FIXTURE, "utf8"));
@@ -146,6 +146,21 @@ process.stdout.write(JSON.stringify({
   refsBare: caseIssueRefs("see #612 and #12", "A/b"),
   refsNoRepo: caseIssueRefs("see #612", ""),
   refsDigits: caseIssueRefs("expr 40+5 a/b#0 and a/b#12, real a/b#4855", ""),
+  tags: (() => {
+    const vocab = prepareVocab([
+      { title: "merge events", kind: "tool", canonical: "merge events" },
+      { title: "merge event tool", kind: "tool", canonical: "merge events" },
+      { title: "lock", kind: "topic", canonical: "locks" },
+      { title: "locks", kind: "topic", canonical: "locks" },
+      { title: "split measure", kind: "topic", canonical: "split measure" },
+    ]);
+    return {
+      deck: extractCases(deckBody, { ...opts, vocab,
+        planTitle: "Merge Events Test Plan" }).cases,
+      draft: extractCases(fx.draft, { ...opts, vocab }).cases,
+      direct: caseTags("The Merge   Event Tool holds locks; blocked text", vocab),
+    };
+  })(),
 }));
 """
 
@@ -275,6 +290,28 @@ def main():
           d1.get("expectedResult") == "two events", json.dumps(d1))
     check("draft case: Trace line captured (per-case grounding provenance)",
           str(d1.get("traceText")).startswith("story §2"), json.dumps(d1))
+    print("-- vocabulary tags (v1.2) --")
+    tg = r["tags"]
+    check("plan title names the tested tool on every case",
+          [c["tools"] for c in tg["deck"]] == [["merge events"], ["merge events"]],
+          json.dumps([c["tools"] for c in tg["deck"]]))
+    check("case-text keywords matched word-boundary",
+          tg["deck"][0]["keywords"] == ["split measure"]
+          and tg["deck"][1]["keywords"] == ["split measure"],
+          json.dumps([c["keywords"] for c in tg["deck"]]))
+    check("alias folds to canonical across flexible whitespace, "
+          "'blocked' never matches 'lock'",
+          tg["direct"] == {"tools": ["merge events"], "keywords": ["locks"]},
+          json.dumps(tg["direct"]))
+    check("fenced vocab terms never tag (TC-P2's arcade trap)",
+          tg["draft"][1]["tools"] == [], json.dumps(tg["draft"][1]))
+    check("draft steps tag from their own text",
+          tg["draft"][0]["keywords"] == ["split measure"],
+          json.dumps(tg["draft"][0]["keywords"]))
+    check("no vocabulary = empty tag columns, never a guess",
+          r["fresh"][0].get("Tools") == "" and r["fresh"][0].get("Keywords") == "",
+          json.dumps(r["fresh"][0]))
+
     row0 = r["fresh"][0]
     check("row shaping carries the v1.1 columns",
           row0.get("Shape") == "deck" and row0.get("TableCount") == 1

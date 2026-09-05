@@ -94,7 +94,8 @@ def make_pptx(fpath, text, with_media=False, with_diagram=False, with_case=False
                 "ppt/slides/slide2.xml",
                 "<p:sld><p:cSld><p:spTree><p:sp><p:txBody>"
                 "<a:p><a:r><a:t>Positive - Line network</a:t></a:r></a:p>"
-                "<a:p><a:r><a:t>3. Loop route – Split measure : 40</a:t></a:r></a:p>"
+                "<a:p><a:r><a:t>3. Loop route – Split measure : 40 "
+                "using Merge Events</a:t></a:r></a:p>"
                 "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>",
             )
         if with_media:
@@ -884,6 +885,10 @@ def main():
     state = MockState()
     # seeded canonical keyword — sweeps must reuse it, not re-mint
     state.seed(LISTS["keywords"], {"Title": "locks", "Kind": "topic"})
+    # run-start vocabulary for the case-tag legs (caseindex v1.2):
+    # the tool alpha's case slide names, and a topic in its case text
+    state.seed(LISTS["keywords"], {"Title": "merge events", "Kind": "tool"})
+    state.seed(LISTS["keywords"], {"Title": "split measure", "Kind": "topic"})
     # spec.pdf pre-stamped Skipped at the CURRENT PromptVersion with no
     # extraction attempt — exactly the tenant state the backfill leaves
     # PDFs in; only the PDF-rescue gate can reprocess it (SourceModified
@@ -1378,6 +1383,9 @@ def main():
           and ac.get("TableCount") == 0 and ac.get("StepCount") == 0
           and ac.get("RouteRefs") == "" and ac.get("ExpectedResult") == ""
           and ac.get("TraceText") == "", str(ac))
+    check("case row tagged from the run-start vocabulary (v1.2)",
+          ac.get("Tools") == "merge events"
+          and ac.get("Keywords") == "split measure", str(ac))
     check("case row title is the visible heading",
           ac.get("Title") == "Case 3: Positive - Line Network",
           str(ac.get("Title")))
