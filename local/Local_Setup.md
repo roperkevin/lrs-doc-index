@@ -797,13 +797,35 @@ flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
 grounding (true), notify (false), provider ("" = follow
-llm.provider), maxTokens (32000), autoDraft (false), autoMaxPerRun
+llm.provider), maxTokens (32000), caseIndex (true — the Test Cases
+lane below), autoDraft (false), autoMaxPerRun
 (3), autoLookbackDays (7), dryRun (true). Deliberate deviations from the
 flow, all bounded: one run-start Doc Index snapshot replaces the
 per-item Get calls; the G6 fallback orders by SourceModified where
 the flow orders by list Modified (same newest-first intent); a story
 sidecar missing from the synced library is a hard error naming the
-sync, not a silent degrade. Prompt promotion stays the
+sync, not a silent degrade.
+
+**The Test Cases lane** (v1.9, `testplangen/CHANGES.md` v2.30) —
+once §12's list GUID is in config, the sweep's per-case index feeds
+generation three ways, all deterministic and read-only, no prompt
+change: plans whose indexed cases cite one of the story's devtopia
+issue ids fill the lane slots the related routing left open
+(same-surface as exemplars, others as reference functionality)
+ahead of the G6 fallback — `caseRouted=` in the summary, the ids in
+the banner comment; an exemplar plan that overflows `exemplarCap`
+is trimmed WHOLE cases at a time, the cases most relevant to the
+story kept in document order (issue-citing first, then shared
+Tools / Keywords tags from the case rows) with an omission line —
+`caseTrim=` and `exCases=<shown>/<parsed>`; and every draft ends
+with the deterministic `## Existing Test Cases` addendum listing
+the indexed cases that already cite the story's issues, each
+deep-linking its sidecar section — `existingCases=`. Reading the
+summary: `caseRouted>0` on a story with `neighbors=0` means the
+case index found what RelatedRank had not yet linked; a large
+`existingCases=` is the dedupe list to read FIRST in the §4 review.
+`testplangen.caseIndex: false` turns the lane off; absent list =
+off; either way the draft is the pre-v1.9 one. Prompt promotion stays the
 `TestPlanGenPromptVersion` paste path (`testplangen/CHANGES.md`) —
 the anthropic lane picks a promoted prompt up on its next run
 automatically; the aibuilder lane still needs the tenant paste.
@@ -823,9 +845,12 @@ archived doc's rows, and `--recase` backfills the whole corpus from
 the sidecars on disk — and the consumers (sweep v1.43 / TestPlanGen
 v2.29): live runs rebuild **"_Case Catalog.md"** at the library root
 (every case grouped by plan, anchor deep links; the Q&A agent
-grounds on it automatically), and `testplangen.mjs --gap-report`
+grounds on it automatically), `testplangen.mjs --gap-report`
 traces story issue ids against the case rows, surfacing stories
-covered by adjacency only.
+covered by adjacency only, and — since testplangen.mjs v1.9 — the
+generator itself routes case-traced plans into its lanes, trims
+overflowing exemplars case-wise, and appends the `## Existing Test
+Cases` addendum (§11, "The Test Cases lane").
 
 Setup, once:
 

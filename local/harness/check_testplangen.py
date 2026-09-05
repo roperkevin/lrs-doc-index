@@ -99,6 +99,22 @@ verifier the cloud flow could not have
                      model call; the written draft carries the
                      deterministic Reference Documentation addendum
                      with the hyperlink and the banner's URL stamp
+  leg 15 case lane   case-aware generation (v1.9): with the Test
+                     Cases list configured, an exemplar plan that
+                     overflows ExemplarCap is trimmed WHOLE cases at
+                     a time — head kept, the cases most relevant to
+                     the story (issue-citing, then shared Tools /
+                     Keywords tags) kept in document order, an
+                     omission line, no mid-case cut, budget held;
+                     plans whose indexed cases cite the story's
+                     issues fill open lane slots ahead of the G6
+                     fallback (caseRouted=, the banner's case-routed
+                     stamp); the written draft carries the
+                     deterministic Existing Test Cases addendum with
+                     anchor deep links (existingCases=); without the
+                     list, or with testplangen.caseIndex false, the
+                     lanes and the draft are exactly what they were
+                     (leg 2b pins the pure G6 fallback that way)
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
@@ -402,7 +418,7 @@ def make_handler(state):
 
 # ---- fixtures -------------------------------------------------------
 
-def sidecar(sidecar_dir, folder, name, body, related=None):
+def sidecar(sidecar_dir, folder, name, body, related=None, tools="—", keywords="—"):
     """A minimal format-3.0 sidecar: H1 + metadata table (no yaml), the
     Related region carrying the machine list on its markers, then the
     body below the seam."""
@@ -414,7 +430,7 @@ def sidecar(sidecar_dir, folder, name, body, related=None):
             f"| **Issues** | — |\n| **Source** | [{name}](<{name}>) |\n"
             f"| **People** | author — · PE — · dev — |\n| **Edited** | — |\n"
             f"| **Extracted** | 2026-09-05 · lane xmlstrip · format 3.0 · prompt v2.0 |\n"
-            f"| **Keywords** | — |\n| **Tools** | — |\n\n"
+            f"| **Keywords** | {keywords} |\n| **Tools** | {tools} |\n\n"
             f"## Related documents\n\n<!-- related:begin -->\n{bullets}\n<!-- related:end -->\n\n"
             f"---\n\n{body}\n")
     fpath = os.path.join(sidecar_dir, folder, name)
@@ -528,7 +544,33 @@ def main():
     story_fig = ("![Routes R1 and R2 before the merge]"
                  "(../media/doc12_slide2_fig1.svg)")
     url_story = sidecar(sidecar_dir, "User Stories", "route-merge__doc12.md",
-                        story_body + "\n\n" + story_fig, related)
+                        story_body + "\n\n" + story_fig, related,
+                        tools="Merge Routes", keywords="measures · locking")
+    # Plan F (doc 27, leg 15): a testplan/v1-grammar plan whose six
+    # cases each run ~500 chars, so a small ExemplarCap forces the
+    # case-aware trim. Relevance to story 12: TC-N01 cites its issue
+    # 4855 in its own text (parsed locally, no row needed); TC-P02's
+    # list row carries the story's Tool tag; TC-P04's row carries a
+    # story Keyword; the other three score zero.
+    def plan_case(cid, title, extra=""):
+        body = (f"### {cid} — {title} <!-- src: S2 · slide 3 -->\n\n"
+                f"**Steps:**\n- [ ] 1. Do the thing for {title.lower()}. {extra}\n\n"
+                f"**Expected Result:** {title} succeeds.\n\n")
+        return body + ("filler. " * ((500 - len(body)) // 8)) + "\n"
+    plan_f_cases = [
+        plan_case("TC-P01", "Create a route"),
+        plan_case("TC-P02", "Merge keeps measures"),
+        plan_case("TC-P03", "Realign a route"),
+        plan_case("TC-N01", "Denied on a locked route",
+                  "See ArcGISPro/ps-location-referencing#4855."),
+        plan_case("TC-N02", "Denied without a network"),
+        plan_case("TC-P04", "Measures survive a reload"),
+    ]
+    plan_f_body = ("## Overview\n\nPlan F overview paragraph.\n\n## Test Cases\n\n"
+                   + "".join(plan_f_cases)
+                   + "## Coverage Map\n\n| # | Requirement | Covered by |\n"
+                   "| --- | --- | --- |\n| 1 | merge | TC-P02 |\n")
+    url_f = sidecar(sidecar_dir, "Test Plans", "plan-f__doc27.md", plan_f_body)
     url_lonely = sidecar(sidecar_dir, "User Stories", "lonely__doc13.md",
                          "As an editor, I need to realign a route.", [])
     enum_body = ("The route can be created via Create Route, Extend Route, "
@@ -561,6 +603,8 @@ def main():
         # covered by a Doc Links edge to Plan A, not by its related: line
         # (title deliberately avoids "story" — the leg-6 count stands)
         doc_row(17, "Edge Linked", "User Story", "Indexed", "Pro", url_edge),
+        # leg 15's trim fixture — unrelated to every story, pinned in
+        doc_row(27, "Plan F", "Test Plan", "Indexed", "Pro", url_f),
     ]
     # Doc Links edges (the auto gap test's (b) source): 17<->21 covers
     # Edge Linked via Plan A; 12<->13 links two stories — no coverage
@@ -601,8 +645,18 @@ def main():
                                  "DocumentLookupId": 21, "CaseKey": "21|2",
                                  "IssueRefs": ""}},
         {"id": "802", "fields": {"Title": "TC-P1 Realign", "DocumentLookupId": 22,
-                                 "CaseKey": "22|1",
+                                 "CaseKey": "22|1", "Anchor": "tc-p1-realign",
+                                 "Classification": "Positive",
                                  "IssueRefs": f"{REPO_ID}#7777"}},
+        # Plan F's tag rows (leg 15) — only the two that matter are
+        # indexed, so the trimmer's row-less path (TC-N01's issue ref
+        # parsed from the body) is exercised alongside the tag path
+        {"id": "803", "fields": {"Title": "TC-P02 — Merge keeps measures",
+                                 "DocumentLookupId": 27, "CaseKey": "27|2",
+                                 "Tools": "Merge Routes", "IssueRefs": ""}},
+        {"id": "804", "fields": {"Title": "TC-P04 — Measures survive a reload",
+                                 "DocumentLookupId": 27, "CaseKey": "27|6",
+                                 "Keywords": "measures; route", "IssueRefs": ""}},
     ]
     # Issue Refs rows (gantt.mjs's schedule feed) — enrich the trace
     state.lists["list-issuerefs"] = [
@@ -722,8 +776,13 @@ def main():
 
     # ---- leg 2b: exemplar fallback + (none) + dry run --------------
     print("== leg 2b: exemplar fallback, (none), dry run")
+    # the pure G6 semantics hold with the case lane off (v1.9 —
+    # testplangen.caseIndex false; leg 15 pins the case-traced
+    # precedence that otherwise routes plan-b in for story 13)
+    cfg_nocase = write_cfg("config-nocase.json",
+                           testplangen={"neighborCap": 8, "caseIndex": False})
     state.drafts.clear()
-    r = run_job(cfg_main, ["--story", "13", "--dry-run"])
+    r = run_job(cfg_nocase, ["--story", "13", "--dry-run"])
     check("fallback run succeeds", r.returncode == 0, r.stdout + r.stderr)
     inp = state.gen_last_inputs
     check("fallback: release-matched plan wins outright (older, alone)",
@@ -731,6 +790,11 @@ def main():
           and "plan-b" not in inp.get("ExemplarText", "")
           and "plan-c" not in inp.get("ExemplarText", ""),
           inp.get("ExemplarText", "")[:300])
+    state.drafts.clear()
+    r = run_job(cfg_main, ["--story", "13", "--dry-run"])
+    check("case lane on: no fallback needed — the fallback run still succeeds",
+          r.returncode == 0, r.stdout + r.stderr)
+    inp = state.gen_last_inputs
     check("empty lanes travel as (none)",
           inp.get("RelatedDigest") == "(none)" and inp.get("ReferenceText") == "(none)",
           str({k: v[:40] for k, v in inp.items()}))
@@ -1171,7 +1235,7 @@ def main():
     # none (covered by adjacency only); gap story 13's 7777 by a
     # plan-22 case (case-level coverage without a doc link)
     check("gap report: case tracing counters",
-          summ.get("caseRows") == "3" and summ.get("traced") == "1"
+          summ.get("caseRows") == "5" and summ.get("traced") == "1"
           and summ.get("coveredUntraced") == "1", r.stdout)
     check("covered-untraced story listed with its covering plan's case count",
           "## Case-level tracing" in body and '- doc 17 — "Edge Linked"' in body
@@ -1398,6 +1462,118 @@ def main():
     check("a run without web pins stamps webRefs=0",
           r.returncode == 0 and summary_of(r.stdout).get("webRefs") == "0",
           r.stdout)
+
+    # ---- leg 15: the case lane (v1.9) ------------------------------
+    print("== leg 15: case-aware generation")
+    state.gen_text = wrap(GOOD_DRAFT)
+    # (a) case-traced routing: story 13 has no related plans, and a
+    # plan-22 case cites its issue 7777 — plan B fills the exemplar
+    # slot ahead of the G6 fallback (leg 2b pinned the fallback with
+    # the lane off)
+    r = run_job(cfg_main, ["--story", "13", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    check("case-traced plan routes into the open exemplar slot, G6 skipped",
+          r.returncode == 0 and "plan-b__doc22.md" in ex and "plan-a" not in ex
+          and summ.get("exemplars") == "1" and summ.get("caseRouted") == "1",
+          r.stdout + r.stderr + ex[:200])
+    check("routing progress line + banner case-routed stamp",
+          "routed [22] into the lanes" in r.stderr, r.stderr[-600:])
+    local_drafts = sorted(
+        (f for f in os.listdir(work_dir)
+         if f.startswith("testplangen-draft-") and f.endswith(".md")),
+        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+    latest = open(os.path.join(work_dir, local_drafts[-1]), encoding="utf-8").read()
+    check("banner comment carries the case-routed ids",
+          "· case-routed [22]" in latest.splitlines()[0], latest[:300])
+    check("Existing Test Cases addendum with the anchor deep link",
+          summ.get("existingCases") == "1" and "## Existing Test Cases" in latest
+          and "| Plan B (doc 22) | TC-P1 Realign | Positive | `" + REPO_ID + "#7777` | "
+              "[open](<" + url_b + "#tc-p1-realign>) |" in latest
+          and latest.index("## Issue Trace") < latest.index("## Existing Test Cases"),
+          latest[-900:])
+    # (b) story 12: both traced plans (21 via 4855, 22 via 7777) are
+    # already related exemplars — nothing routes, the addendum still
+    # lists both cases
+    r = run_job(cfg_main, ["--story", "12", "--dry-run"])
+    summ = summary_of(r.stdout)
+    check("already-routed traced plans are not routed twice",
+          r.returncode == 0 and summ.get("caseRouted") == "0"
+          and summ.get("exemplars") == "2" and summ.get("existingCases") == "2",
+          r.stdout)
+    # (c) case-aware trimming: Plan F pinned under a cap that fits three
+    # of its six ~500-char cases — TC-N01 (cites 4855), TC-P02 (Tools
+    # tag), TC-P04 (Keywords tag) survive in DOCUMENT order; the head
+    # and the omission line are present; no case is cut mid-way
+    plan_f_text = open(os.path.join(sidecar_dir, "Test Plans", "plan-f__doc27.md"),
+                       encoding="utf-8").read()
+    head_len = len(plan_f_text.split("### TC-P01")[0])
+    case_len = max(len(c) for c in plan_f_cases)
+    trim_cap = head_len + 3 * case_len + 200   # three whole cases + the omission line
+    assert 4 * min(len(c) for c in plan_f_cases) > 3 * case_len + 200  # a fourth never fits
+    cfg_trim = write_cfg("config-trim.json",
+                         testplangen={"neighborCap": 8, "exemplarCap": trim_cap})
+    r = run_job(cfg_trim, ["--story", "12", "--exemplar", "27", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    block = ex.split("--- EXEMPLAR: plan-f__doc27.md ---\n")[1].split("--- EXEMPLAR:")[0] \
+        if "--- EXEMPLAR: plan-f__doc27.md ---\n" in ex else ""
+    check("trim run succeeds with the plan trimmed case-wise",
+          r.returncode == 0 and summ.get("caseTrim") == "1"
+          and summ.get("exCases") == "3/6", r.stdout + r.stderr)
+    check("the three most relevant cases kept, in document order",
+          "### TC-P02" in block and "### TC-N01" in block and "### TC-P04" in block
+          and block.index("### TC-P02") < block.index("### TC-N01") < block.index("### TC-P04")
+          and "### TC-P01" not in block and "### TC-P03" not in block
+          and "### TC-N02" not in block, block[:1200])
+    check("head kept, omission line present, no mid-case cut",
+          "Plan F overview paragraph." in block
+          and "3 of 6 cases omitted — the 3 most relevant to this story kept" in block
+          and block.count("**Expected Result:**") == 3, block[-600:])
+    check("trimmed lane holds the budget (exChars within ExemplarCap + headers)",
+          int(summ.get("exChars", "99999")) <= trim_cap + 80, str(summ))
+    check("trimming progress line",
+          "1 exemplar(s) trimmed case-wise (3/6 cases shown)" in r.stderr,
+          r.stderr[-500:])
+    # (d) a plan that fits is passed verbatim (exCases counts all)
+    cfg_fit = write_cfg("config-fit.json", testplangen={"neighborCap": 8})
+    r = run_job(cfg_fit, ["--story", "12", "--exemplar", "27", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    check("a plan under the cap is sent whole",
+          r.returncode == 0 and summ.get("caseTrim") == "0"
+          and summ.get("exCases") == "6/6" and "### TC-P01" in ex
+          and "cases omitted" not in ex, r.stdout)
+    # (e) degrade: without the Test Cases list (or with the knob off)
+    # the lanes, the counters, and the draft are the pre-v1.9 ones —
+    # the overflowing plan takes the blind cut
+    for label, cfgp in (("no Test Cases list", cfg_nc_path), ("caseIndex false", cfg_nocase)):
+        r = run_job(cfgp, ["--story", "12", "--dry-run"])
+        summ = summary_of(r.stdout)
+        local_drafts = sorted(
+            (f for f in os.listdir(work_dir)
+             if f.startswith("testplangen-draft-") and f.endswith(".md")),
+            key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+        latest = open(os.path.join(work_dir, local_drafts[-1]), encoding="utf-8").read()
+        check(f"{label}: case counters zero, no addendum, no stamp, no progress line",
+              r.returncode == 0 and summ.get("existingCases") == "0"
+              and summ.get("caseRouted") == "0" and summ.get("caseTrim") == "0"
+              and "## Existing Test Cases" not in latest
+              and "case-routed" not in latest.splitlines()[0]
+              and "progress: cases —" not in r.stderr, r.stdout + latest[:200])
+    with open(cfg_nc_path) as f:
+        cfg_nc_trim = json.load(f)
+    cfg_nc_trim["testplangen"]["exemplarCap"] = trim_cap
+    cfg_nc_trim_path = os.path.join(tmp, "config-nocases-trim.json")
+    with open(cfg_nc_trim_path, "w") as f:
+        json.dump(cfg_nc_trim, f)
+    r = run_job(cfg_nc_trim_path, ["--story", "12", "--exemplar", "27", "--dry-run"])
+    summ = summary_of(r.stdout)
+    ex = state.gen_last_inputs.get("ExemplarText", "")
+    check("no list: the overflowing plan takes the blind cut it always did",
+          r.returncode == 0 and summ.get("caseTrim") == "0"
+          and "cases omitted" not in ex and "### TC-P01" in ex
+          and "### TC-P04" not in ex, r.stdout + ex[-200:])
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

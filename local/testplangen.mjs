@@ -9,6 +9,42 @@
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29).
  *
+ * v1.9 (case-aware generation — the Case_Index_Plan "queued" items,
+ * decided and built): with the sweep's Test Cases list configured
+ * (`sharePoint.lists.testCases`) and `testplangen.caseIndex` on (the
+ * default), the per-case index the sweep already maintains feeds the
+ * generation itself, three ways — all deterministic, read-only, zero
+ * extra AI spend, no prompt text change (the lanes carry the same
+ * block shapes; only WHICH text fills them changes):
+ *   - G5c case-traced routing: plans whose indexed cases cite one of
+ *     the story's own devtopia issue ids (Doc IDs ∩ IssueRefs) fill
+ *     the slots the related routing left open — same-surface plans
+ *     as exemplars, others as reference functionality — before the
+ *     G6 fallback, which now runs only when nothing at all was found.
+ *     A case stating the story's issue id is a link the sweep minted
+ *     from the plan's own text, not a similarity guess, so it is not
+ *     the machine-chosen fallback the reference lane bans.
+ *   - G7 case-aware trimming: an exemplar body that overflows its
+ *     remaining ExemplarCap budget is cut WHOLE CASES at a time (the
+ *     plan's head kept, the cases most relevant to the story kept in
+ *     document order, a closing line stating how many were omitted)
+ *     instead of the blind character cut that used to end mid-case.
+ *     Relevance: a case citing a story issue id first, then shared
+ *     Tools tags, then shared Keywords tags (the case row's curated
+ *     tags joined by CaseKey ordinal; the story's from its sidecar
+ *     metadata table), ties in document order. A plan with no
+ *     recognizable cases takes the blind cut it always did.
+ *   - the `## Existing Test Cases` addendum: after verification (the
+ *     Issue Trace precedent — machine-minted, never judged by the
+ *     verifier), a table of every indexed case across the catalog
+ *     that already cites the story's issues, each deep-linking its
+ *     sidecar section, so the reviewer can dedupe and cross-check.
+ *   Provenance: Gen_summary gains `existingCases= caseRouted=
+ *   caseTrim= exCases=kept/total`; the banner comment carries the
+ *   case-routed ids; manual runs print a `cases —` progress line.
+ *   The list absent (or caseIndex false) = the lanes, the draft, and
+ *   the G6 fallback are exactly what they were.
+ *
  * v1.8 (case-level gap tracing — Case_Index_Plan phase 3): with the
  * sweep's Test Cases list configured (`sharePoint.lists.testCases`),
  * `--gap-report` reads it (read-only, like every list here) and adds
@@ -259,12 +295,13 @@ import { aiBuilderPredict, dataverseToken, generateText, loadPromptTemplate } fr
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
-import { relEntries } from "./lib/sidecarmeta.mjs";
+import { relEntries, metaList } from "./lib/sidecarmeta.mjs";
+import { extractCases, caseSpans } from "./lib/caseindex.mjs";
 import { stemOf } from "./lib/slug.mjs";
 import { storyTextFirst } from "./lib/storyprofile.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.8";
+const JOB_VERSION = "v1.9";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 
@@ -428,6 +465,7 @@ function loadConfig(argv) {
     maxTokens: 32000,
     webRefTimeoutMs: 30000,
     issueTrace: true,
+    caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
     autoDraft: false,
     autoMaxPerRun: 3,
     autoLookbackDays: 7,
@@ -868,6 +906,213 @@ async function issueRowsOf(ctx) {
 // length capped (the Why_capped treatment)
 const cellSafe = (s, cap = 120) => cut(stripQuotes(String(s ?? "").replaceAll("|", "/")), cap);
 
+// Test Cases rows (the sweep's per-case index, Case_Index_Plan) —
+// fetched once per process and shared by the gap report and the
+// generation's case lane; read-only. null when the list is not
+// configured, so every consumer degrades to its pre-case behavior.
+async function caseRowsOf(ctx) {
+  if (ctx._caseRows !== undefined) return ctx._caseRows;
+  const { cfg, graph, siteId } = ctx;
+  if (!cfg.sharePoint.lists?.testCases) return (ctx._caseRows = null);
+  const split = (v) => String(v || "").split(";").map((x) => x.trim()).filter(Boolean);
+  ctx._caseRows = (
+    await graph.listItems(siteId, cfg.sharePoint.lists.testCases, {
+      select: [
+        "Title", "DocumentLookupId", "CaseKey", "CaseNo", "Classification",
+        "Scenario", "IssueRefs", "Anchor", "Tools", "Keywords",
+      ],
+    })
+  ).map((it) => {
+    const f = it.fields || {};
+    const key = String(f.CaseKey || "");
+    const issueList = split(f.IssueRefs);
+    return {
+      planId: num(f.DocumentLookupId) ?? num(f.DocumentId),
+      key,
+      ordinal: num(key.split("|")[1]),
+      caseNo: f.CaseNo || "",
+      title: f.Title || "",
+      classification: f.Classification || "",
+      scenario: f.Scenario || "",
+      issueList,
+      issues: new Set(issueList),
+      anchor: f.Anchor || "",
+      tools: split(f.Tools).map(lower),
+      keywords: split(f.Keywords).map(lower),
+    };
+  });
+  return ctx._caseRows;
+}
+
+// the story's own devtopia issue keys (`repo#number`), from the Doc
+// IDs rows the sweep minted for it — [] without that list
+async function storyIssueKeys(ctx, story) {
+  if (!ctx.cfg.sharePoint.lists?.docIds) return [];
+  const { ids } = await issueRowsOf(ctx);
+  const keys = [];
+  for (const r of ids) {
+    if (r.DocumentId !== story.ID || r.IssueNumber === undefined) continue;
+    const key = `${r.Repo}#${r.IssueNumber}`;
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys;
+}
+
+/**
+ * The story's case-index context (v1.9) — null when the Test Cases
+ * list is unconfigured or testplangen.caseIndex is false (every case
+ * feature then stays off). `existing`: indexed cases whose IssueRefs
+ * cite one of the story's issue keys; `traced`: the Indexed Test Plan
+ * rows (with a sidecar) those cases belong to, same-surface first,
+ * then by tracing-case count, newest, id; `rowsByPlan`: plan id →
+ * ordinal → row, for the exemplar trimmer's tag lookup. A read
+ * failure degrades to null with one stderr note — the automatic
+ * lanes' Try_* posture; the draft never fails over derived rows.
+ */
+async function caseContextOf(ctx, story, storyMd) {
+  const { cfg, tp, byId } = ctx;
+  if (tp.caseIndex === false || !cfg.sharePoint.lists?.testCases) return null;
+  try {
+    const rows = await caseRowsOf(ctx);
+    const keys = await storyIssueKeys(ctx, story);
+    const keySet = new Set(keys);
+    const existing = rows.filter((c) => c.issueList.some((k) => keySet.has(k)));
+    const byPlan = new Map();
+    for (const c of existing) {
+      const p = byId.get(c.planId);
+      if (!p || p.DocKind !== "Test Plan" || p.IndexStatus !== "Indexed" || !p.TextFileUrl) continue;
+      byPlan.set(p.ID, (byPlan.get(p.ID) || 0) + 1);
+    }
+    const same = (p) => ((p.Surface || "") === (story.Surface || "") ? 1 : 0);
+    const traced = [...byPlan]
+      .map(([id, n]) => ({ plan: byId.get(id), n }))
+      .sort(
+        (a, b) =>
+          same(b.plan) - same(a.plan) ||
+          b.n - a.n ||
+          String(b.plan.SourceModified).localeCompare(String(a.plan.SourceModified)) ||
+          a.plan.ID - b.plan.ID
+      );
+    const rowsByPlan = new Map();
+    for (const c of rows) {
+      if (c.planId === undefined || c.ordinal === undefined) continue;
+      if (!rowsByPlan.has(c.planId)) rowsByPlan.set(c.planId, new Map());
+      rowsByPlan.get(c.planId).set(c.ordinal, c);
+    }
+    return {
+      rows, keys, keySet, existing, traced, rowsByPlan,
+      storyTools: metaList(storyMd, "Tools").map(lower),
+      storyKeywords: metaList(storyMd, "Keywords").map(lower),
+    };
+  } catch (e) {
+    process.stderr.write(`case index skipped: ${e.message}\n`);
+    return null;
+  }
+}
+
+/**
+ * G7, case-aware (v1.9): an exemplar body that overflows its budget
+ * is cut WHOLE CASES at a time — the plan's head (metadata, Related,
+ * Overview) stays, then the cases most relevant to the story in
+ * document order, then the tail (Coverage Map, other content) if it
+ * still fits; a closing line states how many cases were omitted.
+ * Relevance is deterministic: a case citing one of the story's issue
+ * ids (its own parsed refs ∪ its list row's IssueRefs) outranks
+ * everything; then shared Tools tags, then shared Keywords tags (the
+ * case row's curated tags, caseindex v1.2, joined by CaseKey ordinal —
+ * a plan not yet recased simply scores on issue refs alone); ties
+ * keep document order, and a case too big for what is left is
+ * skipped so smaller relevant ones still fit. A body that fits is
+ * returned verbatim; without a case context, or when the body shows
+ * no recognizable cases, the blind cut it always took applies.
+ * Returns { text, kept, total, trimmed }.
+ */
+function caseAwareTake(content, budget, planId, cc, defaultRepo) {
+  const parsed = extractCases(content, { defaultRepo, caseTextCap: 1 });
+  const total = parsed.cases.length;
+  if (content.length <= budget) return { text: content, kept: total, total, trimmed: false };
+  if (!cc || total === 0) return { text: cut(content, budget), kept: 0, total, trimmed: false };
+  const { lines, spans } = caseSpans(content);
+  const rowOf = (cc.rowsByPlan.get(planId)) || new Map();
+  const overlap = (a, b) => a.filter((x) => b.includes(x)).length;
+  const scored = parsed.cases.map((c, i) => {
+    const row = rowOf.get(c.ordinal);
+    let score = 0;
+    for (const k of new Set([...c.issueRefs, ...(row ? row.issueList : [])])) {
+      if (cc.keySet.has(k)) score += 100;
+    }
+    if (row) score += 10 * overlap(row.tools, cc.storyTools) + 3 * overlap(row.keywords, cc.storyKeywords);
+    return { i, ordinal: c.ordinal, score, text: lines.slice(spans[i].start, spans[i].end).join("\n") };
+  });
+  const head = cut(lines.slice(0, spans[0].start).join("\n"), budget);
+  const tail = lines.slice(spans[spans.length - 1].end).join("\n");
+  const footer = (n) =>
+    `\n_(exemplar trimmed at ExemplarCap: ${total - n} of ${total} cases omitted — ` +
+    `the ${n} most relevant to this story kept)_\n`;
+  const reserve = footer(0).length + 1;
+  let used = head.length;
+  const keep = new Set();
+  for (const c of [...scored].sort((a, b) => b.score - a.score || a.ordinal - b.ordinal)) {
+    if (used + 1 + c.text.length + reserve > budget) continue;
+    keep.add(c.i);
+    used += 1 + c.text.length;
+  }
+  const parts = [head];
+  for (const c of scored) if (keep.has(c.i)) parts.push(c.text);
+  if (keep.size < total) {
+    parts.push(footer(keep.size));
+    used += 1 + footer(keep.size).length;
+  }
+  if (tail.trim() && used + 1 + tail.length <= budget) parts.push(tail);
+  return { text: parts.join("\n"), kept: keep.size, total, trimmed: true };
+}
+
+/** The `## Existing Test Cases` addendum (v1.9) — "" when the case
+ *  context is off or no indexed case cites the story's issues.
+ *  Machine-minted from Test Cases rows, appended AFTER verification
+ *  like the Issue Trace; each row deep-links its sidecar section. */
+function existingCasesSection(ctx, cc) {
+  if (!cc || cc.existing.length === 0) return { section: "", count: 0 };
+  const { byId } = ctx;
+  const MAX = 60;
+  const rows = [...cc.existing].sort(
+    (a, b) => (a.planId ?? 0) - (b.planId ?? 0) || (a.ordinal ?? 0) - (b.ordinal ?? 0)
+  );
+  const plans = new Set(rows.map((c) => c.planId));
+  const lines = rows.slice(0, MAX).map((c) => {
+    const p = byId.get(c.planId);
+    const plan = `${cellSafe(p?.Title || `doc ${c.planId}`, 80)} (doc ${c.planId})`;
+    const link = p?.TextFileUrl
+      ? `[open](<${p.TextFileUrl}${c.anchor ? "#" + c.anchor : ""}>)`
+      : "—";
+    const cited = c.issueList
+      .filter((k) => cc.keySet.has(k))
+      .map((k) => "`" + cellSafe(k, 60).replaceAll("`", "") + "`")
+      .join(" ");
+    return (
+      `| ${plan} | ${cellSafe(c.title, 100)} | ${cellSafe(c.classification || "—", 20)} ` +
+      `| ${cited} | ${link} |`
+    );
+  });
+  return {
+    count: rows.length,
+    section:
+      "\n## Existing Test Cases\n\n" +
+      "_Deterministic addendum — minted by local/testplangen.mjs from the " +
+      "sweep's Test Cases list, not by the model: indexed test cases across " +
+      `the catalog that already cite this story's devtopia issues (${rows.length} ` +
+      `case(s) in ${plans.size} plan(s)). Check the draft against them during ` +
+      "the review pass — a tailored case that duplicates one should say so in " +
+      "its Trace, and a behavior they exercise that the draft lacks is a " +
+      "coverage question for the PE._\n\n" +
+      "| Plan | Existing case | Class | Cites | Sidecar |\n" +
+      "| --- | --- | --- | --- | --- |\n" +
+      lines.join("\n") +
+      (rows.length > MAX ? `\n| … | ${rows.length - MAX} more — see _Case Catalog.md | | | |` : "") +
+      "\n",
+  };
+}
+
 /** The story's deterministic `## Issue Trace` addendum ("" when the
  *  story carries no issue rows, or the lane is off/unconfigured).
  *  Machine-minted from list rows, never model output — appended AFTER
@@ -962,6 +1207,8 @@ async function generateOne(ctx, story) {
   const storyMd = fs.readFileSync(storyLocal, "utf8");
   const prog = ctx.progress || (() => {});
   prog(`story ${story.ID} "${stripQuotes(story.Title)}" — sidecar ${storyMd.length} chars`);
+  // the case-index context (v1.9) — null = every case feature off
+  const cc = await caseContextOf(ctx, story, storyMd);
 
   // G4 — score-ordered related entries, capped (parseRelated above)
   const relEntries = parseRelated(storyMd).slice(0, Number(tp.neighborCap));
@@ -1031,9 +1278,38 @@ async function generateOne(ctx, story) {
     }
   }
 
+  // G5c — case-traced routing (v1.9): plans whose INDEXED CASES cite
+  // one of the story's own devtopia issue ids fill the slots the
+  // related routing left open — same-surface plans as exemplars,
+  // others (and same-surface overflow, the G5b rule) as reference
+  // functionality. A case stating the story's issue id is a link the
+  // sweep minted from the plan's own text (Doc IDs ∩ IssueRefs), not
+  // a similarity guess — so this is not the machine-chosen fallback
+  // the reference lane bans; the related routing still goes first
+  // (flow parity), and the G6 fallback below now runs only when
+  // nothing at all was found. Pinned and already-routed plans skip.
+  const routedIds = [];
+  for (const { plan } of cc ? cc.traced : []) {
+    if (pinnedIds.has(plan.ID)) continue;
+    const url = plan.TextFileUrl;
+    if (exemplarUrls.includes(url) || referenceRefs.some((r) => r.url === url)) continue;
+    if (
+      (plan.Surface || "") === (story.Surface || "") &&
+      exemplarUrls.length < Number(tp.exemplarSlots)
+    ) {
+      exemplarUrls.push(url);
+    } else if (referenceRefs.length < Number(tp.referenceSlots)) {
+      referenceRefs.push({ url, surface: plan.Surface || "", title: stripQuotes(plan.Title) });
+    } else {
+      continue;
+    }
+    routedIds.push(plan.ID);
+  }
+
   // G6 — exemplar fallback (deterministic, from the snapshot; the
   // reference lane deliberately has NO fallback — grounding only ever
-  // comes from documents RelatedRank linked to this story)
+  // comes from documents RelatedRank linked to this story, or — since
+  // v1.9 — documents whose indexed cases cite the story's issues)
   if (exemplarUrls.length === 0) {
     const surface = story.Surface || "Other";
     const cand = rows
@@ -1053,15 +1329,27 @@ async function generateOne(ctx, story) {
     for (const r of chosen) exemplarUrls.push(r.TextFileUrl || "");
   }
 
-  // G7 — exemplar bodies (remaining-budget take, the v2.13 semantics)
+  // G7 — exemplar bodies (remaining-budget take, the v2.13 semantics;
+  // since v1.9 an overflowing body is trimmed whole-case-at-a-time
+  // when the case index is on — caseAwareTake)
+  const planByUrl = new Map(rows.filter((r) => r.TextFileUrl).map((r) => [r.TextFileUrl, r]));
+  let exCasesKept = 0;
+  let exCasesTotal = 0;
+  let caseTrim = 0;
   for (const url of exemplarUrls) {
     const local = urlToLocal(url, sw, cfg);
     if (!local || !fs.existsSync(local)) continue; // Try_exemplar degrades silently
     if (exemplarText.length >= Number(tp.exemplarCap)) continue; // If_ex_budget
     const remaining = Number(tp.exemplarCap) - exemplarText.length; // Ex_remaining
     const content = fs.readFileSync(local, "utf8");
-    exemplarText += `--- EXEMPLAR: ${path.basename(local)} ---\n${cut(content, remaining)}\n\n`;
+    const take = caseAwareTake(
+      content, remaining, planByUrl.get(url)?.ID, cc, cfg.sweep?.defaultRepo || ""
+    );
+    exemplarText += `--- EXEMPLAR: ${path.basename(local)} ---\n${take.text}\n\n`;
     exemplarCount++;
+    exCasesKept += take.kept;
+    exCasesTotal += take.total;
+    if (take.trimmed) caseTrim++;
   }
 
   // G7b — reference bodies (header carries title AND surface — the
@@ -1102,6 +1390,15 @@ async function generateOne(ctx, story) {
         (webRefPins.length ? ` web [${webRefPins.map((r) => r.url).join(" ")}]` : "")
       : "")
   );
+  if (cc) {
+    prog(
+      `cases — ${cc.rows.length} indexed, ${cc.existing.length} trace this story's issues` +
+      (routedIds.length ? `, routed [${routedIds.join(",")}] into the lanes` : "") +
+      (caseTrim
+        ? `, ${caseTrim} exemplar(s) trimmed case-wise (${exCasesKept}/${exCasesTotal} cases shown)`
+        : "")
+    );
+  }
 
   // G8 — the prompt call (values verbatim from the row, the
   // semi-trusted lane: quotes stripped where a value lands mid-line)
@@ -1262,9 +1559,10 @@ async function generateOne(ctx, story) {
           ? ` web references [${webRefPins.map((r) => `<${r.url}>`).join(" ")}]`
           : "")
       : "";
+  const caseStamp = routedIds.length ? ` · case-routed [${routedIds.join(",")}]` : "";
   const banner =
     `<!-- machine-generated test-plan draft — TestPlanGen prompt ${tp.promptVersion}` +
-    ` · local/testplangen.mjs ${JOB_VERSION} · provider ${provider}${pinStamp} -->\n` +
+    ` · local/testplangen.mjs ${JOB_VERSION} · provider ${provider}${pinStamp}${caseStamp} -->\n` +
     "> [!WARNING]\n" +
     `> **DRAFT — machine-generated, unreviewed.** Generated ${new Date().toISOString()} ` +
     `from user story doc ${story.ID} — "${stripQuotes(story.Title)}". ` +
@@ -1291,7 +1589,12 @@ async function generateOne(ctx, story) {
         .map((r) => `- [${r.title.replace(/[\[\]]/g, "")}](${r.url})`)
         .join("\n") + "\n"
     : "";
-  const draft = banner + verifyBlock + draftOut + "\n" + trace.section + webRefSection;
+  // …and the Existing Test Cases addendum (v1.9): what the catalog's
+  // case index already holds for this story's issues, for the dedupe
+  // and cross-check during the §4 review
+  const existingCases = existingCasesSection(ctx, cc);
+  const draft =
+    banner + verifyBlock + draftOut + "\n" + trace.section + existingCases.section + webRefSection;
 
   // G11 — timestamped save, never overwritten (drafts are work
   // products a PE may be mid-edit on; stale ones are deleted by hand)
@@ -1316,7 +1619,9 @@ async function generateOne(ctx, story) {
     `storyChars=${storyTextCapped.length} draftChars=${draftBody.length} ` +
     `exChars=${exemplarText.length} refChars=${referenceText.length} ` +
     `verify=${verify} issues=${trace.count} figures=${figureCount} ` +
-    `pinnedEx=${pins.ex.length} pinnedRef=${docRefPins.length} webRefs=${webRefCount}`;
+    `pinnedEx=${pins.ex.length} pinnedRef=${docRefPins.length} webRefs=${webRefCount} ` +
+    `existingCases=${existingCases.count} caseRouted=${routedIds.length} ` +
+    `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run
@@ -1556,23 +1861,7 @@ async function runGapReport(ctx) {
   // with the Test Cases list configured, each story's issue ids are
   // checked against every indexed case's own IssueRefs; absent, the
   // report stays exactly the adjacency verdict it always was.
-  let caseRows = null;
-  if (cfg.sharePoint.lists?.testCases) {
-    caseRows = (
-      await graph.listItems(siteId, cfg.sharePoint.lists.testCases, {
-        select: ["Title", "DocumentLookupId", "CaseKey", "IssueRefs"],
-      })
-    ).map((it) => {
-      const f = it.fields || {};
-      return {
-        planId: num(f.DocumentLookupId) ?? num(f.DocumentId),
-        title: f.Title || "",
-        issues: new Set(
-          String(f.IssueRefs || "").split(";").map((s) => s.trim()).filter(Boolean)
-        ),
-      };
-    });
-  }
+  const caseRows = await caseRowsOf(ctx); // null without the list
   const tracingOf = (storyId) => {
     if (!caseRows) return null;
     const issues = issuesByDoc.get(storyId) || [];

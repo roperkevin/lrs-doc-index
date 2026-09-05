@@ -244,7 +244,15 @@ Queued, NOT in this plan's phases (each changes model input or
 mints edges, so each is its own decision later): case-aware
 exemplar trimming (cut whole cases, most-relevant-first, when a
 plan overflows `exemplarCap`); stored story↔case coverage edges;
-case-level embedding relatedness.
+case-level embedding relatedness. **Decided 2026-09-05 (owner
+request) and built as TestPlanGen v2.30 / testplangen.mjs v1.9:**
+the exemplar trimming exactly as queued (relevance = story issue
+ids ∩ case IssueRefs, then shared Tools / Keywords tags from the
+rows; `caseindex.mjs` v2.1 `caseSpans`), plus case-traced lane
+routing (plans whose cases cite the story's issues fill open slots
+ahead of the G6 fallback) and the `## Existing Test Cases` draft
+addendum — all computed on read from the list, no stored edges
+(the D5 posture holds); the two edge/embedding items stay deferred.
 
 ## Versioning and rollout
 

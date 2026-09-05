@@ -1,3 +1,90 @@
+# TestPlanGen v2.30 — case-aware generation (testplangen.mjs v1.9, caseindex v2.1)
+
+Owner-requested (2026-09-05): "leverage the test case indexing to
+enhance the test plan generator." The sweep's per-case index (the
+Test Cases list, `local/Case_Index_Plan.md`) so far fed only the
+gap report; v2.30 feeds the GENERATION itself — the three items the
+plan queued as "each its own decision later", decided and built.
+All deterministic, read-only over the list, zero extra AI spend,
+and NO prompt text change (the lanes carry the same block shapes;
+only WHICH text fills them changes — so no TestPlanGenPromptVersion
+bump, no stamps, no package re-cuts):
+
+- **G5c — case-traced routing.** Plans whose indexed cases cite one
+  of the story's own devtopia issue ids (the story's Doc IDs keys ∩
+  the case rows' `IssueRefs`) fill the slots the related routing
+  left open — same-surface plans as exemplars, others (and
+  same-surface overflow, the G5b rule) as reference functionality,
+  ordered same-surface first, then by tracing-case count, newest,
+  id. This runs AFTER the related routing (flow parity) and BEFORE
+  the G6 fallback, which now fires only when nothing at all was
+  found. Rationale recorded: a case that states the story's issue
+  id is a link the sweep minted from the plan's own text, not a
+  similarity guess — so it is not the machine-chosen fallback the
+  reference lane bans (v2.12's no-fallback rule stands for
+  everything else). Pinned and already-routed plans are skipped.
+  A gap story the v2.29 report flagged as "case-level coverage
+  without a doc link" now drafts with exactly those plans in its
+  lanes.
+- **G7 — case-aware exemplar trimming** (`caseAwareTake`). An
+  exemplar body that overflows its remaining ExemplarCap budget is
+  cut WHOLE CASES at a time: the plan's head (metadata table,
+  Related, Overview) stays, the cases most relevant to the story
+  are kept in DOCUMENT order, a closing line states how many were
+  omitted, and the tail (Coverage Map, other content) rides only if
+  it still fits — instead of the blind character cut that used to
+  end mid-case. Relevance: a case citing a story issue id (its own
+  parsed refs ∪ its row's IssueRefs) scores 100, each shared Tools
+  tag 10, each shared Keywords tag 3 (the case row's curated tags,
+  caseindex v1.2, joined by CaseKey ordinal; the story's from its
+  sidecar metadata table); ties keep document order; a case too big
+  for what is left is skipped so smaller relevant ones still fit. A
+  plan not yet recased scores on issue refs alone; a plan with no
+  recognizable cases takes the blind cut it always did; a plan
+  under the cap is sent whole. `caseindex.mjs` **v2.1** adds the
+  pure `caseSpans` export (the section line ranges behind
+  extractCases' ordinals) — no CaseIndexVersion bump, row output is
+  unchanged.
+- **`## Existing Test Cases` addendum.** After verification (the
+  Issue Trace precedent — machine-minted, never judged by the
+  verifier), every indexed case across the catalog that already
+  cites the story's issues, one table row each (plan, case, class,
+  the cited keys, an `[open](<sidecar#anchor>)` deep link — the
+  row's stored Anchor), capped at 60 rows with a pointer to
+  `_Case Catalog.md`. The reviewer's dedupe and cross-check surface:
+  a tailored case that duplicates one should say so in its Trace; a
+  behavior they exercise that the draft lacks is a coverage
+  question. Sits after the Issue Trace, before the Reference
+  Documentation addendum; `review/harness/check_draft_coverage.py`
+  passes a draft carrying it (trailing sections were already
+  tolerated).
+
+Provenance: `Gen_summary` gains `existingCases= caseRouted= caseTrim=
+exCases=<kept>/<total>` (cases shown / cases parsed across the
+exemplar lane), the banner's HTML comment carries `case-routed
+[ids]`, and manual runs print a `progress: cases —` line (rows,
+tracing cases, routed ids, trim counts). Knob: `testplangen.caseIndex`
+(default true) — false turns all three off; the list GUID absent
+turns them off too. Either way the lanes, the G6 fallback, and the
+written draft are exactly what they were (the counters read zero).
+`--auto` drafts pick the lane up unchanged — it is deterministic
+from catalog state. The gap report's Test Cases read moved onto the
+shared once-per-process fetch (`caseRowsOf`); its output is
+unchanged. Cloud flows untouched.
+
+Gate: `check_testplangen.py` **156/156** — new leg 15 (case-traced
+routing ahead of the G6 fallback with the banner stamp and progress
+line; already-routed plans not routed twice; the Existing Test Cases
+addendum with its anchor deep link and its place after the Issue
+Trace; the trim: three of six ~500-char cases kept — the issue-citing
+one, the Tools-tagged one, the Keywords-tagged one — in document
+order with the head, the omission line, no mid-case cut, and the
+lane within budget; a plan under the cap sent whole; the no-list and
+`caseIndex: false` degrades, blind cut included). Leg 2b now pins
+the pure G6 fallback with the lane off (with it on, story 13's
+traced plan routes in — leg 15's first check). `check_caseindex.py`
+78/78 unchanged.
+
 # TestPlanGen v2.29 — case-level gap tracing (testplangen.mjs v1.8)
 
 The gap report learns the truth adjacency cannot see
