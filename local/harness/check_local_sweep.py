@@ -354,6 +354,7 @@ class MockState:
         self.alerts = []
         self.content_downloads = []
         self.content_bytes = {}      # item id -> bytes served by the content fallback
+        self.reject_fields = set()   # list columns the mock tenant "does not have"
         self.embed_calls = 0
         self.embed_last_auth = None
         # remote-files mode: the sidecar drive, rel path -> {content, etag}
@@ -560,6 +561,11 @@ def make_handler(state, lib_guid, src_files):
                 guid = m.group(2)
                 state.graph_last_auth = self.headers.get("authorization")
                 fields = json.loads(self._read()).get("fields", {})
+                bad = [k for k in fields if k in state.reject_fields]
+                if bad:
+                    # the tenant list lacks the column — Graph's exact shape
+                    return self._json({"error": {"code": "invalidRequest",
+                                                 "message": f"Field '{bad[0]}' is not recognized"}}, 400)
                 if any(k in fields for k in ("SourceLink", "TextFileUrl", "FigureLink")):
                     # real Graph rejects hyperlink columns — keep the mock honest
                     return self._json({"error": {"code": "invalidRequest",
@@ -612,6 +618,10 @@ def make_handler(state, lib_guid, src_files):
                 guid, iid = m.group(1), m.group(2)
                 state.graph_last_auth = self.headers.get("authorization")
                 patch = json.loads(self._read())
+                bad = [k for k in patch if k in state.reject_fields]
+                if bad:
+                    return self._json({"error": {"code": "invalidRequest",
+                                                 "message": f"Field '{bad[0]}' is not recognized"}}, 400)
                 state.lists.setdefault(guid, {}).setdefault(iid, {}).update(patch)
                 return self._json({"id": iid})
             return self._json({"error": "unhandled PATCH " + self.path}, 500)
@@ -1956,6 +1966,35 @@ def main():
     check("recase live rebuilt the case catalog",
           os.path.exists(cat_rc) and "Alpha Plan" in open(cat_rc).read(),
           str(os.path.exists(cat_rc)))
+
+    # ---- missing-column leg (v1.56, fail-soft) ----------------------
+    # the tenant list predates the v2.0 columns: Graph rejects
+    # SourceRef/Confidence; rows must still be written without them,
+    # counted, with one note naming the tenant step — and the next
+    # --recase after the columns exist fills them in
+    print("== missing-column leg")
+    state.lists[LISTS["testCases"]] = {}
+    state.reject_fields = {"SourceRef", "Confidence"}
+    proc = run_sweep(cfg_path, ["--recase", "--live"])
+    check("missing columns: recase exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    mrows = [r for r in state.lists[LISTS["testCases"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("missing columns: rows written without the unknown columns, no case errors",
+          len(mrows) == 2 and all("SourceRef" not in r and "Confidence" not in r for r in mrows)
+          and int(out.get("case_errors", 0)) == 0
+          and int(out.get("case_fields_dropped", 0)) >= 2, str(out) + str(mrows)[:300])
+    check("missing columns: one note per column naming the tenant step",
+          proc.stderr.count("has no 'SourceRef' column") == 1
+          and proc.stderr.count("has no 'Confidence' column") == 1
+          and "SPList_TestCases.csv" in proc.stderr, proc.stderr[-600:])
+    state.reject_fields = set()
+    proc = run_sweep(cfg_path, ["--recase", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    mrows = [r for r in state.lists[LISTS["testCases"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("columns added: the next recase fills them in",
+          all(r.get("SourceRef") and r.get("Confidence") == "high" for r in mrows)
+          and int(out.get("case_fields_dropped", 0)) == 0, str(out) + str(mrows)[:300])
+    tcs = list(state.lists.get(LISTS["testCases"], {}).values())
 
     # ---- case-index missing-GUID leg (fail-soft) -------------------
     print("== case-index missing-GUID leg")

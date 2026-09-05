@@ -146,6 +146,11 @@ UI Tests – First Pane:
 ## Slide 7
 17. Verify the effective date defaults to today
 18. Verify route information is shown on hover
+
+## Slide 8 — Tooltip tests
+| # | Test | Expected result |
+| --- | --- | --- |
+| <Null> | Hover a route with value > 10 -- expanded | tooltip shows <Null> |
 """
 
 NODE_SCRIPT = """
@@ -368,13 +373,18 @@ def main():
           any(c["det"] == "S2" and c["caseNo"] == "TC-P05"
               and c["scenario"].startswith("Transfer to existing line") for c in mx["cases"])
           and "| 1A | Red |" in r["shapesBody"], json.dumps([c for c in mx["cases"] if c["det"] == "S2"]))
+    nul = [c for c in mx["cases"] if c["scenario"].startswith("Hover a route")]
+    check("angle brackets and double dashes never break a heading or its src comment",
+          len(nul) == 1 and nul[0]["det"] == "S3" and nul[0]["sourceRef"].endswith("table · Null")
+          and "‹Null›" not in nul[0]["scenario"] and "›" in nul[0]["scenario"]
+          and r["lint"] == [], json.dumps(nul) + json.dumps(r["lint"]))
     check("stoplist label (Notes) stays prose in Overview; checklist slide is not a case",
           "## Overview" in r["shapesBody"] and "- Test on RH and APR data" in r["shapesBody"].split("## Test Cases")[0]
           and "17. Verify the effective date" in r["shapesBody"].split("## Other content")[-1]
           and not any("effective date" in c["scenario"] for c in mx["cases"]), r["shapesBody"][:600])
     check("ids are per-lane sequences in document order",
           [c["caseNo"] for c in mx["cases"]] == ["TC-U01", "TC-U02", "TC-P01", "TC-P02", "TC-N01",
-                                                  "TC-U03", "TC-P03", "TC-P04", "TC-P05"],
+                                                  "TC-U03", "TC-P03", "TC-P04", "TC-P05", "TC-P06"],
           json.dumps([c["caseNo"] for c in mx["cases"]]))
 
     print("-- issue refs --")

@@ -53,6 +53,10 @@ const isTableRow = (s) => /^\|.*\|\s*$/.test(s.trim());
 const isSep = (s) => /^\|[\s:|-]+\|\s*$/.test(s.trim());
 const isFigure = (s) => /^\s*(!\[|\[figure:)/.test(s);
 const stripComments = (s) => String(s).replace(/<!--[\s\S]*?-->/g, "").trim();
+/** Heading-safe text: angle brackets would render as HTML (and break
+ *  the src comment's parse), "--" would end an HTML comment early. */
+const headSafe = (s) => String(s).replace(/</g, "‹").replace(/>/g, "›").replace(/-{2,}/g, "-");
+const srcSafe = (s) => String(s).replace(/[<>]/g, "").replace(/-{2,}/g, "-").replace(/\s+/g, " ").trim();
 
 function clean(s) {
   return stripComments(s)
@@ -522,8 +526,8 @@ export function renderTestPlanBody(tidied, opts = {}) {
       if (res.length) target.push(...res);
     }
     for (const c of f.cases) {
-      const src = [c.det, ...c.src].join(" · ");
-      tcs.push("", `### ${c.id} — ${c.title} <!-- src: ${src} -->`, "");
+      const src = [c.det, ...c.src.map(srcSafe)].join(" · ");
+      tcs.push("", `### ${c.id} — ${headSafe(c.title)} <!-- src: ${src} -->`, "");
       const body = trimBlank(c.body);
       if (body.length) tcs.push(...body);
     }
@@ -548,9 +552,13 @@ export function lintTestPlanBody(body) {
   const text = String(body || "");
   const heads = [...text.matchAll(/^### (TC-([PNU])(\d+))\b([^\n]*)$/gm)];
   if (heads.length && !/^## Test Cases$/m.test(text)) failures.push("missing ## Test Cases");
+  // a body in the draft contract (TestPlanGen output) carries no src
+  // comments at all — that is its shape, not a lint failure; only a
+  // rendered body with SOME src comments must have them on every case
+  const anySrc = heads.some((h) => /<!-- src: .*? -->\s*$/.test(h[4]));
   const seen = { P: 0, N: 0, U: 0 };
   for (const h of heads) {
-    if (!/<!-- src: [^>]+ -->\s*$/.test(h[4])) failures.push(`${h[1]}: no src comment`);
+    if (anySrc && !/<!-- src: .*? -->\s*$/.test(h[4])) failures.push(`${h[1]}: no src comment`);
     const n = parseInt(h[3], 10);
     if (n !== seen[h[2]] + 1) failures.push(`${h[1]}: expected ${h[2]}${seen[h[2]] + 1}`);
     seen[h[2]] = n;

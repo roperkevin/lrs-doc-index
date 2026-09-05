@@ -370,7 +370,7 @@ export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: 
 function tcCases(lines, opts) {
   const cases = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = /^### (TC-([PNU])(\d+))\b\s*(?:[—:\-–]\s*)?(.*?)\s*(?:<!-- src: ([^>]*?) -->)?\s*$/.exec(lines[i]);
+    const m = /^### (TC-([PNU])(\d+))\b\s*(?:[—:\-–]\s*)?(.*?)\s*(?:<!-- src: (.*?) -->)?\s*$/.exec(lines[i]);
     if (!m) continue;
     let end = lines.length;
     for (let j = i + 1; j < lines.length; j++) {
