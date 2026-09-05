@@ -10,6 +10,20 @@
  * structure yields ZERO cases, never guesses (the caseHeadings
  * determinism decision, applied here).
  *
+ * v1.4 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
+ *  - `FigureLink` (Hyperlink column): the case's PRIMARY figure as a
+ *    clickable link — the first FigureLinks URL, description = the
+ *    file name plus "(+N more)" when siblings exist; empty string
+ *    (clears the column) when the case has no linked figure. A
+ *    SharePoint hyperlink column holds ONE url, so the full
+ *    inventory stays in FigureLinks; an Image/Thumbnail column was
+ *    considered and rejected (single image, brittle API write
+ *    format, and the thumbnail service renders SVG unreliably —
+ *    every figure here is SVG). The sweep writes it through the
+ *    standing SPO ValidateUpdateListItem route (Graph rejects
+ *    hyperlink columns), and diffCaseRows compares hyperlink values
+ *    by Url.
+ *
  * v1.3 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
  *  - `FigureLinks` (multi-line column): the case's own figure/image
  *    links, resolved against `mediaUrlBase` (the sidecar library's
@@ -448,6 +462,14 @@ export function toRowFields(docRowId, kase, nowIso) {
     Tools: cap(kase.tools.join("; "), 255),
     Keywords: cap(kase.keywords.join("; "), 255),
     FigureLinks: cap(kase.figureLinks.join("\n"), 4000),
+    FigureLink: kase.figureLinks.length
+      ? {
+          Url: kase.figureLinks[0],
+          Description:
+            String(kase.figureLinks[0]).split("/").pop() +
+            (kase.figureLinks.length > 1 ? ` (+${kase.figureLinks.length - 1} more)` : ""),
+        }
+      : "",
     SweptOn: nowIso,
   };
 }
@@ -462,7 +484,13 @@ export function toRowFields(docRowId, kase, nowIso) {
  * unmatched existing rows delete. Pure, so the gate table-tests it.
  */
 export function diffCaseRows(existing, fresh) {
-  const norm = (v) => (v === undefined || v === null ? "" : String(v));
+  // hyperlink values (FigureLink) compare by Url — Graph reads them
+  // back as {Url, Description} objects; the description is derived
+  // from the same links, so Url equality is field equality
+  const norm = (v) =>
+    v === undefined || v === null ? ""
+    : typeof v === "object" ? String(v.Url ?? "")
+    : String(v);
   const byKey = new Map();
   for (const row of existing || []) {
     const key = norm(row?.fields?.CaseKey);

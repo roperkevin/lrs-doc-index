@@ -848,13 +848,14 @@ Setup, once:
    (dry-run default prints the planned create/update/delete counts;
    no AI spend, no re-extraction, no sidecar writes). The nightly
    sweep keeps the list converged after that.
-5. **caseindex v1.1–v1.3 columns** (2026-09-05, after the first
-   live backfill): add the TEN metadata columns to the live list
+5. **caseindex v1.1–v1.4 columns** (2026-09-05, after the first
+   live backfill): add the ELEVEN metadata columns to the live list
    per the updated `schemas/SPList_TestCases.csv` — `Shape` (Choice:
    `deck; draft`), `FigureCount`/`TableCount`/`StepCount` (Number,
    0 decimals), `RouteRefs`/`ExpectedResult`/`TraceText`/`Tools`/
    `Keywords` (Single line of text), `FigureLinks` (Multiple lines
-   of text, PLAIN). Modern list settings are fine here — none are
+   of text, PLAIN), `FigureLink` (Hyperlink — the clickable primary
+   figure). Modern list settings are fine here — none are
    lookups. Then run `--recase --live` once to reflow (the
    CaseIndexVersion convention). Order matters: add the columns
    BEFORE the sweep machine picks up the v1.1+ code, or case writes

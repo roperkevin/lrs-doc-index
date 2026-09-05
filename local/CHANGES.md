@@ -1,5 +1,38 @@
 # Local sweep — release notes
 
+## caseindex v1.4 (2026-09-05 — the primary figure becomes clickable; sweep v1.46)
+
+**CaseIndexVersion bump — add the FigureLink column (Hyperlink),
+then reflow with `--recase --live`.** The third live export showed
+v1.3's links landing right (360 cases, avg 1.7 URLs, max 3), and the
+owner wants them clickable. A SharePoint hyperlink column holds ONE
+url, so:
+
+- **`FigureLink`** (new column, Hyperlink): the case's PRIMARY
+  figure — the first FigureLinks URL, description = its file name
+  plus "(+N more)" when siblings exist; an empty write clears it
+  when a case loses its figures. The full inventory stays in
+  `FigureLinks`. An Image/Thumbnail column was considered and
+  REJECTED: also single-image, brittle undocumented API write
+  format, and SharePoint's thumbnail service renders SVG unreliably
+  — every figure in this corpus is SVG.
+- sweep **v1.46**: `FigureLink` joins `HYPERLINK_FIELDS`, so the
+  Writer routes it through the standing SPO ValidateUpdateListItem
+  path (Graph rejects hyperlink columns) on create and patch alike;
+  the run-start fetch selects it. `diffCaseRows` compares hyperlink
+  values by Url — a Description drift alone never dirties a row
+  (it is derived from the same links).
+
+TENANT STEP (folds into the standing one): add `FigureLink`
+(Hyperlink — eleven metadata columns total), then one
+`--recase --live`.
+
+Gates: `check_caseindex.py` **68/68** (primary-link shaping incl.
+"(+N more)", the figure-less clear, Url-only hyperlink diff),
+`check_local_sweep.py` **237/237** (the mock Graph now also rejects
+FigureLink like a real tenant; the live-leg row carries the cleared
+hyperlink), `check_testplangen.py` 141/141.
+
 ## caseindex v1.3 (2026-09-05 — figure links + rarest-first tags; sweep v1.45)
 
 **CaseIndexVersion bump — add the FigureLinks column, then reflow
