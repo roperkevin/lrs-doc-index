@@ -1,5 +1,37 @@
 # Local sweep — release notes
 
+## deck2pptx v1.0 / designsystem v1.0 / deckspec v1.0 / draft2pptx v1.2 / svg2pptx v1.5 (2026-09-05, with TestPlanGen v2.36)
+
+The model-laid-out review deck — component record in
+`testplangen/CHANGES.md` v2.36. In brief, for the local tooling:
+
+- `local/lib/designsystem.mjs` v1.0 — Fluent 2 tokens (MIT,
+  `@fluentui/tokens`) on the 16:9 canvas: type ramp, spacing, radii,
+  strokes, colour roles themed with the Diagram Style Framework
+  palette, a 12-column grid, the header / body / footer bands, and
+  the thirteen-pattern layout catalog with capacities.
+- `local/lib/deckspec.mjs` v1.0 — the deck spec's fail-closed parse,
+  the draft corpus, per-slide grounding (drop, never repair) with
+  `from` references resolved, and the layout engine (EMU elements on
+  the grid; pagination; nothing past the footer).
+- `local/deck2pptx.mjs` v1.0 — the renderer + CLI (`--spec` /
+  `--generate`, `--media` / `--figures`): native text, cards, chips,
+  checkboxes, tables, chevron flows, numbered circles, figures as
+  shape groups, speaker notes as a notes page.
+- `local/draft2pptx.mjs` v1.2 — exports its emitter / palette /
+  geometry / dialect parser / package builder, guards its CLI,
+  `figureGroupXml`, buildPptx takes `{xml, notes}` slides (a notes
+  master + notes pages only when a slide carries notes). Output
+  unchanged; gate 37/37.
+- `local/svg2pptx.mjs` v1.5 — `parseFigureSvg(text, name)`; the CLI
+  and `parseFigure` unchanged; gate PASS.
+- `local/testplangen.mjs` v1.16 — `--deck` / `testplangen.deck`,
+  `deckMaxTokens`, `llm.deckModelId`; the pass, the addendum,
+  `deck=` in Gen_summary.
+- Gates: `check_deckspec.py` 62/62 (fixture-free), `check_deck2pptx.py`
+  42/42 (python-pptx), `check_testplangen.py` 218/218 (leg 21);
+  both new gates are in `.github/workflows/harness.yml`.
+
 ## sweep v1.63 (2026-09-05 — the two plans the normalize lane could not take; casegrammar v1.2, ZipTextExtract v2.6)
 
 `--normalize-cases` skipped docs 527 (347 KB body) and 528 (181 KB) as

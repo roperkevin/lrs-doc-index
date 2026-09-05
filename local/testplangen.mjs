@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.15 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.16 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -9,7 +9,33 @@
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29; case-aware generation: v2.30; first-run
  * review: v2.31; generated figures: v2.32; console streaming: v2.33;
- * related cases: v2.34; doc 910 draft review: v2.35).
+ * related cases: v2.34; doc 910 draft review: v2.35; the review
+ * deck: v2.36).
+ *
+ * v1.16 (the model-laid-out review deck — `--deck`, testplangen/
+ * CHANGES.md v2.36): an OPTIONAL model pass over the FINISHED draft
+ * (banner, verified body and every deterministic addendum — figures
+ * included) with `prompts/TestPlanDeck_Prompt.md` v0.1: the model
+ * makes the LAYOUT DECISIONS for the review deck — which of the
+ * thirteen design-system patterns each slide takes, what goes in
+ * which region, how cases group, what earns a divider / statement /
+ * flow / comparison slide, the presenter notes — as a closed-
+ * vocabulary DECK SPEC. lib/deckspec.mjs grounds every slide (body
+ * content verbatim from the draft or pulled through `from`
+ * references; a slide with any finding is dropped, never repaired),
+ * lays the survivors out on lib/designsystem.mjs (Fluent 2 tokens,
+ * MIT, on a 12-column grid), and local/deck2pptx.mjs renders native
+ * editable PowerPoint objects — figures (story and generated, the
+ * latter straight from this run's memory) as the same shape groups
+ * svg2pptx emits. The deck (`<draft stem>--deck.pptx`) and its spec
+ * (`<draft stem>--deck.json`, hand-editable and re-renderable with
+ * deck2pptx --spec) land beside the draft (live) or beside the local
+ * copy (dry), linked from a deterministic `## Review Deck` addendum.
+ * Fail soft after the draft is verified (one stderr line, the draft
+ * still lands, `deck=0/0`); the aibuilder lane refuses BEFORE the
+ * generation spend without llm.deckModelId. Knobs: testplangen.deck
+ * (default false; `--deck` forces on), deckMaxTokens (24000). Manual
+ * runs only, like --figures.
  *
  * v1.15 (doc 910 draft review — testplangen/CHANGES.md v2.35): the
  * figures pass names its own cap when the model's reply is cut
@@ -437,8 +463,9 @@ import {
   parseFiguresReply, draftCorpus, verifyFigureSpec, renderFigureSvg, figureFileName,
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
+import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 
-const JOB_VERSION = "v1.15";
+const JOB_VERSION = "v1.16";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -469,7 +496,7 @@ const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
   "[--exemplar <docId>]... [--reference <docId>|<https-url>]... " +
-  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--stream] | --models | --help\n" +
+  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--deck] [--stream] | --models | --help\n" +
   "--stream echoes the model's thinking summary and reply to stderr as they " +
   "arrive (anthropic lane only — Dataverse Predict cannot stream). " +
   "--figures adds a second model pass over the verified draft that selects the " +
@@ -500,6 +527,7 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--preview") args.flags.preview = true;
     else if (a === "--figures") args.flags.figures = true;
+    else if (a === "--deck") args.flags.deck = true;
     else if (a === "--stream") args.flags.stream = true;
     else if (a === "--help" || a === "-h") args.flags.help = true;
     else if (a === "--models") args.flags.models = true;
@@ -522,6 +550,12 @@ function loadConfig(argv) {
     throw new Error(
       "--figures is a MANUAL generation's second pass (one more model call " +
       "per draft) — it cannot be combined with --auto, --gap-report, or --models\n" + USAGE
+    );
+  }
+  if (args.flags.deck && modeless) {
+    throw new Error(
+      "--deck is a MANUAL generation's extra pass (one more model call per " +
+      "draft) — it cannot be combined with --auto, --gap-report, or --models\n" + USAGE
     );
   }
   if (args.flags.preview && modeless) {
@@ -640,6 +674,8 @@ function loadConfig(argv) {
     // the mandatory per-case skipped list is ~9k tokens of JSON, and
     // --stream's thinking summary shares the cap) — see generateFigures
     figuresMaxTokens: 24000,
+    deck: false, // v1.16: the model-laid-out review deck pass (--deck forces on for a run)
+    deckMaxTokens: 24000,
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
     relatedCases: true, // v1.13/v1.14: the RELATED CASES retrieval lane (needs the same list)
@@ -660,6 +696,7 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.testplangen.dryRun = true;
   if (args.flags.preview) cfg.testplangen.dryRun = true; // never writes, by construction
   if (args.flags.figures) cfg.testplangen.figures = true;
+  if (args.flags.deck) cfg.testplangen.deck = true;
   if (args.flags.stream) cfg.testplangen.stream = true;
   if (args.flags.notify) cfg.testplangen.notify = true;
   if (args.verify !== undefined) cfg.testplangen.verify = args.verify;
@@ -883,6 +920,14 @@ async function run(cfg) {
       "\"anthropic\" for the figures pass, which executes the repo prompt verbatim"
     );
   }
+  if (tp.deck && !cfg._preview && providerOf(cfg) === "aibuilder" && !cfg.llm.deckModelId) {
+    throw new Error(
+      "--deck on the aibuilder lane needs llm.deckModelId (a tenant custom " +
+      "prompt pasted from prompts/TestPlanDeck_Prompt.md with inputs PlanTitle + " +
+      "Draft + Figures) — none exists yet; set testplangen.provider to " +
+      "\"anthropic\" for the deck pass, which executes the repo prompt verbatim"
+    );
+  }
   // web reference pins (v1.7) fetch now, under the same hard-guard
   // posture — any failure refuses the run with zero model spend
   for (const pin of ctx.pins.ref) {
@@ -925,7 +970,7 @@ async function run(cfg) {
     JSON.stringify(
       {
         line: res.line, dry_run: dry, draft: res.draftPath,
-        localDraft: res.localDraft, figures: res.figures, plan: dry ? ctx.plan : undefined,
+        localDraft: res.localDraft, figures: res.figures, deck: res.deck, plan: dry ? ctx.plan : undefined,
       },
       null,
       1
@@ -2166,9 +2211,36 @@ async function generateOne(ctx, story) {
   // case index already holds for this story's issues, for the dedupe
   // and cross-check during the §4 review
   const existingCases = existingCasesSection(ctx, cc);
-  const draft =
+  let draft =
     banner + verifyBlock + draftOut + "\n" + trace.section + existingCases.section +
     figuresSection + webRefSection;
+
+  // ---- the review deck (v1.16, --deck): one more model pass over the
+  // FINISHED draft — layout decisions from the model, grounding +
+  // layout + rendering here; fail soft, the draft never depends on it
+  let deck = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "" };
+  if (tp.deck) {
+    deck = await generateDeck(ctx, story, draft, provider, prog, {
+      draftStem: draftName.replace(/\.md$/, ""),
+      localStem: localDraftName.replace(/\.md$/, ""),
+      svgs: new Map(figs.rendered.map((r) => [r.url.split("/").pop(), r.svg])),
+    });
+    draft +=
+      "\n## Review Deck\n\n" +
+      "_Deterministic addendum — the review deck laid out by the TestPlanDeck prompt " +
+      `${DECK_PROMPT_VERSION} over this draft (pattern and region decisions), grounded ` +
+      "slide by slide and rendered as native editable PowerPoint objects by " +
+      `local/deck2pptx.mjs ${DECK_VERSION}. ` +
+      (deck.error
+        ? `Pass skipped: ${cellSafe(deck.error, 160)}._\n`
+        : `${deck.slides} slides from ${deck.proposed} proposed` +
+          (deck.dropped.length ? `, ${deck.dropped.length} dropped by the grounding check` : "") +
+          `._\n\n- Deck: <${deck.url}>\n- Layout spec (edit and re-render with deck2pptx --spec): <${deck.specUrl}>\n` +
+          (deck.dropped.length
+            ? "\nDropped slides (the spec said something the draft does not, or left the vocabulary):\n\n" +
+              deck.dropped.map((d) => `- slide ${d.index + 1} (${d.pattern || "?"}) — ${d.findings.slice(0, 2).join("; ")}`).join("\n") + "\n"
+            : ""));
+  }
 
   // G11 — timestamped save, never overwritten (drafts are work
   // products a PE may be mid-edit on; stale ones are deleted by hand)
@@ -2187,7 +2259,8 @@ async function generateOne(ctx, story) {
     `existingCases=${existingCases.count} caseRouted=${routedIds.length} ` +
     `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal} ` +
     `relatedCases=${related.count} relatedPlans=${related.plans.length} ` +
-    `relCaseChars=${related.chars} genFigures=${figs.rendered.length}/${figs.proposed}`;
+    `relCaseChars=${related.chars} genFigures=${figs.rendered.length}/${figs.proposed} ` +
+    `deck=${deck.slides}/${deck.proposed}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run
@@ -2223,7 +2296,77 @@ async function generateOne(ctx, story) {
         dropped: figs.dropped, skipped: figs.skipped,
       }
     : undefined;
-  return { line, draftPath, draftName, localDraft, verify, findings, figures };
+  const deckOut = tp.deck
+    ? { proposed: deck.proposed, slides: deck.slides, error: deck.error || undefined, file: deck.url || undefined,
+        spec: deck.specUrl || undefined, dropped: deck.dropped }
+    : undefined;
+  return { line, draftPath, draftName, localDraft, verify, findings, figures, deck: deckOut };
+}
+
+/**
+ * The review-deck pass (v1.16, --deck). ONE model call with the
+ * finished draft; the reply's deck spec is grounded slide by slide
+ * and rendered (local/deck2pptx.mjs) with this run's generated
+ * figures embedded from memory and the story figures from the synced
+ * media folder (paths.sidecarLibrary/media). The .pptx and the spec
+ * .json land beside the draft — uploaded (live) or written next to
+ * the local copy (dry). Returns {proposed, slides, dropped, error,
+ * url, specUrl} and never throws.
+ */
+async function generateDeck(ctx, story, draft, provider, prog, names) {
+  const { cfg, graph, siteId, tp, sw, dry, plan } = ctx;
+  const out = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "" };
+  try {
+    prog(`deck — calling the model (provider ${provider}, ~${draft.length} chars of draft)`);
+    const echo = streamEcho(ctx, provider, "deck");
+    const g = await generateDeckSpec({
+      cfg, provider, draft, planTitle: `Test Plan — ${stripQuotes(story.Title)}`,
+      maxTokens: Number(tp.deckMaxTokens), modelId: cfg.llm.deckModelId,
+      onDelta: echo || null, showThinking: !!echo,
+    });
+    echo?.done();
+    out.proposed = g.spec.slides.length;
+    const mediaDir = cfg.paths?.sidecarLibrary ? path.join(cfg.paths.sidecarLibrary, "media") : null;
+    const r = renderDeck(draft, g.spec, {
+      mediaDir: mediaDir && fs.existsSync(mediaDir) ? mediaDir : null,
+      svgs: names.svgs,
+      provenance: `provider ${provider}`,
+    });
+    out.slides = r.slides;
+    out.dropped = r.dropped;
+    for (const w of r.warnings) prog(`deck — note: ${w}`);
+    for (const n of r.notes) prog(`deck — note: ${n}`);
+    const specJson = JSON.stringify(g.spec, null, 2) + "\n";
+    const deckName = `${names.draftStem}--deck.pptx`;
+    const specName = `${names.draftStem}--deck.json`;
+    if (dry) {
+      const logDir = cfg.paths?.workDir || ".";
+      fs.mkdirSync(logDir, { recursive: true });
+      const localDeck = path.join(logDir, `${names.localStem}--deck.pptx`);
+      const localSpec = path.join(logDir, `${names.localStem}--deck.json`);
+      fs.writeFileSync(localDeck, r.buf);
+      fs.writeFileSync(localSpec, specJson);
+      out.url = path.basename(localDeck);
+      out.specUrl = path.basename(localSpec);
+      plan.push({ action: "putFile", path: `${tp.draftFolder}/${deckName}`, bytes: r.buf.length });
+      plan.push({ action: "putFile", path: `${tp.draftFolder}/${specName}`, bytes: specJson.length });
+    } else {
+      const fallback = (n) => `${sw.siteUrl}/Shared Documents${tp.draftFolder}/${encodeURIComponent(n)}`;
+      const res = await graph.putFile(siteId, `${tp.draftFolder}/${deckName}`, r.buf,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation");
+      out.url = res?.webUrl || fallback(deckName);
+      const res2 = await graph.putFile(siteId, `${tp.draftFolder}/${specName}`, specJson, "application/json");
+      out.specUrl = res2?.webUrl || fallback(specName);
+    }
+  } catch (e) {
+    out.error = String(e.message || e);
+    process.stderr.write(`deck skipped: ${out.error}\n`);
+  }
+  prog(
+    `deck — ${out.proposed} slides proposed, ${out.slides} rendered` +
+    (out.dropped.length ? `, ${out.dropped.length} dropped by the grounding check` : "")
+  );
+  return out;
 }
 
 /**
@@ -2310,7 +2453,7 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
       }
       out.rendered.push({
         case: spec.case, rule: spec.rule, kind: spec.kind, title: spec.title,
-        caption: spec.caption, url,
+        caption: spec.caption, url, svg, // svg: the deck pass embeds it from memory (v1.16)
       });
     }
   } catch (e) {

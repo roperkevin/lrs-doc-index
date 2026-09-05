@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * svg2pptx v1.4 — SlideFigures SVG figures → editable PowerPoint shapes
+ * svg2pptx v1.5 — SlideFigures SVG figures → editable PowerPoint shapes
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the sweep machine already
  * has Node). Takes the figure SVGs the local sweep writes into the
@@ -78,6 +78,12 @@
  * can embed a draft's cited story figures as the same native shape
  * groups (TestPlanGen v2.27) — one figure vocabulary, one emitter.
  * CLI behavior and output are byte-for-byte unchanged.
+ *
+ * v1.5: `parseFigureSvg(svgText, name)` — the same parse over SVG
+ * text, so deck2pptx.mjs can embed the figures the generation pass
+ * holds in memory (figurespec's SVG strings) as native shape groups
+ * with no file round-trip. parseFigure now wraps it; CLI and output
+ * are byte-for-byte unchanged.
  */
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { deflateRawSync } from "node:zlib";
@@ -349,7 +355,17 @@ function parsePathD(d, ox, oy) {
 }
 
 export function parseFigure(file) {
-  const svg = readFileSync(file, "utf8");
+  return parseFigureSvg(readFileSync(file, "utf8"), basename(file));
+}
+
+/**
+ * v1.5: the same parse over SVG TEXT (name = the figure's display /
+ * error name) — deck2pptx.mjs embeds figures the generation pass
+ * holds in memory (figurespec's renderFigureSvg output) without a
+ * file round-trip. parseFigure is this over a file, byte-for-byte.
+ */
+export function parseFigureSvg(svg, name) {
+  const file = name || "figure.svg";
   const vb = svg.match(/viewBox="(-?[\d.]+) (-?[\d.]+) ([\d.]+) ([\d.]+)"/);
   if (!vb) throw new Error(`${file}: no viewBox`);
   const w = num(vb[3]), h = num(vb[4]);
@@ -422,7 +438,7 @@ export function parseFigure(file) {
     }
   }
   attachNodeLabels(items);
-  return { name: basename(file), w, h, title, desc, rules, items, unknown: [...new Set(unknown)] };
+  return { name: file, w, h, title, desc, rules, items, unknown: [...new Set(unknown)] };
 }
 
 // nlabel texts sitting inside a node become the node's own text body —

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * draft2pptx v1.1 — TestPlanGen draft markdown → a designed review deck
+ * draft2pptx v1.2 — TestPlanGen draft markdown → a designed review deck
  * ---------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the svg2pptx precedent:
  * OOXML is a zip of XML parts, and Node's zlib does the rest). Takes a
@@ -51,11 +51,20 @@
  * provenance (prompt/generator/provider), which lands in the deck's
  * footer of record on the closing slide. The output uses only native
  * shapes, text, and tables — every element is editable in PowerPoint.
+ *
+ * v1.2: the DrawingML primitives (textbox / card / pill / checkbox /
+ * tableFrame / slide / figureGroupXml / buildPptx and the palette +
+ * geometry constants) are exported, and the CLI runs only when this
+ * file is executed directly — the svg2pptx v1.4 precedent — so
+ * local/deck2pptx.mjs (the model-laid-out review deck, TestPlanGen
+ * v2.36) renders with the same emitter and the two decks read as one
+ * design. CLI behavior and output are unchanged.
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { deflateRawSync } from "node:zlib";
+import { pathToFileURL } from "node:url";
 // the figure vocabulary and shape emitter, shared with the figure deck
 // (svg2pptx v1.4 exports them; its CLI runs only when executed directly)
 import { parseFigure, emitFigure, EMU_PX } from "./svg2pptx.mjs";
@@ -81,7 +90,7 @@ function collectInputs(argv) {
 const cells = (row) =>
   row.trim().replace(/^\|+|\|+$/g, "").split("|").map((c) => c.trim());
 
-function parseBlocks(md) {
+export function parseBlocks(md) {
   const text = String(md).replace(/<!--[\s\S]*?-->/g, "");
   const lines = text.split(/\r?\n/);
   const blocks = [];
@@ -159,9 +168,9 @@ function parseBlocks(md) {
 // Lift the flat block list into the deck's shape: title, banner facts,
 // overview, sections, and — under the two test sections — TC cases.
 
-const TEST_SECTIONS = ["Positive Tests", "Negative Tests"];
+export const TEST_SECTIONS = ["Positive Tests", "Negative Tests"];
 
-function parseDraft(md) {
+export function parseDraft(md) {
   // provenance rides in the machine banner comment, mined before the
   // parser strips comments
   const prov = /<!--\s*machine-generated test-plan draft\s*—\s*([^>]*?)\s*-->/.exec(md);
@@ -231,40 +240,44 @@ function parseDraft(md) {
 
 // only real flags count — the banner's "resolve all [VERIFY] items"
 // instruction and the verifier's prose mention the tag without a colon
-const countVerify = (md) => (String(md).match(/\[VERIFY:/g) || []).length;
+export const countVerify = (md) => (String(md).match(/\[VERIFY:/g) || []).length;
 
 // ------------------------------------------------------------ palette
 // the figure palette svg2pptx uses, so this deck and the figure deck
 // read as one design.
 
-const INK = "16302F";       // dominant: dark slides + all body text
-const INK_SOFT = "23423F";  // raised panels on ink
-const MUTED = "6E8285";     // secondary text
-const PAPER = "FFFFFF";
-const TINT = "EFF2F2";      // light panel fill
-const BORDER = "D7DFDF";
-const ICE = "CFDCDC";       // secondary text on ink
-const GREEN = "2E7D5B";     // positive
-const GREEN_TINT = "E4EFE9";
-const RED = "B2442F";       // negative
-const RED_TINT = "F4E7E3";
-const AMBER = "C2701A";     // [VERIFY] / draft caution
-const AMBER_TINT = "F7EDDF";
-const TEAL = "1B6E8C";      // coverage / trace / links
-const TEAL_TINT = "E4EEF2";
-const FONT = "Segoe UI";
+export const INK = "16302F";       // dominant: dark slides + all body text
+export const INK_SOFT = "23423F";  // raised panels on ink
+export const MUTED = "6E8285";     // secondary text
+export const PAPER = "FFFFFF";
+export const TINT = "EFF2F2";      // light panel fill
+export const BORDER = "D7DFDF";
+export const ICE = "CFDCDC";       // secondary text on ink
+export const GREEN = "2E7D5B";     // positive
+export const GREEN_TINT = "E4EFE9";
+export const RED = "B2442F";       // negative
+export const RED_TINT = "F4E7E3";
+export const AMBER = "C2701A";     // [VERIFY] / draft caution
+export const AMBER_TINT = "F7EDDF";
+export const TEAL = "1B6E8C";      // coverage / trace / links
+export const TEAL_TINT = "E4EEF2";
+export const FONT = "Segoe UI";
+export const PALETTE = {
+  INK, INK_SOFT, MUTED, PAPER, TINT, BORDER, ICE, GREEN, GREEN_TINT, RED, RED_TINT,
+  AMBER, AMBER_TINT, TEAL, TEAL_TINT, FONT,
+};
 
 // --------------------------------------------------------- geometry
-const IN = 914400;
-const SLIDE_W = 12192000;   // 13.33in × 7.5in (16:9)
-const SLIDE_H = 6858000;
-const MARGIN = 457200;      // 0.5 in
-const CONTENT_W = SLIDE_W - 2 * MARGIN;
-const PT = 12700;           // EMU per point
+export const IN = 914400;
+export const SLIDE_W = 12192000;   // 13.33in × 7.5in (16:9)
+export const SLIDE_H = 6858000;
+export const MARGIN = 457200;      // 0.5 in
+export const CONTENT_W = SLIDE_W - 2 * MARGIN;
+export const PT = 12700;           // EMU per point
 
 // wrap estimate: Segoe UI averages ~0.5 em advance; 0.53 leaves slack
 // (bold display sizes wrap earlier — callers pass a wider factor)
-function linesOf(text, szPt, wEmu, factor) {
+export function linesOf(text, szPt, wEmu, factor) {
   const perLine = Math.max(8, Math.floor(wEmu / PT / (szPt * (factor || 0.53))));
   const words = String(text).split(/\s+/);
   let n = 1, len = 0;
@@ -274,28 +287,31 @@ function linesOf(text, szPt, wEmu, factor) {
   }
   return n;
 }
-const lineH = (szPt) => Math.round(szPt * 1.32 * PT);
+export const lineH = (szPt) => Math.round(szPt * 1.32 * PT);
 
 // ------------------------------------------------------ DrawingML emit
-const xesc = (s) => String(s)
+export const xesc = (s) => String(s)
   .replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;")
   .replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const solidFill = (hex) => `<a:solidFill><a:srgbClr val="${hex}"/></a:solidFill>`;
+export const solidFill = (hex) => `<a:solidFill><a:srgbClr val="${hex}"/></a:solidFill>`;
 
-const xfrm = (x, y, w, h) =>
+export const xfrm = (x, y, w, h) =>
   `<a:xfrm><a:off x="${Math.round(x)}" y="${Math.round(y)}"/>` +
   `<a:ext cx="${Math.max(1, Math.round(w))}" cy="${Math.max(1, Math.round(h))}"/></a:xfrm>`;
 
 let SHAPE_ID = 2;
-function sp(name, spPr, txBody) {
+/** v1.2: the slide-local shape id counter, for renderers sharing the emitter. */
+export const nextShapeId = () => SHAPE_ID++;
+export const setShapeId = (n) => { SHAPE_ID = n; };
+export function sp(name, spPr, txBody) {
   return `<p:sp><p:nvSpPr><p:cNvPr id="${SHAPE_ID++}" name="${xesc(name)}"/>` +
     "<p:cNvSpPr/><p:nvPr/></p:nvSpPr>" +
     `<p:spPr>${spPr}</p:spPr>${txBody || ""}</p:sp>`;
 }
 
 // r: {t, color, sz, b, i, font}
-function runXml(r) {
+export function runXml(r) {
   return `<a:r><a:rPr lang="en-US" sz="${Math.round(r.sz * 100)}" b="${r.b ? 1 : 0}"` +
     `${r.i ? ' i="1"' : ""} spc="${r.spc || 0}" dirty="0">` +
     solidFill(r.color || INK) +
@@ -304,14 +320,14 @@ function runXml(r) {
 }
 
 // p: {runs, algn, after (pt), line (pt)}
-function paraXml(p) {
+export function paraXml(p) {
   const spcAft = p.after ? `<a:spcAft><a:spcPts val="${Math.round(p.after * 100)}"/></a:spcAft>` : "";
   const ln = p.line ? `<a:lnSpc><a:spcPts val="${Math.round(p.line * 100)}"/></a:lnSpc>` : "";
   return `<a:p><a:pPr algn="${p.algn || "l"}">${ln}${spcAft}</a:pPr>` +
     p.runs.map(runXml).join("") + "</a:p>";
 }
 
-function textbox(name, x, y, w, h, paras, opt) {
+export function textbox(name, x, y, w, h, paras, opt) {
   const o = opt || {};
   const spPr = xfrm(x, y, w, h) +
     '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln>';
@@ -320,7 +336,7 @@ function textbox(name, x, y, w, h, paras, opt) {
   return sp(name, spPr, body);
 }
 
-function card(name, x, y, w, h, fill, line, adjPct) {
+export function card(name, x, y, w, h, fill, line, adjPct) {
   const adj = adjPct == null ? 6 : adjPct;
   const geom = `<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val ${Math.round(adj * 1000)}"/></a:avLst></a:prstGeom>`;
   const ln = line ? `<a:ln w="9525">${solidFill(line)}</a:ln>` : "<a:ln><a:noFill/></a:ln>";
@@ -328,17 +344,17 @@ function card(name, x, y, w, h, fill, line, adjPct) {
 }
 
 // pill: fully-rounded chip with centred label; returns xml (width fixed)
-function pill(text, x, y, w, h, fill, color, sz, bold) {
+export function pill(text, x, y, w, h, fill, color, sz, bold) {
   const geom = '<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 50000"/></a:avLst></a:prstGeom>';
   const body = '<p:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>' +
     paraXml({ algn: "ctr", runs: [{ t: text, color, sz, b: bold !== false, spc: 60 }] }) + "</p:txBody>";
   return sp("chip " + text, xfrm(x, y, w, h) + geom + solidFill(fill) + "<a:ln><a:noFill/></a:ln>", body);
 }
 // chip width: bold + letter-spaced, and the viewer's font may run wide
-const pillW = (text, sz) => Math.round(text.length * (sz * 0.72 + 0.62) * PT + 0.3 * IN);
+export const pillW = (text, sz) => Math.round(text.length * (sz * 0.72 + 0.62) * PT + 0.3 * IN);
 
 // drawn checkbox: rounded square, filled green + tick when checked
-function checkbox(x, y, size, checked) {
+export function checkbox(x, y, size, checked) {
   const geom = '<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 22000"/></a:avLst></a:prstGeom>';
   if (!checked) {
     return sp("checkbox", xfrm(x, y, size, size) + geom + solidFill(PAPER) +
@@ -351,7 +367,7 @@ function checkbox(x, y, size, checked) {
 
 // inline runs: **bold** spans (unbalanced ** stays literal, the
 // draft2docx rule) and [VERIFY…] flags lifted into amber bold
-function inlineRuns(text, base) {
+export function inlineRuns(text, base) {
   const out = [];
   const parts = String(text).split("**");
   const balanced = parts.length % 2 === 1;
@@ -374,17 +390,17 @@ function inlineRuns(text, base) {
 }
 
 // footer of every light slide: plan title left, page number right
-function footer(planTitle, pageNo) {
+export function footer(planTitle, pageNo) {
   return textbox("footer title", MARGIN, SLIDE_H - 0.42 * IN, CONTENT_W - IN, 0.25 * IN,
     [{ runs: [{ t: planTitle, color: MUTED, sz: 10 }] }]) +
     textbox("footer page", SLIDE_W - MARGIN - IN, SLIDE_H - 0.42 * IN, IN, 0.25 * IN,
       [{ algn: "r", runs: [{ t: String(pageNo), color: MUTED, sz: 10 }] }]);
 }
 
-const bg = (hex) =>
+export const bg = (hex) =>
   `<p:bg><p:bgPr><a:solidFill><a:srgbClr val="${hex}"/></a:solidFill><a:effectLst/></p:bgPr></p:bg>`;
 
-function slide(shapesXml, bgHex) {
+export function slide(shapesXml, bgHex) {
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
     `<p:sld ${NS_A} ${NS_R} ${NS_P}><p:cSld>` + (bgHex ? bg(bgHex) : "") +
     '<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>' +
@@ -394,7 +410,7 @@ function slide(shapesXml, bgHex) {
 
 // ------------------------------------------------- native table emit
 const TBL_ROW_H = 300000;
-function tableFrame(x, y, rows, maxW, accentCol) {
+export function tableFrame(x, y, rows, maxW, accentCol) {
   const nCols = Math.max(...rows.map((r) => r.length));
   const widths = [];
   for (let c = 0; c < nCols; c++) {
@@ -753,16 +769,27 @@ function figureSlide(model, sec, tc, fig, alt, pageRef) {
   const gw = Math.round(wEmu * s), gh = Math.round(hEmu * s);
   const gx = Math.round((SLIDE_W - gw) / 2);
   const gy = Math.round(FIG_TOP + Math.max(0, (areaH - gh) / 2));
+  const g = figureGroupXml(fig, s, gx, gy, gw, gh);
+  x += g.xml;
+  if (g.skipped.length) console.error(`note: ${fig.name}: skipped ${g.skipped.length} shape(s)`);
+  return slide(x + footer(model.title, pageRef.n++), PAPER);
+}
+
+/**
+ * v1.2: a parsed figure as ONE native, editable shape group at
+ * (gx, gy) scaled by s (gw × gh = the scaled extent) — the svg2pptx
+ * emitter over the shared id counter. Returns {xml, skipped}.
+ */
+export function figureGroupXml(fig, s, gx, gy, gw, gh) {
   const gid = SHAPE_ID++;
   const { xml, nextId, skipped } = emitFigure(fig, s, SHAPE_ID);
   SHAPE_ID = nextId;
   const descr = [fig.title, fig.desc].filter(Boolean).join(" — ");
-  x += `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${gid}" name="${xesc(fig.title || fig.name)}"` +
+  const out = `<p:grpSp><p:nvGrpSpPr><p:cNvPr id="${gid}" name="${xesc(fig.title || fig.name)}"` +
     (descr ? ` descr="${xesc(descr)}"` : "") + "/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>" +
-    `<p:grpSpPr><a:xfrm><a:off x="${gx}" y="${gy}"/><a:ext cx="${gw}" cy="${gh}"/>` +
-    `<a:chOff x="0" y="0"/><a:chExt cx="${gw}" cy="${gh}"/></a:xfrm></p:grpSpPr>${xml}</p:grpSp>`;
-  if (skipped.length) console.error(`note: ${fig.name}: skipped ${skipped.length} shape(s)`);
-  return slide(x + footer(model.title, pageRef.n++), PAPER);
+    `<p:grpSpPr><a:xfrm><a:off x="${Math.round(gx)}" y="${Math.round(gy)}"/><a:ext cx="${Math.round(gw)}" cy="${Math.round(gh)}"/>` +
+    `<a:chOff x="0" y="0"/><a:chExt cx="${Math.round(gw)}" cy="${Math.round(gh)}"/></a:xfrm></p:grpSpPr>${xml}</p:grpSp>`;
+  return { xml: out, skipped };
 }
 
 // table slide: Coverage Map / Issue Trace (long tables paginate)
@@ -866,7 +893,7 @@ function closingSlide(model, stats) {
   });
   if (model.provenance) {
     x += textbox("prov", MARGIN, SLIDE_H - 0.75 * IN, CONTENT_W, 0.3 * IN,
-      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.1", color: MUTED, sz: 10.5 }] }]);
+      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.2", color: MUTED, sz: 10.5 }] }]);
   }
   return slide(x, INK);
 }
@@ -924,7 +951,13 @@ function relsXml(rels) {
     "</Relationships>";
 }
 
-function buildPptx(slides, deckTitle) {
+export function buildPptx(slidesIn, deckTitle, creator) {
+  // v1.2: a slide may be {xml, notes} — notes become a native notes
+  // page (notes master + one notes slide per noted slide); plain
+  // strings are the v1.1 package, byte-for-byte
+  const slides = slidesIn.map((s) => (typeof s === "string" ? s : s.xml));
+  const notes = slidesIn.map((s) => (typeof s === "string" ? "" : String(s.notes || "")));
+  const anyNotes = notes.some(Boolean);
   const parts = [];
   const put = (name, xml) => parts.push({ name, data: Buffer.from(xml, "utf8") });
   const n = slides.length;
@@ -938,6 +971,15 @@ function buildPptx(slides, deckTitle) {
   for (let i = 1; i <= n; i++) {
     overrides.push([`/ppt/slides/slide${i}.xml`,
       "application/vnd.openxmlformats-officedocument.presentationml.slide+xml"]);
+    if (notes[i - 1]) {
+      overrides.push([`/ppt/notesSlides/notesSlide${i}.xml`,
+        "application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"]);
+    }
+  }
+  if (anyNotes) {
+    overrides.push(["/ppt/notesMasters/notesMaster1.xml",
+      "application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"]);
+    overrides.push(["/ppt/theme/theme2.xml", "application/vnd.openxmlformats-officedocument.theme+xml"]);
   }
   put("[Content_Types].xml", XML_HDR +
     '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
@@ -954,17 +996,21 @@ function buildPptx(slides, deckTitle) {
     '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"' +
     ' xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/"' +
     ` xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xesc(deckTitle)}</dc:title>` +
-    `<dc:creator>draft2pptx</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>` +
+    `<dc:creator>${xesc(creator || "draft2pptx")}</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created>` +
     `<dcterms:modified xsi:type="dcterms:W3CDTF">${now}</dcterms:modified></cp:coreProperties>`);
   const sldIds = slides.map((s, i) => `<p:sldId id="${256 + i}" r:id="rId${2 + i}"/>`).join("");
   put("ppt/presentation.xml", XML_HDR +
     `<p:presentation ${NS_A} ${NS_R} ${NS_P}>` +
     '<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>' +
+    (anyNotes ? `<p:notesMasterIdLst><p:notesMasterId r:id="rId${2 + n}"/></p:notesMasterIdLst>` : "") +
     `<p:sldIdLst>${sldIds}</p:sldIdLst>` +
     `<p:sldSz cx="${SLIDE_W}" cy="${SLIDE_H}"/><p:notesSz cx="${SLIDE_H}" cy="${SLIDE_W}"/></p:presentation>`);
   const presRels = [{ id: "rId1", type: `${RT}/slideMaster`, target: "slideMasters/slideMaster1.xml" }];
   for (let i = 0; i < n; i++) {
     presRels.push({ id: `rId${2 + i}`, type: `${RT}/slide`, target: `slides/slide${i + 1}.xml` });
+  }
+  if (anyNotes) {
+    presRels.push({ id: `rId${2 + n}`, type: `${RT}/notesMaster`, target: "notesMasters/notesMaster1.xml" });
   }
   put("ppt/_rels/presentation.xml.rels", relsXml(presRels));
   put("ppt/slideMasters/slideMaster1.xml", masterXml());
@@ -977,13 +1023,59 @@ function buildPptx(slides, deckTitle) {
     { id: "rId1", type: `${RT}/slideMaster`, target: "../slideMasters/slideMaster1.xml" },
   ]));
   put("ppt/theme/theme1.xml", themeXml());
-  for (let i = 0; i < n; i++) {
-    put(`ppt/slides/slide${i + 1}.xml`, slides[i]);
-    put(`ppt/slides/_rels/slide${i + 1}.xml.rels`, relsXml([
-      { id: "rId1", type: `${RT}/slideLayout`, target: "../slideLayouts/slideLayout1.xml" },
+  if (anyNotes) {
+    put("ppt/theme/theme2.xml", themeXml());
+    put("ppt/notesMasters/notesMaster1.xml", notesMasterXml());
+    put("ppt/notesMasters/_rels/notesMaster1.xml.rels", relsXml([
+      { id: "rId1", type: `${RT}/theme`, target: "../theme/theme2.xml" },
     ]));
   }
+  for (let i = 0; i < n; i++) {
+    put(`ppt/slides/slide${i + 1}.xml`, slides[i]);
+    const rels = [{ id: "rId1", type: `${RT}/slideLayout`, target: "../slideLayouts/slideLayout1.xml" }];
+    if (notes[i]) {
+      rels.push({ id: "rId2", type: `${RT}/notesSlide`, target: `../notesSlides/notesSlide${i + 1}.xml` });
+      put(`ppt/notesSlides/notesSlide${i + 1}.xml`, notesSlideXml(notes[i]));
+      put(`ppt/notesSlides/_rels/notesSlide${i + 1}.xml.rels`, relsXml([
+        { id: "rId1", type: `${RT}/notesMaster`, target: "../notesMasters/notesMaster1.xml" },
+        { id: "rId2", type: `${RT}/slide`, target: `../slides/slide${i + 1}.xml` },
+      ]));
+    }
+    put(`ppt/slides/_rels/slide${i + 1}.xml.rels`, relsXml(rels));
+  }
   return zip(parts);
+}
+
+// v1.2: notes master + notes page — the two placeholders PowerPoint
+// expects (slide image, notes body); the body carries the text
+function notesMasterXml() {
+  return XML_HDR + `<p:notesMaster ${NS_A} ${NS_R} ${NS_P}>` +
+    '<p:cSld><p:bg><p:bgRef idx="1001"><a:schemeClr val="bg1"/></p:bgRef></p:bg>' +
+    '<p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+    '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr>' +
+    '<p:nvPr><p:ph type="sldImg" idx="2"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="1143000" y="685800"/><a:ext cx="4572000" cy="2571750"/></a:xfrm>' +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp>' +
+    '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>' +
+    '<p:nvPr><p:ph type="body" sz="quarter" idx="3"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="685800" y="3429000"/><a:ext cx="5486400" cy="4114800"/></a:xfrm>' +
+    '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp>' +
+    "</p:spTree></p:cSld>" +
+    '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3"' +
+    ' accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>' +
+    "<p:notesStyle/></p:notesMaster>";
+}
+
+function notesSlideXml(notesText) {
+  const paras = String(notesText).split(/\r?\n/).map((ln) =>
+    `<a:p><a:r><a:rPr lang="en-US" sz="1200" dirty="0"><a:latin typeface="${FONT}"/></a:rPr><a:t>${xesc(ln)}</a:t></a:r></a:p>`
+  ).join("");
+  return XML_HDR + `<p:notes ${NS_A} ${NS_R} ${NS_P}>` +
+    '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +
+    '<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image Placeholder 1"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr>' +
+    '<p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp>' +
+    '<p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes Placeholder 2"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr>' +
+    '<p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/>' +
+    `<p:txBody><a:bodyPr/><a:lstStyle/>${paras}</p:txBody></p:sp>` +
+    "</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>";
 }
 
 // ------------------------------------------------------------- zip writer
@@ -1120,6 +1212,13 @@ function buildDeck(md, opts) {
 }
 
 // ---------------------------------------------------------------- main
+// v1.2: the CLI runs only when this file is executed directly; an
+// importer (deck2pptx.mjs) gets the emitter and nothing else happens
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main();
+}
+
+function main() {
 const { files, out, mediaDir } = collectInputs(process.argv.slice(2));
 if (files.length === 0 || (out && files.length > 1)) {
   console.error('usage: node local/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx] [--media <dir>]');
@@ -1147,3 +1246,4 @@ for (const f of files) {
   }
 }
 process.exit(failed && failed === files.length ? 1 : 0);
+}

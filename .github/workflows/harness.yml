@@ -40,6 +40,7 @@ jobs:
       - run: python3 ../../local/harness/check_figureindex.py
       - run: python3 ../../local/harness/check_slug.py
       - run: python3 ../../local/harness/check_storyprofile.py
+      - run: python3 ../../local/harness/check_deckspec.py
 
   full-format:
     runs-on: ubuntu-latest
@@ -60,6 +61,7 @@ jobs:
       - run: python3 ../../local/harness/check_svg2pptx.py
       - run: python3 ../../local/harness/check_draft2docx.py
       - run: python3 ../../local/harness/check_draft2pptx.py
+      - run: python3 ../../local/harness/check_deck2pptx.py
       - run: python3 render_sample.py
 
   typecheck:

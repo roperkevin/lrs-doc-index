@@ -846,7 +846,44 @@ THIS knob, never `maxTokens`; a cut reply says so, and with
 it (no tenant prompt exists yet — set `testplangen.provider` to
 `anthropic` for the pass). Manual runs only. To put the SVGs on
 slides today, run `svg2pptx.mjs` on them; draft2pptx's `--media`
-still renders story `**Figure:**` lines only.
+still renders story `**Figure:**` lines only — or add `--deck`
+(next), which embeds them from memory.
+
+**`--deck` — the review deck laid out by the model** (v1.16,
+`testplangen/CHANGES.md` v2.36; or `testplangen.deck: true`): one
+more model call over the FINISHED draft (addenda and figures
+included). `prompts/TestPlanDeck_Prompt.md` makes the deck's LAYOUT
+DECISIONS — which of thirteen design-system patterns each slide
+takes (title, section, stats, bullets, checklist, two-column, cards,
+comparison, table, flow, figure, statement, closing), what goes in
+which region, how cases group, what earns a divider, a quoted
+requirement or a step flow, and the presenter notes — as a deck
+SPEC. It never chooses a size, a gap or a colour: those are
+`local/lib/designsystem.mjs`'s (Microsoft's Fluent 2 tokens, MIT —
+type ramp, spacing, radii, colour roles — on a 12-column grid), and
+it never writes body content: every item, card, cell and statement
+is copied verbatim from the draft or pulled through a `from`
+reference, and `local/lib/deckspec.mjs` DROPS any slide that says
+something the draft does not (the dropped slides and their findings
+are listed in the draft's `## Review Deck` addendum). `local/
+deck2pptx.mjs` then renders native, editable PowerPoint objects —
+text, cards, chips, checkboxes, tables, chevron flows, and every
+story or generated figure as the same shape group svg2pptx emits —
+to `<draft stem>--deck.pptx` beside the draft, with the spec as
+`<draft stem>--deck.json` (dry runs: beside the local copy). The
+spec is a text file: edit it (reorder, regroup, change a pattern,
+fix a note) and re-render without a model call —
+`node local\deck2pptx.mjs "<draft>.md" --spec "<draft>--deck.json" --media "<synced library>\media" --figures <folder holding the --fig SVGs>`;
+`node local\deck2pptx.mjs "<draft>.md" --generate --config local\config.json`
+makes the call standalone for a draft that already exists. Fail soft
+(a bad reply skips the pass, the draft still lands —
+`deck=<slides>/<proposed>` in the summary); `deckMaxTokens` (24000)
+bounds the reply; the aibuilder lane needs `llm.deckModelId` and
+refuses before the generation spend without it (no tenant prompt
+exists — set `testplangen.provider` to `anthropic`). Manual runs
+only. Gates: `local/harness/check_deckspec.py` (fixture-free) and
+`check_deck2pptx.py` (python-pptx), both in CI. The rule-built
+`draft2pptx.mjs` deck stays as the zero-model-call fallback.
 
 **Related cases — the retrieval lane** (v1.14, prompt v1.11,
 `testplangen/CHANGES.md` v2.34): with §12's Test Cases list in

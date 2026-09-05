@@ -1,3 +1,132 @@
+# TestPlanGen v2.36 — the review deck laid out by the model on a design system (TestPlanDeck prompt v0.1, testplangen.mjs v1.16, deck2pptx v1.0, deckspec v1.0, designsystem v1.0, draft2pptx v1.2, svg2pptx v1.5)
+
+Owner-requested (2026-09-05): an LLM-based slide-deck generator whose
+LAYOUT decisions follow an open-source design system, with the
+diagrams and every other slide element as native, editable PowerPoint
+objects for the test-plan review meeting. `draft2pptx.mjs` (v2.23)
+already builds a deck by FIXED rule — the same walk for every draft,
+one slide per case. This round puts a model in charge of the deck's
+STRUCTURE while keeping the pixels in a design system and the words
+in the draft — the never-invent rule extended to slides.
+
+- **The design system (`local/lib/designsystem.mjs` v1.0).** Microsoft's
+  Fluent 2 tokens, published open source under MIT as
+  `@fluentui/tokens`: the type ramp (Caption 2 10/14 … Body 1 14/20 …
+  Title 1 32/40 … Display 68/92, regular/semibold), the spacing ramp
+  (XXS 2 … XXXL 32), corner radii, stroke widths, and the neutral /
+  brand / status colour ROLES — carried verbatim, mapped onto the
+  16:9 canvas (1280 × 720 CSS px, so px tokens apply directly) with
+  ONE presentation scale (1.5 — a projected slide is read from across
+  a room; the ratios and rhythm stay Fluent's), on a 12-column grid
+  whose margin and gutter are the XXXL / XXL tokens, in three bands
+  (header, body, footer). The colour roles are THEMED with the Diagram
+  Style Framework palette draft2pptx and the sweep's figures already
+  use, so the model-laid-out deck, the rule-built deck and the figure
+  slides read as one design. The closed LAYOUT PATTERN catalog lives
+  here too — thirteen patterns (title, section, stats, bullets,
+  checklist, two-column, cards, comparison, table, flow, figure,
+  statement, closing), each with named regions and capacities derived
+  from the grid and the ramp — and `describeCatalog()` emits the
+  lines the prompt carries, so the gate can assert prompt and module
+  agree.
+- **The prompt (`prompts/TestPlanDeck_Prompt.md` v0.1,
+  `TestPlanDeckPromptVersion`).** Inputs PlanTitle, Draft (the whole
+  finished draft, addenda included), Figures (the story and generated
+  figures the draft cites, by file name). The model decides which
+  pattern each slide takes, what goes in which region, how cases
+  group, what earns a divider / statement / flow / comparison slide,
+  and the presenter notes — under seven layout rules (one idea per
+  slide; the walk; a case is a two-column; earn the extras; titles
+  are yours, words are the plan's; notes are for the presenter; speak
+  the deck, not the file) — and emits a closed-vocabulary DECK SPEC
+  between `[[[DECK BEGIN]]]` / `[[[DECK END]]]`. Body content is
+  either copied verbatim or pulled through `from` references
+  (`{"case": "TC-P1", "field": "steps"}`, `{"section": …}`,
+  `{"overview": "prose"|"verify"}`); counts on stats tiles are NAMED
+  counters, never numbers the model computed. Anthropic lane
+  verbatim; no tenant paste (the aibuilder lane would need a custom
+  prompt with the three inputs and its GUID in `llm.deckModelId`).
+- **Grounding + layout (`local/lib/deckspec.mjs` v1.0).** Pure module:
+  `parseDeckReply` (fail closed — sentinels, JSON, the 60-slide cap),
+  `deckCorpus` (draft2pptx's own dialect parser + the deterministic
+  counts + the cited figures; the Generated Figures addendum's
+  `### TC-…` headings are recognised as NOT cases), `verifyDeckSpec`
+  (per slide: unknown pattern / key / region / tone / count / figure,
+  required regions, caps, min/max counts, and the grounding test —
+  every item, card body, cell, statement, lede and value must appear
+  in the draft after whitespace / quote / dash / emphasis
+  normalization; titles, labels, straps, asks and notes are the
+  model's, capped — a slide with ANY finding is dropped with its
+  findings, never repaired; the survivors come back RESOLVED), and
+  `layoutDeck` (every element positioned in EMU on the grid; long
+  checklists, case steps and tables paginate onto "(n of m)" slides;
+  cards shrink one type step before giving up; nothing is placed past
+  the footer — `withinCanvas` is the gate's invariant).
+- **The renderer (`local/deck2pptx.mjs` v1.0).** Layout elements →
+  native DrawingML through draft2pptx's emitter (exported in v1.2):
+  text boxes, cards, chips, checkboxes, dots, numbered circles, accent
+  bars, native tables, chevron chains (homePlate + chevron autoshapes
+  with the step text INSIDE the shape) — and every figure as the same
+  shape group svg2pptx emits: story figures from `--media`, generated
+  figures from `--figures` or straight from the generation pass's
+  memory (svg2pptx v1.5 `parseFigureSvg`), and inline figurespecs
+  grounded + rendered on the fly. Speaker notes become a native notes
+  page (draft2pptx v1.2 buildPptx grows a notes master). CLI:
+  `--spec <deck.json>` renders a spec (the JSON a run writes beside
+  the deck is hand-editable — the layout decisions are a text file);
+  `--generate --config <config.json>` makes the one model call and
+  writes `<out>.deck.json`; `--media` / `--figures` name the figure
+  folders; a figure that resolves nowhere degrades to a muted note.
+- **The pass (`testplangen.mjs` v1.16, `--deck` / `testplangen.deck`,
+  `deckMaxTokens` 24000).** After the draft, the verifier, the
+  figures pass and every addendum: one more model call over the
+  FINISHED draft; the spec grounded, laid out and rendered with this
+  run's generated figures embedded from memory and the story figures
+  from `paths.sidecarLibrary/media`; `<draft stem>--deck.pptx` +
+  `--deck.json` uploaded beside the draft (dry: beside the local
+  copy) and linked from a deterministic `## Review Deck` addendum
+  that also lists the dropped slides with their findings.
+  `deck=<slides>/<proposed>` in Gen_summary; the run log carries the
+  deck record. Fail soft after the draft is verified (one stderr
+  line, the draft lands, `deck=0/0`); the aibuilder lane refuses
+  BEFORE the generation spend without `llm.deckModelId`; `--auto` /
+  `--gap-report` / `--models` refuse the flag. `--stream` echoes the
+  deck call like the others.
+- **draft2pptx v1.2 / svg2pptx v1.5.** The emitter, palette, geometry,
+  dialect parser and package builder are exported and the CLI is
+  guarded (the svg2pptx v1.4 precedent); `figureGroupXml` wraps the
+  figure-group emission both decks use; buildPptx takes `{xml, notes}`
+  slides (strings unchanged, byte-for-byte). svg2pptx gains
+  `parseFigureSvg(text, name)`; `parseFigure` wraps it. Both CLIs'
+  output is unchanged — `check_draft2pptx.py` 37/37, `check_svg2pptx.py`
+  PASS.
+- Gates: `check_deckspec.py` (fixture-free, CI job 1) **62/62** — the
+  Fluent tokens verbatim, the scale applied once, grid arithmetic,
+  prompt ↔ catalog agreement, fail-closed parse, corpus counts +
+  figures, fourteen ways a slide is dropped and the one quoted/dashed
+  literal that survives, every pattern inside the canvas, pagination;
+  `check_deck2pptx.py` (python-pptx, CI full-format) **42/42** — the
+  walk, the type ramp on the slide (36 / 18 / 13.5 pt, Segoe UI),
+  grounds, checkboxes / cards / tables / chevrons / tiles / pills as
+  native objects, story + generated + inline figures as shape groups,
+  the not-embedded degrade, the notes page, amber flags, the CLI
+  contract, `--generate` against a mock (prompt verbatim, inputs
+  substituted, `deckMaxTokens`, the spec written + re-renderable, a
+  sentinel-less reply exits nonzero); `check_testplangen.py` leg 21
+  **218/218** — three model calls in order, the Figures input, the
+  dropped slides, dry + live file placement, the embedded generated
+  figure, the notes page, the addendum, the run log, fail-soft, the
+  refusals, the aibuilder routing.
+
+Rollout: nothing on the tenant. `node local\testplangen.mjs --config
+local\config.json --story <id> --dry-run --figures --deck` writes the
+draft, the figures, the deck and its spec into workDir; open the
+.pptx in PowerPoint, edit any element in place, and re-render an
+edited spec with `node local\deck2pptx.mjs <draft>.md --spec
+<draft>--deck.json --media "<synced library>\media" --figures <workDir>`.
+The rule-built `draft2pptx.mjs` deck is unchanged and remains the
+zero-model-call fallback.
+
 # TestPlanGen v2.35 — doc 910 draft review: the figures cap, four verifier false positives, the preserved-value lane (prompt v1.12, testplangen.mjs v1.15, draftlint v1.4)
 
 Owner-requested (2026-09-05), reviewing the first `--figures` draft

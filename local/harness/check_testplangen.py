@@ -173,6 +173,24 @@ verifier the cloud flow could not have
 
 Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
+  leg 21 deck        the review-deck pass (v1.16, --deck): a model
+                     call over the FINISHED draft (addenda included)
+                     with prompts/TestPlanDeck_Prompt.md, Figures
+                     input naming the run's own generated figures;
+                     the deck spec grounded slide by slide (an
+                     invented bullet and an uncited figure DROP their
+                     slides), laid out on the design system and
+                     rendered to <stem>--deck.pptx + --deck.json
+                     beside the draft (dry: next to the local copy;
+                     live: two uploads), the generated figure
+                     embedded from memory as a native shape group,
+                     the notes page, the Review Deck addendum, the
+                     run log's deck record, deck= in the summary;
+                     a sentinel-less reply skips the pass and the
+                     draft still lands; --auto refuses; aibuilder
+                     without llm.deckModelId refuses BEFORE the
+                     generation spend, with it the Predict call is
+                     routed by GUID with the three inputs by name
 """
 import datetime
 import json
@@ -192,6 +210,7 @@ DRAFTLINT = os.path.join(REPO, "local", "lib", "draftlint.mjs")
 PY_LINT = os.path.join(REPO, "review", "harness", "check_draft_coverage.py")
 GEN_MODEL = "feedf00d-0000-4000-8000-000000000001"
 FIG_MODEL = "feedf00d-0000-4000-8000-000000000002"
+DECK_MODEL = "feedf00d-0000-4000-8000-000000000003"
 SITE_URL = "https://mock.example/sites/lrsworkspace"
 
 PASS = []
@@ -368,6 +387,27 @@ FIG_REPLY = json.dumps({
 })
 FIG_REPLY_WRAPPED = "Sure.\n[[[FIGURES BEGIN]]]\n" + FIG_REPLY + "\n[[[FIGURES END]]]\n"
 
+# leg 21: the review-deck pass (v1.16, --deck) — a deck spec over
+# FIG_DRAFT's cases that places the run's own generated TC-P1 figure
+# (embedded from memory) and one slide the grounding check must drop
+DECK_REPLY = json.dumps({
+    "plan": "Test Plan — Route Merge",
+    "slides": [
+        {"pattern": "title", "regions": {"headline": "Route Merge"}, "notes": "Open with the story."},
+        {"pattern": "stats", "title": "At a glance", "regions": {"tiles": [
+            {"count": "positive-cases", "label": "Positive cases", "tone": "success"},
+            {"count": "negative-cases", "label": "Negative cases", "tone": "danger"}]}},
+        {"pattern": "two-column", "title": "Merge preserves measures", "source": "TC-P1", "tone": "success", "regions": {
+            "left": {"from": {"case": "TC-P1", "field": "steps"}},
+            "right": [{"label": "Expected", "body": {"from": {"case": "TC-P1", "field": "expected"}}, "tone": "success"}]}},
+        {"pattern": "figure", "title": "Before and after the merge", "source": "TC-P1",
+         "regions": {"figure": "{STEM}--fig-tc-p1.svg"}},
+        {"pattern": "bullets", "title": "Invented", "regions": {"items": ["A sentence the draft never says."]}},
+        {"pattern": "closing", "regions": {"headline": "Decide", "asks": ["Review the cases"]}},
+    ],
+})
+DECK_REPLY_WRAPPED = "Sure.\n[[[DECK BEGIN]]]\n" + DECK_REPLY + "\n[[[DECK END]]]\n"
+
 # a strict-clean draft for the auto leg's "Lonely Story" (doc 13,
 # body "As an editor, I need to realign a route."): contract-valid AND
 # grounded — coverage rows quote the story, no tool-shaped phrases
@@ -431,6 +471,9 @@ class MockState:
         self.fig_text = ""        # the figures-pass reply (leg 18)
         self.fig_stop_reason = "end_turn"  # v1.15: "max_tokens" = a cut figures reply
         self.fig_calls = 0
+        self.deck_text = ""       # the review-deck pass reply (leg 21)
+        self.deck_calls = 0
+        self.deck_last_inputs = {}
         self.gen_by_doc = {}      # doc id -> reply (routed by StoryMeta's doc_id)
         self.gen_calls = 0
         self.gen_last_inputs = {}     # Predict requestv2
@@ -472,13 +515,17 @@ def make_handler(state):
                 state.ant_last_body = body
                 prompt_text = (body.get("messages") or [{}])[0].get("content", "")
                 is_fig = "FIGURE SPECIFICATION VOCABULARY" in str(prompt_text)
+                is_deck = "DECK SPECIFICATION VOCABULARY" in str(prompt_text)
                 if is_fig:
                     state.fig_calls += 1
+                if is_deck:
+                    state.deck_calls += 1
                 if body.get("stream"):
                     # llm.mjs v1.6: generateText streams — serve SSE.
                     # Text goes out in two deltas so the client's
                     # accumulation across chunks is actually exercised.
-                    text = state.fig_text if is_fig else state.gen_text
+                    text = ((state.deck_text_fn() if getattr(state, "deck_text_fn", None) else state.deck_text)
+                            if is_deck else state.fig_text if is_fig else state.gen_text)
                     half = len(text) // 2
                     # v1.7: a request carrying thinking.display
                     # "summarized" gets a thinking block first, as the
@@ -535,6 +582,10 @@ def make_handler(state):
                     state.fig_calls += 1
                     state.fig_last_inputs = rv
                     return self._json({"responsev2": {"predictionOutput": {"text": state.fig_text}}})
+                if m.group(1) == DECK_MODEL:
+                    state.deck_calls += 1
+                    state.deck_last_inputs = rv
+                    return self._json({"responsev2": {"predictionOutput": {"text": state.deck_text}}})
                 state.gen_calls += 1
                 state.gen_last_inputs = rv
                 dm = re.search(r"doc_id: (\d+)", rv.get("StoryMeta", ""))
@@ -547,7 +598,8 @@ def make_handler(state):
             p = unquote(urlparse(self.path).path)
             m = re.match(r"^/v1\.0/sites/[^/]+/drive/root:(/.+):/content$", p)
             if m:
-                state.drafts[m.group(1)] = self._read().decode()
+                # v1.16: the deck pass uploads a .pptx — binary-safe
+                state.drafts[m.group(1)] = self._read().decode("utf-8", "replace")
                 return self._json({"id": "up"})
             return self._json({"error": "unhandled PUT " + p}, 500)
 
@@ -2162,6 +2214,118 @@ def main():
     check("preview carries the sixth input and its counters",
           r.returncode == 0 and "=== RelatedCases (" in preview_text and p02 in preview_text
           and summary_of(r.stdout).get("relatedCases") == "2", r.stdout)
+
+    # ---- leg 21: the review deck (v1.16, --deck) ---------------------
+    print("== leg 21: review deck")
+    import zipfile
+    state.gen_text = wrap(FIG_DRAFT)
+    state.fig_text = FIG_REPLY_WRAPPED
+    cfg_deck = write_cfg("config-deck.json",
+                         llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                         testplangen={"neighborCap": 8, "deckMaxTokens": 4321})
+    # the generated figure's file name carries the LOCAL draft stem on a
+    # dry run — the mock cannot know it, so the reply is patched per
+    # run from the Figures input the job sent (a stand-in for a model
+    # copying the file name from its input)
+    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "PLACEHOLDER")
+    # first pass: learn the stem from the Figures input echoed in the prompt
+    ant_before, fig_before, deck_before = state.ant_calls, state.fig_calls, state.deck_calls
+    r = run_job(cfg_deck, ["--story", "12", "--dry-run", "--figures", "--deck"])
+    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    summ = summary_of(r.stdout)
+    check("deck dry run: draft + figures + deck = three model calls, the deck call last, with its own cap",
+          r.returncode == 0 and state.ant_calls == ant_before + 3 and state.fig_calls == fig_before + 1
+          and state.deck_calls == deck_before + 1 and state.ant_last_body.get("max_tokens") == 4321
+          and "DECK SPECIFICATION VOCABULARY" in prompt, r.stdout + r.stderr[-400:])
+    m_fig = re.search(r"- (\S+--fig-tc-p1\.svg) — generated figure for TC-P1", prompt)
+    check("the deck prompt's Figures input names this run's generated figures and the draft's cases",
+          m_fig is not None and "### TC-P1 — Merge preserves measures" in prompt
+          and "## Generated Figures" in prompt and "## Issue Trace" in prompt
+          and not re.search(r"\{(PlanTitle|Draft|Figures)\}", prompt), prompt[prompt.find("The figures"):][:300])
+    check("a spec placing an uncited figure: that slide dropped, the deck still lands (deck=4/6)",
+          summ.get("deck") == "4/6" and summ.get("genFigures") == "2/4", str(summ))
+    # second pass: the reply names the real generated figure → embedded from memory
+    # the stem changes per run (seconds stamp): the mock builds the
+    # reply from the Figures line of the prompt it just received
+    def patched_text():
+        p = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+        mm = re.search(r"- (\S+--fig-tc-p1\.svg) — generated figure", p)
+        return DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", mm.group(1) if mm else "none.svg")
+    state.deck_text_fn = patched_text
+    r = run_job(cfg_deck, ["--story", "12", "--dry-run", "--figures", "--deck"])
+    summ = summary_of(r.stdout)
+    check("figure named from the run's own Figures input: 5 of 6 slides, only the invented one dropped",
+          r.returncode == 0 and summ.get("deck") == "5/6", r.stdout + r.stderr[-500:])
+    local_drafts = sorted(
+        (f for f in os.listdir(work_dir) if f.startswith("testplangen-draft-") and f.endswith(".md")),
+        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
+    latest_name = local_drafts[-1]
+    latest = open(os.path.join(work_dir, latest_name), encoding="utf-8").read()
+    stem = latest_name[:-3]
+    deck_p = os.path.join(work_dir, f"{stem}--deck.pptx")
+    spec_p = os.path.join(work_dir, f"{stem}--deck.json")
+    check("dry run: the deck + its spec land beside the local draft copy",
+          os.path.isfile(deck_p) and os.path.isfile(spec_p)
+          and json.load(open(spec_p, encoding="utf-8"))["slides"][0]["pattern"] == "title",
+          str(sorted(f for f in os.listdir(work_dir) if "--deck" in f)))
+    check("Review Deck addendum: counts, links, the dropped slide's finding",
+          "## Review Deck" in latest and "5 slides from 6 proposed, 1 dropped by the grounding check" in latest
+          and f"- Deck: <{stem}--deck.pptx>" in latest and f"<{stem}--deck.json>" in latest
+          and "- slide 5 (bullets) — slide 5: items[1]: \"A sentence the draft never says.\" is not in the draft" in latest,
+          latest[latest.find("## Review Deck"):][:600])
+    with zipfile.ZipFile(deck_p) as z:
+        names = z.namelist()
+        s4 = z.read("ppt/slides/slide4.xml").decode("utf-8")
+        s3 = z.read("ppt/slides/slide3.xml").decode("utf-8")
+        n1 = z.read("ppt/notesSlides/notesSlide1.xml").decode("utf-8") if "ppt/notesSlides/notesSlide1.xml" in names else ""
+    check("the generated figure is embedded from memory as a native shape group on the figure slide",
+          "<p:grpSp>" in s4 and 'name="TC-P1 — Merge preserves measures"' in s4 and "not embedded" not in s4, s4[:300])
+    check("the case slide carries the pulled steps + expected result; the notes page carries the notes",
+          "Run Merge Routes on route R1 and route R2." in s3 and "spans 0 to 160" in s3
+          and "Open with the story." in n1, "")
+    log = json.load(open(json.loads(r.stdout.splitlines()[0])["logFile"], encoding="utf-8"))
+    check("run log carries the deck record (proposed, slides, file, spec, dropped)",
+          log.get("deck", {}).get("proposed") == 6 and log["deck"].get("slides") == 5
+          and log["deck"]["file"].endswith("--deck.pptx") and log["deck"]["spec"].endswith("--deck.json")
+          and [d["index"] for d in log["deck"]["dropped"]] == [4], json.dumps(log.get("deck"))[:300])
+    check("plan lists the two would-be uploads (deck + spec) beside the draft + figures",
+          [p["path"] for p in log["plan"] if p["path"].endswith(("--deck.pptx", "--deck.json"))] ==
+          [f"/Test Plan Drafts/{p}" for p in (log["draft"].split("/")[-1][:-3] + "--deck.pptx", log["draft"].split("/")[-1][:-3] + "--deck.json")],
+          [p["path"] for p in log["plan"]])
+    # live: the two files upload beside the draft
+    r = run_job(cfg_deck, ["--story", "12", "--live", "--deck"])
+    up = sorted(k for k in state.drafts if "--deck" in k)
+    check("live: deck + spec uploaded to the drafts folder; deck=4/6 without --figures (the figure slide has no file)",
+          r.returncode == 0 and len(up) == 2 and up[0].endswith("--deck.json") and up[1].endswith("--deck.pptx")
+          and summary_of(r.stdout).get("deck") == "4/6", (up, r.stderr[-300:]))
+    # fail soft: a sentinel-less reply skips the pass, the draft lands
+    state.deck_text_fn = None
+    state.deck_text = "no sentinels"
+    r = run_job(cfg_deck, ["--story", "12", "--live", "--deck"])
+    latest_live = state.drafts[sorted(k for k in state.drafts if k.endswith(".md"))[-1]]
+    check("sentinel-less deck reply: pass skipped, draft written with the addendum saying why, deck=0/0",
+          r.returncode == 0 and "deck skipped: deck reply is missing the DECK BEGIN/END sentinels" in r.stderr
+          and summary_of(r.stdout).get("deck") == "0/0" and "Pass skipped: deck reply is missing" in latest_live, r.stderr[-300:])
+    # refusals: --auto, and aibuilder without a deck model BEFORE any spend
+    r = run_job(cfg_deck, ["--auto", "--deck"])
+    check("--deck refused with --auto", r.returncode != 0 and "--deck is a MANUAL generation" in r.stderr, r.stderr[:200])
+    gen_before = state.gen_calls
+    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--deck"])
+    check("aibuilder without llm.deckModelId refuses before the generation call",
+          r.returncode != 0 and "needs llm.deckModelId" in r.stderr and state.gen_calls == gen_before, r.stderr[:300])
+    # aibuilder lane with a deck model: routed by GUID, inputs by name
+    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
+    cfg_deck_ab = write_cfg("config-deck-ab.json",
+                            llm={"provider": "aibuilder", "environmentUrl": base,
+                                 "testPlanModelId": GEN_MODEL, "deckModelId": DECK_MODEL, "maxRetries": 0})
+    deck_before = state.deck_calls
+    r = run_job(cfg_deck_ab, ["--story", "12", "--dry-run", "--deck"])
+    check("aibuilder deck pass: routed by llm.deckModelId with PlanTitle + Draft + Figures inputs",
+          r.returncode == 0 and state.deck_calls == deck_before + 1
+          and state.deck_last_inputs.get("PlanTitle") == "Test Plan — Route Merge"
+          and "### TC-P1" in state.deck_last_inputs.get("Draft", "")
+          and state.deck_last_inputs.get("Figures", "").startswith("(none)")
+          and summary_of(r.stdout).get("deck") == "4/6", json.dumps(state.deck_last_inputs)[:200] + r.stderr[-200:])
 
     server.shutdown()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")
