@@ -86,11 +86,12 @@
     "maxDocsPerRun": 150,
     "promptVersion": "v2.0",
     "normalizeCases": {
-      "$comment": "sweep.mjs --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane for test plans the deterministic detectors leave caseless although _Case Audit.md sees a case shape. enabled is the owner switch (a --live run refuses without it; dry runs always list the candidates); maxPerRun caps model calls per run; provider '' follows llm.provider ('anthropic' executes prompts/CaseNormalize_Prompt.md verbatim; 'aibuilder' needs the same prompt pasted on tenant and its GUID in llm.normalizeModelId); maxTokens bounds the anthropic reply. Every reply is verified (contract lint + grounding) before a body is written; --reformat keeps LLM-normalized bodies.",
+      "$comment": "sweep.mjs --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane for test plans the deterministic detectors leave caseless although _Case Audit.md sees a case shape. enabled is the owner switch (a --live run refuses without it; dry runs always list the candidates); maxPerRun caps model calls per run; provider '' follows llm.provider ('anthropic' executes prompts/CaseNormalize_Prompt.md verbatim; 'aibuilder' needs the same prompt pasted on tenant and its GUID in llm.normalizeModelId); maxTokens bounds the anthropic reply (the reply is the whole plan body — keep it generous); maxInputChars skips and counts plans whose body is larger than this, so an oversized pdf body never becomes one huge call. Every reply is verified (contract lint + grounding) before a body is written; --reformat keeps LLM-normalized bodies.",
       "enabled": false,
       "maxPerRun": 10,
       "provider": "",
-      "maxTokens": 16000
+      "maxTokens": 32000,
+      "maxInputChars": 150000
     },
     "defaultRepo": "A/b",
     "relatedTopN": 5,
