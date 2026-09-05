@@ -2147,9 +2147,21 @@ def main():
     out = json.loads(proc.stdout.splitlines()[0])
     check("normalize is not called again on a normalized plan",
           int(out.get("candidates", 0)) == 0 and state.llm_calls == llm_before_nz + 1, str(out))
-    # an inventing reply is refused whole
+    # an oversized body is skipped and counted, never sent
     with open(gamma_path, "w") as f:
         f.write(gamma_head + gamma_body)
+    cfg["sweep"]["normalizeCases"]["maxInputChars"] = 10
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("normalize skips a body over maxInputChars without a model call",
+          int(out.get("skipped_large", 0)) == 1 and int(out.get("candidates", 0)) == 0
+          and state.llm_calls == llm_before_nz + 1, str(out))
+    del cfg["sweep"]["normalizeCases"]["maxInputChars"]
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    # an inventing reply is refused whole
     state.gen_text = ("## Test Cases\n\n### TC-P01 — Elephants roam the savanna at dusk <!-- src: LLM · slide 1 -->\n"
                       "| Route | R9 |\n| --- | --- |\n| R9 | 5 |\n")
     proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])

@@ -92,7 +92,10 @@ const FLOW_DEFAULTS = {
   // provider "" follows llm.provider ("anthropic" runs
   // prompts/CaseNormalize_Prompt.md verbatim; "aibuilder" needs
   // llm.normalizeModelId); maxTokens bounds the anthropic reply.
-  normalizeCases: { enabled: false, maxPerRun: 10, provider: "", maxTokens: 16000 },
+  // maxInputChars skips (and counts) a plan whose body is larger — a
+  // 350 KB pdf body is a very expensive call and a reply that size
+  // would overrun any maxTokens; such plans stay on the audit list.
+  normalizeCases: { enabled: false, maxPerRun: 10, provider: "", maxTokens: 32000, maxInputChars: 150000 },
   textCap: 100000,
   previewCap: 5000,
   maxDocsPerRun: 150,
@@ -893,7 +896,7 @@ async function main() {
     const nc = { ...FLOW_DEFAULTS.normalizeCases, ...(sw.normalizeCases || {}) };
     const provider = nc.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
     const zsum = { mode: "normalize-cases", dry_run: dry, provider, prompt_version: NORMALIZE_PROMPT_VERSION,
-                   eligible: 0, candidates: 0, normalized: 0, refused: 0, errors: 0, skipped_cap: 0,
+                   eligible: 0, candidates: 0, normalized: 0, refused: 0, errors: 0, skipped_cap: 0, skipped_large: 0,
                    cases_upserted: 0, cases_removed: 0, case_errors: 0, plans_caseless: 0, cases_shape_mixed: 0 };
     if (!dry && !nc.enabled) {
       throw new Error(
@@ -922,6 +925,11 @@ async function main() {
       if (body.includes("<!-- src: LLM")) continue;            // already normalized
       if (extractCases(body).shape !== "none") continue;         // the detectors cover it
       if (!hasSignal(auditBody(body))) continue;                 // genuinely caseless
+      if (body.length > Number(nc.maxInputChars)) {
+        zsum.skipped_large++;
+        process.stderr.write(`NORMALIZE SKIP doc ${r.ID} (${r.Title || r.FileName}): body ${body.length} chars > normalizeCases.maxInputChars ${nc.maxInputChars}\n`);
+        continue;
+      }
       zsum.candidates++;
       plans.push({ r, local, content, seam, body });
     }
