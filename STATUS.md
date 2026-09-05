@@ -16,7 +16,7 @@ each change belongs to the component CHANGES files.
   v1.48, SidecarPatch v1.7, agent instructions v1.4), filenames
   `<issue>-<slug>.md` + media/<stem>/ + `_Manifest.json` + `--rename`
   (v1.49, slug v1.0), ZipTextExtract v2.5 (cell paragraphs, inherited
-  bullets, top-label headings, docx labels/ordered lists) + pdf
+  bullets, top-label headings, docx labels/ordered lists; v2.6 TP-2) + pdf
   re-flow (v1.50), ONE case grammar with six detectors + caseindex
   v2.0 (v1.51), the opt-in `--normalize-cases` LLM lane (v1.52), the
   story/v1 profile (v1.53), `--case-audit` (v1.47). TENANT STEPS: Test
@@ -104,6 +104,19 @@ each change belongs to the component CHANGES files.
   `check_figureindex.py` **61/61**, `check_local_sweep.py`
   **317/317**, PAD 28/28, typecheck 8/8, caseindex 87/87,
   testplangen 156/156.
+- **2026-09-05kk (the two plans normalize could not take — sweep
+  v1.63, casegrammar v1.2, ZipTextExtract v2.6; authored on branch
+  `claude/figure-indexing-3n2o1b`):** docs 527 (a deck printed to
+  PDF, 347 KB) and 528 (a diagram-topped pptx, 181 KB) were skipped
+  by `--normalize-cases` and read as 0 cases by the detectors. Fixed
+  deterministically: the pdf lane splits into PAGE UNITS at form
+  feeds (`page N` src), S6 takes sub-case numbers (`1-b.`, `3-b:`),
+  group labels between cases and lane inheritance across pages, S1/S2
+  take colon / dashed case lines, and a diagram label is never a
+  slide title (TP-2 — a label-shaped shape on a slide with a label
+  cluster). 527 → 29 cases, 528 → 78. Rollout: `--reformat --live`
+  then `--recase --live`; no tenant step. Gates: `check_caseindex.py`
+  **102/102**, `check_format.py` TP-2 leg, sweep 320/320.
 - **2026-09-05jj (SharePoint throttling — sweep v1.62, graph.mjs
   v1.4; authored on branch `claude/figure-indexing-3n2o1b`):** the
   first live `--refigure` hit `SPO ValidateUpdateListItem 429` on the

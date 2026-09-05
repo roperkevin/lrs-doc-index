@@ -1,5 +1,59 @@
 # Local sweep — release notes
 
+## sweep v1.63 (2026-09-05 — the two plans the normalize lane could not take; casegrammar v1.2, ZipTextExtract v2.6)
+
+`--normalize-cases` skipped docs 527 (347 KB body) and 528 (181 KB) as
+larger than `normalizeCases.maxInputChars`. Reading the two sidecars
+showed neither needs the LLM: both are numbered-case plans the
+deterministic detectors mis-read for structural reasons, fixed here
+with no AI spend.
+
+- **ZipTextExtract v2.6 (TP-2 — a diagram label is never a slide
+  title).** Doc 528 is a pptx whose slides carry the route diagram at
+  the top; the v2.5 top-label rule (TP-1) promoted the topmost label
+  ("1A_New; 100") to the slide heading on 80 slides while the real
+  case line stayed in the body. A label-shaped text shape (≤ 24 chars,
+  ≤ 3 words — the DL-1 rule) is no longer a title candidate when the
+  slide carries a label cluster (≥ 4 such shapes, the threshold that
+  folds them into the `[figure: …]` line). Long labels and prose
+  shapes are unaffected; the labels still fold into the figure line.
+- **casegrammar v1.2 — page units.** Doc 527 is a deck printed to PDF:
+  a heading-less body that reached the detectors as ONE 350 KB unit.
+  The pdf lane now splits into units at pdftotext's form feeds, one
+  per printed page, with `page N` provenance in the src comment
+  (`<!-- src: S6 · page 4 · case 9 -->`); the page number pdftotext
+  leaves at the end of the first line is stripped.
+- **casegrammar v1.2 — S6 numbered cases.** Accepts the sub-case forms
+  (`1-b.`, `3-b:`, `11-b:`); a short label line directly before a
+  numbered line names the group of the cases that follow ("Spanning
+  events", "Non-spanning events", "Point events"; a far-right side
+  note or test-data id in pdftotext's second column, `CW22_1A`, is
+  dropped; a wrapped case's continuation line never passes for one);
+  a page without its own Positive/Negative line inherits the lane of
+  the page before it; a page whose only numbered line sits among
+  "Verify …" bullets is the verification list, not a case.
+- **casegrammar v1.2 — S1 / S2 colon and dashed case lines.** `2:
+  Transfer …`, `3-1: …` on a slide, a slide titled `11-2 : Transfer …`.
+- Result on the two sidecars: 527 → 29 Positive cases (12 Spanning /
+  9 Non-spanning / 8 Point events, page provenance, lint clean; was 0);
+  528 → 78 cases across S1/S2 with the verification slide excluded
+  (was 0, and every slide heading was a route label). Neither needs
+  `--normalize-cases`.
+- Gates: `check_caseindex.py` **102/102** (page-unit fixture: seven
+  cases incl. the sub-cases, groups, page src, lane inheritance,
+  continuation lines in the body, legend page as other content;
+  slide fixture: colon / dashed case lines, verification slide
+  excluded); `check_format.py` TP-2 leg on a generated deck (label
+  cluster not promoted, labels still fold, case line stays in the
+  body; full-format CI job); `check_local_sweep.py` 320/320,
+  `check_testplangen.py`, `check_typecheck.py`, `check_shapes.py`,
+  `check_figureindex.py`, PAD, slug, storyprofile green.
+
+Rollout: `--reformat --live` (528's slide headings and every other
+diagram-topped deck re-extract under TP-2) then `--recase --live`
+(every pdf plan re-renders on page units; the tuned S1/S2/S6 apply
+corpus-wide). No tenant step.
+
 ## sweep v1.62 (2026-09-05 — SharePoint throttling on the hyperlink route; graph.mjs v1.4)
 
 The first `--refigure --live` after v1.61 died mid-corpus with

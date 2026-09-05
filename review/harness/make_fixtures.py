@@ -587,6 +587,16 @@ _tf2.add_paragraph().text = 'Default OFF'
 # the section label: drawn last (top of z-order) but positioned at the top
 s_v1.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(6), Inches(0.6)).text_frame.text = 'Coordinate Configuration Tests'
 s_v1.shapes.add_textbox(Inches(0.5), Inches(6.2), Inches(6), Inches(0.6)).text_frame.text = 'Footnote below the tables'
+# v2.6 (TP-2): a title-less slide whose TOPMOST short text is a route
+# label of the drawn diagram (four labels — a cluster) must NOT take
+# that label as its heading; its case line stays in the body
+s_v3 = prs_v.slides.add_slide(prs_v.slide_layouts[6])
+for _k, _lbl in enumerate(('1A_New; 100', '1B; 200', '1C; 300', '2A, 100')):
+    s_v3.shapes.add_textbox(Inches(0.5 + 1.5 * _k), Inches(0.3), Inches(1.3), Inches(0.4)).text_frame.text = _lbl
+s_v3.shapes.add_textbox(Inches(0.5), Inches(2.0), Inches(8), Inches(0.6)).text_frame.text = (
+    'Reassign all the routes in a line to another line on right, transferring routes.')
+s_v3.shapes.add_textbox(Inches(0.5), Inches(2.8), Inches(8), Inches(0.6)).text_frame.text = (
+    '2: Transfer to an existing line – spanning Events – Stayput and Retire Behavior.')
 s_v2 = prs_v.slides.add_slide(prs_v.slide_layouts[1])            # title + content
 s_v2.shapes.title.text = 'Acceptance Criteria'
 _body = s_v2.placeholders[1].text_frame

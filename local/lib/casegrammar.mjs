@@ -38,9 +38,24 @@
  *
  * Decisions recorded 2026-09-05: per-bullet cases under Positive /
  * Negative labels, one case per label elsewhere; per-plan TC ids.
+ *
+ * v1.2 (2026-09-05 — read from docs 527 and 528, the two plans the
+ * normalize lane could not take):
+ *  - PAGE UNITS: a heading-less body (the pdf lane) splits into units
+ *    at pdftotext's form feeds, one per printed page, with `page N`
+ *    provenance in the src comment — so a deck printed to PDF keeps
+ *    its per-page case shape instead of being one 350 KB unit.
+ *  - S6 accepts sub-case numbering (`1-b.`, `3-b:`, `11-b:`), reads a
+ *    short label line between cases as the group of the cases that
+ *    follow ("Non-spanning events", "Point events"; a trailing test-
+ *    data id such as CW22_1A is dropped), and a page without its own
+ *    Positive/Negative line inherits the lane of the page before it.
+ *  - S1 / S2 accept the colon and dashed forms of a case line
+ *    (`2: Transfer …`, `3-1: …`, a slide titled `11-2 : …`).
  */
 
 export const PROFILE = "testplan/v1";
+export const CASEGRAMMAR_VERSION = "1.2";
 export const DETECTORS = ["S0", "S1", "S2", "S3", "S4", "S5", "S6"];
 export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: "high", S5: "medium", S6: "medium", draft: "high", deck: "high" };
 
@@ -140,8 +155,23 @@ function splitUnits(lines) {
   const units = [];
   let cur = null;
   let slideNo = 0;
+  let page = 0;
   for (let i = 0; i < lines.length; i++) {
-    const ln = lines[i];
+    let ln = lines[i];
+    // v1.2: a form feed starts a printed page — a unit of its own in a
+    // heading-less (pdf) body, with page provenance
+    if (ln.charCodeAt(0) === 12) {
+      ln = ln.slice(1);
+      page++;
+      cur = { level: 0, headingLine: "", text: "", isSlide: false, slideNo: 0, page, title: "", isNotes: false, isSheet: false, sheet: "", start: i, lines: [] };
+      units.push(cur);
+      if (ln.trim() === "") continue;
+    }
+    // a printed page's right-aligned page number rides at the end of
+    // its first text line — never part of that line
+    if (page && cur && cur.page && ln.trim() !== "" && cur.lines.every((l) => l.trim() === "")) {
+      ln = ln.replace(/\S\s{3,}\d{1,3}\s*$/, (m) => m.charAt(0));
+    }
     const hm = /^(#{2,6}) (.*)$/.exec(ln);
     if (hm) {
       const text = stripComments(hm[2]);
@@ -150,7 +180,7 @@ function splitUnits(lines) {
       const sheet = /^Sheet: (.*)$/.exec(text);
       cur = {
         level: hm[1].length, headingLine: ln, text,
-        isSlide: !!sm, slideNo,
+        isSlide: !!sm, slideNo, page: 0,
         title: sm ? (sm[2] || "") : text,
         isNotes: /^Notes\b/i.test(text), isSheet: !!sheet,
         sheet: sheet ? sheet[1] : "",
@@ -160,7 +190,7 @@ function splitUnits(lines) {
       continue;
     }
     if (!cur) {
-      cur = { level: 0, headingLine: "", text: "", isSlide: false, slideNo: 0, title: "", isNotes: false, isSheet: false, sheet: "", start: i, lines: [] };
+      cur = { level: 0, headingLine: "", text: "", isSlide: false, slideNo: 0, page: 0, title: "", isNotes: false, isSheet: false, sheet: "", start: i, lines: [] };
       units.push(cur);
     }
     cur.lines.push(ln);
@@ -357,7 +387,18 @@ function detectLabels(unit, ctxLane) {
 }
 
 const CASE_TITLE = /^(?:(?:test\s*)?case|scenario|tc)\s*#?\s*(\d+[a-z]?)\s*[:.)\-–—]?\s*(.*)$/i;
-const NUM_TITLE = /^(\d{1,3}[a-z]?)[.)]\s+(.+)$/;
+// `2. …`, `2) …`, `2: …`, `3-1: …`, `1-b. …`, `11-2 : …` (v1.2)
+const NUM_TITLE = /^(\d{1,3}(?:[-.][a-z0-9]{1,3})?[a-z]?)\s*[.):]\s+(.+)$/;
+/** A short label line between cases: the group of the cases that follow. */
+const GROUP_LABEL = (s) => {
+  // pdftotext keeps a side note / a data id in a far-right column: take the
+  // first column only ("Spanning events        Snap Events will move …",
+  // "Point events                    CW22_1A")
+  const t = s.trim().split(/\s{3,}/)[0].replace(/\s+/g, " ").replace(/\s+[A-Z]{1,3}\d{1,3}_[0-9A-Z]{1,4}$/, "");
+  if (!t || t.length > 40 || !/^[A-Z]/.test(t) || !/[a-z]/.test(t) || /[.;!?)]$/.test(t)) return "";
+  if (/^[A-Z]{1,3}\d/.test(t) || t.split(" ").length > 3) return "";
+  return titleCase(t);
+};
 
 /** S2 — the slide title names the case. */
 function detectS2(unit, ctxLane) {
@@ -400,10 +441,18 @@ function detectS1(unit, ctxLane) {
   const cs = cands(unit.lines);
   const numbered = [];
   for (const c of cs) {
-    const m = /^(?:- )?(\d{1,3})[.)]\s+(.*)$/.exec(c.s);
+    // `3. …` / `3) …` and, since v1.2, `2: …` / `3-1: …` (the case-id
+    // line of a per-slide plan whose slide has no classification line)
+    const m = /^(?:- )?(\d{1,3}(?:[-.]\d{1,3})?[a-z]?)\s*[.):]\s+(.*)$/.exec(c.s);
     if (m && /[A-Za-z]/.test(m[2])) numbered.push({ at: c.at, num: m[1], text: m[2] });
   }
   const classCand = cs.find((c) => POSNEG.test(c.s.replace(/^- /, "")) && c.s.length <= 100) || null;
+  // v1.2: one numbered "Verify …" line among bulleted "Verify …" lines
+  // is a verification list (its siblings just lost their numbers), not
+  // the slide's case
+  const VERIFY = /^(?:- )?(?:\d{1,3}\s*[.):]\s*)?(verify|ensure|check|confirm|validate)\b/i;
+  const verifyLike = cs.filter((c) => VERIFY.test(c.s)).length;
+  if (numbered.length === 1 && VERIFY.test(numbered[0].text) && verifyLike >= 2) return null;
   let caseFull = "", num = "", caseAt = -1;
   if (numbered.length === 1) {
     caseFull = clean(numbered[0].text); num = numbered[0].num; caseAt = numbered[0].at;
@@ -442,36 +491,61 @@ function detectS6(unit, ctxLane) {
   const cs = cands(unit.lines);
   const numbered = [];
   for (const c of cs) {
-    const m = /^(?:- )?(\d{1,3}[a-z]?)[.)]\s+(.*)$/.exec(c.s);
+    // `1. …`, `1) …`, `1a. …` and, since v1.2, the sub-case forms
+    // `1-b. …`, `3-b: …`, `11-b: …`
+    const m = /^(?:- )?(\d{1,3}(?:[-.]?[a-z0-9]{1,2})?)\s*[.):]\s+(.*)$/.exec(c.s);
     if (m && /[A-Za-z]/.test(m[2]) && !/^(verify|ensure|check|confirm|validate|test)\b/i.test(m[2])) {
       numbered.push({ at: c.at, num: m[1], text: m[2] });
     }
   }
   if (numbered.length < 2) return null;
-  const ctxLine = cs.find((c) => POSNEG.test(c.s.replace(/^- /, "")) && c.s.length <= 100);
+  const ctxLine = cs.find((c) => POSNEG.test(c.s.replace(/^- /, "")) && clean(c.s).length <= 100);
   const lane = laneOf(unit.title) !== "U" ? laneOf(unit.title) : ctxLine ? laneOf(ctxLine.s) : ctxLane;
   if (lane === "U") return null; // a checklist, not cases
-  const group = ctxLine ? labelParts(ctxLine.s.replace(/^- /, "")).group : (POSNEG.test(unit.title) ? labelParts(unit.title).group : "");
+  let group = ctxLine ? labelParts(ctxLine.s.replace(/^- /, "")).group : (POSNEG.test(unit.title) ? labelParts(unit.title).group : "");
   const cases = [];
   const consumed = new Set();
   if (ctxLine) consumed.add(ctxLine.at);
+  // v1.2: a short label line before / between the numbered cases names
+  // the group of the cases that follow ("Non-spanning events")
+  // — and only when the very next non-blank line IS a numbered case, so a
+  // wrapped case's continuation line ("keep original route name/id") never
+  // passes for one
+  const numberedAt = new Set(numbered.map((it) => it.at));
+  const labelAt = new Map();
+  for (const c of cs) {
+    if (numberedAt.has(c.at) || (ctxLine && c.at === ctxLine.at)) continue;
+    const g = GROUP_LABEL(c.s);
+    if (!g) continue;
+    let k = c.at + 1;
+    while (k < unit.lines.length && unit.lines[k].trim() === "") k++;
+    if (numberedAt.has(k)) labelAt.set(c.at, g);
+  }
+  const firstAt = numbered[0].at;
+  for (const [at, g] of labelAt) if (at < firstAt) { group = g; consumed.add(at); }
+  const where = unit.page ? `page ${unit.page}` : `slide ${unit.slideNo}`;
   for (let n = 0; n < numbered.length; n++) {
     const it = numbered[n];
     const end = n + 1 < numbered.length ? numbered[n + 1].at : unit.lines.length;
     const full = clean(it.text);
     const title = shortTitle(scenarioOf(full) || full);
     const body = [];
+    const myGroup = group;
     if (group) body.push(`- **Group:** ${group}`);
     if (title.toLowerCase() !== full.toLowerCase()) body.push(`- **Case:** ${full}`);
-    for (let j = it.at + 1; j < end; j++) { body.push(unit.lines[j]); consumed.add(j); }
+    for (let j = it.at + 1; j < end; j++) {
+      // a label inside this case's span switches the group for the NEXT case
+      if (labelAt.has(j)) { group = labelAt.get(j); consumed.add(j); continue; }
+      body.push(unit.lines[j]); consumed.add(j);
+    }
     consumed.add(it.at);
     cases.push({
-      det: "S6", lane, title: titleCase(title), group,
-      src: [`slide ${unit.slideNo}`, `case ${it.num}`].filter((x) => x !== "slide 0"),
+      det: "S6", lane, title: titleCase(title), group: myGroup,
+      src: [where, `case ${it.num}`].filter((x) => x !== "slide 0"),
       body, order: unit.start + it.at,
     });
   }
-  return { cases, consumed };
+  return { cases, consumed, lane, fromCtx: !!ctxLine || laneOf(unit.title) !== "U" };
 }
 
 // ---- the renderer -------------------------------------------------------
@@ -521,7 +595,12 @@ export function renderTestPlanBody(tidied, opts = {}) {
         if (s1) { cases = [s1]; consumed = new Set(unit.lines.map((_, j) => j)); }
         else {
           const s6 = detectS6(unit, laneHere);
-          if (s6) { cases = s6.cases; s6.consumed.forEach((j) => consumed.add(j)); }
+          if (s6) {
+            cases = s6.cases; s6.consumed.forEach((j) => consumed.add(j));
+            // a printed page that states its lane hands it to the pages
+            // after it (their numbered cases carry no lane of their own)
+            if (unit.page && s6.fromCtx) ctxLane = s6.lane;
+          }
         }
       }
     }
