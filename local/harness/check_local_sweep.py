@@ -30,6 +30,7 @@ import re
 import shutil
 import struct
 import subprocess
+import urllib.parse
 import sys
 import tempfile
 import threading
@@ -295,6 +296,31 @@ def make_messy_pptx(fpath, text):
                    "<p:notes><p:cSld><p:spTree><p:sp><p:txBody>"
                    "<a:p><a:r><a:t>3</a:t></a:r></a:p>"
                    "</p:txBody></p:sp></p:spTree></p:cSld></p:notes>")
+        z.writestr("docProps/core.xml", CORE_XML)
+
+
+def make_story_pptx(fpath, text):
+    """A story deck in the team template (Sidecar_Format_Plan phase 5):
+    title placeholders name the slides — User Story, a feature slide,
+    Testing, Automation, Documentation, Assignment — so the sweep maps
+    them onto the story/v1 sections."""
+    def slide(title, paras):
+        ttl = ("<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Title\"/><p:cNvSpPr/>"
+               "<p:nvPr><p:ph type=\"title\"/></p:nvPr></p:nvSpPr><p:txBody>"
+               f"<a:p><a:r><a:t>{title}</a:t></a:r></a:p></p:txBody></p:sp>")
+        body = "".join(f"<a:p><a:r><a:t>{t}</a:t></a:r></a:p>" for t in paras)
+        return ("<p:sld><p:cSld><p:spTree>" + ttl + "<p:sp><p:txBody>" + body +
+                "</p:txBody></p:sp></p:spTree></p:cSld></p:sld>")
+    with zipfile.ZipFile(fpath, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("ppt/slides/slide1.xml", slide(text, ["User Story"]))
+        z.writestr("ppt/slides/slide2.xml", slide("User Story", [
+            "As a LRS editor, I want to split events at a measure so that records stay accurate."]))
+        z.writestr("ppt/slides/slide3.xml", slide("Split behaviour", [
+            "Splitting at a measure creates two events with the same attributes."]))
+        z.writestr("ppt/slides/slide4.xml", slide("Testing", ["Test on normal and gapped routes."]))
+        z.writestr("ppt/slides/slide5.xml", slide("Automation", ["Add to the split-events automation."]))
+        z.writestr("ppt/slides/slide6.xml", slide("Documentation", ["Update the split events topic."]))
+        z.writestr("ppt/slides/slide7.xml", slide("Assignment", ["Story Points: 3", "Dev: Ada"]))
         z.writestr("docProps/core.xml", CORE_XML)
 
 
@@ -2146,6 +2172,50 @@ def main():
     os.remove(gamma_path)
     for k in [k for k, r in state.lists.get(LISTS["testCases"], {}).items() if r.get("DocumentLookupId") == gamma_id]:
         del state.lists[LISTS["testCases"]][k]
+
+    # ---- story-profile leg (Sidecar_Format_Plan phase 5) ------------
+    # a User Story deck in the team template maps onto the story/v1
+    # sections; the messy story fixture (no canonical titles) stays on
+    # its tidied slide sections (checked above)
+    print("== story-profile leg")
+    story_dir = os.path.join(cfg["paths"]["sourceLibrary"], "General") \
+        if os.path.isdir(os.path.join(cfg["paths"]["sourceLibrary"], "General")) else src_dir
+    make_story_pptx(os.path.join(story_dir, "Delta Story.pptx"), "Split Events Story")
+    state.llm_by_file["Delta Story.pptx"] = {
+        "title": "Split Events Story", "docKind": "User Story", "surface": "Pro",
+        "summary": "A story about splitting events.", "pe": "", "dev": "",
+        "targetRelease": "", "tools": [], "keywords": ["split events"]}
+    src_files.append(src_item(31, "Delta Story.pptx", "2026-08-23T10:00:00Z"))
+    proc = run_sweep(cfg_path, ["--live", "--only", "Delta Story.pptx"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.stdout.strip() else {}
+    check("story deck indexed and profiled",
+          proc.returncode == 0 and out.get("processed") == 1
+          and int(out.get("stories_profiled", 0)) == 1, str(out) + proc.stderr[-300:])
+    delta_row = next((f_ for f_ in state.lists[LISTS["docIndex"]].values()
+                      if f_.get("FileName") == "Delta Story.pptx"), {})
+    delta_url = str(delta_row.get("TextFileUrl", {}).get("Url", ""))
+    delta_local = os.path.join(sidecar_dir, *[urllib.parse.unquote(x) for x in delta_url.split("/LRS Doc Index/")[-1].split("/")]) if delta_url else ""
+    ds = open(delta_local).read() if delta_local and os.path.exists(delta_local) else ""
+    body_ds = ds[ds.rindex("\n---\n") + 5:] if "\n---\n" in ds else ""
+    check("story/v1 sections in canonical order",
+          [m for m in re.findall(r"(?m)^## (.+)$", body_ds)]
+          == ["Story", "Acceptance Criteria", "Testing", "Automation", "Documentation", "Assignment"],
+          body_ds[:600])
+    check("title slide and User Story slide land under Story with provenance",
+          "### Split Events Story <!-- slide 1 -->" in body_ds
+          and "### User Story <!-- slide 2 -->" in body_ds
+          and "As a LRS editor" in body_ds.split("## Acceptance Criteria")[0], body_ds[:600])
+    ac_part = body_ds.split("## Acceptance Criteria")[1].split("## Testing")[0] \
+        if "## Acceptance Criteria" in body_ds else ""
+    check("the feature slide becomes an Acceptance Criteria subsection",
+          "### Split behaviour <!-- slide 3 -->" in ac_part, body_ds)
+    check("canonical slides carry only their slide comment",
+          "<!-- slide 4 -->\nTest on normal and gapped routes." in body_ds
+          and "### Testing" not in body_ds, body_ds)
+    check("story deck is not a case source",
+          not [r for r in state.lists.get(LISTS["testCases"], {}).values()
+               if r.get("DocumentLookupId") == int(delta_row.get("id", 0) or 0)]
+          and "### TC-" not in body_ds, body_ds)
 
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")

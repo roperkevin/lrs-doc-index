@@ -261,6 +261,7 @@ import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } fro
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { relEntries } from "./lib/sidecarmeta.mjs";
 import { stemOf } from "./lib/slug.mjs";
+import { storyTextFirst } from "./lib/storyprofile.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
 const JOB_VERSION = "v1.8";
@@ -1112,7 +1113,9 @@ async function generateOne(ctx, story) {
     `dev: ${stripQuotes(story.Dev)}`,
     `doc_id: ${story.ID}`,
   ].join("\n");
-  const storyTextCapped = cut(storyMd, Number(tp.storyCap));
+  // phase 5: a story/v1 sidecar puts Story + Acceptance Criteria ahead
+  // of Testing/Automation/… so the StoryCap cut keeps the requirements
+  const storyTextCapped = cut(storyTextFirst(storyMd), Number(tp.storyCap));
   const inputs = {
     StoryMeta: storyMeta,
     StoryText: storyTextCapped,

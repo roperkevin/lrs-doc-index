@@ -74,6 +74,7 @@ import {
 } from "./lib/doclinks.mjs";
 import { placeFigure, tidyBody, compactWhy } from "./lib/presentation.mjs";
 import { renderTestPlanBody, lintTestPlanBody } from "./lib/casegrammar.mjs";
+import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
 
@@ -311,6 +312,13 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
  *  similarity index keep the raw text. */
 function renderBody(docText, docKind, cfg, sum) {
   const tidied = tidyBody(docText);
+  // phase 5: User Story decks that follow the team template map onto
+  // the story/v1 sections (storyprofile.mjs); others stay tidied
+  if (docKind === "User Story" && cfg.sweep.storyProfile !== false) {
+    const r = renderStoryBody(tidied);
+    if (sum && r.shape === "story") sum.stories_profiled = (sum.stories_profiled || 0) + 1;
+    return r.body;
+  }
   const kinds = (cfg.sweep.caseIndex && cfg.sweep.caseIndex.kinds) || ["Test Plan"];
   if (!kinds.includes(docKind)) return tidied;
   const r = renderTestPlanBody(tidied);

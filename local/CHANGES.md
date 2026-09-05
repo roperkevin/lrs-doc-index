@@ -1,5 +1,50 @@
 # Local sweep — release notes
 
+## story 5 (2026-09-05 — the story/v1 profile; sweep v1.53, storyprofile v1.0, TestPlanGen local job v1.10, Sidecar_Format_Plan phase 5)
+
+- **`local/lib/storyprofile.mjs`** (new, pure): `renderStoryBody`
+  maps a User Story deck's slide titles onto canonical sections —
+  `## Story` (title slide, "User Story", personas/workflow),
+  `## Acceptance Criteria` ("Acceptance Criteria", "Requirements",
+  "Configuration" and every untitled requirement slide before
+  Testing), `## Testing`, `## Automation`, `## Documentation`,
+  `## Assignment` ("Assignment", "Story Points", "Estimation"),
+  `## Other content` — each source slide as `### <title> <!-- slide N -->`
+  inside its section. Applied only when a deck carries ≥ 2 canonical
+  titles; the corpus trial profiles **266 of 298** stories. A
+  non-template deck keeps its tidied slide sections.
+- sweep **v1.53**: `renderBody` routes User Story documents through
+  the profile (`sweep.storyProfile: false` opts out); counter
+  `stories_profiled`.
+- TestPlanGen local job **v1.10**: `storyTextFirst` orders a story/v1
+  sidecar's sections Story → Acceptance Criteria → Testing → … before
+  the StoryCap cut, so the requirements survive truncation; non-profile
+  stories are unchanged (no prompt change).
+
+Gates: new `check_storyprofile.py` (mapping, order, provenance,
+non-template pass-through, text ordering — CI), `check_local_sweep.py`
+story-profile leg (a template deck indexed via `--only`: sections in
+order, Story/Acceptance Criteria placement, no case rows),
+`check_testplangen.py`.
+
+ROLLOUT: the same `--reformat --live` as phases 1–3 (stories
+re-render with the profile; no AI).
+
+---
+
+The five phases of `local/Sidecar_Format_Plan.md` are all authored on
+this branch. One rollout sequence, on the sweep machine, after the
+tenant columns for the Test Cases list are added (Confidence, Group,
+SourceRef; Shape choices S1–S6/LLM/draft/deck):
+
+1. `--reformat --live` — format 3.0 heads, v2.5 re-extraction, the
+   case grammar on test plans, the story profile on stories.
+2. `--rename-plan` → review → `--rename --live` → `--recase --live`.
+3. `--case-audit --live` — read `_Case Audit.md`; then, optionally,
+   `sweep.normalizeCases.enabled: true` + `--normalize-cases --live`
+   in batches.
+4. Paste Q&A agent instructions v1.4.
+
 ## normalize 4 (2026-09-05 — `--normalize-cases`, the opt-in LLM lane; sweep v1.52, casenormalize v1.0, CaseNormalizePromptVersion v1.0, Sidecar_Format_Plan phase 4)
 
 **For the residue only, verified before written, never on the nightly

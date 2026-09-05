@@ -647,7 +647,7 @@ Files for §4.3/4.4 (body profiles and case grammar) — second PR:
 | 2. Extractor v2.5 — **shipped** (ZipTextExtract v2.5, sweep v1.50) | §4.5 fixes 1–4 (pdf unwrap optional) | byte-equivalence gates updated with new fixtures; diff report over the 62 collapsed-cell plans | same `--reformat` run (raw text is re-extracted from the synced source files) |
 | 3. Case grammar — **shipped** (casegrammar v1.0, caseindex v2.0, sweep v1.51) | §4.3 profile + §4.4 S0–S6 + over-capture fix + catalog changes | `check_caseindex` fixtures S0–S6; case count must be ≥ today's 463 on the 43 covered plans (no regression) and ≥ 120 plans covered | `--recase --live` |
 | 4. LLM lane — **shipped** (sweep v1.52, casenormalize v1.0, prompt v1.0) | `--normalize-cases` for the residue | grounding check + budget cap; manual review of the first 10 | opt-in, owner-run |
-| 5. Story profile (1–2 days) | `story/v1` mapping; TestPlanGen trace rule reads `## Acceptance Criteria` first | `check_testplangen` grounding legs | `--reformat` |
+| 5. Story profile — **shipped** (storyprofile v1.0, sweep v1.53, TestPlanGen job v1.10) | `story/v1` mapping; TestPlanGen trace rule reads `## Acceptance Criteria` first | `check_testplangen` grounding legs | `--reformat` |
 
 Rollback per phase is the existing pattern: a `format` version gate on the
 Extracted row, and `--reformat` re-emits from raw text, so no phase depends
@@ -668,7 +668,7 @@ All decided 2026-09-05.
 | 5 | LLM normalisation lane | **Build in phase 4** as planned: opt-in `--normalize-cases`, grounding check, budget cap, never reachable from `--reformat` (§4.4) |
 | 6 | Filename template | `<issue>-<slug>[-<qualifier>].md`, no doc-id token, no zero padding, glossary abbreviations per §4.6 |
 
-Nothing remains open; the next step is phase 0 of §6.
+Nothing remains open. All six phases are implemented (see `local/CHANGES.md`, entries dated 2026-09-05, for the per-phase notes and the one rollout sequence).
 
 ---
 
