@@ -2527,6 +2527,18 @@ front doors, no duplication.
 | Generation prompt / flow guide / smoke suite | unchanged (v1.0) | `testplangen/` |
 | Sweep flow / scripts / prompt / schemas / sidecars / Q&A agent / curation | unchanged | — |
 
+## v2.30 — draft names follow the story sidecar's stem (2026-09-05; local job v1.9)
+
+Sidecar_Format_Plan phase 1b removed the doc id from sidecar
+filenames. Drafts now share the story sidecar's stem:
+`<stem>--draft-<yyyymmdd-hhmm>.md` (e.g.
+`4975-append-routes-line-order-check--draft-20260905-2300.md`) instead
+of `TestPlanDraft__doc{ID}__{stamp}.md`. The `--auto` idempotency
+scan keys on the `--draft-` token and maps the stem back to the row
+through the run's Doc Index snapshot; legacy `TestPlanDraft__doc{ID}__`
+files still count as covered. No prompt change. Gate:
+`check_testplangen.py` 141/141 on the new names.
+
 ## Runbook deltas (v1.1)
 
 - **TestPlanGenAgentVersion: v1.0** — the agent file set bumps like

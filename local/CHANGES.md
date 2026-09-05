@@ -1,5 +1,55 @@
 # Local sweep — release notes
 
+## naming 1b (2026-09-05 — `<issue>-<slug>.md`, media/<stem>/, `--rename`; sweep v1.49, slug v1.0, Sidecar_Format_Plan phase 1b)
+
+**One filename convention, decided 2026-09-05: issue-number prefix on,
+no doc-id token, glossary abbreviations on.**
+
+- **`local/lib/slug.mjs`** (new, pure): `slugFor` — the H1 title with
+  the kind's own words dropped (`Test Plan: X`, `X Test Plan V2`,
+  `Spike: X`, `X User Story`), kebab-cased, abbreviated token-wise from
+  **`local/slug_abbreviations.json`** (exb, lr, eb, dynseg, pro, gp,
+  rh, apr, sld, cp, un — override/extend with `sweep.slugAbbreviations`),
+  soft-capped at 60 chars on a word boundary and never on a stopword;
+  falls back to the cleaned source basename (issue prefix, `_TestPlan_V2`,
+  `(2) 1`, copy/final/fixed tokens stripped). `primaryIssue`: the source
+  filename's own prefix, else the lowest url-sourced id, else any.
+  `mintStem` (nightly: base → product → +rev → +month → numeric) and
+  `mintStems` (`--rename`: a colliding group all take the first
+  qualifier level that separates them — RH/APR twins become `-rh` /
+  `-apr`; re-uploads get `-2`, `-3` in row-id order; deterministic).
+- sweep **v1.49**: sidecars are named `<issue>-<slug>[-qualifier].md`;
+  a stem is minted once and **frozen** (the row's TextFileUrl is the
+  record — an AI re-title changes the H1, never the file). Media
+  lands in **`media/<stem>/<asset>`** (extraction mints links against
+  a placeholder folder and the bytes are written once the stem is
+  known); `--reformat` relinks and moves a document's flat
+  `doc<srcItemId>_*` files into its folder. **`_Manifest.json`** at the
+  library root (row id → path, stem, kind, issue, title) replaces the
+  `__doc<id>` suffix as the id→file lookup, rebuilt with the browse
+  pages. New standalone **`--rename-plan`** (the old→new table, nothing
+  touched) / **`--rename --live`** (re-mints every stem, renames the
+  files, moves media, rewrites every inbound link corpus-wide, patches
+  TextFileUrl, rebuilds pages + manifest, and says to run
+  `--recase --live` so Test Cases anchors/figure links follow).
+- consumers: `caseindex` figure links keep the media subfolder;
+  `svg2pptx` resolves `media/<stem>/` → `<kind folder>/<stem>.md` (flat
+  `doc{N}_` still resolves); TestPlanGen drafts are named
+  `<stem>--draft-<yyyymmdd-hhmm>.md` and the auto-mode idempotency
+  scan reads both that and the legacy `TestPlanDraft__doc{ID}__` form.
+
+Gates: new `check_slug.py` (kind words, abbreviations, cap, primary
+issue, incremental + batch minting incl. determinism, media links —
+CI), `check_local_sweep.py` (new naming + media/<stem>/ throughout,
+manifest on live runs, the rename leg: plan lists + touches nothing,
+live renames + moves media + rewrites the neighbour's inbound link +
+patches TextFileUrl + writes the manifest + is a no-op the second
+time), `check_svg2pptx.py` stem-folder leg, `check_testplangen.py`
+draft names, `check_caseindex.py`.
+
+ROLLOUT (after the format-3.0 `--reformat --live`):
+`--rename-plan` → read the table → `--rename --live` → `--recase --live`.
+
 ## format 3.0 (2026-09-05 — the metadata table replaces the yaml block; sweep v1.48, SidecarPatch v1.7, Sidecar_Format_Plan phase 1)
 
 **One metadata representation, no code block.** The yaml block —

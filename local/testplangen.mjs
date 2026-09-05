@@ -260,6 +260,7 @@ import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/c
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft } from "./lib/draftlint.mjs";
 import { relEntries } from "./lib/sidecarmeta.mjs";
+import { stemOf } from "./lib/slug.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
 const JOB_VERSION = "v1.8";
@@ -1296,7 +1297,10 @@ async function generateOne(ctx, story) {
   const stamp =
     `${now.getUTCFullYear()}${p(now.getUTCMonth() + 1)}${p(now.getUTCDate())}` +
     `-${p(now.getUTCHours())}${p(now.getUTCMinutes())}${p(now.getUTCSeconds())}`;
-  const draftName = `TestPlanDraft__doc${story.ID}__${stamp}.md`;
+  // phase 1b: drafts share the story sidecar's stem —
+  // <stem>--draft-<yyyymmdd-hhmm>.md (the `--draft-` token is what the
+  // auto-mode idempotency scan keys on)
+  const draftName = `${stemOf(story.TextFileUrl) || `doc${story.ID}`}--draft-${String(stamp).slice(0, 13)}.md`;
   const draftPath = `${tp.draftFolder}/${draftName}`;
   plan.push({ action: "putFile", path: draftPath, bytes: draft.length });
   let putRes = null;
@@ -1383,9 +1387,16 @@ async function runAuto(ctx) {
 
   // idempotency: existing auto/manual drafts, one listing per run
   const existing = new Set();
+  const idByStem = new Map(rows.filter((r) => r.TextFileUrl).map((r) => [stemOf(r.TextFileUrl), r.ID]));
   for (const child of await graph.listFolder(siteId, tp.draftFolder)) {
-    const m = /^TestPlanDraft__doc(\d+)__/.exec(String(child.name || ""));
-    if (m) existing.add(Number(m[1]));
+    const nm = String(child.name || "");
+    const legacy = /^TestPlanDraft__doc(\d+)__/.exec(nm);
+    if (legacy) { existing.add(Number(legacy[1])); continue; }
+    const m = /^(.+)--draft-\d{8}-\d{4,6}\.md$/.exec(nm);
+    if (m) {
+      const id = idByStem.get(m[1]) ?? (/^doc(\d+)$/.exec(m[1]) || [])[1];
+      if (id) existing.add(Number(id));
+    }
   }
 
   const cutoff = Date.now() - lookbackDays * 86400000;

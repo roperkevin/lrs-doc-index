@@ -1123,7 +1123,8 @@ def main():
     check("alpha PromptVersion stamped", alpha.get("PromptVersion") == "v2.0")
     check("alpha TextFileUrl set",
           isinstance(alpha.get("TextFileUrl"), dict)
-          and "__doc" in alpha["TextFileUrl"].get("Url", ""), str(alpha.get("TextFileUrl")))
+          and alpha["TextFileUrl"].get("Url", "").endswith("/Test Plans/123-alpha-plan.md"),
+          str(alpha.get("TextFileUrl")))
     check("alpha preview + author", "lock acquisition" in alpha.get("TextPreview", "")
           and alpha.get("SourceAuthor") == "Fixture Author")
 
@@ -1156,11 +1157,18 @@ def main():
     check("root browse index lists the corpus by kind",
           "# LRS Doc Index — catalog" in root_idx
           and "## Test Plans (1)" in root_idx
-          and "__doc" in root_idx, root_idx[:400])
+          and "123-alpha-plan.md" in root_idx, root_idx[:400])
+    man_path = os.path.join(sidecar_dir, "_Manifest.json")
+    man = json.load(open(man_path)) if os.path.exists(man_path) else {}
+    check("live run writes _Manifest.json (row id -> sidecar path)",
+          man.get("format") == "3.0"
+          and any(d.get("path") == "Test Plans/123-alpha-plan.md" and d.get("issue") == 123
+                  for d in man.get("docs", {}).values()),
+          str(man)[:300])
     kind_idx_path = os.path.join(sidecar_dir, "Test Plans", "_Index.md")
     kind_idx = open(kind_idx_path).read() if os.path.exists(kind_idx_path) else ""
     check("per-kind browse index links its sidecars",
-          "# Test Plans — index" in kind_idx and "__doc" in kind_idx
+          "# Test Plans — index" in kind_idx and "123-alpha-plan.md" in kind_idx
           and "(<Test Plans/" not in kind_idx, kind_idx[:400])
 
     # body-text similarity: spec.pdf and notes.txt share body words but
@@ -1169,7 +1177,7 @@ def main():
     spec_sc = open(spec_sc_path).read() if spec_sc_path else ""
     notes_id = int(by_name["notes.txt"][0])
     check("body-sim relates spec.pdf to notes.txt (no shared keyword)",
-          f"doc{notes_id}" in spec_sc and "similar text " in spec_sc,
+          f"<!-- rel:{notes_id} " in spec_sc and "similar text " in spec_sc,
           spec_sc[-500:])
 
     # status page (live runs only, sidecar-library root)
@@ -1245,21 +1253,23 @@ def main():
     # 123 bodies and produced zero figures with no error anywhere.
     # media files are prefixed with the SOURCE item id (10 here), not the
     # Doc Index row id — that distinction is deliberate and easy to get wrong
+    # phase 1b: media/<stem>/<asset> — the stem is the sidecar's own
     media_dir = os.path.join(sidecar_dir, "media")
-    svgs = [f for f in os.listdir(media_dir) if f.endswith(".svg")]
-    check("sweep wrote an SVG figure for the diagram deck",
-          "doc10_slide1.svg" in svgs, str(svgs))
+    stem_dir = os.path.join(media_dir, "123-alpha-plan")
+    svgs = [f for f in os.listdir(stem_dir)] if os.path.isdir(stem_dir) else []
+    check("sweep wrote an SVG figure for the diagram deck into media/<stem>/",
+          "slide1.svg" in svgs, str(svgs))
     check("figure linked from the sidecar body",
-          "](../media/doc10_slide1.svg)" in sc, sc[:600])
+          "](../media/123-alpha-plan/slide1.svg)" in sc, sc[:600])
     check("figure link sits directly before its anchor table (v1.26)",
-          re.search(r"!\[[^\]]*\]\(\.\./media/doc10_slide1\.svg\)\n\n\| Route ID \| R9 \|",
+          re.search(r"!\[[^\]]*\]\(\.\./media/123-alpha-plan/slide1\.svg\)\n\n\| Route ID \| R9 \|",
                     sc) is not None, sc[:600])
     check("figure link no longer stacks under the slide heading",
           re.search(r"## Slide 1[^\n]*\n\n!\[", sc) is None, sc[:600])
     check("the figure replaced the [figure: ...] caption",
           "[figure:" not in sc, sc[:600])
     check("alt text describes the diagram",
-          re.search(r"!\[[^\]]{20,}\]\(\.\./media/doc10_slide1\.svg\)", sc) is not None,
+          re.search(r"!\[[^\]]{20,}\]\(\.\./media/123-alpha-plan/slide1\.svg\)", sc) is not None,
           sc[:600])
     check("run summary reports figures written",
           int(out.get("figures", 0)) >= 1, str(out.get("figures")))
@@ -1278,11 +1288,11 @@ def main():
           re.search(r"same [a-z]+(/[a-z]+)*", rel_region) is not None,
           rel_region)
     check("alpha related region patched (names beta)",
-          f"doc{beta_id}" in sc.split("<!-- related:begin -->")[-1]
-          or f"doc{beta_id}" in sc, sc[-500:])
+          f"<!-- rel:{beta_id} " in sc.split("<!-- related:begin -->")[-1]
+          or f"<!-- rel:{beta_id} " in sc, sc[-500:])
     beta_content = open(beta_sc).read() if beta_sc else ""
     check("beta sidecar reciprocally patched (names alpha)",
-          f"doc{alpha_id}" in beta_content and "_None yet._" not in beta_content,
+          f"<!-- rel:{alpha_id} " in beta_content and "_None yet._" not in beta_content,
           beta_content[-500:])
 
     # body presentation (tidyBody)
@@ -1335,9 +1345,9 @@ def main():
           not re.search(r"(?m)^## .*\band <!-- slide", beta_body), beta_body)
 
     # media
-    media = os.listdir(os.path.join(sidecar_dir, "media"))
-    check("media extracted with src-id prefix",
-          any(m.startswith("doc10_") for m in media), str(media))
+    media = os.listdir(stem_dir) if os.path.isdir(stem_dir) else []
+    check("media extracted into the sidecar's media/<stem>/ folder (no src-id prefix)",
+          "image1.png" in media and not any(m.startswith("doc10_") for m in media), str(media))
 
     # doc ids / links / keywords / junctions
     docids = list(state.lists.get(LISTS["docIds"], {}).values())
@@ -1726,7 +1736,7 @@ def main():
           f"llm={state.llm_calls} vs {llm_before_rr}")
     sc_rr = open(alpha_sc).read()
     check("rerank preserved keyword/id relateds (alpha still names beta)",
-          f"doc{beta_id}" in sc_rr, sc_rr[-400:])
+          f"<!-- rel:{beta_id} " in sc_rr, sc_rr[-400:])
     check("rerank upsert kept exactly one docs block",
           sc_rr.count("<!-- docs:begin -->") == 1
           and "[Extend a route](" in sc_rr,
@@ -1912,6 +1922,71 @@ def main():
     check("case-audit refuses to combine with --recase",
           proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
 
+    # ---- rename leg (Sidecar_Format_Plan phase 1b) -------------------
+    # a corpus still on the pre-1b naming: alpha's sidecar sits at
+    # {slug}__doc{id}.md with a flat media/doc10_*.svg figure, beta's
+    # Related bullet links that old file. --rename-plan lists the move
+    # and touches nothing; --rename --live renames the file, moves the
+    # media into media/<stem>/, rewrites alpha's own links AND beta's
+    # inbound link, patches TextFileUrl, and writes the manifest.
+    print("== rename leg")
+    alpha_dir = os.path.dirname(alpha_sc)
+    old_name = f"alpha-plan-old__doc{alpha_id}.md"
+    old_path = os.path.join(alpha_dir, old_name)
+    cur = open(alpha_sc).read()
+    legacy_media = os.path.join(sidecar_dir, "media", "doc10_slide1.svg")
+    os.makedirs(os.path.dirname(legacy_media), exist_ok=True)
+    shutil.copyfile(os.path.join(stem_dir, "slide1.svg"), legacy_media)
+    with open(old_path, "w") as f:
+        f.write(cur.replace("../media/123-alpha-plan/slide1.svg", "../media/doc10_slide1.svg"))
+    os.remove(alpha_sc)
+    shutil.rmtree(stem_dir)
+    old_url = state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"]
+    new_url_expected = old_url
+    old_url = old_url.rsplit("/", 1)[0] + "/" + old_name
+    state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"] = {"Url": old_url, "Description": old_name}
+    beta_txt = open(beta_sc).read().replace("123-alpha-plan.md", old_name)
+    with open(beta_sc, "w") as f:
+        f.write(beta_txt)
+    proc = run_sweep(cfg_path, ["--rename-plan"])
+    check("rename-plan exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("rename-plan lists alpha's move and writes nothing",
+          out.get("mode") == "rename" and out.get("dry_run") is True
+          and int(out.get("renamed", 0)) == 1
+          and f"Test Plans/{old_name} -> 123-alpha-plan.md" in proc.stdout
+          and os.path.exists(old_path) and not os.path.exists(alpha_sc), proc.stdout[:600])
+    proc = run_sweep(cfg_path, ["--rename", "--live"])
+    check("rename live exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    renamed = open(alpha_sc).read() if os.path.exists(alpha_sc) else ""
+    check("rename moved the sidecar to <issue>-<slug>.md and removed the old file",
+          os.path.exists(alpha_sc) and not os.path.exists(old_path)
+          and int(out.get("renamed", 0)) == 1 and int(out.get("errors", 0)) == 0, str(out))
+    check("rename moved the flat media into media/<stem>/ and relinked the body",
+          os.path.exists(os.path.join(stem_dir, "slide1.svg"))
+          and not os.path.exists(legacy_media)
+          and "](../media/123-alpha-plan/slide1.svg)" in renamed
+          and "doc10_slide1.svg" not in renamed, renamed[-500:])
+    check("rename rewrote beta's inbound link",
+          "123-alpha-plan.md" in open(beta_sc).read()
+          and old_name not in open(beta_sc).read(), open(beta_sc).read()[-500:])
+    check("rename patched TextFileUrl",
+          state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"] == new_url_expected,
+          str(state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]))
+    manifest_path = os.path.join(sidecar_dir, "_Manifest.json")
+    manifest = json.load(open(manifest_path)) if os.path.exists(manifest_path) else {}
+    check("rename wrote the manifest (id -> path, stem, issue)",
+          manifest.get("docs", {}).get(str(alpha_id), {}).get("path") == "Test Plans/123-alpha-plan.md"
+          and manifest["docs"][str(alpha_id)].get("stem") == "123-alpha-plan"
+          and manifest["docs"][str(alpha_id)].get("issue") == 123, str(manifest)[:400])
+    check("rename told the operator to recase",
+          "--recase --live" in proc.stdout, proc.stdout[-300:])
+    proc = run_sweep(cfg_path, ["--rename", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("rename is a no-op the second time",
+          int(out.get("renamed", 0)) == 0 and int(out.get("errors", 0)) == 0, str(out))
+
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")
     pages_out = os.path.join(tmp, "pages.json")
@@ -1940,7 +2015,7 @@ def main():
           and base + "/docsec2/y.html" in proc.stdout, proc.stdout[-300:])
     spec_rr = open(spec_sc_path).read()
     check("rerank left the non-Indexed doc's sidecar untouched (spec still names notes)",
-          f"doc{notes_id}" in spec_rr and "similar text " in spec_rr,
+          f"<!-- rel:{notes_id} " in spec_rr and "similar text " in spec_rr,
           spec_rr[-400:])
 
     # ---- leg 3g: Graph download fallback for unsynced sources ------
@@ -2073,13 +2148,14 @@ def main():
               if f_.get("FileName") == "message.msg"][0]
     guide_id = [i for i, f_ in state.lists[LISTS["docIndex"]].items()
                 if f_.get("FileName") == "guide.html"][0]
+    msg_url = state.lists[LISTS["docIndex"]][msg_id].get("TextFileUrl", {}).get("Url", "")
     msg_sc = ""
     for r, _, fs_ in os.walk(sidecar_dir):
         for f in fs_:
-            if f.endswith(f"__doc{msg_id}.md"):
+            if msg_url.endswith("/" + f):
                 msg_sc = open(os.path.join(r, f)).read()
     check("embeddings joined the paraphrase pair (msg relates the guide)",
-          f"doc{guide_id}" in msg_sc and "similar text" in msg_sc,
+          f"<!-- rel:{guide_id} " in msg_sc and "similar text" in msg_sc,
           msg_sc[-600:])
     check("embed rerank made no classify calls",
           state.llm_calls == llm_before_em, f"{state.llm_calls} vs {llm_before_em}")
@@ -2135,8 +2211,9 @@ def main():
           row.get("IndexStatus") == "Indexed"
           and row.get("PromptVersion") == "v2.0-remote-leg", str(row)[:200])
     up_keys = set(state.remote_files)
+    notes_file = str(row.get("TextFileUrl", {}).get("Url", "")).rsplit("/", 1)[-1]
     check("sidecar write-through uploaded to the drive",
-          any(k.endswith(f"__doc{notes_id2}.md") for k in up_keys), str(up_keys))
+          bool(notes_file) and any(k.endswith("/" + notes_file) for k in up_keys), str(up_keys))
     check("status + index pages uploaded too",
           "_Sweep Status.md" in up_keys and "_Index.md" in up_keys, str(up_keys))
     # second run: manifest carries the uploads' eTags, so the mirror
@@ -2508,7 +2585,10 @@ def main():
           and int(out.get("figures", 0)) >= 1
           and int(out.get("figure_errors", 0)) == 0,
           str(out) + " " + proc.stderr[-300:])
-    wf_path = os.path.join(sidecar_dir, "media", "doc21_slide1.svg")
+    panel_row = next(f_ for f_ in state.lists[LISTS["docIndex"]].values()
+                     if f_.get("FileName") == "Panel UI.pptx")
+    panel_stem = str(panel_row.get("TextFileUrl", {}).get("Url", "")).rsplit("/", 1)[-1][:-3]
+    wf_path = os.path.join(sidecar_dir, "media", panel_stem, "slide1.svg")
     wf = open(wf_path, encoding="utf-8").read() if os.path.exists(wf_path) else ""
     check("wireframe figure written for the screenshot",
           "interface wireframe" in wf, wf[:300])

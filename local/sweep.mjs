@@ -61,7 +61,8 @@ import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
 import { auditBody, summarizeAudit, renderAuditPage } from "./lib/caseaudit.mjs";
 import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
-import { writeIndexPages, writeCaseCatalog } from "./lib/indexpages.mjs";
+import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
+import { writeIndexPages, writeCaseCatalog, writeManifest } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
 import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
@@ -133,6 +134,10 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   let figureCount = 0, figureError = "";
   let figureOcr = 0, figureOcrOff = 0;
   let srcAuthor = "", srcEditor = "", srcEdited = "";
+  // media is minted against a PLACEHOLDER folder and handed back to
+  // the caller as bytes: the document's stem (its media folder name)
+  // is only known once the title is — phase 1b, media/<stem>/<asset>
+  const mediaFiles = [];
   const size = fs.existsSync(localPath) ? fs.statSync(localPath).size : 0;
   const oversize = size > sw.oversizeBytes && ext !== "xlsx";
   if (!fs.existsSync(localPath)) {
@@ -145,7 +150,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     setStep(`ziptext-${ext}`);
     const zt = op({
       op: "ziptext", zipFile: localPath,
-      mediaPrefix: `../media/doc${srcItemId}_`,
+      mediaPrefix: MEDIA_PLACEHOLDER,
     });
     docText = zt.text || "";
     relsText = zt.rels || "";
@@ -157,8 +162,7 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
       setStep("media");
       const md = op({ op: "media", zipFile: localPath });
       for (const img of md.images || []) {
-        const imgPath = path.join(cfg.paths.sidecarLibrary, "media", `doc${srcItemId}_${img.name}`);
-        writer.writeFile(imgPath, Buffer.from(img.b64 || img.base64 || "", "base64"));
+        mediaFiles.push({ name: img.name, data: Buffer.from(img.b64 || img.base64 || "", "base64") });
       }
     }
     // v1.23: slide diagrams as SVG figures. ZipTextExtract still collapses a
@@ -202,10 +206,9 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
         const figs = (fg && fg.figures) || [];
         const bySlide = new Map();
         for (const f of figs) {
-          const name = `doc${srcItemId}_${f.name}`;
-          writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", name), f.svg);
+          mediaFiles.push({ name: f.name, data: f.svg });
           if (!bySlide.has(f.slide)) bySlide.set(f.slide, []);
-          bySlide.get(f.slide).push({ href: `../media/${name}`, alt: f.alt, anchor: f.anchor });
+          bySlide.get(f.slide).push({ href: `${MEDIA_PLACEHOLDER}${f.name}`, alt: f.alt, anchor: f.anchor });
         }
         for (const [slide, items] of bySlide) {
           docText = placeFigure(docText, slide, items);
@@ -286,7 +289,67 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
   // pdf(no tool)/image/other/oversize (and empty html/msg): DocText
   // stays empty → Skip lane.
   return { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-           figureCount, figureError, figureOcr, figureOcrOff };
+           figureCount, figureError, figureOcr, figureOcrOff, mediaFiles };
+}
+
+/** Write a document's media into media/<stem>/ (phase 1b). */
+function writeMedia(cfg, writer, stem, mediaFiles) {
+  for (const m of mediaFiles || []) {
+    writer.writeFile(path.join(cfg.paths.sidecarLibrary, "media", stem, m.name), m.data);
+  }
+}
+
+/** Move a document's pre-1b flat media (`media/doc<srcItemId>_<name>`)
+ *  into its media/<stem>/ folder — idempotent; nothing to do when the
+ *  flat files are gone. Used by --reformat (images are not re-extracted
+ *  there) and by --rename. */
+function placeLegacyMedia(cfg, writer, srcItemId, stem) {
+  const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+  let names = [];
+  try { names = fs.readdirSync(mdir); } catch { return 0; }
+  const prefix = `doc${srcItemId}_`;
+  let moved = 0;
+  for (const n of names) {
+    if (!n.startsWith(prefix)) continue;
+    const from = path.join(mdir, n);
+    try {
+      if (!fs.statSync(from).isFile()) continue;
+      writer.writeFile(path.join(mdir, stem, n.slice(prefix.length)), fs.readFileSync(from));
+      writer.deleteFile(from);
+      moved++;
+    } catch { /* unreadable: leave it */ }
+  }
+  return moved;
+}
+
+/** Map rowId -> primary issue number (0 = none), for the manifest. */
+function issueByDoc(rows, docIdRows) {
+  const idsOf = new Map();
+  for (const d of docIdRows || []) {
+    if (!idsOf.has(d.DocumentId)) idsOf.set(d.DocumentId, []);
+    idsOf.get(d.DocumentId).push({ repo: d.Repo, number: d.IssueNumber, source: d.Source });
+  }
+  const out = new Map();
+  for (const r of rows || []) out.set(r.ID, primaryIssue(idsOf.get(r.ID) || [], r.FileName || ""));
+  return out;
+}
+
+/** Stems already used in a kind folder — the rows' files plus whatever
+ *  is on disk (rows can lag a write). */
+function takenStems(cfg, sw, rows, kindFolder, exceptRowId) {
+  const taken = new Set();
+  for (const r of rows || []) {
+    if (!r.TextFileUrl || r.ID === exceptRowId) continue;
+    const parts = String(r.TextFileUrl).split("/");
+    if (decodeURIComponent(parts[parts.length - 2] || "") !== kindFolder) continue;
+    taken.add(stemOf(r.TextFileUrl));
+  }
+  try {
+    for (const f of fs.readdirSync(path.join(cfg.paths.sidecarLibrary, kindFolder))) {
+      if (f.endsWith(".md") && !f.startsWith("_")) taken.add(f.replace(/\.md$/, ""));
+    }
+  } catch { /* folder not there yet */ }
+  return taken;
 }
 
 // ---- config ---------------------------------------------------------
@@ -304,10 +367,12 @@ function loadConfig(argv) {
     else if (a === "--reformat") args.flags.reformat = true;
     else if (a === "--recase") args.flags.recase = true;
     else if (a === "--case-audit") args.flags.caseAudit = true;
+    else if (a === "--rename") args.flags.rename = true;
+    else if (a === "--rename-plan") { args.flags.rename = true; args.flags.dry = true; }
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--case-audit] [--rename|--rename-plan] [--check-heartbeat]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -326,6 +391,10 @@ function loadConfig(argv) {
     throw new Error("--recase is a standalone mode — do not combine it with --rerank or --reformat");
   }
   if (args.flags.caseAudit) cfg.sweep.caseAudit = true;
+  if (args.flags.rename) cfg.sweep.rename = true;
+  if (cfg.sweep.rename && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.caseAudit)) {
+    throw new Error("--rename is a standalone mode — do not combine it with --rerank, --reformat, --recase or --case-audit");
+  }
   if (cfg.sweep.caseAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase)) {
     throw new Error("--case-audit is a standalone mode — do not combine it with --rerank, --reformat or --recase");
   }
@@ -765,6 +834,126 @@ async function main() {
     .map((r) => r.Title)
     .join(", ");
 
+  // ---- --rename / --rename-plan: re-mint every sidecar stem from the
+  // §4.6 rules (<issue>-<slug>[-qualifier].md, media/<stem>/), move
+  // the files and their media, rewrite every inbound link corpus-wide,
+  // patch TextFileUrl, rebuild the browse pages + manifest. Dry by
+  // default (`--rename-plan` = the old→new table); `--live` applies.
+  // Test Cases rows keep their old anchor/figure URLs until the next
+  // `--recase --live` — the run says so.
+  if (sw.rename) {
+    const abbr = { ...defaultAbbreviations(), ...(sw.slugAbbreviations || {}) };
+    const idsOf = new Map();
+    for (const d of docIdRows) {
+      if (!idsOf.has(d.DocumentId)) idsOf.set(d.DocumentId, []);
+      idsOf.get(d.DocumentId).push({ repo: d.Repo, number: d.IssueNumber, source: d.Source });
+    }
+    const eligible = docIndexRows.filter((r) => r.ID && r.IndexStatus === "Indexed" && r.TextFileUrl);
+    const folderOfRow = (r) => {
+      const parts = String(r.TextFileUrl).split("/");
+      return decodeURIComponent(parts[parts.length - 2] || "") || (sw.kindFolders[r.DocKind] || "Other");
+    };
+    const byFolder = new Map();
+    const entries = [];
+    for (const r of eligible) {
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      const content = local && fs.existsSync(local) ? fs.readFileSync(local, "utf8") : null;
+      const meta = content ? readMeta(content) : {};
+      const e = {
+        row: r, local, content, folder: folderOfRow(r),
+        oldStem: stemOf(r.TextFileUrl), newStem: "",
+        doc: {
+          rowId: r.ID, title: r.Title || "", fileName: r.FileName || "", kind: r.DocKind || "Other",
+          ids: idsOf.get(r.ID) || [], products: String(r.Products || "").split("; ").filter(Boolean),
+          docRevision: meta.doc_revision || "", lastEdited: meta.last_edited || r.SourceModified || "",
+        },
+      };
+      entries.push(e);
+      if (!byFolder.has(e.folder)) byFolder.set(e.folder, []);
+      byFolder.get(e.folder).push(e);
+    }
+    for (const [, es] of byFolder) {
+      const minted = mintStems(es.map((e) => e.doc), abbr);
+      for (const e of es) e.newStem = minted.get(e.row.ID) || e.oldStem;
+    }
+    const nsum = { mode: "rename", dry_run: dry, eligible: entries.length, renamed: 0, unchanged: 0,
+                   no_sidecar: 0, media_moved: 0, links_rewritten: 0, errors: 0 };
+    const fileMap = new Map(); // old file name -> new file name (unique tokens)
+    for (const e of entries) {
+      if (!e.content) { nsum.no_sidecar++; continue; }
+      if (e.newStem !== e.oldStem) fileMap.set(`${e.oldStem}.md`, `${e.newStem}.md`);
+    }
+    const table = entries.map((e) => ({
+      id: e.row.ID, folder: e.folder, from: `${e.oldStem}.md`, to: `${e.newStem}.md`,
+      changed: e.newStem !== e.oldStem,
+    }));
+    const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+    for (const e of entries) {
+      if (!e.content) continue;
+      try {
+        let next = e.content;
+        // this document's media: legacy flat files and the old stem
+        // folder both move to media/<newStem>/
+        for (const ml of mediaLinksOf(next)) {
+          const from = ml.dir ? path.join(mdir, ml.dir, ml.name) : path.join(mdir, `${ml.legacyPrefix || ""}${ml.name}`);
+          const toRel = `../media/${e.newStem}/${ml.name}`;
+          if (ml.dir === e.newStem) continue;
+          if (fs.existsSync(from)) {
+            writer.writeFile(path.join(mdir, e.newStem, ml.name), fs.readFileSync(from));
+            writer.deleteFile(from);
+            nsum.media_moved++;
+          }
+          next = next.split(ml.link).join(toRel);
+        }
+        // every renamed neighbour referenced from this file
+        for (const [from, to] of fileMap) {
+          if (next.includes(from)) { next = next.split(from).join(to); nsum.links_rewritten++; }
+        }
+        const newLocal = path.join(path.dirname(e.local), `${e.newStem}.md`);
+        if (e.newStem !== e.oldStem) {
+          writer.writeFile(newLocal, next);
+          writer.deleteFile(e.local);
+          const url = `${sw.siteUrl}${sw.textsFolder}/${e.folder}/${e.newStem}.md`;
+          await writer.patchRow("docIndex", e.row.ID, { TextFileUrl: { Url: url, Description: `${e.newStem}.md` } });
+          e.row.TextFileUrl = url;
+          nsum.renamed++;
+        } else if (next !== e.content) {
+          writer.writeFile(e.local, next);
+          nsum.unchanged++;
+        } else {
+          nsum.unchanged++;
+        }
+      } catch (err) {
+        nsum.errors++;
+        process.stderr.write(`RENAME ERROR ${e.oldStem}: ${err.message}\n`);
+      }
+    }
+    if (!dry) {
+      writeIndexPages(cfg, docIndexRows, sw.kindFolders);
+      writeManifest(cfg, docIndexRows, issueByDoc(docIndexRows, docIdRows));
+      if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
+      if (remote) {
+        for (const pg of ["_Index.md", "_Manifest.json", "_Case Catalog.md"]) {
+          const fp = path.join(cfg.paths.sidecarLibrary, pg);
+          if (fs.existsSync(fp)) remote.queuePut(fp);
+        }
+        await remote.flush().catch((err) =>
+          process.stderr.write(`remote flush after rename: ${err.message}\n`));
+      }
+    }
+    const nDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(nDir, { recursive: true });
+    const nStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const nLog = path.join(nDir, `sweep-${nStamp}.json`);
+    fs.writeFileSync(nLog, JSON.stringify({ summary: nsum, renames: table, plan: dry ? writer.plan : undefined }, null, 1));
+    pruneRunLogs(nDir);
+    process.stdout.write(JSON.stringify({ ...nsum, logFile: nLog }) + "\n");
+    for (const t of table) if (t.changed) process.stdout.write(`${t.folder}/${t.from} -> ${t.to}\n`);
+    if (dry) process.stdout.write(`rename plan: ${table.filter((t) => t.changed).length} of ${table.length} sidecars would be renamed (log: ${nLog}); re-run with --rename --live to apply\n`);
+    else if (nsum.renamed) process.stdout.write(`renamed ${nsum.renamed} sidecar(s); run --recase --live next so Test Cases anchors and figure links follow\n`);
+    return;
+  }
+
   // ---- --case-audit: which plans the case index covers, and what the
   // uncovered ones contain (Sidecar_Format_Plan phase 0). Reads the
   // sidecars on disk, runs the SAME parser --recase runs plus the
@@ -1082,8 +1271,8 @@ async function main() {
           rfsum.no_seam++;
           continue;
         }
-        const { docText, lane: rfLane, srcAuthor, srcEditor, srcEdited,
-                figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
+        const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited,
+                figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
           localPath, ext, srcItemId, modified, withMedia: false,
         });
@@ -1091,10 +1280,17 @@ async function main() {
         if (figureError) rfsum.figure_errors++;
         rfsum.figures_ocr += figureOcr || 0;
         rfsum.figures_ocr_off += figureOcrOff || 0;
-        if (!docText) {
+        if (!rfRaw) {
           rfsum.no_text++;
           continue;
         }
+        // phase 1b: media links point at media/<stem>/ — figures are
+        // re-rendered into it here; images (not re-extracted on a
+        // reformat) move out of the flat doc<srcItemId>_ naming once
+        const stem = stemOf(existing.TextFileUrl);
+        const docText = relinkMedia(rfRaw, stem);
+        writeMedia(cfg, writer, stem, mediaFiles);
+        rfsum.media_moved = (rfsum.media_moved || 0) + placeLegacyMedia(cfg, writer, srcItemId, stem);
         const body = caseHeadings(tidyBody(docText));
         // format 3.0: the head (H1 + metadata table) is regenerated from
         // the row + the file's own metadata (whichever frame it carries),
@@ -1384,6 +1580,7 @@ async function main() {
     // browse pages (v1.35): the catalog as humans see it — root +
     // per-kind _Index.md, rebuilt from the rows this run already holds
     writeIndexPages(cfg, docIndexRows, sw.kindFolders);
+    writeManifest(cfg, docIndexRows, issueByDoc(docIndexRows, docIdRows));
     // the case catalog (Case_Index_Plan phase 3): every indexed test
     // case grouped by plan, from the case rows this run maintains
     if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
@@ -1472,11 +1669,12 @@ async function indexDoc(ctx) {
   }
 
   // Switch_ext lane dispatch (shared with the --reformat pass)
-  const { docText, relsText, lane, srcAuthor, srcEditor, srcEdited,
-          figureCount, figureError, figureOcr, figureOcrOff } = extractDocText({
+  const { docText: rawDocText, relsText, lane, srcAuthor, srcEditor, srcEdited,
+          figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
     sw, cfg, op, writer, pdfTool, ocrTools, setStep,
     localPath, ext, srcItemId, modified, withMedia: true,
   });
+  let docText = rawDocText;
   summary.figures = (summary.figures || 0) + (figureCount || 0);
   if (figureError) summary.figure_errors = (summary.figure_errors || 0) + 1;
   summary.figures_ocr = (summary.figures_ocr || 0) + (figureOcr || 0);
@@ -1517,7 +1715,6 @@ async function indexDoc(ctx) {
   const docKind = DOC_KINDS.includes(ai.docKind) ? ai.docKind : "Other";
   const surface = SURFACES.includes(ai.surface) ? ai.surface : "Other";
   const title = cut(ai.title && ai.title !== "" ? ai.title : name, 255);
-  const preview = cut(docText, sw.previewCap);
 
   // (b) regex/ids
   setStep("regex");
@@ -1539,7 +1736,7 @@ async function indexDoc(ctx) {
     SourceAuthor: srcAuthor, SourceEditor: srcEditor,
     SourceEdited: srcEdited || null, Surface: surface,
     ExtractionLane: lane, IndexedOn: new Date().toISOString(),
-    TextPreview: preview, DocRevision: rx.docRevision || "",
+    DocRevision: rx.docRevision || "",
     TargetRelease: ai.targetRelease || "", PE: ai.pe || "", Dev: ai.dev || "",
     Products: products.join("; "),
   };
@@ -1551,13 +1748,24 @@ async function indexDoc(ctx) {
     await writer.patchRow("docIndex", rowId, rowFields);
   }
 
-  // (d) sidecar naming
-  const fallbackSlug = lower(name.replace(/\.[^.]*$/, ""))
-    .replaceAll(" ", "-").replaceAll("#", "").replaceAll("%", "");
-  const slug = rx.slug && rx.slug !== "" ? rx.slug : fallbackSlug;
-  const sidecarName = `${slug}__doc${rowId}.md`;
+  // (d) sidecar naming (phase 1b): <issue>-<slug>[-qualifier].md — a
+  // stem is minted once and then FROZEN (the row's TextFileUrl is the
+  // record; --rename re-mints the corpus), so an AI re-title never
+  // renames a linked file
   const kindFolder = sw.kindFolders[docKind] || "Other";
   const sidecarFolder = `${sw.textsFolder}/${kindFolder}`;
+  const frozen = existing?.TextFileUrl ? stemOf(existing.TextFileUrl) : "";
+  const stem = frozen || mintStem(
+    { rowId, title, fileName: name, kind: docKind, ids, products,
+      docRevision: rx.docRevision || "", lastEdited: srcEdited || "" },
+    takenStems(cfg, sw, caches.docIndexRows, kindFolder, rowId),
+    { ...defaultAbbreviations(), ...(sw.slugAbbreviations || {}) }
+  );
+  const sidecarName = `${stem}.md`;
+  // media lands in media/<stem>/; the body's placeholder links follow
+  docText = relinkMedia(docText, stem);
+  writeMedia(cfg, writer, stem, mediaFiles);
+  const preview = cut(docText, sw.previewCap);
 
   // (e)+(f) header
   const header = sidecarHeader({
@@ -1600,7 +1808,7 @@ async function indexDoc(ctx) {
   await writer.patchRow("docIndex", rowId, {
     Title: title, FileName: name, DocKey: docKey, IndexStatus: "Indexed",
     TextFileUrl: { Url: textFileUrl, Description: sidecarName },
-    LastError: "", PromptVersion: sw.promptVersion,
+    LastError: "", PromptVersion: sw.promptVersion, TextPreview: preview,
   });
   const oldUrl = existing?.TextFileUrl || "";
   if (oldUrl.startsWith(sw.siteUrl + "/") && oldUrl !== textFileUrl) {

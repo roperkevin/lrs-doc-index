@@ -1,0 +1,19 @@
+{
+  "$comment": "Sidecar filename abbreviations (Sidecar_Format_Plan §4.6 rule 3). Keys are hyphenated slug tokens, matched whole on hyphen boundaries, longest first; values replace them. Override or extend with sweep.slugAbbreviations in local/config.json.",
+  "experience-builder": "exb",
+  "location-referencing": "lr",
+  "linear-referencing": "lr",
+  "event-behavior": "eb",
+  "event-behaviors": "eb",
+  "dynamic-segmentation": "dynseg",
+  "arcgis-pro": "pro",
+  "gp-tool": "gp",
+  "gp-tools": "gp",
+  "geoprocessing": "gp",
+  "roads-and-highways": "rh",
+  "pipeline-referencing": "apr",
+  "straight-line-diagram": "sld",
+  "calibration-point": "cp",
+  "calibration-points": "cp",
+  "utility-network": "un"
+}

@@ -132,30 +132,37 @@ function collectInputs(argv) {
 // reads both)
 
 function sidecarFor(file, cache) {
-  const m = basename(file).match(/^doc(\d+)_/);
-  if (!m) return null;
-  const id = m[1];
-  if (cache[id] !== undefined) return cache[id];
+  // phase 1b naming: media/<stem>/<asset> -> <kind folder>/<stem>.md
+  // (the stem folder's siblings are the kind folders); pre-1b flat
+  // media doc{N}_<asset> -> {slug}__doc{N}.md
   const dir = dirname(resolve(file));
-  const parent = dirname(dir);
+  const stemDir = basename(dir);
+  const flat = basename(file).match(/^doc(\d+)_/);
+  const id = flat ? flat[1] : (basename(dirname(dir)) === "media" ? stemDir : null);
+  if (!id) return null;
+  if (cache[id] !== undefined) return cache[id];
   const hits = [];
+  const wanted = flat ? (f) => f.endsWith(`__doc${id}.md`) : (f) => f === `${stemDir}.md`;
   const scan = (d) => {
     try {
-      for (const f of readdirSync(d)) if (f.endsWith(`__doc${id}.md`)) hits.push(join(d, f));
+      for (const f of readdirSync(d)) if (wanted(f)) hits.push(join(d, f));
     } catch { /* unreadable dir: keep looking elsewhere */ }
   };
+  // flat: media/ and the kind folders are siblings of each other;
+  // stem folder: media/<stem>/ sits two levels below the library root
+  const root = flat ? dirname(dir) : dirname(dirname(dir));
   scan(dir);
-  scan(parent);
+  scan(root);
   try {
-    for (const f of readdirSync(parent)) {
-      const p = join(parent, f);
+    for (const f of readdirSync(root)) {
+      const p = join(root, f);
       if (p === dir) continue;
       try { if (statSync(p).isDirectory()) scan(p); } catch { /* ignore */ }
     }
   } catch { /* ignore */ }
-  let sc = { id, title: `doc ${id}`, meta: "", lines: null };
+  let sc = { id, title: flat ? `doc ${id}` : stemDir.replace(/[-_]+/g, " "), meta: "", lines: null };
   if (hits.length) {
-    const slug = basename(hits[0]).replace(new RegExp(`__doc${id}\\.md$`), "");
+    const slug = basename(hits[0]).replace(/\.md$/, "").replace(/__doc\d+$/, "");
     sc.title = slug.replace(/[-_]+/g, " ").trim() || sc.title;
     try {
       const md = readFileSync(hits[0], "utf8");

@@ -423,9 +423,15 @@ export function extractCases(bodyText, opts = {}) {
       );
       // figure links (v1.3): sidecar-relative targets resolved onto
       // the media folder's URL; without a base the raw target stands
-      const figureLinks = _figs.map((t) =>
-        opts.mediaUrlBase ? `${opts.mediaUrlBase}/${String(t).split("/").pop()}` : t
-      );
+      // phase 1b: media lives in media/<stem>/<asset> — keep the path
+      // below `media/` (a bare basename would drop the folder)
+      const figureLinks = _figs.map((t) => {
+        if (!opts.mediaUrlBase) return t;
+        const str = String(t);
+        const at = str.indexOf("media/");
+        const rel = at >= 0 ? str.slice(at + "media/".length) : str.split("/").pop();
+        return `${opts.mediaUrlBase}/${rel}`;
+      });
       return {
         ordinal: k + 1, ...kase, shape,
         tools: tags.tools, keywords: tags.keywords, figureLinks,
