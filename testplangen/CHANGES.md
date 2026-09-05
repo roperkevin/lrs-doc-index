@@ -1,3 +1,15 @@
+# TestPlanGen v2.35 — maxTokens default 64000 (testplangen.mjs v1.15)
+
+The first live doc 910 run with the v2.34 related-cases lane hit
+`stop_reason: max_tokens` at the 32000 default: the Source Case Sweep
+now carries a row per related case on top of the exemplar's, and the
+VARIATION clause mints parameterized cases where a single Verify line
+used to stand; thinking tokens count against the same ceiling. The
+default is now 64000 (`local/config.sample.json`, Local_Setup §11).
+The generation streams, so the ceiling costs nothing unless used; a
+truncated reply still fails closed. The harness pins the new default
+(leg 2c). No prompt or lane change.
+
 # TestPlanGen v2.34 — related cases: the retrieval lane (prompt v1.11, testplangen.mjs v1.14)
 
 Owner-requested (2026-09-05), after the doc 910 review: the draft

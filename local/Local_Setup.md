@@ -549,7 +549,7 @@ sidecar library; the sidecars ARE the retrieval source):
      (`testplangen/Coverage_Runbook.md` step 2, one-time).
    - **anthropic**: executes `prompts/TestPlanGen_Prompt.md`
      VERBATIM — zero tenant prompt work, the v1.9 rules apply as
-     authored. `testplangen.maxTokens` (default 32000) bounds the
+     authored. `testplangen.maxTokens` (default 64000 since v1.15) bounds the
      reply; a token-truncated draft loses its END marker and fails
      CLOSED, loudly.
 2. **Preview first (v1.10 — zero AI spend):**
@@ -811,7 +811,7 @@ flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
 grounding (true), notify (false), provider ("" = follow
-llm.provider), maxTokens (32000), caseIndex (true — the Test Cases
+llm.provider), maxTokens (64000), caseIndex (true — the Test Cases
 lane below), autoDraft (false), autoMaxPerRun
 (3), autoLookbackDays (7), dryRun (true). Deliberate deviations from the
 flow, all bounded: one run-start Doc Index snapshot replaces the

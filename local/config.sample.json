@@ -81,7 +81,7 @@
     "grounding": true,
     "notify": false,
     "provider": "",
-    "maxTokens": 32000,
+    "maxTokens": 64000,
     "webRefTimeoutMs": 30000,
     "figures": false,
     "figuresMaxTokens": 8000,

@@ -1019,8 +1019,8 @@ def main():
     check("prompt: no leftover placeholders",
           not re.search(r"\{(StoryMeta|StoryText|RelatedDigest|ExemplarText|ReferenceText|RelatedCases)\}",
                         prompt), prompt[-300:])
-    check("maxTokens honored (default 32000)",
-          state.ant_last_body.get("max_tokens") == 32000, str(state.ant_last_body.get("max_tokens")))
+    check("maxTokens honored (default 64000)",
+          state.ant_last_body.get("max_tokens") == 64000, str(state.ant_last_body.get("max_tokens")))
     check("anthropic draft written, provider stamped",
           len(state.drafts) == 1
           and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],

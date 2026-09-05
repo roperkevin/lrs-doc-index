@@ -91,7 +91,7 @@ keeps the old yaml-on-top layout).
 | testplangen/agent/TestPlanGenAgent/ | Importable Copilot Studio agent (front-end) | v1.8 |
 | testplangen/agent/Agent_Setup.md | Agent import + flow-wiring guide | v1.0 |
 | testplangen/Local_TestPlanGen_Plan.md | Local generation job — design record + phased build order (phase 1 shipped as v2.16) | — |
-| testplangen/CHANGES.md | Test-plan generation release notes | v2.34 |
+| testplangen/CHANGES.md | Test-plan generation release notes | v2.35 |
 | pad/PAD_Setup.md | PAD compute-offload build + deploy guide (Run-script quota workaround) | v2.1 |
 | pad/flow/DocIndexCompute.robin.txt | PAD desktop flow (paste-ready Robin; quick-run + batch modes) | v2.2 |
 | pad/runner/run_job.mjs | Node runner — executes `scripts/` verbatim, all nine Run-script contracts; batch job files + single-op CLI | v2.0 |

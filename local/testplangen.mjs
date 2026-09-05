@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.14 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.15 — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -424,7 +424,7 @@ import {
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 
-const JOB_VERSION = "v1.14";
+const JOB_VERSION = "v1.15";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -618,7 +618,9 @@ function loadConfig(argv) {
     provider: "", // "" = follow llm.provider; "aibuilder"|"anthropic" overrides for generation only
     // v1.6+ split-case drafts run long — the first live run blew a
     // 16384 default (v1.3 raised it; claude-opus-5 allows up to 128k)
-    maxTokens: 32000,
+    // v1.15: 64000 — the related-cases sweep rows + parameterized
+    // variations (v2.34) truncated a live doc 910 draft at 32000
+    maxTokens: 64000,
     webRefTimeoutMs: 30000,
     figures: false, // v1.11: the generated-figures pass (--figures forces on for a run)
     stream: false, // v1.12: echo the model's thinking summary + reply to stderr (anthropic lane)
