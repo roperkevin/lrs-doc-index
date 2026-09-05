@@ -1,6 +1,35 @@
 /**
- * ZipTextExtract v2.2 — OOXML file (pptx/docx) → markdown text + rels
+ * ZipTextExtract v2.5 — OOXML file (pptx/docx) → markdown text + rels
  *                       + document core properties
+ * --------------------------------------------------------------------
+ * v2.5 delta (2026-09-05 — Sidecar_Format_Plan phase 2, "structure
+ * the extractor used to throw away"; the local sweep runs this file
+ * directly, no tenant paste):
+ *   CP-1  table cells keep their PARAGRAPHS. A single-column table
+ *         whose cells hold several paragraphs (the decks' "Positive
+ *         Tests: <group>" boxes) renders as a bold label + one bullet
+ *         per paragraph; multi-column cells join paragraphs on <br>.
+ *         The old blanket strip joined them with a space — 62 of 178
+ *         test-plan sidecars carried run-on cells no parser could
+ *         split.
+ *   IB-1  inherited bullets: body-placeholder paragraphs take the
+ *         deck's default bullet (slide → layout → master bodyStyle
+ *         lvl1pPr), rendered as "- " items; an explicit buNone stays
+ *         plain. Slide XML never spells the inherited bullet out, so
+ *         the most common bullet in real decks used to render as
+ *         loose lines.
+ *   TP-1  a slide with no title placeholder takes its TOPMOST short
+ *         text shape (2–12 words, ≤ 80 chars, top fifth of the slide,
+ *         not grouped) as the "## Slide N — …" heading — section
+ *         labels drawn above a table but after it in z-order used to
+ *         land below the table.
+ *   DL-2  docx: bold label paragraphs (≤ 60 chars) and ":"-labels
+ *         followed by a list become "### " headings; list items are
+ *         recognised through paragraph STYLES (List Bullet / List
+ *         Number) as well as direct numPr, and ordered lists render
+ *         as "1. " items (word/numbering.xml numFmt).
+ *   Prose/table-only decks without these shapes are byte-identical
+ *   to v2.2 — every pre-existing fixture passes unchanged.
  * --------------------------------------------------------------------
  * v2.2 delta (2026-09-03 — the local sweep is the deployed sweep and
  * runs this file directly; on tenant-flow rollback paste v2.2 in place
@@ -259,15 +288,70 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
     const noteByName: { [n: string]: ZipEntry } = {};
     for (const ne of notes) noteByName[ne.name] = ne;
     const consumed: { [n: string]: boolean } = {};
+    // v2.5 (IB-1): the deck's default body bullet — PowerPoint draws a
+    // bullet on every body-placeholder paragraph unless the slide,
+    // layout or master says buNone, but the slide XML never spells the
+    // inherited one out. Resolve slide → layout → master once per part.
+    const partCache: { [n: string]: string } = {};
+    const partText = (name: string): string => {
+      if (partCache[name] === undefined) {
+        const ent = entries.filter((x) => x.name === name)[0];
+        partCache[name] = ent ? utf8ToString(extractEntry(bytes, ent)) : "";
+      }
+      return partCache[name];
+    };
+    const relTarget = (relsXml: string, kind: string): string => {
+      const re = /<Relationship\b[^>]*>/g;
+      let rm: RegExpExecArray | null;
+      while ((rm = re.exec(relsXml)) !== null) {
+        const tg = rm[0].match(/\bTarget="([^"]*)"/);
+        if (tg && tg[1].indexOf(kind) >= 0) return tg[1].replace(/^(\.\.\/)+/, "ppt/");
+      }
+      return "";
+    };
+    const bulletDefaultOf = (slideName: string): boolean => {
+      const sRels = relText[slideName.replace(/^ppt\/slides\//, "ppt/slides/_rels/") + ".rels"] || "";
+      const layout = relTarget(sRels, "slideLayouts/");
+      if (!layout) return false;
+      const lRels = partText(layout.replace(/^ppt\/slideLayouts\//, "ppt/slideLayouts/_rels/") + ".rels");
+      const master = relTarget(lRels, "slideMasters/");
+      let def = false;
+      if (master) {
+        const bs = (partText(master).match(/<p:bodyStyle>[\s\S]*?<\/p:bodyStyle>/) || [""])[0];
+        const l1 = (bs.match(/<a:lvl1pPr\b[^>]*\/>|<a:lvl1pPr\b[\s\S]*?<\/a:lvl1pPr>/) || [""])[0];
+        def = /<a:bu(?:Char|AutoNum|Blip)\b/.test(l1) && !/<a:buNone\b/.test(l1);
+      }
+      // a layout body placeholder may override the master
+      const lx = partText(layout);
+      const spRe = /<p:sp\b[\s\S]*?<\/p:sp>/g;
+      let sm: RegExpExecArray | null;
+      while ((sm = spRe.exec(lx)) !== null) {
+        const ph = sm[0].match(/<p:ph\b([^>]*)>/);
+        if (!ph || /type="(?!body|obj)/.test(ph[1])) continue;
+        const l1 = (sm[0].match(/<a:lvl1pPr\b[^>]*\/>|<a:lvl1pPr\b[\s\S]*?<\/a:lvl1pPr>/) || [""])[0];
+        if (/<a:buNone\b/.test(l1)) def = false;
+        else if (/<a:bu(?:Char|AutoNum|Blip)\b/.test(l1)) def = true;
+      }
+      return def;
+    };
+    const sldSz = (partText("ppt/presentation.xml").match(/<p:sldSz\b[^>]*\bcy="(\d+)"/) || ["", "6858000"])[1];
+    const slideCy = parseInt(sldSz, 10) || 6858000;
     for (const e of slides) {
-      const xml = utf8ToString(extractEntry(bytes, e));
+      let xml = utf8ToString(extractEntry(bytes, e));
       const imgs = prefix ? slideImages(e.name, xml) : "";
-      const hit = findTitleShape(xml);
+      let hit = findTitleShape(xml);
+      // v2.5 (TP-1): a slide without a title placeholder takes its
+      // TOPMOST short text shape as the heading — the decks' hand-drawn
+      // section labels ("Coordinate Configuration Tests") sit above
+      // their table visually but after it in z-order, so they used to
+      // land as a stray paragraph below the table
+      if (!hit) hit = findTopLabel(xml, slideCy);
       const title = hit ? hit.text : "";
       // v1.9 (SC-2): display number = position in presentation order
       // v2.0 (SB-6): \u0001 = generated-heading sentinel (see stripOoxml)
       const heading = "\n\u0001## Slide " + (slideDisplay[e.name] || slideNum(e.name)) + (title ? " — " + title : "") + "\n";
-      const body = hit && title ? xml.slice(0, hit.start) + xml.slice(hit.end) : xml;
+      let body = hit && title ? xml.slice(0, hit.start) + xml.slice(hit.end) : xml;
+      if (bulletDefaultOf(e.name)) body = markInheritedBullets(body);
       // v2.2 (DL-1): collapse a drawn diagram's floating label shapes
       // into one [figure: ...] line (notes parts are prose — untouched)
       const fig = collapseFigureLabels(body);
@@ -306,8 +390,53 @@ function main(workbook: ExcelScript.Workbook, zipBase64: string, mediaPrefix?: s
   const mediaNames: string[] = [];
   for (const k in mediaSet) mediaNames.push(k);
   const core = readCoreProps(bytes, entries);
+  // v2.5 (DL-2): word/numbering.xml — numId → ilvl → numFmt, so
+  // ordered lists render as "1. " items instead of bullets
+  let numFmt: { [numId: string]: { [ilvl: string]: string } } | undefined;
+  const styleNum: { [styleId: string]: { numId: string; ilvl: string } } = {};
+  if (isDocx) {
+    // list STYLES (word/styles.xml): a style whose pPr carries numPr
+    // makes every paragraph of that style a list item
+    const stEnt = entries.filter((x) => x.name === "word/styles.xml")[0];
+    if (stEnt) {
+      const sx = utf8ToString(extractEntry(bytes, stEnt));
+      const sRe = /<w:style\b[^>]*w:styleId="([^"]+)"[\s\S]*?<\/w:style>/g;
+      let smx: RegExpExecArray | null;
+      while ((smx = sRe.exec(sx)) !== null) {
+        const np = smx[0].match(/<w:numPr>[\s\S]*?<\/w:numPr>/);
+        if (!np) continue;
+        const ni = np[0].match(/<w:numId [^>]*w:val="(\d+)"/);
+        const il = np[0].match(/<w:ilvl [^>]*w:val="(\d+)"/);
+        if (ni) styleNum[smx[1]] = { numId: ni[1], ilvl: il ? il[1] : "0" };
+      }
+    }
+    const numEnt = entries.filter((x) => x.name === "word/numbering.xml")[0];
+    if (numEnt) {
+      const nx = utf8ToString(extractEntry(bytes, numEnt));
+      const abs: { [id: string]: { [ilvl: string]: string } } = {};
+      const aRe = /<w:abstractNum\b[^>]*w:abstractNumId="(\d+)"[\s\S]*?<\/w:abstractNum>/g;
+      let am: RegExpExecArray | null;
+      while ((am = aRe.exec(nx)) !== null) {
+        const lv: { [ilvl: string]: string } = {};
+        const lRe = /<w:lvl\b[^>]*w:ilvl="(\d+)"[\s\S]*?<\/w:lvl>/g;
+        let lm: RegExpExecArray | null;
+        while ((lm = lRe.exec(am[0])) !== null) {
+          const f = lm[0].match(/<w:numFmt [^>]*w:val="([^"]+)"/);
+          lv[lm[1]] = f ? f[1] : "";
+        }
+        abs[am[1]] = lv;
+      }
+      numFmt = {};
+      const nRe = /<w:num\b[^>]*w:numId="(\d+)"[\s\S]*?<\/w:num>/g;
+      let nm: RegExpExecArray | null;
+      while ((nm = nRe.exec(nx)) !== null) {
+        const a = nm[0].match(/<w:abstractNumId [^>]*w:val="(\d+)"/);
+        if (a && abs[a[1]]) numFmt[nm[1]] = abs[a[1]];
+      }
+    }
+  }
   return {
-    text: stripOoxml(xmlParts.join("\n")),
+    text: stripOoxml(xmlParts.join("\n"), isDocx ? { numFmt: numFmt || {}, styleNum: styleNum } : undefined),
     rels: relParts.join("\n"),
     parts: contentNames.length + relsNames.length,
     kind: kind,
@@ -491,6 +620,76 @@ function findTitleShape(xml: string): TitleHit | null {
   return null;
 }
 
+// v2.5 (TP-1): the topmost short text shape of a title-less slide.
+// Candidates: a top-level p:sp (not inside a group) that is not a
+// placeholder of another kind, holding ONE paragraph of 2–12 words
+// (≤ 80 chars, no sentence-ending punctuation), positioned in the top
+// fifth of the slide. Smallest y wins, then smallest x.
+function findTopLabel(xml: string, slideCy: number): TitleHit | null {
+  const groups: Array<[number, number]> = [];
+  const gRe = /<p:grpSp\b[\s\S]*?<\/p:grpSp>/g;
+  let gm: RegExpExecArray | null;
+  while ((gm = gRe.exec(xml)) !== null) groups.push([gm.index, gm.index + gm[0].length]);
+  const inGroup = (at: number): boolean => {
+    for (const g of groups) if (at > g[0] && at < g[1]) return true;
+    return false;
+  };
+  const spRe = /<p:sp\b[\s\S]*?<\/p:sp>/g;
+  let best: { text: string; start: number; end: number; y: number; x: number } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = spRe.exec(xml)) !== null) {
+    if (inGroup(m.index)) continue;
+    const block = m[0];
+    const ph = block.match(/<p:ph\b([^>]*)>/);
+    if (ph && /type="(?!body|obj)/.test(ph[1])) continue;
+    const off = block.match(/<a:off\b[^>]*\bx="(-?\d+)"[^>]*\by="(-?\d+)"/);
+    if (!off) continue;
+    const y = parseInt(off[2], 10);
+    const x = parseInt(off[1], 10);
+    if (y > slideCy * 0.2) continue;
+    const paras = (block.match(/<a:p\b[\s\S]*?<\/a:p>/g) || []).filter((pp) => /<a:t>[^<]*\S[^<]*<\/a:t>/.test(pp));
+    if (paras.length !== 1) continue;
+    const texts: string[] = [];
+    const tre = /<a:t>([^<]*)<\/a:t>/g;
+    let tm: RegExpExecArray | null;
+    while ((tm = tre.exec(paras[0])) !== null) {
+      const v = tm[1].trim();
+      if (v) texts.push(v);
+    }
+    const text = texts.join(" ").replace(/[|#]/g, " ").replace(/\s+/g, " ").trim();
+    const words = text.split(" ").length;
+    if (text.length > 80 || words < 2 || words > 12 || /[.;!?]$/.test(text)) continue;
+    if (!best || y < best.y || (y === best.y && x < best.x)) {
+      best = { text: text, start: m.index, end: m.index + block.length, y: y, x: x };
+    }
+  }
+  return best ? { text: best.text, start: best.start, end: best.end } : null;
+}
+
+// v2.5 (IB-1): spell out the inherited bullet on body-placeholder
+// paragraphs so the paragraph pass renders them as "- " items. Only
+// level-0 paragraphs with text and no explicit bullet property are
+// touched; buNone (an author's opt-out) is honoured.
+function markInheritedBullets(xml: string): string {
+  return xml.replace(/<p:sp\b[\s\S]*?<\/p:sp>/g, (sp) => {
+    const ph = sp.match(/<p:ph\b([^>]*)>/);
+    if (!ph || /type="(?!body|obj)/.test(ph[1])) return sp;
+    return sp.replace(/<a:p\b[\s\S]*?<\/a:p>/g, (para) => {
+      if (!/<a:t>[^<]*\S[^<]*<\/a:t>/.test(para)) return para;
+      if (/<a:bu(?:None|Char|AutoNum|Blip)\b/.test(para)) return para;
+      const lm = para.match(/<a:pPr\b[^>]*\blvl="(\d)"/);
+      if (lm && parseInt(lm[1], 10) >= 1) return para;
+      if (/<a:pPr\b[^>]*\/>/.test(para)) {
+        return para.replace(/<a:pPr\b([^>]*)\/>/, '<a:pPr$1><a:buChar char="•"/></a:pPr>');
+      }
+      if (/<a:pPr\b[^>]*>/.test(para)) {
+        return para.replace(/(<a:pPr\b[^>]*>)/, '$1<a:buChar char="•"/>');
+      }
+      return para.replace(/^(<a:p\b[^>]*>)/, '$1<a:pPr><a:buChar char="•"/></a:pPr>');
+    });
+  });
+}
+
 // v2.2 (DL-1): collapse a drawn diagram's label shapes.
 // Test-plan slides draw route diagrams as shapes: dashed/hatched
 // connector lines (p:cxnSp, textless) annotated by dozens of tiny
@@ -593,10 +792,16 @@ function renderTables(xml: string, ns: string): string {
     }
     t = t.replace(inner, (tbl) => {
       const rows = tbl.split(new RegExp("<" + ns + ":tr\\b"));
-      const grid: string[][] = [];
+      // v2.5 (CP-1): a cell is a LIST OF PARAGRAPHS, not one string —
+      // the old blanket tag strip joined a cell's bullet points with a
+      // space, so a "Positive Tests: Gapped Routes" cell holding nine
+      // test cases rendered as one 900-character run-on nobody could
+      // split again (62 of 178 test-plan sidecars).
+      const grid: string[][][] = [];
+      let multi = false;
       for (let i = 1; i < rows.length; i++) {
         const cells = rows[i].split(new RegExp("<" + ns + ":tc\\b"));
-        const line: string[] = [];
+        const line: string[][] = [];
         for (let j = 1; j < cells.length; j++) {
           const raw = cells[j];
           const opener = (raw.match(/^[^>]*/) || [""])[0];
@@ -609,14 +814,20 @@ function renderTables(xml: string, ns: string): string {
           const gs = opener.match(/gridSpan="(\d+)"/) ||
                      raw.match(new RegExp("<" + ns + ':gridSpan [^>]*val="(\\d+)"'));
           if (gs) span = parseInt(gs[1], 10);
-          const c = raw
-            .replace(/^[^>]*>/, "")
-            .replace(/<[^>]+>/g, " ")
-            .replace(/\|/g, "\\|")          // escape pipes for markdown
-            .replace(/\s+/g, " ")
-            .trim();
-          line.push(c);
-          for (let s = 1; s < span; s++) line.push("");  // pad merged columns
+          const paras: string[] = [];
+          const chunks = raw.replace(/^[^>]*>/, "")
+            .split(/<\/a:p>|<\/w:p>|<a:br\b[^>]*\/>|<w:br\b[^>]*\/>/);
+          for (const ch of chunks) {
+            const c = ch
+              .replace(/<[^>]+>/g, " ")
+              .replace(/\|/g, "\\|")          // escape pipes for markdown
+              .replace(/\s+/g, " ")
+              .trim();
+            if (c !== "") paras.push(c);
+          }
+          if (paras.length > 1) multi = true;
+          line.push(paras);
+          for (let s = 1; s < span; s++) line.push([]);  // pad merged columns
         }
         if (line.length > 0) grid.push(line);
       }
@@ -625,9 +836,29 @@ function renderTables(xml: string, ns: string): string {
       // argument limit (RangeError) at ~65k rows
       let width = 0;
       for (const r of grid) if (r.length > width) width = r.length;
+      // v2.5 (CP-1): a SINGLE-COLUMN table whose cells hold several
+      // paragraphs is a labelled list wearing a table border (the
+      // decks' "Positive Tests: <group>" boxes): render the first cell
+      // as a bold label and every further paragraph as a bullet — the
+      // shape the case detector reads and every renderer shows the
+      // same way. Multi-column cells keep their paragraphs on <br>
+      // (GFM line breaks inside a cell; decided 2026-09-05).
+      if (width === 1 && multi) {
+        const out: string[] = [];
+        let first = true;
+        for (const r of grid) {
+          for (const para of r[0] || []) {
+            if (first) { out.push("**" + para + "**"); first = false; }
+            else out.push("- " + para);
+          }
+        }
+        return "\n\n" + out.join("\n") + "\n\n";
+      }
       const md: string[] = [];
       for (let i = 0; i < grid.length; i++) {
-        const r = grid[i].slice();
+        // \u0002 = cell line-break sentinel: becomes "<br>" after the
+        // blanket tag strip (which would otherwise eat a literal <br>)
+        const r = grid[i].map((paras) => paras.join("\u0002"));
         while (r.length < width) r.push("");
         md.push("| " + r.join(" | ") + " |");
         if (i === 0) {
@@ -782,7 +1013,14 @@ function fenceCode(text: string): string {
   return out.join("\n");
 }
 
-function stripOoxml(xml: string): string {
+interface DocxCtx {
+  numFmt: { [numId: string]: { [ilvl: string]: string } };
+  styleNum: { [styleId: string]: { numId: string; ilvl: string } };
+}
+
+function stripOoxml(xml: string, ctx?: DocxCtx): string {
+  const numFmt = ctx ? ctx.numFmt : undefined;
+  const styleNum = ctx ? ctx.styleNum : {};
   let t = xml;
   // kill duplicate renderings: AlternateContent serves Choice AND Fallback
   t = t.replace(/<mc:Fallback>[\s\S]*?<\/mc:Fallback>/g, "");
@@ -808,20 +1046,84 @@ function stripOoxml(xml: string): string {
   // docx: Heading1..6/Title styles -> markdown headings shifted one
   // level down (the sidecar's H1 belongs to the flow-composed header);
   // numbered/bulleted paragraphs -> nested "- " items by w:ilvl.
-  t = t.replace(/<w:p\b(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g, (p) => {
-    const ppr = (p.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/) || [""])[0];
-    const hs = ppr.match(/<w:pStyle [^>]*w:val="Heading([1-6])"/);
-    // \u0001 = generated-heading sentinel, consumed by the SB-6 pass
-    if (hs) return "\n\u0001" + "######".slice(0, Math.min(parseInt(hs[1], 10) + 1, 6)) + " " + p;
-    if (/<w:pStyle [^>]*w:val="Title"/.test(ppr)) return "\n\u0001## " + p;
-    if (ppr.indexOf("<w:numPr>") >= 0) {
-      const il = ppr.match(/<w:ilvl [^>]*w:val="(\d+)"/);
-      let indent = "";
-      for (let i = 0, lvl = il ? parseInt(il[1], 10) : 0; i < lvl; i++) indent += "  ";
-      return "\n" + indent + "- " + p;
+  // v2.5 (DL-2): the docx pass sees paragraphs as a SEQUENCE (a label
+  // needs its follower) and knows the numbering part (ordered lists
+  // render as "1. " items). Structure the corpus' docx plans actually
+  // carry — bold label paragraphs ("UI Tests – First Pane:",
+  // "Negative Tests:") instead of heading styles — becomes "### "
+  // headings so the sections exist.
+  {
+    const pRe = /<w:p\b(?:(?!<w:p\b)[\s\S])*?<\/w:p>/g;
+    const paras: Array<{ start: number; end: number; xml: string }> = [];
+    let pm: RegExpExecArray | null;
+    while ((pm = pRe.exec(t)) !== null) paras.push({ start: pm.index, end: pm.index + pm[0].length, xml: pm[0] });
+    const textOf = (p: string): string => {
+      const parts: string[] = [];
+      const tre = /<w:t\b[^>]*>([^<]*)<\/w:t>/g;
+      let tm: RegExpExecArray | null;
+      while ((tm = tre.exec(p)) !== null) parts.push(tm[1]);
+      return parts.join("").replace(/\s+/g, " ").trim();
+    };
+    const allBold = (p: string): boolean => {
+      const runs = p.match(/<w:r\b[\s\S]*?<\/w:r>/g) || [];
+      let seen = 0;
+      for (const r of runs) {
+        if (!/<w:t\b[^>]*>[^<]*\S/.test(r)) continue;
+        seen++;
+        const rpr = (r.match(/<w:rPr\b[\s\S]*?<\/w:rPr>/) || [""])[0];
+        if (!/<w:b\b(?![^>]*w:val="(?:0|false)")/.test(rpr)) return false;
+      }
+      return seen > 0;
+    };
+    // a list item carries its numPr directly, or through its paragraph
+    // style (python-docx / Word "List Bullet" / "List Number" styles)
+    const listOf = (p: string): { numId: string; ilvl: string } | null => {
+      const ppr = (p.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/) || [""])[0];
+      if (ppr.indexOf("<w:numPr>") >= 0) {
+        const il = ppr.match(/<w:ilvl [^>]*w:val="(\d+)"/);
+        const ni = ppr.match(/<w:numId [^>]*w:val="(\d+)"/);
+        return { numId: ni ? ni[1] : "", ilvl: il ? il[1] : "0" };
+      }
+      const st = ppr.match(/<w:pStyle [^>]*w:val="([^"]+)"/);
+      if (st && styleNum[st[1]]) return styleNum[st[1]];
+      return null;
+    };
+    const hasNum = (p: string): boolean => listOf(p) !== null;
+    const out: string[] = [];
+    let cursor = 0;
+    for (let i = 0; i < paras.length; i++) {
+      const p = paras[i].xml;
+      out.push(t.slice(cursor, paras[i].start));
+      cursor = paras[i].end;
+      const ppr = (p.match(/<w:pPr\b[\s\S]*?<\/w:pPr>/) || [""])[0];
+      const hs = ppr.match(/<w:pStyle [^>]*w:val="Heading([1-6])"/);
+      // \u0001 = generated-heading sentinel, consumed by the SB-6 pass
+      if (hs) { out.push("\n\u0001" + "######".slice(0, Math.min(parseInt(hs[1], 10) + 1, 6)) + " " + p); continue; }
+      if (/<w:pStyle [^>]*w:val="Title"/.test(ppr)) { out.push("\n\u0001## " + p); continue; }
+      const li = listOf(p);
+      if (li) {
+        const lvl = parseInt(li.ilvl, 10) || 0;
+        let indent = "";
+        for (let k = 0; k < lvl; k++) indent += "  ";
+        const fmt = li.numId && numFmt && numFmt[li.numId] ? (numFmt[li.numId][String(lvl)] || "") : "";
+        const ordered = fmt !== "" && fmt !== "bullet" && fmt !== "none";
+        out.push("\n" + indent + (ordered ? "1. " : "- ") + p);
+        continue;
+      }
+      const text = textOf(p);
+      if (text.length >= 2 && text.length <= 60 && !/[.!?]$/.test(text)) {
+        let nextHasText = -1;
+        for (let j = i + 1; j < paras.length; j++) {
+          if (textOf(paras[j].xml) !== "") { nextHasText = j; break; }
+        }
+        const labelColon = /:$/.test(text) && nextHasText >= 0 && hasNum(paras[nextHasText].xml);
+        if (allBold(p) || labelColon) { out.push("\n\u0001### " + p); continue; }
+      }
+      out.push(p);
     }
-    return p;
-  });
+    out.push(t.slice(cursor));
+    t = out.join("");
+  }
   // pptx: explicit outline level (lvl>=1) or explicit bullet props ->
   // nested "- " items. lvl-0 bullets inherited from the layout/master
   // are invisible in slide XML, so those paragraphs stay plain lines.
@@ -837,6 +1139,8 @@ function stripOoxml(xml: string): string {
   t = t.replace(/<\/w:p>|<\/w:tc>|<\/a:p>|<w:br\b[^>]*>|<w:cr\b[^>]*>|<a:br\b[^>]*>/g, "\n");
   t = t.replace(/<w:tab\/>/g, "\t");
   t = t.replace(/<[^>]+>/g, "");
+  // v2.5 (CP-1): multi-paragraph table cells keep their breaks as <br>
+  t = t.replace(/\u0002/g, "<br>");
   // v2.0 (SB-6): escape content heading markers (## through ######
   // collide with the generated "## Slide N"/"### Notes"/docx-style
   // sections; v1.9's SC-10 escape below covers only a single #).

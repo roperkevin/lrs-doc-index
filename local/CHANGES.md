@@ -1,5 +1,38 @@
 # Local sweep — release notes
 
+## extract 2 (2026-09-05 — ZipTextExtract v2.5 + pdf re-flow; sweep v1.50, Sidecar_Format_Plan phase 2)
+
+**Structure the extractor used to throw away.** The review found the
+biggest test-case defect UPSTREAM of any parser: `ZipTextExtract`
+joined every paragraph inside a table cell with a space, so a
+"Positive Tests: Gapped Routes" cell holding nine cases became one
+900-character run-on (62 of 178 plans). Four extractor fixes and one
+pdf fix, each with a purpose-built fixture:
+
+- **CP-1** cell paragraphs — single-column label boxes render as
+  `**label**` + one `- ` bullet per paragraph (the shape the phase-3
+  case detector reads); multi-column cells join on `<br>` (decided
+  2026-09-05).
+- **IB-1** inherited body-placeholder bullets resolved slide → layout
+  → master; `buNone` honoured.
+- **TP-1** title-less slides take their topmost short text shape as
+  the heading (z-order no longer puts a section label under its table).
+- **DL-2** docx bold-label / ":"-label paragraphs become `### `
+  headings; list items via paragraph styles too; ordered lists render
+  `1. `.
+- sweep **v1.50**: `unwrapPdfText` (`local/lib/util.mjs`) re-flows
+  pdftotext's column-wrapped lines (sentence continues in lowercase,
+  hyphen breaks; list starts, headings and blanks never join).
+
+Gates: `check_format.py` §13 (cells_deck.pptx + labels.docx from
+`make_fixtures.py`: 16 assertions), every pre-existing fixture
+byte-identical, `check_typecheck.py`, `check_local_sweep.py`,
+`check_figures.py`, `check_regex.py`, `render_sample.py`.
+
+ROLLOUT: `--reformat --live` (re-extracts every body; no AI). Run it
+once after phase 1's format-3.0 reformat — or let one reformat carry
+both.
+
 ## naming 1b (2026-09-05 — `<issue>-<slug>.md`, media/<stem>/, `--rename`; sweep v1.49, slug v1.0, Sidecar_Format_Plan phase 1b)
 
 **One filename convention, decided 2026-09-05: issue-number prefix on,

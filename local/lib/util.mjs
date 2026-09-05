@@ -128,3 +128,29 @@ export function exportListSnapshots(cfg, snapshots, keep = 14) {
     return null;
   }
 }
+
+/** v2.5 (PDF-1, Sidecar_Format_Plan §4.5): re-flow pdftotext output.
+ *  A line joins the next one when it does not end a sentence and the
+ *  next line continues it in lowercase (or the current line breaks on
+ *  a hyphen). List starts, headings and blank lines never join, so a
+ *  numbered case list survives while its wrapped sentences re-flow. */
+export function unwrapPdfText(text) {
+  const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  const listStart = /^\s*(?:\d{1,3}[a-z]?[.)]|[a-z][.)]|[-•●▪◦*])\s+/;
+  for (let i = 0; i < lines.length; i++) {
+    let cur = lines[i].replace(/\s+$/, "");
+    while (i + 1 < lines.length) {
+      const nxt = lines[i + 1];
+      const nt = nxt.trim();
+      const ct = cur.trim();
+      if (ct === "" || nt === "" || listStart.test(nxt)) break;
+      if (/[.:;!?)]$/.test(ct)) break;
+      if (/\w-$/.test(ct) && /^[a-z]/.test(nt)) { cur = ct.slice(0, -1) + nt; i++; continue; }
+      if (/^[a-z(]/.test(nt)) { cur = ct + " " + nt; i++; continue; }
+      break;
+    }
+    out.push(cur);
+  }
+  return out.join("\n");
+}

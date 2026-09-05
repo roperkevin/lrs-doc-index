@@ -1040,3 +1040,63 @@ _central3 = struct.pack('<IHHHHHHIIIHHHHHII', 0x02014b50, 20, 20, 0, 8, 0, 0,
 _eocd3 = struct.pack('<IHHHHIIH', 0x06054b50, 0, 0, 1, 1, len(_central3), _cdo3, 0)
 open('storednlen_img.pptx', 'wb').write(_local3 + _central3 + _eocd3)
 _b64('storednlen_img.pptx')
+
+
+# ---- v2.5 (Sidecar_Format_Plan phase 2): structure fixtures ---------------
+# cells_deck.pptx — CP-1 cell paragraphs (single-column label box →
+# bold label + bullets; multi-column cell → <br>), TP-1 topmost label
+# of a title-less slide becomes the heading even though it sits AFTER
+# the table in z-order, IB-1 inherited body-placeholder bullets (with
+# one explicit buNone opt-out).
+from pptx.oxml.ns import qn as _qn
+from lxml import etree as _et
+prs_v = Presentation()
+s_v1 = prs_v.slides.add_slide(prs_v.slide_layouts[6])            # blank: no title placeholder
+_t1 = s_v1.shapes.add_table(2, 1, Inches(0.5), Inches(1.5), Inches(6), Inches(2)).table
+_t1.cell(0, 0).text = 'Positive Tests: Normal Routes'
+_tf = _t1.cell(1, 0).text_frame
+_tf.text = 'Correct line order of 100, 200, 300, 400 on a normal line'
+for _txt in ('Correct line order of 300, 400, 500, 600 on a normal line',
+             'Time sliced routes, first slice 100, 200 and second 300, 400'):
+    _tf.add_paragraph().text = _txt
+_t2 = s_v1.shapes.add_table(2, 3, Inches(0.5), Inches(4), Inches(6), Inches(1.5)).table
+for _c, _h in enumerate(('#', 'Test', 'Expected result')):
+    _t2.cell(0, _c).text = _h
+_t2.cell(1, 0).text = 'A-1'
+_t2.cell(1, 1).text = 'Toggle is present'
+_tf2 = _t2.cell(1, 2).text_frame
+_tf2.text = 'Toggle shown'
+_tf2.add_paragraph().text = 'Default OFF'
+# the section label: drawn last (top of z-order) but positioned at the top
+s_v1.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(6), Inches(0.6)).text_frame.text = 'Coordinate Configuration Tests'
+s_v1.shapes.add_textbox(Inches(0.5), Inches(6.2), Inches(6), Inches(0.6)).text_frame.text = 'Footnote below the tables'
+s_v2 = prs_v.slides.add_slide(prs_v.slide_layouts[1])            # title + content
+s_v2.shapes.title.text = 'Acceptance Criteria'
+_body = s_v2.placeholders[1].text_frame
+_body.text = 'Shows only for an UN-APR dataset'
+_body.add_paragraph().text = 'Allow turning these layers ON and OFF'
+_opt = _body.add_paragraph()
+_opt.text = 'Plain note with the bullet turned off'
+_ppr = _opt._p.get_or_add_pPr()
+_ppr.append(_et.SubElement(_ppr, _qn('a:buNone')))
+prs_v.save('cells_deck.pptx')
+_b64('cells_deck.pptx')
+
+# labels.docx — DL-2: bold label paragraphs and ":"-labels followed by a
+# list become "### " headings; List Number renders as "1. "; a long
+# bold sentence and a plain paragraph stay as they are.
+doc_l = Document()
+doc_l.add_paragraph().add_run('UI Tests – First Pane').bold = True
+doc_l.add_paragraph('Verify the Open Type is set from the configuration', style='List Bullet')
+doc_l.add_paragraph('Verify the Attribute Set is as configured', style='List Bullet')
+doc_l.add_paragraph('Negative Tests:')
+doc_l.add_paragraph('Verify Next is disabled when a required field is empty', style='List Bullet')
+doc_l.add_paragraph('Steps to reproduce:')
+doc_l.add_paragraph('Open the widget', style='List Number')
+doc_l.add_paragraph('Pick a route', style='List Number')
+doc_l.add_paragraph().add_run('This whole sentence is bold but far too long to be a section label in any document.').bold = True
+doc_l.add_paragraph('A plain paragraph that ends with a colon but has no list after it:')
+doc_l.add_paragraph('Just prose here.')
+doc_l.save('labels.docx')
+_b64('labels.docx')
+print('v2.5 fixtures:', {f: os.path.getsize(f) for f in ('cells_deck.pptx', 'labels.docx')})

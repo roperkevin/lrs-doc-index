@@ -46,7 +46,7 @@ keeps the old yaml-on-top layout).
 | flow/DocIndexSweep_v2_7_fix.zip | Repair import package (live-export skeleton, PV-1 scrubbed, + the v2.7-fix definition — payload byte-identical to the folder) | v2.7-fix |
 | flow/DocIndexSweep_v2_8.zip | Import package (the 2026-08-13 live export's OWN skeleton, PV-1 scrubbed, + the v2.8 definition — payload byte-identical to the folder) | v2.8 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse | v2.4 (deployed — the local sweep runs it directly) |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse + (v2.5) cell paragraphs, inherited bullets, top-label headings, docx label headings + ordered lists | v2.5 (the local sweep runs it directly) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/SlideFigures.ts | pptx slide diagrams → standalone SVG figures (vector slides rendered from true coordinates; raster slides redrawn from the slide's stated topology + measures; UI screenshots — PNG in every variant, baseline JPEG, GIF, BMP — as standardized wireframes, with real OCR'd text when the sweep's Tesseract lane feeds transcriptions in) | v2.4 (deployed — the local sweep runs it directly) |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
@@ -123,7 +123,7 @@ keeps the old yaml-on-top layout).
 | local/gantt.mjs | **Flow #2 as a local job**: Gantt schedules → Issue Refs rows + gantt/titlematch edges (IssueKey/LinkKey dedup, ambiguity-guarded title matching; dry-run default) | v1.0 (first live run pending — STATUS action 13c) |
 | local/run_heartbeat.cmd | Dead-man scheduled task: `sweep.mjs --check-heartbeat` alerts when no successful sweep is recorded within `alerts.maxSilentHours` | — |
 | local/Case_Index_Plan.md | Test-case indexing — design record + phased build order (ALL phases shipped: schema, parser, gate, sweep wiring incl. `--recase`, the `_Case Catalog.md` browse page, gap-report case tracing; list created on tenant — the open step is the sweep machine's config line + one `--recase --live`, Local_Setup §12) | — |
-| local/Sidecar_Format_Plan.md | Sidecar format review + enhancement plan — metadata table (no yaml block), filename convention (`<issue>-<slug>.md`), extractor structure fixes, one test-case grammar, six-shape case detector, phased rollout with decisions log | phases 0–1b shipped |
+| local/Sidecar_Format_Plan.md | Sidecar format review + enhancement plan — metadata table (no yaml block), filename convention (`<issue>-<slug>.md`), extractor structure fixes, one test-case grammar, six-shape case detector, phased rollout with decisions log | phases 0–2 shipped |
 | local/lib/slug.mjs + local/slug_abbreviations.json | Sidecar stems (`<issue>-<slug>[-qualifier]`): kind-word strip, glossary abbreviations, cap, primary issue, incremental + batch minting; `_Manifest.json` is the id→file lookup | v1.0 |
 | local/harness/check_slug.py | Stem-rule gate (CI) | v1.0 |
 | local/lib/sidecarmeta.mjs | Format-3.0 metadata table: renderer + the shared readers (`readMeta`, `metaList`, `relEntries`) that also read the legacy yaml frames | v1.0 |

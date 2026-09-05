@@ -54,7 +54,7 @@ import { classifyDoc } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.mjs";
 import {
   lower, cut, folderOf, yamlEscape, stripQuotes, pipeToSlash, fmtDate,
-  quoteYamlItem, htmlToText, num, hyperlink, urlToLocal, folderToLocal,
+  quoteYamlItem, htmlToText, num, hyperlink, urlToLocal, folderToLocal, unwrapPdfText,
   pruneRunLogs, exportListSnapshots,
 } from "./lib/util.mjs";
 import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
@@ -266,7 +266,9 @@ function extractDocText({ sw, cfg, op, writer, pdfTool, ocrTools, setStep, local
     if (r.status !== 0) {
       throw new Error(`pdftotext exit ${r.status}: ${cut(String(r.stderr || ""), 300)}`);
     }
-    docText = String(r.stdout || "").trim() === "" ? "" : r.stdout;
+    // v2.5 (PDF-1): re-flow the column-wrapped lines so a case reads
+    // as one sentence instead of four fragments
+    docText = String(r.stdout || "").trim() === "" ? "" : unwrapPdfText(r.stdout);
     lane = "plaintext";
     // OCR lane (v1.36, opt-in via sweep.tesseractPath): a text-less
     // PDF is usually a scan — render pages with pdftoppm and OCR them

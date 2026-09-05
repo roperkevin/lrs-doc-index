@@ -406,6 +406,47 @@ s2 = dt[slide2_at:]
 check('[figure:' not in s2 and all(l in s2.split('\n') for l in ('A1', 'B2', 'C3')),
       'diagram_deck: 3 floating labels stay inline (below the cluster threshold)')
 
+# ---- 13: the v2.5 behaviors (ZipTextExtract v2.5 — Sidecar_Format_Plan
+# phase 2: CP-1 cell paragraphs, TP-1 top-label headings, IB-1 inherited
+# bullets, DL-2 docx labels + ordered lists) --------------------------------
+vt = run_node('zte_cur.ts', 'cells_deck.pptx.b64', '')['out']['text']
+vlines = [ln.rstrip() for ln in vt.split('\n')]
+check('## Slide 1 — Coordinate Configuration Tests' in vlines,
+      'cells_deck: title-less slide takes its topmost short label as the heading (TP-1)')
+check('Coordinate Configuration Tests' not in vt.replace('## Slide 1 — Coordinate Configuration Tests', ''),
+      'cells_deck: the promoted label is spliced out of the body (no duplicate)')
+check('Footnote below the tables' in vt, 'cells_deck: a lower textbox is not promoted')
+check('**Positive Tests: Normal Routes**' in vlines,
+      'cells_deck: single-column label box renders as a bold label (CP-1)')
+check('- Correct line order of 100, 200, 300, 400 on a normal line' in vlines and
+      '- Correct line order of 300, 400, 500, 600 on a normal line' in vlines and
+      '- Time sliced routes, first slice 100, 200 and second 300, 400' in vlines,
+      'cells_deck: every cell paragraph is its own bullet (no run-on cell)')
+check('| A-1 | Toggle is present | Toggle shown<br>Default OFF |' in vlines,
+      'cells_deck: multi-column cell paragraphs join on <br>')
+check('| # | Test | Expected result |' in vlines, 'cells_deck: multi-column table keeps its header row')
+s2v = vt[vt.index('## Slide 2'):]
+check('- Shows only for an UN-APR dataset' in s2v and '- Allow turning these layers ON and OFF' in s2v,
+      'cells_deck: body-placeholder paragraphs render with the master\'s inherited bullet (IB-1)')
+check('Plain note with the bullet turned off' in s2v and '- Plain note with the bullet turned off' not in s2v,
+      'cells_deck: an explicit buNone paragraph stays plain')
+
+lt = run_node('zte_cur.ts', 'labels.docx.b64', '')['out']['text']
+llines = [ln.rstrip() for ln in lt.split('\n')]
+check('### UI Tests – First Pane' in llines, 'labels.docx: bold label paragraph becomes a ### heading (DL-2)')
+check('### Negative Tests:' in llines, 'labels.docx: a ":" label followed by a list becomes a ### heading')
+check('1. Open the widget' in llines and '1. Pick a route' in llines,
+      'labels.docx: List Number items render as ordered "1. " items')
+check('### Steps to reproduce:' in llines, 'labels.docx: a ":" label before an ordered list becomes a heading too')
+check('- Verify the Open Type is set from the configuration' in llines,
+      'labels.docx: List Bullet items still render as "- " items')
+check(any(ln.startswith('This whole sentence is bold but far too long') for ln in llines) and
+      not any(ln.startswith('### This whole sentence') for ln in llines),
+      'labels.docx: a long bold sentence is not a heading')
+check('A plain paragraph that ends with a colon but has no list after it:' in llines and
+      '### A plain paragraph' not in lt,
+      'labels.docx: a ":" paragraph with no list after it is not a heading')
+
 print()
 if failures:
     print(f'RESULT: FAIL — {len(failures)} assertion(s) failed')
