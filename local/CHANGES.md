@@ -1,5 +1,67 @@
 # Local sweep — release notes
 
+## sweep v1.59 (2026-09-05 — figure indexing + standardized figure names; figureindex v1.0, indexpages v1.3)
+
+Owner requests: "index the figures" and "prettify and standardize the
+file names". Design record: `local/Figure_Index_Plan.md`.
+
+- **Standardized media names** (`local/lib/figureindex.mjs`
+  `prettifyMedia`): every picture ZipTextExtract links is saved as
+  `fig-<NN>[-slide-<KK>][-<slug>].<ext>` — NN = ordinal among the
+  document's distinct source files, KK = the slide it first appears
+  on, slug = the slide title (or nearest docx heading) in kebab-case
+  capped at a word boundary and never ending on a stopword, `jpeg →
+  jpg`, extensions lower-cased. Minted from the extracted TEXT alone,
+  so the index path (bytes) and `--reformat` (files on disk, no
+  re-extraction) agree: a reformat MOVES `media/<stem>/image1.png` to
+  its standardized name and relinks the body (counter
+  `media_renamed`; `placeLegacyMedia` also sends pre-1b
+  `doc<id>_image1.png` straight to the new name); a second reformat is
+  a no-op. Alt texts become `Figure N — <title>` and a slide's links
+  go one per line (only the first of a shared line ever reached the
+  case parser's figure counter). Names are stem-independent, so
+  `--rename` is unchanged.
+- **The Figures list** (`schemas/SPList_Figures.csv`, the eighth
+  list; enabled by `sharePoint.lists.figures`): one row per figure of
+  every indexed document, from the sidecar body below the seam
+  (`extractFigures`) — Kind `image` (a pasted picture: standardized
+  FileName, Format, ImageUrl + clickable ImageLink via the SPO route,
+  Width/Height/Bytes from the file header on disk) or `diagram` (a
+  collapsed `[figure: …]` label line: the labels are the Caption, no
+  file); placement (SlideNo, Section + Anchor deep link, CaseNo when
+  inside a `### TC-…` section); Context (the section's prose, capped
+  by `sweep.figureIndex.contextCap`); Tools/Keywords from the curated
+  vocabulary (caseindex's matchers, rarest-first). `FigureKey =
+  {docRowId}|{ordinal}` replace-set identity; `diffCaseRows` grew a
+  `keyField` so both lists share one planner. `sweep.figureIndex.kinds`
+  `[]` = every kind (stories carry the mockups).
+- **Sweep wiring**: `syncFigures` after `syncCases` at index time, on
+  `--reformat` and on `--normalize-cases`; ghost pass prunes figure
+  rows; **`--refigure`** backfills the corpus from disk (standalone,
+  dry by default, no AI; orphans delete; live runs rebuild the
+  catalog); counters `figures_upserted` / `figures_removed` /
+  `figure_errors` / `figure_fields_dropped` and a **Figures** line on
+  the status page; the v1.56 missing-column dropper is now a shared
+  helper naming each list's schema and backfill flag; missing GUID =
+  one loud note, documents index normally, `--refigure` refuses
+  naming the fix. `--rename` now says to run `--refigure --live` too.
+  The Figures list rides the per-run list backup. Hosted sweep gains
+  the `refigure` mode.
+- **`_Figure Catalog.md`** (indexpages v1.3): figures grouped by
+  document, picture + section links, slide / case / size / caption.
+- Gates: new `check_figureindex.py` **46/46** (CI fixture-free job —
+  naming, index against the case grammar's own body, header sizing,
+  rows + planner); `check_local_sweep.py` gains the figure-index,
+  media-rename, refigure, figures-missing-column and figures-missing-
+  GUID legs (the media assertions now expect the standardized name).
+
+ROLLOUT (Local_Setup §14): create the Figures list (classic lookup),
+paste the GUID, `--reformat --live` (renames the corpus's media — the
+same pass the format-3.0 rollout needs), then `--refigure --live`
+once. Queued behind auth restore (STATUS action 12) like everything
+else. The standardized names take effect on every newly indexed
+document from this version on, list or no list.
+
 ## sweep v1.58 (2026-09-05 — SVG figure generation removed)
 
 The slide-diagram → SVG pipeline is gone from the project:

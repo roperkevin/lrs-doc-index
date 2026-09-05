@@ -17,6 +17,7 @@
       "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
       "issueRefs": "4d0e6561-80e3-49f4-aa20-e5889cc88414",
       "testCases": "ae9374ab-295a-4321-8afa-a83a08e17711",
+      "figures": "<create the Figures list per schemas/SPList_Figures.csv (Local_Setup §14) and paste its GUID; absent = figures not indexed>",
       "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
     }
   },
@@ -104,6 +105,11 @@
       "$comment": "Test-case indexing (Case_Index_Plan.md; sweep v1.42). Enabled by sharePoint.lists.testCases carrying the Test Cases list GUID — the list was created on lrsworkspace 2026-09-05 per schemas/SPList_TestCases.csv and its GUID is in the lists block above; a machine config missing the key indexes documents normally with one loud note. Backfill once with `sweep.mjs --recase --live` (Local_Setup §12). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text.",
       "kinds": ["Test Plan"],
       "caseTextCap": 4000
+    },
+    "figureIndex": {
+      "$comment": "Figure indexing (Figure_Index_Plan.md; sweep v1.59). Enabled by sharePoint.lists.figures carrying the Figures list GUID (schemas/SPList_Figures.csv); a config missing the key indexes documents normally with one loud note. Every indexed document's pasted pictures (media/<stem>/, now named fig-NN-slide-KK-<slug>.<ext>) and collapsed diagram labels become Figures rows — one replace-set per document, rebuilt by the nightly sweep, --reformat and the `sweep.mjs --refigure --live` backfill (Local_Setup §14). kinds = which DocKinds get figure rows ([] = all); contextCap bounds the per-figure skim text.",
+      "kinds": [],
+      "contextCap": 2000
     },
     "dryRun": true
   }

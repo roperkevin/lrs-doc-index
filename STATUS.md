@@ -40,6 +40,34 @@ each change belongs to the component CHANGES files.
   pre-v1.9 draft. Gate: `check_testplangen.py` **156/156**
   (leg 15), `check_caseindex.py` 78/78. Live effect lands with the
   §12 backfill (action 12 — same blocker as everything else).
+- **2026-09-05gg (figure indexing + standardized figure names —
+  sweep v1.59, figureindex v1.0, indexpages v1.3; authored on branch
+  `claude/figure-indexing-3n2o1b`; owner request):** every indexed
+  document's figures become rows in an EIGHTH list, **Figures**
+  (`schemas/SPList_Figures.csv`; design record
+  `local/Figure_Index_Plan.md`) — pasted pictures (standardized file
+  name, format, clickable ImageLink + ImageUrl, pixel size from the
+  file header, section/slide/anchor placement, the TC id when inside
+  a case section, skim Context, curated-vocabulary Tools/Keywords)
+  and collapsed `[figure: …]` diagram labels (Kind `diagram`, labels
+  as Caption) — FigureKey replace-sets, synced at index time, on
+  `--reformat`, on `--normalize-cases`, pruned by the ghost pass,
+  backfilled by the new standalone **`--refigure`**; `_Figure
+  Catalog.md` at the library root; counters + a status-page line;
+  missing GUID = loud note (the missing-column dropper is now shared
+  by both lists). AND the media files are named
+  **`fig-<NN>[-slide-<KK>][-<slug>].<ext>`** (ordinal, first slide,
+  slide-title slug, jpeg→jpg) from the extracted text alone, so the
+  nightly index writes them that way and `--reformat` MOVES a
+  legacy `image1.png` corpus to the rule without re-extraction
+  (`media_renamed`), byte-idempotent after. TENANT STEPS: create the
+  Figures list (classic lookup) + GUID in config; then
+  `--reformat --live` (the same pass §13 needs) and
+  `--refigure --live` once (Local_Setup §14) — queued behind action
+  12. Gates: new `check_figureindex.py` **46/46** (CI),
+  `check_local_sweep.py` **307/307** (figure-index, media-rename,
+  refigure, missing-column, missing-GUID legs), `check_caseindex.py`
+  87/87, `check_testplangen.py` 156/156, slug + storyprofile green.
 - **Pipeline: DOWN — auth expired** (open action 12): Conditional
   Access rejects device-code sign-in; fix is `"auth": "interactive"`
   + one console sign-in on the sweep machine. Nothing indexes until
@@ -403,6 +431,7 @@ v1.2 describes them — paste with the window, step 6).
 | check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
 | check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
 | check_testplangen.py (local/harness — testplangen.mjs v1.9: guard, lanes + G6 fallback, remaining-budget caps, fail-closed marker slice, verifier incl. draftlint↔check_draft_coverage agreement + grounding legs, lookup front door, notify, auto mode + provider override, issue trace, gap report incl. the v2.29 case-tracing + degrade legs, pinned lanes, figures incl. the link-absolutizing leg, web references, the v2.30 case-lane leg — routing, trimming, addendum, degrades; 156/156; CI fixture-free job) | 2026-09-05 (v2.30) |
+| check_figureindex.py (local/harness — figureindex.mjs v1.0: the naming rule (ordinal / first slide / slug cap + stopword trim / jpeg→jpg / one name per source file / one link per line / docx headings / fenced code / fixed point), the index against the case grammar's OWN body (image + diagram rows, TC attribution, captions, context, legacy paths, URL resolution, sizeOf plumbing, vocabulary tags), header sizing (PNG/GIF/BMP/JPEG/junk), row shaping + the FigureKey replace-set planner; 46/46; CI fixture-free job). Sweep-level figure legs (write contract incl. size-from-disk + SPO hyperlink, ghost pruning, idempotency, catalog + status line, reformat no-churn + media-rename convergence, --refigure, shared missing-column dropper, missing-GUID fail-soft) live in check_local_sweep.py | 2026-09-05 (v1.0) |
 | check_caseindex.py (local/harness — caseindex.mjs v1.2: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression + the 3–5-digit floor + the fenced-code trap, the v1.1 metadata legs (Shape/counts/RouteRefs/ExpectedResult/TraceText), the v1.2 vocabulary-tag legs (plan-title tool tagging, alias folding, word-boundary, fenced-vocab trap, no-vocab empty), the v1.3 legs (figure-link resolution incl. the collapsed-label no-link rule, rarest-first df ordering), the v1.4 legs (primary-figure hyperlink shaping incl. "(+N more)" and the figure-less clear, Url-only hyperlink diff), replace-set planner incl. SweptOn-never-dirties, caps; 68/68; CI fixture-free job). Sweep-level case-index legs (write contract incl. the v1.1–v1.4 columns, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, catalog + recase-rebuild) live in check_local_sweep.py, 237/237 | 2026-09-05 (v1.4) |
 | check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
 | check_draft2pptx.py (local/harness — draft2pptx.mjs v1.1: python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |
@@ -443,6 +472,10 @@ v1.2 describes them — paste with the window, step 6).
     classification H2 + scenario H3, specifics kept in the body, so
     sidecars carrying TC-1-shaped `## Case N — …` headings need this
     pass too) — still one pass for everything.
+    Since sweep v1.59 the same pass also renames every document's
+    media to the standardized `fig-NN-slide-KK-<slug>.<ext>` names and
+    relinks the sidecars (`media_renamed`); run `--refigure --live`
+    after it once the Figures list exists (Local_Setup §14).
 12. **Restore sweep auth** — device-code sign-in is refused by
     Conditional Access (`AADSTS53003`), so the nightly pipeline has been
     failing closed with `AUTH EXPIRED` since the refresh token expired.
