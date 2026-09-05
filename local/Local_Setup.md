@@ -988,6 +988,14 @@ Setup, once:
    `--refigure --live` / `--recase --live` — rows already written cost
    nothing, only the documents that errored are written. If it keeps
    happening, raise `spo.paceMs` (e.g. 500) in `config.json`.
+9. **casegrammar v1.2 / ZipTextExtract v2.6 (sweep v1.63):** run
+   `--reformat --live` (diagram-topped decks re-extract with the real
+   case line, not a route label, as the slide heading) and then
+   `--recase --live` (pdf plans re-render on page units; sub-case
+   numbers, group labels and colon case lines apply corpus-wide).
+   No tenant step, no AI spend. A `NORMALIZE SKIP … > maxInputChars`
+   on a numbered-case plan is now expected to be unnecessary — check
+   the plan's `## Test Cases` after the recase before raising the cap.
 
 A column the tenant list lacks is dropped from the write and noted
 once per run (`figure_fields_dropped`; the v1.56 fail-soft, shared

@@ -1,5 +1,17 @@
 /**
- * ZipTextExtract v2.5 — OOXML file (pptx/docx) → markdown text + rels
+ * ZipTextExtract v2.6 — OOXML file (pptx/docx) → markdown text + rels
+ * ------------------------------------------------------------
+ * v2.6 (2026-09-05, TP-2 — a diagram label is never a slide title):
+ *   the v2.5 top-label rule (TP-1) took a title-less slide's topmost
+ *   short text shape as its heading; on a test-plan slide whose
+ *   drawing sits at the top, that shape is a ROUTE LABEL ("1A_New;
+ *   100"), so 80 slides of one deck were headed by a label while the
+ *   slide's real case line stayed in the body. A shape whose text is
+ *   label-shaped (the DL-1 rule: ≤ 24 chars, ≤ 3 words) is no longer
+ *   a title candidate when the slide carries a label cluster (≥ 4 such
+ *   shapes — the same threshold that folds them into the
+ *   `[figure: …]` line). Long labels and prose shapes are unaffected.
+ * ------------------------------------------------------------
  *                       + document core properties
  * --------------------------------------------------------------------
  * v2.5 delta (2026-09-05 — Sidecar_Format_Plan phase 2, "structure
@@ -626,6 +638,9 @@ function findTitleShape(xml: string): TitleHit | null {
 // (≤ 80 chars, no sentence-ending punctuation), positioned in the top
 // fifth of the slide. Smallest y wins, then smallest x.
 function findTopLabel(xml: string, slideCy: number): TitleHit | null {
+  // v2.6 (TP-2): on a slide carrying a diagram-label cluster, a
+  // label-shaped shape is part of the drawing, never the title
+  const labelCluster = countLabelShapes(xml) >= 4;
   const groups: Array<[number, number]> = [];
   const gRe = /<p:grpSp\b[\s\S]*?<\/p:grpSp>/g;
   let gm: RegExpExecArray | null;
@@ -659,6 +674,7 @@ function findTopLabel(xml: string, slideCy: number): TitleHit | null {
     const text = texts.join(" ").replace(/[|#]/g, " ").replace(/\s+/g, " ").trim();
     const words = text.split(" ").length;
     if (text.length > 80 || words < 2 || words > 12 || /[.;!?]$/.test(text)) continue;
+    if (labelCluster && text.length <= 24 && words <= 3) continue;
     if (!best || y < best.y || (y === best.y && x < best.x)) {
       best = { text: text, start: m.index, end: m.index + block.length, y: y, x: x };
     }
@@ -706,6 +722,30 @@ function markInheritedBullets(xml: string): string {
 interface FigureCollapse {
   xml: string;
   figure: string; // "" or "\n[figure: ...]\n"
+}
+
+/** How many non-placeholder shapes on the slide carry label-shaped
+ *  text (the collapse rule's ≤ 24 chars / ≤ 3 words) — the count that
+ *  decides whether the slide has a diagram-label cluster (v2.6). */
+function countLabelShapes(xml: string): number {
+  const shapeRe = /<p:(sp|cxnSp)\b[\s\S]*?<\/p:\1>/g;
+  let n = 0;
+  let m: RegExpExecArray | null;
+  while ((m = shapeRe.exec(xml)) !== null) {
+    const block = m[0];
+    if (block.indexOf("<p:ph") >= 0) continue;
+    const texts: string[] = [];
+    const tre = /<a:t>([^<]*)<\/a:t>/g;
+    let tm: RegExpExecArray | null;
+    while ((tm = tre.exec(block)) !== null) {
+      const v = tm[1].trim();
+      if (v) texts.push(v);
+    }
+    const t = texts.join(" ").replace(/\s+/g, " ").trim();
+    if (t === "" || t.length > 24 || t.split(" ").length > 3) continue;
+    n++;
+  }
+  return n;
 }
 
 function collapseFigureLabels(xml: string): FigureCollapse {

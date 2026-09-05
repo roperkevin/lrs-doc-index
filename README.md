@@ -46,7 +46,7 @@ keeps the old yaml-on-top layout).
 | flow/DocIndexSweep_v2_7_fix.zip | Repair import package (live-export skeleton, PV-1 scrubbed, + the v2.7-fix definition — payload byte-identical to the folder) | v2.7-fix |
 | flow/DocIndexSweep_v2_8.zip | Import package (the 2026-08-13 live export's OWN skeleton, PV-1 scrubbed, + the v2.8 definition — payload byte-identical to the folder) | v2.8 |
 | scripts/RegexExtract.ts | ID + revision extraction + title slug + product-line detection (RH / Pipeline Referencing / Utility Network) | v1.4 (paste pending) |
-| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse + (v2.5) cell paragraphs, inherited bullets, top-label headings, docx label headings + ordered lists | v2.5 (the local sweep runs it directly) |
+| scripts/ZipTextExtract.ts | pptx/docx → markdown text + rels + core properties + content-aware code fencing + diagram-label collapse + (v2.5) cell paragraphs, inherited bullets, top-label headings, docx label headings + ordered lists + (v2.6) a diagram label is never a slide title | v2.6 (the local sweep runs it directly) |
 | scripts/MediaExtract.ts | Bounded raster image extraction | v1.3 (paste pending) |
 | scripts/ShapeExtract.ts | A pptx slide's DRAWN shapes and text, faithfully — one SVG per drawing slide at the shapes' true positions (preset geometries, freeforms, groups, rotations, theme-resolved fills / outlines / dashes / arrowheads, wrapped text, picture placeholders referencing the sibling file) + the glued connections as `A → B` text + labels in reading order; the local sweep runs it after ZipTextExtract (sweep v1.61) | v1.0 |
 | scripts/WorkbookDump.ts | xlsx → GFM table dump | v1.2 (paste pending) |
@@ -126,7 +126,7 @@ keeps the old yaml-on-top layout).
 | local/lib/storyprofile.mjs | The `story/v1` body profile for User Story decks (Story / Acceptance Criteria / Testing / Automation / Documentation / Assignment from the template's slide titles; 266 of 298 corpus stories) + `storyTextFirst` for TestPlanGen | v1.0 |
 | local/harness/check_storyprofile.py | Story-profile gate (CI) | v1.0 |
 | local/lib/casenormalize.mjs + prompts/CaseNormalize_Prompt.md + `sweep.mjs --normalize-cases` | The opt-in LLM lane for caseless plans: prompt, reply unwrapping, contract lint + grounding verification (titles, table rows and figure links must come from the input); owner switch + per-run cap; rows marked Shape LLM / Confidence llm | v1.0 |
-| local/lib/casegrammar.mjs | The `testplan/v1` body profile + six deterministic case detectors (S1 case slide, S2 titled case slide, S3 case table, S4 Positive/Negative label list, S5 labelled list, S6 numbered cases) rendering ONE case grammar (`### TC-P01 — title <!-- src: … -->`) shared with TestPlanGen drafts; `lintTestPlanBody` | v1.0 |
+| local/lib/casegrammar.mjs | The `testplan/v1` body profile + six deterministic case detectors (S1 case slide, S2 titled case slide, S3 case table, S4 Positive/Negative label list, S5 labelled list, S6 numbered cases) rendering ONE case grammar (`### TC-P01 — title <!-- src: … -->`) shared with TestPlanGen drafts; `lintTestPlanBody`; v1.2 page units for the pdf lane, sub-case numbering + group labels + lane inheritance, colon / dashed case lines | v1.2 |
 | local/lib/slug.mjs + local/slug_abbreviations.json | Sidecar stems (`<issue>-<slug>[-qualifier]`): kind-word strip, glossary abbreviations, cap, primary issue, incremental + batch minting; `_Manifest.json` is the id→file lookup | v1.0 |
 | local/harness/check_slug.py | Stem-rule gate (CI) | v1.0 |
 | local/lib/sidecarmeta.mjs | Format-3.0 metadata table: renderer + the shared readers (`readMeta`, `metaList`, `relEntries`) that also read the legacy yaml frames | v1.0 |
@@ -135,7 +135,7 @@ keeps the old yaml-on-top layout).
 | review/harness/check_shapes.py | ShapeExtract gate (hand-written OOXML deck: qualification + presentation order, geometry + style, text, connectors + connections, labels, bounds; CI fixture-free) | v1.0 |
 | local/harness/check_figureindex.py | Figure-parser + naming gate (naming rule, index against the case grammar's own body, header sizing, rows + planner; CI) | v1.0 |
 | local/Figure_Index_Plan.md | Figure indexing + standardized figure names — design record (BUILT; tenant step: create the Figures list, `--reformat --live`, `--refigure --live`, Local_Setup §14) | — |
-| local/harness/check_caseindex.py | Case-parser gate (both case shapes via the presentation layer's own emission, issue refs incl. the digit floor + fenced-code trap, v1.1 metadata legs, v1.2 vocabulary-tag legs, v1.3 figure-link + df-ordering legs, v1.4 hyperlink legs, replace-set planner; 68 checks; CI) | v1.4 |
+| local/harness/check_caseindex.py | Case-parser gate (both case shapes via the presentation layer's own emission, issue refs incl. the digit floor + fenced-code trap, v1.1 metadata legs, v1.2 vocabulary-tag legs, v1.3 figure-link + df-ordering legs, v1.4 hyperlink legs, replace-set planner, casegrammar v1.2 page-unit + slide fixtures; 102 checks; CI) | v1.4 |
 | review/harness/check_typecheck.py | Standing ES2017 tsc gate over scripts/ (its own CI job) | v1.0 |
 | STATUS_history.md | The per-day STATUS narratives, moved out of STATUS.md's head (2026-09-03) | — |
 

@@ -201,6 +201,71 @@ TUNING = """## Slide 3 — Detect Objects
 - Windows Server 2022
 """
 
+# v1.2 (docs 527 / 528): a deck printed to PDF — form-feed pages, a
+# right-aligned page number on the first line, sub-case numbering, a
+# lane stated once and inherited by the next page, group labels between
+# cases, a verification page, a legend page of table junk
+PDF_PAGES = (
+    "\fTransfer to another line – Support Snap Event Behavior – Test Plan\n"
+    "PE: Claire Wang\n"
+    "\fVerification                                                   4\n"
+    "1.   Verify edit log (the changed routes)\n"
+    "2.   Verify snap still works the way it does today\n"
+    "\fPositive cases – repeat for New Line & Existing Line                                                   5\n"
+    "There is no negative case (Loc error)\n"
+    "  Spanning events\n"
+    "  1.   Transfer to New Line – transfer 3 entire simple routes; transfer CP; keep original measures;\n"
+    "       keep original route name/id                                        CW58_1A\n"
+    "        1-b. Transfer to New Line - 2 separate transfers; transfer CP\n"
+    "  2.   Transfer to New Line – transfer 3 entire simple routes; change measures\n"
+    "3-b: Transfer to New Line – transfer 1 entire simple route; recalibrate source downstream\n"
+    "\fNon-spanning events\n"
+    "9.    Transfer to New Line – transfer 3 entire simple routes; keep original route name/id\n"
+    "9-b. Transfer to New Line - 2 separate transfers; partial routes change name/id\n"
+    "Point events                                                                CW22_1A\n"
+    "15.   Transfer to New Line – transfer 3 entire simple routes; keep original measures\n"
+    "\fLegend                                                                             7\n"
+    "    4      3      2\n"
+    "1A, 100\n"
+    "         Rname   Line Name   Line Order\n"
+    "         1A      Red         100\n"
+)
+# v1.2 (doc 528): per-slide case lines in the colon / dashed forms on
+# slides whose diagram label is no longer the title (TP-2), a slide
+# whose real case line IS the title, and a verification slide whose
+# items are bullets except one numbered line
+CASE_SLIDES = """## Slide 3
+
+Verification
+
+- Verify edit log.
+- Ensure shape, measure, and LRS attributes for all time slices are correct
+5 .     Verify source routes are recalibrated downstream
+
+## Slide 5
+
+Reassign all the routes in a line to another line on right, transferring routes.
+2: Transfer to an existing line – spanning Events – Stayput and Retire Behavior.
+
+| Route Name | Line Name | Line Order |
+| --- | --- | --- |
+| 1A | L1 | 100 |
+| 1B | L1 | 200 |
+
+[figure: 1A; 100 · 1B; 200 · 1C; 300 · 2A, 100 · Input · Output]
+
+## Slide 6
+
+Reassign again with the effective date equal to the route start date.
+3-1: Transfer to an existing line – non spanning Events – Retire.
+
+## Slide 30 — 11-2 : Transfer to an existing line – spanning Events – Retire
+
+| Route Name | Line Name |
+| --- | --- |
+| 1A | L1 |
+"""
+
 NODE_SCRIPT = """
 import { tidyBody } from "file://%(lib)s/presentation.mjs";
 import { renderTestPlanBody, lintTestPlanBody } from "file://%(lib)s/casegrammar.mjs";
@@ -222,6 +287,10 @@ const shapes = renderTestPlanBody(tidyBody(fx.shapes));
 const mixed = extractCases(shapes.body, opts);
 const tuning = renderTestPlanBody(tidyBody(fx.tuning));
 const tuned = extractCases(tuning.body, opts);
+const pdf = renderTestPlanBody(fx.pdfPages);
+const pdfCases = extractCases(pdf.body, opts);
+const slides = renderTestPlanBody(tidyBody(fx.caseSlides));
+const slideCases = extractCases(slides.body, opts);
 const capped = extractCases(deckBody, { ...opts, caseTextCap: 10 });
 const longTitle = extractCases(
   "### TC-P1 — " + "x".repeat(400) + "\\nSteps.\\n", opts);
@@ -257,6 +326,12 @@ process.stdout.write(JSON.stringify({
   legacyMixed: { shape: legacyMixed.shape, mixed: legacyMixed.mixed, count: legacyMixed.cases.length },
   shapesBody: shapes.body,
   tuningBody: tuning.body,
+  pdf: { shape: pdf.shape, body: pdf.body, lint: lintTestPlanBody(pdf.body),
+         cases: pdf.cases.map((c) => ({ id: c.id, det: c.det, lane: c.lane, title: c.title, group: c.group, src: c.src })),
+         rows: pdfCases.cases.map((c) => ({ caseNo: c.caseNo, classification: c.classification, group: c.group, sourceRef: c.sourceRef, text: c.text })) },
+  slides: { shape: slides.shape, body: slides.body, lint: lintTestPlanBody(slides.body),
+            cases: slides.cases.map((c) => ({ id: c.id, det: c.det, lane: c.lane, title: c.title, src: c.src })),
+            rows: slideCases.cases.map((c) => ({ caseNo: c.caseNo, slideNo: c.slideNo, sourceRef: c.sourceRef, text: c.text })) },
   tuned: { shape: tuned.shape, lint: lintTestPlanBody(tuning.body),
            cases: tuned.cases.map((c) => ({ caseNo: c.caseNo, det: c.det, classification: c.classification,
              scenario: c.scenario, title: c.title, sourceRef: c.sourceRef, expectedResult: c.expectedResult,
@@ -300,7 +375,7 @@ def main():
     tmp = os.path.join(HERE, "_caseindex_fixture.json")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"rawDeck": RAW_DECK, "draft": DRAFT, "prose": PROSE, "shapes": SHAPES,
-                   "tuning": TUNING}, f)
+                   "tuning": TUNING, "pdfPages": PDF_PAGES, "caseSlides": CASE_SLIDES}, f)
     try:
         proc = subprocess.run(
             ["node", "--input-type=module", "-e", NODE_SCRIPT % {"lib": LIB}],
@@ -574,6 +649,52 @@ def main():
           and "ExpectedResult" in row0 and "TraceText" in row0
           and "StepCount" in row0 and "FigureCount" in row0,
           json.dumps(row0))
+
+    print("-- v1.2: a deck printed to PDF (page units) --")
+    pdf = r["pdf"]
+    pc = pdf["cases"]
+    check("pdf: the numbered-cases detector fires on page units, shape S6, lint clean",
+          pdf["shape"] == "S6" and pdf["lint"] == [], json.dumps(pdf)[:300])
+    check("pdf: six cases incl. the 1-b / 3-b / 9-b sub-cases, none from the verification page",
+          [c["src"][-1] for c in pc] == ["case 1", "case 1-b", "case 2", "case 3-b", "case 9", "case 9-b", "case 15"][:len(pc)]
+          and len(pc) == 7, json.dumps([c["src"] for c in pc]))
+    check("pdf: page provenance in the src comment",
+          pc and pc[0]["src"][0] == "page 3" and pc[4]["src"][0] == "page 4", json.dumps([c["src"] for c in pc]))
+    check("pdf: the lane stated on page 3 carries to page 4 (all Positive)",
+          all(c["lane"] == "P" for c in pc) and [c["id"] for c in pc][:2] == ["TC-P01", "TC-P02"],
+          json.dumps([(c["id"], c["lane"]) for c in pc]))
+    check("pdf: group labels between cases name the cases that follow",
+          [c["group"] for c in pc] == ["Spanning Events"] * 4 + ["Non-spanning Events"] * 2 + ["Point Events"],
+          json.dumps([c["group"] for c in pc]))
+    check("pdf: the page number is stripped from the lane line; the title is the case line",
+          pc and pc[0]["title"].startswith("Transfer To New Line") and "5" not in pdf["body"].split("## Test Cases")[0].split("Positive cases")[-1][:60],
+          pdf["body"][:600])
+    check("pdf: continuation lines ride in the case body",
+          "keep original route name/id" in pdf["rows"][0]["text"], pdf["rows"][0]["text"])
+    check("pdf: the legend page is other content, the title page is overview",
+          "Legend" in pdf["body"].split("## Other content")[-1] and "PE: Claire Wang" in pdf["body"].split("## Test Cases")[0],
+          pdf["body"][-300:])
+    check("pdf: rows carry the group and the page src",
+          pdf["rows"][4]["group"] == "Non-spanning Events" and pdf["rows"][4]["sourceRef"] == "S6 · page 4 · case 9"
+          and pdf["rows"][0]["classification"] == "Positive", json.dumps(pdf["rows"][4]))
+
+    print("-- v1.2: per-slide case lines (docs 528) --")
+    sl = r["slides"]
+    sc = sl["cases"]
+    check("slides: shape mixed (S1 case lines + an S2 title), lint clean",
+          sl["shape"] == "mixed" and sl["lint"] == [], json.dumps(sl)[:300])
+    check("slides: the verification slide (bullets + one numbered Verify line) is not a case",
+          not any("slide 3" in c["src"] for c in sc), json.dumps([c["src"] for c in sc]))
+    check("slides: the colon and dashed case lines are S1 cases with their ids",
+          [(c["det"], c["src"][-1]) for c in sc][:2] == [("S1", "case 2"), ("S1", "case 3-1")], json.dumps(sc))
+    check("slides: a title in the dashed form is an S2 case",
+          sc and sc[-1]["det"] == "S2" and sc[-1]["src"] == ["slide 30", "case 11-2"], json.dumps(sc[-1:] if sc else sc))
+    check("slides: titles are the case statements, lane Unspecified",
+          sc and sc[0]["title"].startswith("Transfer To an Existing Line") and all(c["lane"] == "U" for c in sc),
+          json.dumps([c["title"] for c in sc]))
+    check("slides: the description line and the tables ride in the case body",
+          "Reassign all the routes" in sl["rows"][0]["text"] and sl["rows"][0]["slideNo"] == 5
+          and "| 1A | L1 | 100 |" in sl["body"].split("### TC-U01")[1].split("### TC-U02")[0], json.dumps(sl["rows"][0]))
 
     print("-- replace-set planner --")
     fresh = r["fresh"]

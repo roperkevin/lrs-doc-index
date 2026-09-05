@@ -416,6 +416,14 @@ check('## Slide 1 — Coordinate Configuration Tests' in vlines,
 check('Coordinate Configuration Tests' not in vt.replace('## Slide 1 — Coordinate Configuration Tests', ''),
       'cells_deck: the promoted label is spliced out of the body (no duplicate)')
 check('Footnote below the tables' in vt, 'cells_deck: a lower textbox is not promoted')
+# v2.6 (TP-2): a diagram label is never a slide title
+check('## Slide 2' in vlines and '## Slide 2 — 1A_New; 100' not in vt,
+      'cells_deck: a label of the diagram cluster is not promoted to the heading (TP-2)')
+s2t = vt[vt.index('## Slide 2'):vt.index('## Slide 3')] if '## Slide 3' in vt else vt[vt.index('## Slide 2'):]
+check('[figure: 1A_New; 100 · 1B; 200 · 1C; 300 · 2A, 100]' in s2t,
+      'cells_deck: the four labels fold into the figure line as before')
+check('2: Transfer to an existing line – spanning Events – Stayput and Retire Behavior.' in s2t,
+      'cells_deck: the case line stays in the body')
 check('**Positive Tests: Normal Routes**' in vlines,
       'cells_deck: single-column label box renders as a bold label (CP-1)')
 check('- Correct line order of 100, 200, 300, 400 on a normal line' in vlines and
@@ -425,7 +433,7 @@ check('- Correct line order of 100, 200, 300, 400 on a normal line' in vlines an
 check('| A-1 | Toggle is present | Toggle shown<br>Default OFF |' in vlines,
       'cells_deck: multi-column cell paragraphs join on <br>')
 check('| # | Test | Expected result |' in vlines, 'cells_deck: multi-column table keeps its header row')
-s2v = vt[vt.index('## Slide 2'):]
+s2v = vt[vt.index('## Slide 3'):]
 check('- Shows only for an UN-APR dataset' in s2v and '- Allow turning these layers ON and OFF' in s2v,
       'cells_deck: body-placeholder paragraphs render with the master\'s inherited bullet (IB-1)')
 check('Plain note with the bullet turned off' in s2v and '- Plain note with the bullet turned off' not in s2v,
