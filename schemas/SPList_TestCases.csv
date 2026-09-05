@@ -9,4 +9,11 @@ Scenario,Scenario,Single line of text,"The '### <scenario>' line (deck) / headin
 CaseText,CaseText,Multiple lines of text,"PLAIN text (not enhanced); the case section's body with tables/figure links/fences stripped, capped 4000 chars — skim/search aid, like TextPreview",No
 IssueRefs,IssueRefs,Single line of text,"'; '-joined repo#number found in this case's OWN text (devtopia url / explicit repo#n / hashtag via sweep.defaultRepo, url-claimed numbers suppress hashtags — the Doc IDs patterns minus the doc-level filename source); empty = none",No
 Anchor,Anchor,Single line of text,"GitHub-style anchor slug of the sidecar heading — deep link target {TextFileUrl}#{Anchor}",No
+Shape,Shape,Choice,"deck; draft — which case grammar the plan uses (caseindex v1.1): deck-derived '## Case N' sections vs the draft-style '### TC-[PN]n' contract",No
+FigureCount,FigureCount,Number,"0 decimals; rendered figures + collapsed figure lines in this case's section (caseindex v1.1)",No
+TableCount,TableCount,Number,"0 decimals; markdown tables in this case's section — fixture/after-state data (caseindex v1.1)",No
+StepCount,StepCount,Number,"0 decimals; numbered step lines in the section (draft-style steps; deck cases usually 0 — their one numbered line was promoted into the heading) (caseindex v1.1)",No
+RouteRefs,RouteRefs,Single line of text,"'; '-joined distinct fixture route ids (R1, R1L3, ...) in order of appearance in the case's own text; empty = none (caseindex v1.1)",No
+ExpectedResult,ExpectedResult,Single line of text,"The draft contract's 'Expected Result:' line, capped 255 (full text stays in CaseText); empty on deck-derived cases (caseindex v1.1)",No
+TraceText,TraceText,Single line of text,"The draft contract's 'Trace:' line — per-case story-grounding provenance, capped 255; empty on deck-derived cases (caseindex v1.1)",No
 SweptOn,SweptOn,Date and Time,"Include time; when this row was last written (unchanged rows are not rewritten, so this is last CHANGE, not last sweep)",No

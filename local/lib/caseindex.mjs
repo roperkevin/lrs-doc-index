@@ -1,13 +1,28 @@
 /**
- * caseindex.mjs v1.0 — individual test cases out of a test plan's
- * sidecar body (Case_Index_Plan.md phases 0–1). Pure module, no I/O,
- * no AI: it parses the RENDERED body below the metadata seam — the
- * per-case sections `caseHeadings` (presentation.mjs, TC-1..TC-3)
- * already emits for deck-derived plans, and the draft-style
- * `### TC-P<n>` / `### TC-N<n>` contract draftlint.mjs checks — and
- * returns rows for the Test Cases list (schemas/SPList_TestCases.csv).
- * A body with no recognizable case structure yields ZERO cases, never
- * guesses (the caseHeadings determinism decision, applied here).
+ * caseindex.mjs v1.1 — individual test cases out of a test plan's
+ * sidecar body (Case_Index_Plan.md phases 0–1; v1.1 addendum). Pure
+ * module, no I/O, no AI: it parses the RENDERED body below the
+ * metadata seam — the per-case sections `caseHeadings`
+ * (presentation.mjs, TC-1..TC-3) already emits for deck-derived
+ * plans, and the draft-style `### TC-P<n>` / `### TC-N<n>` contract
+ * draftlint.mjs checks — and returns rows for the Test Cases list
+ * (schemas/SPList_TestCases.csv). A body with no recognizable case
+ * structure yields ZERO cases, never guesses (the caseHeadings
+ * determinism decision, applied here).
+ *
+ * v1.1 (CaseIndexVersion bump — reflow with `sweep.mjs --recase`):
+ *  - the explicit `owner/repo#n` issue form requires 3–5 digits,
+ *    matching the corpus assumption RegexExtract's hashtag rule
+ *    already encodes (the first live backfill minted a phantom `#0`
+ *    from an Arcade stationing expression);
+ *  - fenced code is excluded from issue-ref and metadata scans, not
+ *    just from the skim text (expressions and scripts are where the
+ *    false forms live);
+ *  - per-case metadata columns: Shape, FigureCount, TableCount,
+ *    StepCount, RouteRefs, ExpectedResult, TraceText (see
+ *    sectionMeta below). Parent-plan metadata (surface, products,
+ *    release) stays ONE LOOKUP AWAY on the Doc Index row by design —
+ *    denormalizing it here would go stale.
  *
  * The deck-shape parser is COUPLED to caseHeadings' emission by
  * design (Case_Index_Plan.md D1): check_caseindex.py extracts from a
@@ -42,11 +57,15 @@ function slugger() {
  * Issue references in ONE case's own text slice — the Doc IDs
  * patterns (RegexExtract), minus the filename source (that one is
  * document-level by nature): devtopia urls carry their own repo and
- * are authoritative; an explicit `owner/repo#n` names its repo too;
- * a bare `#n` hashtag is repo-less and weak — it takes defaultRepo
- * and is DROPPED when a repo-carrying form already claims the number
- * (the RegexExtract v1.1 phantom-copy rule). Returns sorted, deduped
- * `repo#number` strings.
+ * are authoritative; an explicit `owner/repo#n` names its repo too
+ * (3–5 digit issue numbers only since v1.1 — the same corpus
+ * assumption RegexExtract's hashtag rule encodes, so an Arcade
+ * `…/…#0` expression fragment never mints a phantom); a bare `#n`
+ * hashtag is repo-less and weak — it takes defaultRepo and is
+ * DROPPED when a repo-carrying form already claims the number (the
+ * RegexExtract v1.1 phantom-copy rule). Callers pass UNFENCED text
+ * (fenced code excluded). Returns sorted, deduped `repo#number`
+ * strings.
  */
 export function caseIssueRefs(text, defaultRepo) {
   const content = String(text || "");
@@ -62,7 +81,7 @@ export function caseIssueRefs(text, defaultRepo) {
     add(`${m[1]}/${m[2]}`, parseInt(m[3], 10));
     claimed.add(parseInt(m[3], 10));
   }
-  const repoRe = /([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d{1,6})\b/g;
+  const repoRe = /([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#(\d{3,5})\b/g;
   while ((m = repoRe.exec(content)) !== null) {
     add(m[1], parseInt(m[2], 10));
     claimed.add(parseInt(m[2], 10));
@@ -91,6 +110,69 @@ function skimText(sectionLines, capChars) {
     if (ln) out.push(ln);
   }
   return cap(out.join("\n"), capChars);
+}
+
+/** Section lines outside fenced code blocks — the scan surface for
+ * issue refs and metadata (scripts and expressions are where false
+ * forms live; the skim text already excluded fences). */
+function unfenced(sectionLines) {
+  const out = [];
+  let fenced = false;
+  for (const raw of sectionLines) {
+    if (raw.trim().startsWith("```")) { fenced = !fenced; continue; }
+    if (!fenced) out.push(raw);
+  }
+  return out;
+}
+
+/**
+ * sectionMeta — deterministic per-case metadata from the section's
+ * own lines (v1.1):
+ *   figureCount   rendered figures + collapsed figure lines
+ *   tableCount    markdown tables (separator rows)
+ *   stepCount     numbered lines outside tables (draft-style steps;
+ *                 deck cases usually 0 — their one numbered line was
+ *                 promoted into the heading)
+ *   routeRefs     distinct fixture route ids (R1, R1L3, …) in order
+ *                 of appearance — the LRS fixture core
+ *   expectedResult the draft contract's "Expected Result:" line
+ *   traceText     the draft contract's "Trace:" line — per-case
+ *                 story-grounding provenance
+ * All from UNFENCED lines; the two contract lines are capped 255
+ * (the full text stays in CaseText).
+ */
+function sectionMeta(sectionLines) {
+  const prose = unfenced(sectionLines);
+  let figureCount = 0, tableCount = 0, stepCount = 0;
+  const routes = [];
+  let expectedResult = "", traceText = "";
+  const takeRoutes = (t) => {
+    for (const r of t.match(/\bR\d+(?:L\d+)?\b/g) || []) {
+      if (!routes.includes(r)) routes.push(r);
+    }
+  };
+  for (const raw of prose) {
+    const s = raw.trim();
+    if (s.startsWith("![") || s.startsWith("[figure:")) { figureCount++; continue; }
+    if (/^\|[\s:|-]+\|$/.test(s)) { tableCount++; continue; } // header separator row
+    if (s.startsWith("|")) { takeRoutes(s); continue; } // route ids live in fixture tables too
+    const clean = s.replace(/<!--[\s\S]*?-->/g, "").trim();
+    if (/^(?:- )?\d{1,3}[.)]\s+\S/.test(clean)) stepCount++;
+    let m;
+    if (!expectedResult && (m = /^\**Expected Result\**\s*[:\-—]\s*(.+)$/i.exec(clean))) {
+      expectedResult = cap(m[1].replace(/\*+$/, "").trim(), 255);
+    }
+    if (!traceText && (m = /^\**Trace\**\s*[:\-—]\s*(.+)$/i.exec(clean))) {
+      traceText = cap(m[1].replace(/\*+$/, "").trim(), 255);
+    }
+    takeRoutes(clean);
+  }
+  return {
+    figureCount, tableCount, stepCount,
+    routeRefs: cap(routes.join("; "), 255),
+    expectedResult, traceText,
+    _prose: prose,
+  };
 }
 
 /** Deck-shape sections: the three heading forms caseHeadings writes. */
@@ -133,6 +215,7 @@ function deckCases(lines, opts) {
       if (sm && !/^Notes$/i.test(sm[1])) scenario = sm[1];
       break;
     }
+    const meta = sectionMeta(section);
     cases.push({
       caseNo,
       slideNo,
@@ -140,7 +223,13 @@ function deckCases(lines, opts) {
       scenario,
       title,
       text: skimText(section, opts.caseTextCap),
-      issueRefs: caseIssueRefs(section.join("\n"), opts.defaultRepo),
+      issueRefs: caseIssueRefs(meta._prose.join("\n"), opts.defaultRepo),
+      figureCount: meta.figureCount,
+      tableCount: meta.tableCount,
+      stepCount: meta.stepCount,
+      routeRefs: meta.routeRefs,
+      expectedResult: meta.expectedResult,
+      traceText: meta.traceText,
       _headAt: i,
     });
   }
@@ -158,6 +247,7 @@ function draftCases(lines, opts) {
       if (/^##(#)? /.test(lines[j])) { end = j; break; }
     }
     const section = lines.slice(i + 1, end);
+    const meta = sectionMeta(section);
     cases.push({
       caseNo: m[1],
       slideNo: null,
@@ -165,7 +255,13 @@ function draftCases(lines, opts) {
       scenario: m[3].replace(/^[\s\-–—:]+/, "").trim(),
       title: lines[i].replace(/^### /, ""),
       text: skimText(section, opts.caseTextCap),
-      issueRefs: caseIssueRefs(section.join("\n"), opts.defaultRepo),
+      issueRefs: caseIssueRefs(meta._prose.join("\n"), opts.defaultRepo),
+      figureCount: meta.figureCount,
+      tableCount: meta.tableCount,
+      stepCount: meta.stepCount,
+      routeRefs: meta.routeRefs,
+      expectedResult: meta.expectedResult,
+      traceText: meta.traceText,
       _headAt: i,
     });
   }
@@ -207,7 +303,7 @@ export function extractCases(bodyText, opts = {}) {
     mixed: deck.length > 0 && draft.length > 0,
     cases: picked.map((c, k) => {
       const { _headAt, ...kase } = c;
-      return { ordinal: k + 1, ...kase, anchor: anchorAt.get(_headAt) || "" };
+      return { ordinal: k + 1, ...kase, shape, anchor: anchorAt.get(_headAt) || "" };
     }),
   };
 }
@@ -229,6 +325,13 @@ export function toRowFields(docRowId, kase, nowIso) {
     CaseText: kase.text,
     IssueRefs: kase.issueRefs.join("; "),
     Anchor: cap(kase.anchor, 255),
+    Shape: kase.shape,
+    FigureCount: kase.figureCount,
+    TableCount: kase.tableCount,
+    StepCount: kase.stepCount,
+    RouteRefs: kase.routeRefs,
+    ExpectedResult: kase.expectedResult,
+    TraceText: kase.traceText,
     SweptOn: nowIso,
   };
 }
