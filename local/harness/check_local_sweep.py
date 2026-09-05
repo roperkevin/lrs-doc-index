@@ -353,6 +353,7 @@ class MockState:
         self.spo_last_auth = None
         self.alerts = []
         self.content_downloads = []
+        self.content_bytes = {}      # item id -> bytes served by the content fallback
         self.embed_calls = 0
         self.embed_last_auth = None
         # remote-files mode: the sidecar drive, rel path -> {content, etag}
@@ -656,8 +657,13 @@ def make_handler(state, lib_guid, src_files):
             m = re.match(r"^/v1\.0/sites/[^/]+/lists/([^/]+)/items/(\d+)/driveItem/content$", p)
             if m:
                 state.content_downloads.append(m.group(2))
-                body = (f"Downloaded content for item {m.group(2)} fetched "
-                        "via the Graph fallback, about calibration.").encode()
+                # a leg may register the real bytes for an item (the
+                # reformat-fallback leg serves the moved-aside deck)
+                if m.group(2) in state.content_bytes:
+                    body = state.content_bytes[m.group(2)]
+                else:
+                    body = (f"Downloaded content for item {m.group(2)} fetched "
+                            "via the Graph fallback, about calibration.").encode()
                 self.send_response(200)
                 self.send_header("content-type", "application/octet-stream")
                 self.send_header("content-length", str(len(body)))
@@ -2278,6 +2284,25 @@ def main():
           str(out) + " " + str(row)[:200])
     check("fallback downloaded the right item",
           state.content_downloads == ["16"], str(state.content_downloads))
+    # --reformat takes the same fallback: the alpha source is moved away,
+    # the reformat still re-extracts it through Graph (no REFORMAT ERROR)
+    alpha_candidates = [os.path.join(cfg["paths"]["sourceLibrary"], "General", "Alpha Plan.pptx"),
+                        os.path.join(cfg["paths"]["sourceLibrary"], "Alpha Plan.pptx"),
+                        os.path.join(src_dir, "Alpha Plan.pptx")]
+    alpha_src = next(p for p in alpha_candidates if os.path.exists(p))
+    alpha_src_aside = alpha_src + ".aside"
+    os.rename(alpha_src, alpha_src_aside)
+    state.content_bytes["10"] = open(alpha_src_aside, "rb").read()
+    dl_before_rf = len(state.content_downloads)
+    proc = run_sweep(cfg_path, ["--live", "--reformat", "--only", "Alpha Plan.pptx"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    os.rename(alpha_src_aside, alpha_src)
+    del state.content_bytes["10"]
+    check("reformat re-extracts an unsynced source through the Graph fallback",
+          proc.returncode == 0 and int(out.get("graph_downloads", 0)) == 1
+          and int(out.get("errors", 0)) == 0 and int(out.get("eligible", 0)) == 1
+          and len(state.content_downloads) == dl_before_rf + 1
+          and "REFORMAT ERROR" not in proc.stderr, str(out) + proc.stderr[-300:])
     cfg["sweep"]["graphDownloadFallback"] = False
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)

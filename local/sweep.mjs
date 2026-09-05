@@ -1434,10 +1434,22 @@ async function main() {
           rfsum.llm_kept = (rfsum.llm_kept || 0) + 1;
           continue;
         }
+        // the same Graph download fallback the nightly index uses (v1.33):
+        // a source not on disk (unsynced subfolder, a synced folder that
+        // IS the library's "General" child so the path doubles a segment)
+        // downloads on demand instead of erroring every reformat
+        let rfPath = localPath;
+        if (sw.graphDownloadFallback && !fs.existsSync(rfPath)) {
+          const buf = await graph.getItemContentBuffer(srcSiteId, sp.lists.sourceLibrary, item.id);
+          rfPath = path.join(tmpDir, "dl", `${srcItemId}-${name}`);
+          fs.mkdirSync(path.dirname(rfPath), { recursive: true });
+          fs.writeFileSync(rfPath, buf);
+          rfsum.graph_downloads = (rfsum.graph_downloads || 0) + 1;
+        }
         const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited,
                 figureCount, figureError, figureOcr, figureOcrOff, mediaFiles } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
-          localPath, ext, srcItemId, modified, withMedia: false,
+          localPath: rfPath, ext, srcItemId, modified, withMedia: false,
         });
         rfsum.figures += figureCount || 0;
         if (figureError) rfsum.figure_errors++;
