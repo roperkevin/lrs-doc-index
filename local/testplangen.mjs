@@ -47,6 +47,15 @@
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
  *
+ * v1.19 (method names from the sources — testplangen/CHANGES.md
+ * v2.39): prompt v1.13 lets a draft borrow the NAMES of a method
+ * class the story states without naming ("all input methods") from
+ * the exemplar / reference / related-cases lanes, declared once on a
+ * Setup `**Methods:**` line; the verifier's tools check receives the
+ * source lanes' text so a declared, source-carried name passes and a
+ * declared name no source carries is flagged (draftlint v1.5).
+ * promptVersion default → v1.13.
+ *
  * v1.15 (doc 910 draft review — testplangen/CHANGES.md v2.35): the
  * figures pass names its own cap when the model's reply is cut
  * (testplangen.figuresMaxTokens, default raised 8000 → 24000: a
@@ -477,7 +486,7 @@ import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.18";
+const JOB_VERSION = "v1.19";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -670,7 +679,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.12",
+    promptVersion: "v1.13",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,
@@ -2086,7 +2095,16 @@ async function generateOne(ctx, story) {
   if (tp.verify !== "off") {
     findings = lintDraft(draftBody).failures;
     if (tp.grounding !== false) {
-      findings.push(...groundDraft(draftBody, `${storyTextCapped}\n${storyMeta}`));
+      // prompt v1.13: the source lanes let the METHOD NAMES exception
+      // in the tools check tell a borrowed method name from an
+      // invented tool (draftlint v1.5)
+      findings.push(
+        ...groundDraft(
+          draftBody,
+          `${storyTextCapped}\n${storyMeta}`,
+          `${exemplarText}\n${referenceText}\n${related.text}`
+        )
+      );
     }
     verify = findings.length ? `${findings.length}-findings` : "ok";
     prog(`verifier — ${verify}`);

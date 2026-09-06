@@ -614,7 +614,11 @@ story it was sent): every Coverage Map requirement must trace to a
 story statement (quoted span or stem overlap), tool-shaped names in
 Steps / Expected Result lines must appear in the story (the prompt's
 tools rule made checkable — deliberately with NO reference-document
-exception, since the prompt admits no tool names from references),
+exception, since the prompt admits no tool names from references;
+since draftlint v1.5 the one exception is a method NAME the draft
+declares on its Setup `**Methods:**` line AND a source lane carries —
+prompt v1.13's METHOD NAMES rule — while a declared name no source
+carries is its own finding),
 and every item of a 3+-item enumeration in a workflow-shaped story
 sentence must be mentioned somewhere in the draft; since draftlint
 v1.2, every case's **Trace:** line must cite the story (prompt

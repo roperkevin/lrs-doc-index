@@ -51,8 +51,13 @@ verifier the cloud flow could not have
                      story-first rule) each surface as "grounding:"
                      findings; an echoed enumeration and a
                      source-plan title inside a [VERIFY] item do
-                     not; testplangen.grounding false disables
-                     just that layer
+                     not; a method name declared on the Setup
+                     Methods line AND carried by a source lane
+                     passes the tools check, an undeclared one is
+                     flagged, a declared one no source carries is
+                     its own finding (draftlint v1.5, the prompt
+                     v1.13 METHOD NAMES rule); testplangen.grounding
+                     false disables just that layer
   leg 9 auto         the phase-3 unattended mode: owner-switch
                      refusal, reference-form exclusion, dry
                      selection with zero model calls, drafted +
@@ -780,7 +785,9 @@ def main():
 
     # ---- corpus: sidecars + Doc Index rows ----
     plan_body = ("### Case 1 — locked-route denial\nA second user is denied "
-                 "editing a route the first user holds a lock on. " + "x" * 340)
+                 "editing a route the first user holds a lock on. Referent "
+                 "methods exercised: Route & Measure, Coordinates, Location "
+                 "Offset. " + "x" * 340)
     url_a = sidecar(sidecar_dir, "Test Plans", "plan-a__doc21.md", plan_body)
     url_b = sidecar(sidecar_dir, "Test Plans", "plan-b__doc22.md", plan_body)
     url_c = sidecar(sidecar_dir, "Test Plans", "plan-c__doc23.md", plan_body)
@@ -1031,7 +1038,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.13")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -1364,6 +1371,46 @@ def main():
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("known term abutting a story word / trailing value word not flagged as a tool",
           r.returncode == 0 and "tool-like name" not in draft, draft[:900])
+    # v1.19 (draftlint v1.5, prompt v1.13's METHOD NAMES rule): a method
+    # name borrowed from an exemplar — declared on the Setup Methods
+    # line AND present in a source lane (Plan A names it) — is not a
+    # tool; undeclared it still is; declared but sourced nowhere is a
+    # finding of its own
+    METHODS_LINE = (
+        "\n**Methods:** Route & Measure, Coordinates, Location Offset — the "
+        "referent methods behind the story's \"all input methods\", as named "
+        "in \"Plan A\" (exemplar). [VERIFY: confirm the set on Pro]\n")
+    METHOD_STEP = (
+        "- [ ] 2. Inspect the measures on the merged route.\n"
+        "- [ ] 3. Repeat the merge locating the routes by Location Offset.")
+    state.drafts.clear()
+    declared = GOOD_DRAFT.replace(
+        "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n",
+        "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n"
+        + METHODS_LINE
+    ).replace("- [ ] 2. Inspect the measures on the merged route.", METHOD_STEP)
+    state.gen_text = wrap(declared)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("declared, source-carried method name not flagged as a tool (METHOD NAMES)",
+          r.returncode == 0 and "tool-like name" not in draft
+          and "declared method" not in draft, draft[:1200])
+    state.drafts.clear()
+    undeclared = GOOD_DRAFT.replace("- [ ] 2. Inspect the measures on the merged route.", METHOD_STEP)
+    state.gen_text = wrap(undeclared)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("undeclared method name still flagged as a tool",
+          r.returncode == 0 and 'tool-like name "Location Offset"' in draft, draft[:1200])
+    state.drafts.clear()
+    unsourced = declared.replace("Location Offset", "Quantum Offset")
+    state.gen_text = wrap(unsourced)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("declared method no source carries is flagged, and stays a tool-like name",
+          r.returncode == 0
+          and 'declared method "quantum offset" appears in no source document' in draft
+          and 'tool-like name "Quantum Offset"' in draft, draft[:1400])
     state.gen_text = wrap(GOOD_DRAFT)
     r = run_job(cfg_main, ["--story", "16", "--dry-run"])
     check("grounding findings counted in verify=",

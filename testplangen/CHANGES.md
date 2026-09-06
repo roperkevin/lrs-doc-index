@@ -1,3 +1,66 @@
+# TestPlanGen v2.39 — method names from the sources (prompt v1.13, testplangen.mjs v1.19, draftlint v1.5)
+
+Owner-requested (2026-09-06): a draft run's reasoning showed the
+model declining to name the referent methods an exemplar plan lists
+— "Route & Measure / Coordinates / Location Offset" — for a story
+that says "all input methods" without naming them, because "the rule
+is clear that exemplars only guide style and coverage — not feature
+content". The owner's call: it should be able to pull method names
+from the exemplar. v1.9 always meant that ("the concrete input
+methods behind the story's 'all input methods'" REFINE a story
+statement), but the exemplar lane's "never their feature-specific
+content", the related-cases lane's "never a source of
+feature-specific content or tool names", and the CASE SWEEP's "never
+copy the source case's feature-specific content" said otherwise, and
+the CONCRETE TEST DATA rule's "name each method the sources support"
+had nothing to name.
+
+- **Prompt v1.13 — the METHOD NAMES grounding rule.** When the story
+  states a behavior over a CLASS of methods without naming its
+  members ("all input methods", "each referent method", "any
+  location method"), the names the source documents give that
+  class's members — in EXEMPLAR TEXT, REFERENCE FUNCTIONALITY, or
+  RELATED CASES — are the team's established vocabulary for the
+  feature area, not feature-specific content: the draft borrows
+  them, names each method in its own case or parameterized variant,
+  and declares the borrowed set ONCE in Setup / Prerequisites as a
+  `**Methods:**` line (the names, the story statement whose class
+  they fill, the source document(s) by title, ONE [VERIFY] on the
+  set) ahead of the `**Test data:**` line. Trace stays story-first
+  (story statement, then the source by title); the CASE SWEEP's
+  VARIATION clause is the judgment — a method is an INPUT of a
+  stated behavior, never a behavior of its own. Guards: a method
+  name is the name of a WAY to do a story-stated thing, never a tool
+  or widget (a widget's name stays a tools-rule violation); a method
+  the story excludes is not borrowed; a method's source-only RULES go
+  to Open Questions while its NAME joins the variant list; no
+  borrowed name without the declaration. Four cross-references
+  (the exemplar and related-cases lane descriptions, the CASE SWEEP,
+  the tools rule, the CONCRETE TEST DATA rule) now except method
+  names explicitly. No input, section, sentinel, or lint-contract
+  change; the six-parameter tenant contract is unchanged (the v1.13
+  paste supersedes the pending v1.12 one).
+- **Verifier (draftlint v1.5, testplangen.mjs v1.19).** Grounding
+  check b (tool-shaped names must appear in the story) would have
+  flagged every borrowed Title Case method name ("Location Offset")
+  as an invented tool. `groundDraft` gains an optional third
+  argument — the exemplar + reference + related-cases text the job
+  sent — and check b passes a phrase the draft DECLARES on a Setup
+  `**Methods:**` line when a source lane carries it; a declared name
+  no source carries is its own finding (`grounding: declared method
+  "…" appears in no source document`), and an undeclared name is
+  flagged exactly as before. Without a source corpus there is no
+  exception — the declaration alone never admits a name. The job
+  passes the three lanes; `promptVersion` default → v1.13.
+- **Not changed:** the Python contract lint (no structural assert
+  touches the Methods line), the flows and packages (the tenant
+  stamp still reads v1.10 pending the paste), the deck / figures
+  passes (a `**Methods:**` line is prose to them).
+
+Gates: `check_testplangen.py` **226/226** (leg 8 gains the
+declared-and-sourced pass, the undeclared flag, the declared-
+unsourced finding; the banner assertion reads v1.13).
+
 # TestPlanGen v2.38 — the figures budget as a knob (TestPlanFigures prompt v0.2, testplangen.mjs v1.18)
 
 Owner-requested (2026-09-06): doc 910 has 22 cases and the figures
