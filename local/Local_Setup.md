@@ -614,7 +614,11 @@ story it was sent): every Coverage Map requirement must trace to a
 story statement (quoted span or stem overlap), tool-shaped names in
 Steps / Expected Result lines must appear in the story (the prompt's
 tools rule made checkable — deliberately with NO reference-document
-exception, since the prompt admits no tool names from references),
+exception, since the prompt admits no tool names from references;
+since draftlint v1.5 the one exception is a method NAME the draft
+declares on its Setup `**Methods:**` line AND a source lane carries —
+prompt v1.13's METHOD NAMES rule — while a declared name no source
+carries is its own finding),
 and every item of a 3+-item enumeration in a workflow-shaped story
 sentence must be mentioned somewhere in the draft; since draftlint
 v1.2, every case's **Trace:** line must cite the story (prompt
@@ -836,7 +840,11 @@ there, every measure a value there and inside its route's range, a
 closed vocabulary of kinds/tones/marks) and DROPS any that fails,
 then renders the survivors to SVG in the SlideFigures palette as the
 draft's siblings (`<draft stem>--fig-<case>.svg`; dry runs write
-them beside the local copy) linked from a `## Generated Figures`
+them beside the local copy; since figurespec v1.1 / prompt v0.3 a
+route may ask for intermediate `ticks`, every event's ends carry
+their measures, and labels are placed collision-free; since v1.2 all
+panels share one measure scale and each panel shows the previous
+panel's extents that changed as dotted ghosts with a legend key) linked from a `## Generated Figures`
 addendum with caption, rule, the dropped specs' findings and the
 model's not-illustrated list. The draft body is untouched; the pass
 fails soft (a bad reply skips it, the draft still lands —

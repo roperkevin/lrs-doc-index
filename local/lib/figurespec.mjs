@@ -1,6 +1,27 @@
 /**
- * figurespec.mjs v1.0 — generated figures for TestPlanGen drafts
- * (`prompts/TestPlanFigures_Prompt.md` v0.1, testplangen.mjs `--figures`).
+ * figurespec.mjs v1.2 — generated figures for TestPlanGen drafts
+ * (`prompts/TestPlanFigures_Prompt.md` v0.3, testplangen.mjs `--figures`).
+ *
+ * v1.2 (change made visible — testplangen/CHANGES.md v2.41): every
+ * panel of a route-measure figure shares ONE measure scale, so an
+ * extended route grows on the page instead of being rescaled to
+ * fit; and each panel after the first is diffed against the panel
+ * before it — an event whose extent changed keeps a dotted muted
+ * ghost of its prior extent under its bar (a moved point keeps a
+ * hollow ghost dot), an event that left the route keeps a ghost row,
+ * a route whose extent shrank shows its prior extent dotted behind
+ * the line, and a "prior extent" key joins the legend. Tones stay
+ * the model's (they carry meaning); the diff adds structure only.
+ * No spec vocabulary change.
+ *
+ * v1.1 (route-measure legibility — testplangen/CHANGES.md v2.40):
+ * a route may carry `"ticks": <interval>` — unlabelled intermediate
+ * ticks between the labelled calibration points (labelled too when
+ * they fit); every line event's ends and every point event carry
+ * their measure as a small label; and every text in a route-measure
+ * panel goes through a collision-aware placer (estimated text
+ * boxes, ordered candidate positions, a bounded vertical nudge)
+ * so labels never sit on each other, on the route, or on a bar.
  * Pure module, no I/O, no AI: the three deterministic halves around
  * the one model call the pass makes.
  *
@@ -52,7 +73,7 @@ const RANGED_MARKS = new Set(["gap", "retire", "realign", "reassign", "extend"])
 const OUTCOMES = ["ok", "denied", ""];
 const LIMITS = {
   caption: 200, label: 24, stepLabel: 40, notes: 3, legend: 6, panels: 3, routes: 3,
-  calibration: 8, events: 8, marks: 6, nodesMin: 2, nodesMax: 8, edges: 10,
+  calibration: 8, ticks: 60, events: 8, marks: 6, nodesMin: 2, nodesMax: 8, edges: 10,
   actorsMin: 2, actorsMax: 5, stepsMin: 2, stepsMax: 12,
 };
 
@@ -161,6 +182,14 @@ export function verifyFigureSpec(spec, corpus) {
         if (okF && okT) range.set(r.id, [r.from, r.to]);
         if (r.tone !== undefined && !ROUTE_TONES.includes(r.tone)) say(`${where} route ${r.id} tone must be ink | muted`);
         if (r.arrow !== undefined && typeof r.arrow !== "boolean") say(`${where} route ${r.id} arrow must be boolean`);
+        if (r.ticks !== undefined) {
+          // v1.1: a rendering choice, not test data — never grounded,
+          // but bounded so a figure stays a schematic, not a ruler
+          if (!isNum(r.ticks) || r.ticks <= 0) say(`${where} route ${r.id} ticks must be a positive number`);
+          else if (okF && okT && (r.to - r.from) / r.ticks > LIMITS.ticks) {
+            say(`${where} route ${r.id} ticks ${r.ticks} would draw ${Math.floor((r.to - r.from) / r.ticks)} ticks — at most ${LIMITS.ticks}`);
+          }
+        }
         if (r.calibration !== undefined) {
           if (!Array.isArray(r.calibration) || r.calibration.length > LIMITS.calibration) say(`${where} route ${r.id}: calibration is at most 8 numbers`);
           else for (const c of r.calibration) {
@@ -313,32 +342,170 @@ const fmt = (n) => (Math.round(n * 100) / 100).toString();
 const W = 760;
 const PAD = 20;
 const MARK_TONE = { gap: "muted", retire: "red", realign: "warm", reassign: "violet", extend: "green" };
+const PRIOR_KEY = "prior extent (earlier panel)"; // v1.2: the renderer's own legend key
 
 function text(cls, x, y, s, anchor = "middle") {
   return `<text class="${cls}" x="${fmt(x)}" y="${fmt(y)}" text-anchor="${anchor}" dominant-baseline="central">${X(s)}</text>`;
 }
 
-function renderRouteMeasure(spec, out) {
+// ---- label placement (v1.1) ------------------------------------------
+// Estimated text boxes in the figure's own units — no font metrics
+// at render time, so widths are per-class averages of Segoe UI at the
+// palette's sizes, padded a little; a placer keeps every box (and
+// the geometry labels must not cross) and tries a label's candidate
+// positions in order, then nudges the first candidate vertically a
+// bounded number of times. A required label lands on its first
+// candidate when nothing is free (an overlap beats a missing id); an
+// optional one (a measure) is dropped instead.
+const CHAR_W = { measure: 6.3, id: 7.4, note: 6.8, legend: 6, nlabel: 6.9 };
+const TEXT_H = { measure: 11, id: 13, note: 12.5, legend: 11, nlabel: 12.5 };
+const baseCls = (cls) => String(cls).split(" ")[0];
+function textBox(cls, x, y, str, anchor) {
+  const w = String(str).length * (CHAR_W[baseCls(cls)] || 6.6) + 3;
+  const h = (TEXT_H[baseCls(cls)] || 12.5) + 1;
+  const x0 = anchor === "middle" ? x - w / 2 : anchor === "end" ? x - w : x;
+  return { x0, x1: x0 + w, y0: y - h / 2, y1: y + h / 2 };
+}
+class Placer {
+  constructor() { this.boxes = []; this.maxY = -Infinity; this.minY = Infinity; }
+  reserve(b) { this.boxes.push(b); this.maxY = Math.max(this.maxY, b.y1); this.minY = Math.min(this.minY, b.y0); }
+  free(b) { return !this.boxes.some((o) => b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1); }
+  /** Emits the text at the first free candidate; returns the box or null. */
+  place(out, cls, str, candidates, { required = true, nudges = 3 } = {}) {
+    const tried = [];
+    for (const c of candidates) {
+      const b = textBox(cls, c.x, c.y, str, c.anchor);
+      tried.push({ c, b });
+      if (this.free(b)) return this.emit(out, cls, c, str, b);
+    }
+    // bounded vertical nudge off the first candidate: down, up, down…
+    const { c, b } = tried[0];
+    const step = b.y1 - b.y0 + 1;
+    for (let k = 1; k <= nudges; k++) {
+      for (const dir of [1, -1]) {
+        const cc = { ...c, y: c.y + dir * k * step };
+        const bb = textBox(cls, cc.x, cc.y, str, cc.anchor);
+        if (this.free(bb)) return this.emit(out, cls, cc, str, bb);
+      }
+    }
+    return required ? this.emit(out, cls, c, str, b) : null;
+  }
+  emit(out, cls, c, str, b) { out.push(text(cls, c.x, c.y, str, c.anchor)); this.reserve(b); return b; }
+}
+const near = (a, b) => Math.abs(a - b) < 1e-6;
+const tickValues = (r) => {
+  // the intermediate tick measures of a route: multiples of the
+  // interval inside from..to, minus the calibration points
+  if (!isNum(r.ticks) || r.ticks <= 0) return [];
+  const cal = r.calibration && r.calibration.length ? r.calibration : [r.from, r.to];
+  const vals = [];
+  const n0 = Math.ceil(r.from / r.ticks - 1e-9), n1 = Math.floor(r.to / r.ticks + 1e-9);
+  for (let n = n0; n <= n1 && vals.length <= LIMITS.ticks; n++) {
+    const v = Math.round(n * r.ticks * 1e6) / 1e6;
+    if (!cal.some((c) => near(c, v))) vals.push(v);
+  }
+  return vals;
+};
+
+const sameExtent = (a, b) =>
+  a.at !== undefined || b.at !== undefined ? near(a.at ?? NaN, b.at ?? NaN) : near(a.from, b.from) && near(a.to, b.to);
+
+/**
+ * v1.2: the prior-state ghosts a panel draws for one of its routes,
+ * diffed against the panel before it — {route: prior extent or null,
+ * under: Map<eventId, prior event on this route>, gone: prior events
+ * of this route that the panel no longer shows here}.
+ */
+function panelDiff(prev, p, r) {
+  const none = { route: null, under: new Map(), gone: [] };
+  if (!prev) return none;
+  const pr = (prev.routes || []).find((x) => x.id === r.id);
+  const route = pr && !(near(pr.from, r.from) && near(pr.to, r.to)) ? pr : null;
+  const now = new Map((p.events || []).map((e) => [e.id, e]));
+  const under = new Map();
+  const gone = [];
+  for (const pe of prev.events || []) {
+    if (pe.route !== r.id) continue;
+    const e = now.get(pe.id);
+    if (!e || e.route !== r.id) gone.push(pe);
+    else if (!sameExtent(pe, e)) under.set(e.id, pe);
+  }
+  return { route, under, gone };
+}
+
+function renderRouteMeasure(spec, out, meta = {}) {
   let y = 0;
   const x0 = 70;
   const x1 = W - PAD * 2 - 60;
-  for (const p of spec.panels) {
-    if (p.label) { out.push(text("nlabel", 0, y + 8, p.label, "start")); y += 22; }
+  const ROW = 26; // line-event pitch: a bar plus its end measures
+  // v1.2: ONE scale for the whole figure — a before/after pair reads
+  // as change only when both panels measure the same way
+  const all = spec.panels.flatMap((p) => p.routes);
+  const lo = Math.min(...all.map((r) => r.from));
+  const hi = Math.max(...all.map((r) => r.to));
+  const sx = (m) => x0 + ((m - lo) / (hi - lo || 1)) * (x1 - x0);
+  spec.panels.forEach((p, pi) => {
+    const prev = pi > 0 ? spec.panels[pi - 1] : null;
+    const placer = new Placer();
+    if (p.label) {
+      const b = textBox("nlabel", 0, y + 8, p.label, "start");
+      out.push(text("nlabel", 0, y + 8, p.label, "start"));
+      placer.reserve(b);
+      y += 22;
+    }
     const routes = p.routes;
-    const lo = Math.min(...routes.map((r) => r.from));
-    const hi = Math.max(...routes.map((r) => r.to));
-    const sx = (m) => x0 + ((m - lo) / (hi - lo || 1)) * (x1 - x0);
     for (const r of routes) {
-      const ry = y + 24;
+      const ry = y + 36;
+      const diff = panelDiff(prev, p, r);
       const events = (p.events || []).filter((e) => e.route === r.id);
       const marks = (p.marks || []).filter((m) => m.route === r.id);
-      out.push(text("id f-ink", x0 - 12, ry, r.id, "end"));
+      const lineEvents = events.filter((e) => e.at === undefined);
+      const pointEvents = events.filter((e) => e.at !== undefined);
+      const goneLines = diff.gone.filter((e) => e.at === undefined);
+      const gonePoints = diff.gone.filter((e) => e.at !== undefined);
+      placer.place(out, "id f-ink", r.id, [{ x: x0 - 12, y: ry, anchor: "end" }]);
+      // v1.2: the prior extent of a route that changed, dotted behind
+      // the line — visible where the route no longer reaches
+      if (diff.route) {
+        meta.ghost = true;
+        out.push(`<line class="ln ctx dotted" x1="${fmt(sx(diff.route.from))}" y1="${fmt(ry)}" x2="${fmt(sx(diff.route.to))}" y2="${fmt(ry)}"/>`);
+        placer.reserve({ x0: sx(diff.route.from) - 2, x1: sx(diff.route.to) + 2, y0: ry - 4, y1: ry + 4 });
+      }
       const cls = r.tone === "muted" ? "ln ctx" : "ln route";
       out.push(`<line class="${cls}" x1="${fmt(sx(r.from))}" y1="${fmt(ry)}" x2="${fmt(sx(r.to))}" y2="${fmt(ry)}"${r.arrow ? ' marker-end="url(#ar)"' : ""}/>`);
+      placer.reserve({ x0: sx(r.from) - 2, x1: sx(r.to) + (r.arrow ? 10 : 2), y0: ry - 4, y1: ry + 4 });
+      // geometry first, so labels route around it: bars (ghost rows
+      // for events that left this route follow the live ones), points,
+      // marks
+      const bars = [
+        ...lineEvents.map((e) => ({ e, ghost: false })),
+        ...goneLines.map((e) => ({ e, ghost: true })),
+      ].map((b, i) => ({ ...b, ey: ry + 8 + (i + 1) * ROW }));
+      for (const { e, ey } of bars) placer.reserve({ x0: sx(e.from) - 1, x1: sx(e.to) + 1, y0: ey - 5, y1: ey + 5 });
+      for (const { e, ey } of bars) {
+        const pe = diff.under.get(e.id);
+        if (pe && pe.at === undefined) placer.reserve({ x0: sx(pe.from) - 1, x1: sx(pe.to) + 1, y0: ey - 5, y1: ey + 5 });
+      }
+      for (const e of pointEvents) placer.reserve({ x0: sx(e.at) - 6, x1: sx(e.at) + 6, y0: ry - 6, y1: ry + 6 });
+      for (const e of gonePoints) placer.reserve({ x0: sx(e.at) - 6, x1: sx(e.at) + 6, y0: ry - 6, y1: ry + 6 });
+      // calibration: labelled major ticks (above the route first)
       const cal = r.calibration && r.calibration.length ? r.calibration : [r.from, r.to];
+      const labelled = new Set();
+      const above = (x) => [{ x, y: ry - 15.5, anchor: "middle" }, { x, y: ry + 15.5, anchor: "middle" }, { x, y: ry - 28, anchor: "middle" }];
       for (const c of cal) {
         out.push(`<line class="ln tick maj" x1="${fmt(sx(c))}" y1="${fmt(ry - 7.5)}" x2="${fmt(sx(c))}" y2="${fmt(ry + 7.5)}"/>`);
-        out.push(text("measure", sx(c), ry - 15.5, c));
+        if (placer.place(out, "measure", c, above(sx(c)), { required: false, nudges: 1 })) labelled.add(c);
+      }
+      // v1.1: intermediate ticks — unlabelled, labelled when they fit
+      const ticks = tickValues(r);
+      if (ticks.length) {
+        const gapPx = sx(r.ticks) - sx(0);
+        const widest = Math.max(...ticks.map((v) => textBox("measure", 0, 0, v, "middle").x1 - textBox("measure", 0, 0, v, "middle").x0));
+        const fits = gapPx >= widest + 6;
+        for (const v of ticks) {
+          out.push(`<line class="ln tick" x1="${fmt(sx(v))}" y1="${fmt(ry - 4.5)}" x2="${fmt(sx(v))}" y2="${fmt(ry + 4.5)}"/>`);
+          if (fits && placer.place(out, "measure", v, [above(sx(v))[0]], { required: false, nudges: 0 })) labelled.add(v);
+        }
       }
       // ranged marks ride the route line; point marks cut it
       for (const m of marks) {
@@ -346,31 +513,79 @@ function renderRouteMeasure(spec, out) {
           const tone = MARK_TONE[m.kind] || "ink";
           const dash = m.kind === "gap" ? " dotted" : "";
           out.push(`<line class="ln event flat s-${tone}${dash}" x1="${fmt(sx(m.at))}" y1="${fmt(ry)}" x2="${fmt(sx(m.to))}" y2="${fmt(ry)}"/>`);
-          if (m.label) out.push(text(`id f-${tone}`, (sx(m.at) + sx(m.to)) / 2, ry - 30, m.label));
+          const mx = (sx(m.at) + sx(m.to)) / 2;
+          if (m.label) placer.place(out, `id f-${tone}`, m.label, [{ x: mx, y: ry - 30, anchor: "middle" }, { x: mx, y: ry - 43, anchor: "middle" }]);
         } else {
           const mx = m.at === undefined ? sx(r.from) : sx(m.at);
-          out.push(`<line class="split" x1="${fmt(mx)}" y1="${fmt(ry - 10.5)}" x2="${fmt(mx)}" y2="${fmt(ry + 10.5 + 16 * events.filter((e) => e.at === undefined).length)}"/>`);
+          const cutTo = bars.length ? bars[bars.length - 1].ey + 6 : ry + 10.5;
+          out.push(`<line class="split" x1="${fmt(mx)}" y1="${fmt(ry - 10.5)}" x2="${fmt(mx)}" y2="${fmt(cutTo)}"/>`);
           out.push(`<circle class="splitdot" cx="${fmt(mx)}" cy="${fmt(ry)}" r="3.2"/>`);
-          if (m.label) out.push(text("note", mx, ry - 30, m.label));
+          if (m.label) placer.place(out, "note", m.label, [{ x: mx, y: ry - 30, anchor: "middle" }, { x: mx, y: ry - 43, anchor: "middle" }, { x: mx + 8, y: ry - 30, anchor: "start" }]);
         }
       }
-      let row = 0;
-      for (const e of events) {
+      // point events: the id below, the measure above unless the axis
+      // already labels that value
+      for (const e of gonePoints) {
+        // v1.2: a point event that left this route — a hollow muted dot
+        meta.ghost = true;
+        const px = sx(e.at);
+        out.push(`<circle class="node t-plain s-muted dashed" cx="${fmt(px)}" cy="${fmt(ry)}" r="5"/>`);
+        placer.place(out, "id f-muted", e.id, [{ x: px, y: ry + 16, anchor: "middle" }, { x: px + 9, y: ry + 14, anchor: "start" }]);
+      }
+      for (const e of pointEvents) {
         const tone = e.tone || "cool";
-        if (e.at !== undefined) {
-          out.push(`<circle class="node t-${tone} s-${tone}" cx="${fmt(sx(e.at))}" cy="${fmt(ry)}" r="5"/>`);
-          out.push(text(`id f-${tone}`, sx(e.at), ry + 16, e.id));
+        const px = sx(e.at);
+        const pe = diff.under.get(e.id);
+        if (pe && pe.at !== undefined) {
+          // v1.2: the point's prior position — a hollow muted dot
+          meta.ghost = true;
+          out.push(`<circle class="node t-plain s-muted dashed" cx="${fmt(sx(pe.at))}" cy="${fmt(ry)}" r="4"/>`);
+        }
+        out.push(`<circle class="node t-${tone} s-${tone}" cx="${fmt(px)}" cy="${fmt(ry)}" r="5"/>`);
+        placer.place(out, `id f-${tone}`, e.id, [
+          { x: px, y: ry + 16, anchor: "middle" }, { x: px + 9, y: ry - 14, anchor: "start" }, { x: px + 9, y: ry + 14, anchor: "start" },
+        ]);
+        if (![...labelled].some((v) => near(v, e.at))) {
+          placer.place(out, "measure", e.at, [{ x: px, y: ry - 15.5, anchor: "middle" }, { x: px, y: ry + 28, anchor: "middle" }], { required: false, nudges: 1 });
+        }
+      }
+      // line events: the bar, its id at the right end, its measures at
+      // both ends (v1.1) — below the bar, else beside it
+      for (const { e, ey, ghost } of bars) {
+        const tone = ghost ? "muted" : e.tone || "cool";
+        const fx = sx(e.from), tx = sx(e.to);
+        const pe = diff.under.get(e.id);
+        if (pe && pe.at === undefined) {
+          // v1.2: the event's prior extent, dotted under the new bar —
+          // visible where the event no longer reaches
+          meta.ghost = true;
+          out.push(`<line class="ln event flat s-muted dotted" x1="${fmt(sx(pe.from))}" y1="${fmt(ey)}" x2="${fmt(sx(pe.to))}" y2="${fmt(ey)}"/>`);
+        }
+        if (ghost) meta.ghost = true;
+        out.push(`<line class="ln event flat s-${tone}${ghost ? " dotted" : ""}" x1="${fmt(fx)}" y1="${fmt(ey)}" x2="${fmt(tx)}" y2="${fmt(ey)}"/>`);
+        placer.place(out, `id f-${tone}`, e.id, [
+          { x: tx + 6, y: ey, anchor: "start" }, { x: fx - 10, y: ey, anchor: "end" }, { x: (fx + tx) / 2, y: ey - 11, anchor: "middle" },
+        ]);
+        const wFrom = textBox("measure", 0, 0, e.from, "middle"), wTo = textBox("measure", 0, 0, e.to, "middle");
+        if (tx - fx < (wFrom.x1 - wFrom.x0 + wTo.x1 - wTo.x0) / 2 + 4) {
+          // a bar too short for two end labels takes ONE "from–to" label
+          placer.place(out, "measure", `${e.from}–${e.to}`, [
+            { x: (fx + tx) / 2, y: ey + 11, anchor: "middle" }, { x: fx - 5, y: ey, anchor: "end" },
+          ], { required: false, nudges: 1 });
           continue;
         }
-        row++;
-        const ey = ry + 8 + row * 14;
-        out.push(`<line class="ln event flat s-${tone}" x1="${fmt(sx(e.from))}" y1="${fmt(ey)}" x2="${fmt(sx(e.to))}" y2="${fmt(ey)}"/>`);
-        out.push(text(`id f-${tone}`, sx(e.to) + 6, ey, e.id, "start"));
+        placer.place(out, "measure", e.from, [
+          { x: fx, y: ey + 11, anchor: "middle" }, { x: fx, y: ey + 11, anchor: "start" }, { x: fx - 5, y: ey, anchor: "end" },
+        ], { required: false, nudges: 1 });
+        placer.place(out, "measure", e.to, [
+          { x: tx, y: ey + 11, anchor: "middle" }, { x: tx, y: ey + 11, anchor: "end" }, { x: tx + 5, y: ey, anchor: "start" },
+        ], { required: false, nudges: 1 });
       }
-      y = ry + 8 + row * 14 + 26;
+      const rowsBottom = ry + 8 + bars.length * ROW + 24;
+      y = Math.max(rowsBottom, placer.maxY + 14);
     }
     y += 10;
-  }
+  });
   return y;
 }
 
@@ -458,20 +673,24 @@ function renderSequence(spec, out) {
 /** The SVG for a verified spec. */
 export function renderFigureSvg(spec) {
   const body = [];
+  const meta = {};
   let y;
-  if (spec.kind === "route-measure") y = renderRouteMeasure(spec, body);
+  if (spec.kind === "route-measure") y = renderRouteMeasure(spec, body, meta);
   else if (spec.kind === "topology") y = renderTopology(spec, body);
   else y = renderSequence(spec, body);
-  // legend + notes ride below the drawing
-  if (spec.legend && spec.legend.length) {
+  // legend + notes ride below the drawing; v1.2: a figure that drew
+  // prior-state ghosts adds its own key after the spec's items
+  const legend = [...(spec.legend || []), ...(meta.ghost ? [PRIOR_KEY] : [])];
+  if (legend.length) {
     const tones = [];
     for (const p of spec.panels || []) for (const e of p.events || []) tones.push([e.id, e.tone || "cool"]);
     let lx = 0;
     y += 6;
-    for (const item of spec.legend) {
+    for (const item of legend) {
       // the LAST panel's tone for an id — the after-state is what the legend names
       const tone = (tones.filter(([id]) => String(item).startsWith(id + " ")).pop() || [, "ink"])[1];
-      body.push(`<line class="ln swatch flat s-${tone}" x1="${fmt(lx)}" y1="${fmt(y)}" x2="${fmt(lx + 22)}" y2="${fmt(y)}"/>`);
+      const swatch = item === PRIOR_KEY ? "ln swatch flat s-muted dotted" : `ln swatch flat s-${tone}`;
+      body.push(`<line class="${swatch}" x1="${fmt(lx)}" y1="${fmt(y)}" x2="${fmt(lx + 22)}" y2="${fmt(y)}"/>`);
       body.push(text("legend", lx + 28, y, item, "start"));
       lx += 28 + Math.min(220, 6.2 * String(item).length + 24);
       if (lx > W - PAD * 2 - 200) { lx = 0; y += 18; }

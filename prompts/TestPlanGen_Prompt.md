@@ -1,9 +1,9 @@
-# Test Plan Generation Prompt — v1.12
+# Test Plan Generation Prompt — v1.13
 
 The AI Builder custom prompt for the on-demand **TestPlanGen** flow
 (build guide: `testplangen/TestPlanGen_Setup.md`). A separate prompt
 from the indexing one — it has its own version line,
-`TestPlanGenPromptVersion: v1.12`, recorded in `testplangen/CHANGES.md`,
+`TestPlanGenPromptVersion: v1.13`, recorded in `testplangen/CHANGES.md`,
 and bumping it NEVER touches `Config.PromptVersion` (nothing here
 changes the sidecar format or reindexes the corpus).
 
@@ -12,6 +12,28 @@ SIX item/requestv2 input keys, exact names: **StoryMeta**,
 **RelatedCases** (the fifth added in v1.3, the sixth in v1.11 — the
 AI Builder prompt needs each parameter created, not just the text
 re-pasted; the local job's anthropic lane needs nothing).
+
+v1.13 (method names from the sources — one new grounding rule, one
+optional Setup line, four cross-references; no input, section,
+sentinel, or lint-contract change): a 2026-09-06 draft run showed
+the model refusing to name the referent methods an exemplar plan
+lists ("Route & Measure / Coordinates / Location Offset") for a
+story that says "all input methods" without naming them — it read
+the exemplar lane's "never their feature-specific content" as
+covering method NAMES, and wrote "input method M"-style cases the
+CONCRETE TEST DATA rule already forbids. v1.13 says what v1.9
+intended: the names of the members of a method CLASS the story
+states without enumerating are the team's established vocabulary,
+not feature-specific content — borrow them from EXEMPLAR TEXT,
+REFERENCE FUNCTIONALITY, or RELATED CASES, name each method in its
+case or variant, declare the borrowed set ONCE in Setup /
+Prerequisites as a `**Methods:**` line naming the source and
+carrying ONE [VERIFY] on the set, and keep the Trace story-first.
+Tool and widget names still never carry over; a method's RULES
+still do not — only its name. The local verifier's tools check
+(draftlint v1.5) admits a Title Case method name that the draft
+declares on that line AND that appears in a source lane. The tenant
+paste is unchanged in contract (still six parameters).
 
 v1.12 (lane placement of PRESERVED-VALUE behaviors — one sentence
 in the Negative Tests rule; no input, section, sentinel, or lint
@@ -248,8 +270,10 @@ its own BEGIN/END markers:
   surface. Use them as STYLE AND COVERAGE exemplars: mirror their
   tone, granularity, and the kinds of cases they think to include —
   applied to THIS story's feature, never their feature-specific
-  content. Every case they describe is swept case-by-case (the CASE
-  SWEEP rule).
+  content. The one piece of their vocabulary you MAY take is method
+  NAMES — the members of a method class the story states without
+  naming (the METHOD NAMES rule). Every case they describe is swept
+  case-by-case (the CASE SWEEP rule).
 - REFERENCE FUNCTIONALITY — zero or more test plans or design docs
   describing the expected behavior of this story's feature area,
   possibly on ANOTHER surface (each is headed by its title and
@@ -264,7 +288,8 @@ its own BEGIN/END markers:
   feature area, from plans that are not in the two lanes above.
   Treat each case exactly like an exemplar case: a pattern of what
   the team tests and how it varies the inputs, never a source of
-  feature-specific content or tool names. Every related case sent
+  feature-specific content or tool names (method NAMES excepted —
+  the METHOD NAMES rule). Every related case sent
   with its text is swept case-by-case (the CASE SWEEP rule); the
   "Other cases" titles show how that plan VARIES its inputs — read
   them for the VARIATION clause (a title alone justifies a
@@ -303,6 +328,16 @@ permissions/locks state, services. Derive from the story, exemplars,
 and reference functionality; where the sources are silent on a needed
 precondition, include the step with a [VERIFY: ...] note rather than
 inventing specifics.
+
+When the cases use method names borrowed from a source document
+(the METHOD NAMES rule), a `**Methods:**` line precedes the test
+data: the borrowed names, the story statement whose class they
+fill, the source document(s) by title, and ONE [VERIFY] on the set
+— e.g. `**Methods:** Route & Measure, Coordinates, Location Offset
+— the referent methods behind the story's "all input methods", as
+named in "Add Point and Add Line Widgets Test Plan" (exemplar).
+[VERIFY: confirm this is the complete method set on Pro]`. Omit the
+line when nothing is borrowed.
 
 Close the section with a `**Test data:**` line followed by GFM
 table(s) defining the named fixtures the cases reference: a routes
@@ -446,6 +481,32 @@ GROUNDING RULES
   becomes a case: it becomes an Open Questions [VERIFY] entry (the
   CASE SWEEP rule's Verify lane). Never invent requirements,
   behaviors, error messages, or UI the sources don't support.
+- METHOD NAMES (the one piece of source vocabulary you MAY borrow):
+  when the story states a behavior over a CLASS of methods without
+  naming its members — "all input methods", "each referent method",
+  "any location method" — the names the source documents give that
+  class's members (in EXEMPLAR TEXT, REFERENCE FUNCTIONALITY, or
+  RELATED CASES — e.g. Route & Measure, Coordinates, Location Offset
+  as the referent methods) are the team's established vocabulary
+  for this feature area, NOT feature-specific content: borrow them.
+  Name each method in its own case or parameterized variant (the
+  CONCRETE TEST DATA rule already forbids "input method M"), and
+  declare the borrowed set ONCE in Setup / Prerequisites as a
+  `**Methods:**` line — the names, the story statement whose class
+  they fill, the source document(s) by title, and ONE [VERIFY]
+  confirming the set is complete and applies on this surface (the
+  reference lane's surface-parity item covers a cross-surface
+  source). Each such case's Trace cites the story statement FIRST
+  and the source by title second (STORY-FIRST TRACE); the CASE
+  SWEEP's VARIATION clause is the judgment — a method is an INPUT of
+  the stated behavior, never a behavior of its own. Guards: a method
+  name is the name of a WAY to do a story-stated thing, never a tool
+  or widget — a name that is a widget's name stays under the tools
+  rule; a method the story excludes is not borrowed; when a source
+  gives a method rules or outcomes of its own that the story never
+  states, its NAME joins the variant list and its RULES go to Open
+  Questions, never into a case; and a borrowed name never appears
+  in a case without the Methods declaration.
 - ENUMERATION COVERAGE: when the story enumerates workflows, edit
   pathways, input methods, or event/geometry types (e.g. "point and
   line events"; "Add, Update, Split, Merge, Dynamic Seg, Table"),
@@ -491,7 +552,11 @@ GROUNDING RULES
   enumerates. Where the story names a workflow but no tool for it
   (e.g. "Add Point/Line" with no widget named), the case names the
   workflow ("the Add point event pathway") and the missing tool name
-  is a Setup [VERIFY] item — never a guessed widget.
+  is a Setup [VERIFY] item — never a guessed widget. Method names
+  are not tool names: the members of a method class the story
+  states are borrowed under the METHOD NAMES rule, declared on the
+  Setup `**Methods:**` line — and a borrowed name that is really a
+  widget's name is a tools-rule violation, not a method.
 - surface and target release: copy verbatim from StoryMeta. Never
   guess, never substitute a release the exemplars mention.
 - Missing information becomes a [VERIFY: ...] item in Open Questions —
@@ -504,7 +569,8 @@ GROUNDING RULES
   case against them: Steps and Expected Result name concrete values
   ("split event E1 on route R1 at measure 16"), never abstract
   stand-ins ("a measure inside its extent", "a new valid value",
-  "input method M" — name each method the sources support). A
+  "input method M" — name each method the sources support, the
+  METHOD NAMES rule). A
   parameterized case names the concrete value each variant uses.
   When a case creates or changes event or route records, the
   Expected Result carries a GFM table of the affected record(s) with
@@ -554,7 +620,8 @@ GROUNDING RULES
   cites the source plan by title AND the story statement the
   tailored case exercises (plus the reference statement, when one
   grounds its specifics — STORY-FIRST TRACE); never copy the source
-  case's feature-specific content, tool names, or data. **Applies
+  case's feature-specific content, tool names, or data (the method
+  NAMES of the METHOD NAMES rule excepted). **Applies
   but unsupported** (the story says nothing that grounds the
   behavior — reference support alone is not enough): add an Open
   Questions [VERIFY] naming the source plan and case — a possible

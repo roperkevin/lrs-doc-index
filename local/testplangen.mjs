@@ -47,6 +47,26 @@
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
  *
+ * v1.21 (change made visible — testplangen/CHANGES.md v2.41):
+ * lib/figurespec.mjs v1.2 shares one measure scale across a figure's
+ * panels and draws each panel's changed prior extents as ghosts.
+ * Stamp change only in this file.
+ *
+ * v1.20 (route-measure legibility — testplangen/CHANGES.md v2.40):
+ * the figures prompt is v0.3 (an optional per-route `ticks` interval
+ * in the vocabulary) and lib/figurespec.mjs v1.1 renders intermediate
+ * ticks, measure labels at every event's ends, and collision-free
+ * label placement. Stamp change only in this file.
+ *
+ * v1.19 (method names from the sources — testplangen/CHANGES.md
+ * v2.39): prompt v1.13 lets a draft borrow the NAMES of a method
+ * class the story states without naming ("all input methods") from
+ * the exemplar / reference / related-cases lanes, declared once on a
+ * Setup `**Methods:**` line; the verifier's tools check receives the
+ * source lanes' text so a declared, source-carried name passes and a
+ * declared name no source carries is flagged (draftlint v1.5).
+ * promptVersion default → v1.13.
+ *
  * v1.15 (doc 910 draft review — testplangen/CHANGES.md v2.35): the
  * figures pass names its own cap when the model's reply is cut
  * (testplangen.figuresMaxTokens, default raised 8000 → 24000: a
@@ -477,11 +497,11 @@ import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.18";
+const JOB_VERSION = "v1.21";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
-const FIG_PROMPT_VERSION = "v0.2"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
+const FIG_PROMPT_VERSION = "v0.3"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
 const FIG_INPUT_KEYS = ["PlanTitle", "Draft", "FiguresCap"];
 const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 
@@ -670,7 +690,7 @@ function loadConfig(argv) {
     digestSummaryCap: 400,
     exemplarSlots: 2,
     referenceSlots: 3,
-    promptVersion: "v1.12",
+    promptVersion: "v1.13",
     draftFolder: "/Test Plan Drafts",
     verify: "annotate",
     grounding: true,
@@ -2086,7 +2106,16 @@ async function generateOne(ctx, story) {
   if (tp.verify !== "off") {
     findings = lintDraft(draftBody).failures;
     if (tp.grounding !== false) {
-      findings.push(...groundDraft(draftBody, `${storyTextCapped}\n${storyMeta}`));
+      // prompt v1.13: the source lanes let the METHOD NAMES exception
+      // in the tools check tell a borrowed method name from an
+      // invented tool (draftlint v1.5)
+      findings.push(
+        ...groundDraft(
+          draftBody,
+          `${storyTextCapped}\n${storyMeta}`,
+          `${exemplarText}\n${referenceText}\n${related.text}`
+        )
+      );
     }
     verify = findings.length ? `${findings.length}-findings` : "ok";
     prog(`verifier — ${verify}`);

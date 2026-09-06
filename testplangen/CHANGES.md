@@ -1,3 +1,161 @@
+# TestPlanGen v2.41 — change made visible in before/after figures (figurespec v1.2, testplangen.mjs v1.21)
+
+Owner-requested (2026-09-06), the first pick from the diagram
+review: R2 (state change) is the strongest selection rule and
+produces most figures, yet a Before/After pair rendered each panel
+on its own scale and drew the after-state as if nothing had been
+there before — an extended route was shrunk to fit and a split's
+lost extent simply vanished. Rendering only; no spec vocabulary or
+prompt change (still TestPlanFigures v0.3), grounding unchanged.
+
+- **One scale per figure.** Every panel of a route-measure figure
+  now measures with the same pixels-per-unit (the min and max over
+  ALL panels' routes), so an extension grows on the page and an
+  unchanged route sits exactly under its earlier self.
+- **Each panel diffed against the one before it.** For every route
+  in a later panel: an event whose extent changed on that route
+  keeps a dotted muted ghost of its prior extent under its bar
+  (visible where it no longer reaches — a split's lost half, a
+  move's origin); a moved point event keeps a hollow muted dot at
+  its prior measure; an event that is no longer on the route (gone,
+  or now on another route) keeps a ghost row after the live ones,
+  muted and dotted with its id and end measures; a route whose
+  extent changed shows its prior extent dotted behind the line. The
+  diff is structural only — tones stay the model's, since the prompt
+  gives them meaning (green = correct result, red = rejected or
+  retired).
+- **A renderer-owned legend key**, "prior extent (earlier panel)"
+  with a dotted muted swatch, joins the spec's legend items whenever
+  a ghost was drawn — so a reviewer never reads a ghost as a live
+  event. The ghosts are reserved geometry for the v1.1 label placer,
+  and an id whose right-hand spot a ghost occupies moves left with a
+  little more clearance than before.
+- Date-slice panels (R4) get the same treatment panel by panel;
+  single-panel figures are unchanged apart from the (now trivially
+  shared) scale.
+
+Gates: `check_testplangen.py` **231/231** (leg 18 — "100" lands at
+the same x in both fixture panels; a split spec rendered in-process
+shows E1's prior 16–40 and E3's ghost row dotted, P1's prior dot,
+R1's prior 0–100, the legend key and swatch); `check_deck2pptx.py`
+**56/56**. The split sample was eyeballed in Chromium.
+
+# TestPlanGen v2.40 — route-measure figures made legible (figurespec v1.1, TestPlanFigures prompt v0.3, testplangen.mjs v1.20)
+
+Owner-requested (2026-09-06): "enhance the svg diagrams — allow
+intermediate tics, improve label positioning while preventing
+overlap, measure labels at the beginning and ends of events."
+Rendering only — the model's job (select, specify) is unchanged
+except for one optional key; grounding is unchanged.
+
+- **Intermediate ticks (`"ticks"`, prompt v0.3).** A route in a
+  route-measure spec may carry `"ticks": <interval>` — unlabelled
+  minor ticks at every multiple of the interval between from and to,
+  skipping the calibration points, drawn shorter than the labelled
+  major ticks in the SlideFigures `.tick` class. When the interval's
+  pixel spacing fits a label, the ticks are labelled too (all or
+  none, so a scale never reads 0, 10, 30). A rendering choice, not
+  test data: the verifier never grounds it, but rejects a
+  non-positive value and an interval that would draw more than 60
+  ticks (a figure is a schematic, not a ruler). The prompt tells the
+  model to use it only when a case names measures that fall between
+  calibration points.
+- **Measure labels at event ends.** Every line event's bar now
+  carries its from and to measures under its ends; a point event
+  carries its measure above the dot unless the axis already labels
+  that value. A bar too short for two labels takes one `from–to`
+  label instead. The line-event pitch grows from 14 to 26 to make
+  room; a figure is correspondingly taller.
+- **Collision-free labels.** Every text in a route-measure panel —
+  route id, calibration and tick labels, mark labels, event ids, the
+  new measures — goes through a placer: estimated text boxes
+  (per-class average glyph widths of Segoe UI at the palette's
+  sizes), the geometry reserved first (route line, bars, dots), each
+  label tried at an ordered list of candidate positions (below the
+  bar → beside it; above the route → below → higher), then nudged
+  vertically a bounded number of times. A required label (an id)
+  lands on its first candidate when nothing is free; an optional one
+  (a measure that the geometry already implies) is dropped instead.
+  Panel heights follow the lowest placed label. Fixes the v1.0
+  overlap of a point event's id with the first line-event bar.
+- **Unchanged:** topology and sequence rendering, the `<style>`
+  block and classes (svg2pptx / deck2pptx consume the output as
+  before), the addendum, the Gen_summary counters. testplangen.mjs
+  v1.20 is the two stamps (`FIG_PROMPT_VERSION` v0.3, job version).
+
+Gates: `check_testplangen.py` **229/229** (leg 18 — R1's `ticks: 10`
+draws eight labelled intermediate ticks; 105 / 130 / 40 / 5 appear
+as event-end measures; an estimated-box overlap scan over every
+non-legend text finds none; a `ticks: 0.1` spec is dropped with the
+cap finding ahead of its invented measure); `check_deck2pptx.py`
+green (an inline figurespec still embeds as a native group).
+Rendered output eyeballed in Chromium: the harness fixture and a
+deliberately crowded panel (six events incl. two 2-unit bars and two
+point events 3 units apart, a split and a gap mark).
+
+# TestPlanGen v2.39 — method names from the sources (prompt v1.13, testplangen.mjs v1.19, draftlint v1.5)
+
+Owner-requested (2026-09-06): a draft run's reasoning showed the
+model declining to name the referent methods an exemplar plan lists
+— "Route & Measure / Coordinates / Location Offset" — for a story
+that says "all input methods" without naming them, because "the rule
+is clear that exemplars only guide style and coverage — not feature
+content". The owner's call: it should be able to pull method names
+from the exemplar. v1.9 always meant that ("the concrete input
+methods behind the story's 'all input methods'" REFINE a story
+statement), but the exemplar lane's "never their feature-specific
+content", the related-cases lane's "never a source of
+feature-specific content or tool names", and the CASE SWEEP's "never
+copy the source case's feature-specific content" said otherwise, and
+the CONCRETE TEST DATA rule's "name each method the sources support"
+had nothing to name.
+
+- **Prompt v1.13 — the METHOD NAMES grounding rule.** When the story
+  states a behavior over a CLASS of methods without naming its
+  members ("all input methods", "each referent method", "any
+  location method"), the names the source documents give that
+  class's members — in EXEMPLAR TEXT, REFERENCE FUNCTIONALITY, or
+  RELATED CASES — are the team's established vocabulary for the
+  feature area, not feature-specific content: the draft borrows
+  them, names each method in its own case or parameterized variant,
+  and declares the borrowed set ONCE in Setup / Prerequisites as a
+  `**Methods:**` line (the names, the story statement whose class
+  they fill, the source document(s) by title, ONE [VERIFY] on the
+  set) ahead of the `**Test data:**` line. Trace stays story-first
+  (story statement, then the source by title); the CASE SWEEP's
+  VARIATION clause is the judgment — a method is an INPUT of a
+  stated behavior, never a behavior of its own. Guards: a method
+  name is the name of a WAY to do a story-stated thing, never a tool
+  or widget (a widget's name stays a tools-rule violation); a method
+  the story excludes is not borrowed; a method's source-only RULES go
+  to Open Questions while its NAME joins the variant list; no
+  borrowed name without the declaration. Four cross-references
+  (the exemplar and related-cases lane descriptions, the CASE SWEEP,
+  the tools rule, the CONCRETE TEST DATA rule) now except method
+  names explicitly. No input, section, sentinel, or lint-contract
+  change; the six-parameter tenant contract is unchanged (the v1.13
+  paste supersedes the pending v1.12 one).
+- **Verifier (draftlint v1.5, testplangen.mjs v1.19).** Grounding
+  check b (tool-shaped names must appear in the story) would have
+  flagged every borrowed Title Case method name ("Location Offset")
+  as an invented tool. `groundDraft` gains an optional third
+  argument — the exemplar + reference + related-cases text the job
+  sent — and check b passes a phrase the draft DECLARES on a Setup
+  `**Methods:**` line when a source lane carries it; a declared name
+  no source carries is its own finding (`grounding: declared method
+  "…" appears in no source document`), and an undeclared name is
+  flagged exactly as before. Without a source corpus there is no
+  exception — the declaration alone never admits a name. The job
+  passes the three lanes; `promptVersion` default → v1.13.
+- **Not changed:** the Python contract lint (no structural assert
+  touches the Methods line), the flows and packages (the tenant
+  stamp still reads v1.10 pending the paste), the deck / figures
+  passes (a `**Methods:**` line is prose to them).
+
+Gates: `check_testplangen.py` **226/226** (leg 8 gains the
+declared-and-sourced pass, the undeclared flag, the declared-
+unsourced finding; the banner assertion reads v1.13).
+
 # TestPlanGen v2.38 — the figures budget as a knob (TestPlanFigures prompt v0.2, testplangen.mjs v1.18)
 
 Owner-requested (2026-09-06): doc 910 has 22 cases and the figures
