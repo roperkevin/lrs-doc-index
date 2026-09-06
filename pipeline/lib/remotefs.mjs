@@ -86,7 +86,12 @@ export class RemoteLibrary {
       manifest[rel] = etag;
       downloaded++;
     }
-    // prune: local .md files (the mirror's file type) gone remotely
+    // prune: local .md files (the mirror's file type) gone remotely —
+    // but never on an empty or implausibly short listing: a throttled or
+    // failed delta must not delete the workspace (or, if the workspace
+    // is a synced folder, the corpus). The prune only runs when the
+    // drive lists at least half as many .md files as the workspace holds.
+    const localMd = [];
     const walk = (dir) => {
       let names = [];
       try {
@@ -97,18 +102,28 @@ export class RemoteLibrary {
       for (const d of names) {
         const p = path.join(dir, d.name);
         if (d.isDirectory()) walk(p);
-        else if (d.name.endsWith(".md") && !remote.has(this.relOf(p))) {
-          try { fs.rmSync(p); } catch { /* best effort */ }
-          delete manifest[this.relOf(p)];
-        }
+        else if (d.name.endsWith(".md")) localMd.push(p);
       }
     };
     walk(this.localRoot);
+    const stale = localMd.filter((p) => !remote.has(this.relOf(p)));
+    let pruned = 0;
+    if (stale.length && (remote.size === 0 || remote.size * 2 < localMd.length)) {
+      process.stderr.write(
+        `remote mirror: the drive listed ${remote.size} .md file(s) against ${localMd.length} local — ` +
+        `prune skipped (${stale.length} stale local file(s) kept until a full listing)\n`
+      );
+    } else {
+      for (const p of stale) {
+        try { fs.rmSync(p); pruned++; } catch { /* best effort */ }
+        delete manifest[this.relOf(p)];
+      }
+    }
     try {
       fs.mkdirSync(path.dirname(this.manifestPath), { recursive: true });
       fs.writeFileSync(this.manifestPath, JSON.stringify(manifest, null, 1));
     } catch { /* manifest is an optimization, not state */ }
-    return { files: remote.size, downloaded };
+    return { files: remote.size, downloaded, pruned };
   }
 
   /** Queue a write-through upload/delete for a workspace path (a path

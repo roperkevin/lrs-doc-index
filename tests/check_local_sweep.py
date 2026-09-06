@@ -2788,6 +2788,18 @@ def main():
           proc.returncode == 0 and out.get("processed") == 0
           and len(state.drive_downloads) == dl2_before,
           str(out) + f" downloads={len(state.drive_downloads) - dl2_before}")
+    # an EMPTY drive listing (a failed/throttled delta) must not prune the
+    # workspace: every local .md stays and the run says the prune was skipped
+    saved_remote = dict(state.remote_files)
+    state.remote_files = {}
+    proc = run_sweep(rcfg_path, ["--live", "--only", "notes.txt"])
+    check("empty remote listing: mirror keeps every local sidecar and reports the skipped prune",
+          proc.returncode == 0
+          and os.path.exists(os.path.join(remote_mirror, "User Stories", "pre-existing__doc999.md"))
+          and any(k.endswith("/" + notes_file) for k in
+                  (os.path.join(dp, fn) for dp, _, fns in os.walk(remote_mirror) for fn in fns))
+          and "prune skipped" in proc.stderr, proc.stderr[-400:] + str(os.listdir(remote_mirror)))
+    state.remote_files = saved_remote
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")
