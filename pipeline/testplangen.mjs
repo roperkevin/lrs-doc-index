@@ -1582,6 +1582,11 @@ function caseAwareTake(content, budget, planId, cc, defaultRepo) {
   if (content.length <= budget) return { text: content, kept: total, total, trimmed: false };
   if (!cc || total === 0) return { text: cut(content, budget), kept: 0, total, trimmed: false };
   const { lines, spans } = caseSpans(content);
+  if (!spans.length || spans.length !== parsed.cases.length) {
+    // the two parsers disagree on the case boundaries — trim whole
+    // rather than index spans by the wrong case list
+    return { text: cut(content, budget), kept: 0, total, trimmed: false };
+  }
   const rowOf = (cc.rowsByPlan.get(planId)) || new Map();
   const overlap = (a, b) => a.filter((x) => b.includes(x)).length;
   const scored = parsed.cases.map((c, i) => {
