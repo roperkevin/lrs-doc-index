@@ -1138,3 +1138,51 @@ with the Test Cases list) — add it per the CSV and run `--refigure
 --live` once. Figure rows are a REPLACE-SET per document (`FigureKey
 = {docRowId}|{ordinal}`): derived state, safe to delete wholesale and
 rebuild with `--refigure`.
+
+## 15. The catalog as a wiki (wiki.mjs)
+
+`pipeline/wiki.mjs` renders every sidecar into an MkDocs site — one
+page per document (the metadata table with its values linked into
+catalogs, the summary, the related documents as page links, the
+extracted body with its media), catalogs by kind, keyword (after
+curation's merges), tool, product, release, person and issue, the
+test cases and figures with anchors into the pages, a Recent page —
+and pushes the tree to a git repository whose Pages workflow builds
+and serves it. It reads only files: `paths.sidecarLibrary` (the
+synced folder or the remote-files mirror) and the newest
+`list-backup-*.json.gz` the sweep leaves in `paths.workDir` (for the
+keyword canonical map and kinds). No SharePoint call, no model call.
+
+**Where it lives.** This repository is public (the PV-1 decision), so
+the wiki cannot be its GitHub wiki or Pages site. It lives in a
+PRIVATE repository on devtopia —
+`https://devtopia.esri.com/kev14953/lrs-doc-index` — with Pages turned
+on there once (Settings → Pages → Source: **GitHub Actions**). The
+generated tree carries its own
+`pages.yml` workflow (`pip install mkdocs-material`, `mkdocs build
+--strict`, deploy), so every push publishes.
+
+Setup (after the sweep's §1–§4):
+
+1. Config: `"wiki": {"repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git"}`
+   (the sample shows the optional keys: branch, outDir, siteName,
+   siteUrl, recent). Credentials come from the machine's git
+   credential helper — clone the repository once from a console so
+   the helper caches them; nothing is stored in config.
+2. Render and preview: `node --experimental-strip-types pipeline\wiki.mjs --config config.json`
+   writes `<workDir>\wiki`; `pip install mkdocs-material` then
+   `mkdocs serve` inside it previews the site locally (`--build`
+   runs `mkdocs build --strict` for you).
+3. Push: `... wiki.mjs --config config.json --push` commits the tree
+   and pushes it (an unchanged corpus makes no commit). The first
+   push creates the branch; Pages builds within a minute.
+4. Schedule `ops\run_wiki.cmd` after the nightly sweep:
+   `schtasks /create /tn "LRS Doc Index Wiki" /xml C:\Repos\lrs-doc-index\ops\wiki_task.xml /f`
+   (daily 18:30 by default — the sweep starts at 17:00 and finishes
+   well inside the hour).
+
+The tree is a rendering: nothing in it is edited by hand, the next
+run overwrites every page. Change a document's classification,
+keywords or related documents in the catalog and the sweep's rewrite
+of the sidecar carries it to the wiki. Gate: `tests/check_wiki.py`
+(fixture-free; the strict MkDocs build runs in CI).

@@ -1,5 +1,20 @@
 # Local sweep — release notes
 
+## wiki v1.0 (2026-09-06)
+
+`pipeline/wiki.mjs` — the catalog as a wiki: every sidecar rendered
+into an MkDocs (Material) site and pushed to a private devtopia
+repository whose Pages workflow serves it. One page per document
+(metadata table linked into the catalogs, summary, related documents
+as page links, the extracted body with its media), catalogs by kind /
+keyword (curation's merges applied from the list backup) / tool /
+product / release / person / issue, the test cases and figures with
+MkDocs-identical section anchors, Recent, About; `--build` runs
+`mkdocs build --strict`, `--push` commits and pushes (an unchanged
+corpus makes no commit). Reads files only — the sidecar library and
+the newest list backup. `ops/run_wiki.cmd` + `wiki_task.xml`
+(daily 18:30). Gate: `tests/check_wiki.py` (34 checks, CI).
+
 ## designsystem v1.3 / check_design_tokens.py (2026-09-06, with TestPlanGen v2.42)
 
 Every token block verified against the published npm packages by the

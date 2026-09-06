@@ -16,6 +16,7 @@ Last updated: **2026-09-06** (the cleanup branch — see
 |---|---|---|
 | Nightly sweep | `sweep.mjs` DEPLOYED 2026-08-14 (scheduled task "LRS Doc Index Sweep", daily 17:00, `ops\run_sweep.cmd`). **Not running since the device-code refresh token expired** (Conditional Access `AADSTS53003`, open action 1). Corpus stamped `PromptVersion` **v2.0.2** by the AI Builder classifier | sweep v1.63 + this branch; classifier `docindex_classify` 3.0.0 through the Anthropic API — stamp `v3.0.0` once the machine's pin is removed (open action 3) |
 | Weekly curation | `curate.mjs` DEPLOYED 2026-08-15 ("LRS Keyword Curation", Saturday 08:00, `curation.autoApprove: true` — merges apply, the digest is an audit log); first run canon=1880, two merges | curate v1.11.1 + this branch (`keyword_curation` 1.1.0 through the Anthropic API) |
+| The wiki | `devtopia.esri.com/kev14953/lrs-doc-index` (private), first push pending (open action 9) | `wiki.mjs` v1.0, `tests/check_wiki.py` 34 checks |
 | Test-plan drafting | `testplangen.mjs` on the machine (manual runs; `--auto` INERT until `testplangen.autoDraft: true`) | testplangen.mjs v1.22, `testplan_draft` 1.13.0, `testplan_figures` 0.4.0, `testplan_deck` 0.1.0 |
 | Schedules → Issue Refs | `gantt.mjs` never run live; the Issue Refs list GUID is verified (`docs/sharepoint-notes.md`) | gantt v1.0 |
 | Extractors | the seven `extract/*.ts` run in-process by every deploy (ZipTextExtract v2.7, RegexExtract v1.5, ShapeExtract v1.1, SidecarPatch v1.8, RelatedRank v2.2, WorkbookDump, MediaExtract) | same |
@@ -95,5 +96,13 @@ The cleanup changed what the machine needs. In order, from a console:
 8. **Curation courtesy check** — read the first all-resolved Saturday
    digest after the deploy; the model changed under the same prompt
    text.
-9. **Later phases** (not started): the extractors as plain modules
+9. **The wiki** — the private repository is
+   `https://devtopia.esri.com/kev14953/lrs-doc-index` (Pages source:
+   GitHub Actions, set once). `wiki.repoUrl` in the sample already
+   names it; clone it once from a console so the credential helper
+   holds the token, run `wiki.mjs --config config.json --push`, then
+   register `ops\wiki_task.xml` (`docs/setup.md` §15). The first
+   push after the reformat pass (action 4) is the one worth showing
+   people: format 3.0 pages, standardized figure names.
+10. **Later phases** (not started): the extractors as plain modules
    (`docs/history/PLAN_2026-09.md` D8); a Batch API backfill mode.
