@@ -239,7 +239,7 @@ console.log(JSON.stringify(o));
     good_spec = {
         "plan": "Test Plan — Route Merge",
         "slides": [
-            {"pattern": "title", "regions": {"headline": "Route Merge", "facts": [{"label": "Surface", "value": "Pro"}, {"label": "PE", "value": "Claire Wang"}]}, "notes": "Open here."},
+            {"pattern": "title", "regions": {"eyebrow": "TEST PLAN REVIEW", "headline": "Route Merge", "facts": [{"label": "Surface", "value": "Pro"}, {"label": "PE", "value": "Claire Wang"}]}, "notes": "Open here."},
             {"pattern": "stats", "title": "At a glance", "regions": {
                 "tiles": [{"count": "positive-cases", "label": "Positive cases", "tone": "success"},
                           {"count": "negative-cases", "label": "Negative cases", "tone": "danger"},
@@ -312,11 +312,11 @@ out.corpus = {{ title: corpus.title, counts: corpus.counts, figures: corpus.figu
 const good = S.verifyDeckSpec({json.dumps(good_spec)}, corpus);
 out.good = {{ n: good.slides.length, dropped: good.dropped, findings: good.findings,
   patterns: good.slides.map((s) => s.pattern),
-  steps: good.slides[4].regions.left, right: good.slides[4].regions.right,
-  tiles: good.slides[1].regions.tiles, lede: good.slides[1].regions.lede, callout: good.slides[1].regions.callout,
-  setup: good.slides[2].regions.items, fig1: good.slides[5].regions.figure, fig2: good.slides[6].regions.figure,
-  alert: good.slides[8].regions.callout, cov: good.slides[12].regions.table, iss: good.slides[13].regions.table, note: good.slides[13].regions.note,
-  cases: good.slides[14].regions.items, asks: good.slides[15].regions.asks, closingTitle: good.slides[15].title, sectionTitle: good.slides[3].title,
+  steps: good.slides[4]?.regions?.left, right: good.slides[4]?.regions?.right,
+  tiles: good.slides[1]?.regions?.tiles, lede: good.slides[1]?.regions?.lede, callout: good.slides[1]?.regions?.callout,
+  setup: good.slides[2]?.regions?.items, fig1: good.slides[5]?.regions?.figure, fig2: good.slides[6]?.regions?.figure,
+  alert: good.slides[8]?.regions?.callout, cov: good.slides[12]?.regions?.table, iss: good.slides[13]?.regions?.table, note: good.slides[13]?.regions?.note,
+  cases: good.slides[14]?.regions?.items, asks: good.slides[15]?.regions?.asks, closingTitle: good.slides[15]?.title, sectionTitle: good.slides[3]?.title,
   stmt: good.slides[10].regions.statement, notes: good.slides[0].notes }};
 const bad = S.verifyDeckSpec({json.dumps(bad_spec)}, corpus);
 out.bad = {{ n: bad.slides.length, dropped: bad.dropped.map((d) => [d.index + 1, d.findings[0]]), kept: bad.slides.map((s) => s.title) }};

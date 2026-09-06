@@ -401,7 +401,9 @@ function verifyRegion(v, rd, what, corpus, say, pattern) {
       // free vs grounded single texts
       // the model's own words, capped: the headline (a slide title),
       // a divider's number / strap, a statement's attribution
-      if (["headline", "number", "strap", "attribution"].includes(what.split(": ").pop())) {
+      // (+ eyebrow — prompt L5: titles, eyebrows, straps and labels are
+      // the model's; only body content is copied from the plan)
+      if (["headline", "number", "strap", "attribution", "eyebrow"].includes(what.split(": ").pop())) {
         return capStr(isObj(v) ? v.text : v, what.endsWith("headline") ? LIMITS.title : LIMITS.label * 2, what, say, false);
       }
       return textOf(v, what, corpus, say, LIMITS.lede);
