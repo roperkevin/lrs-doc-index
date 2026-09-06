@@ -2016,6 +2016,14 @@ async function main() {
       summary.archived++;
       const local = urlToLocal(g.TextFileUrl || "", sw, cfg);
       if (local && fs.existsSync(local)) writer.deleteFile(local);
+      // the document's media folder is derived state like its sidecar
+      if (local) {
+        const mediaDir = path.join(cfg.paths.sidecarLibrary, "media", stemOf(g.TextFileUrl || ""));
+        if (stemOf(g.TextFileUrl || "") && fs.existsSync(mediaDir) && fs.statSync(mediaDir).isDirectory()) {
+          for (const f of fs.readdirSync(mediaDir)) writer.deleteFile(path.join(mediaDir, f));
+          if (!dry) { try { fs.rmdirSync(mediaDir); } catch { /* not empty or gone */ } }
+        }
+      }
       // an archived doc's case rows are derived state — prune them
       // with the sidecar (empty fresh side = full deletion)
       await syncCases(g.ID, "", "", summary);
@@ -2352,7 +2360,7 @@ async function indexDoc(ctx) {
         Repo: id.repo, IssueNumber: id.number, Source: id.source || "", IdKey: idKey,
       });
       caches.idKeys.add(idKey);
-      caches.docIdRows.push({ Repo: id.repo, IssueNumber: id.number, IdKey: idKey, DocumentId: rowId });
+      caches.docIdRows.push({ Repo: id.repo, IssueNumber: id.number, IdKey: idKey, DocumentId: rowId, Source: id.source || "" });
     }
     const sharers = caches.docIdRows.filter(
       (r) => r.Repo === id.repo && r.IssueNumber === id.number &&

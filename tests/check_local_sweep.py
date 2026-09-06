@@ -957,6 +957,10 @@ def main():
     os.makedirs(os.path.dirname(ghost_sc), exist_ok=True)
     with open(ghost_sc, "w") as f:
         f.write("# Ghost Doc\nstale sidecar\n")
+    ghost_media = os.path.join(sidecar_dir, "media", "Ghost Doc")
+    os.makedirs(ghost_media, exist_ok=True)
+    with open(os.path.join(ghost_media, "fig-01.png"), "wb") as f:
+        f.write(b"\x89PNG stale")
     ghost_row_id = state.seed(LISTS["docIndex"], {
         "Title": "Ghost Doc", "FileName": "Ghost Doc.pptx",
         "DocKey": "shared documents/ghost doc.pptx", "IndexStatus": "Indexed",
@@ -1144,6 +1148,7 @@ def main():
           and "archived" in str(ghost.get("LastError", ""))
           and out.get("archived") == 1, str(ghost)[:250])
     check("ghost sidecar pruned", not os.path.exists(ghost_sc))
+    check("ghost media folder pruned with the sidecar", not os.path.exists(ghost_media), str(os.path.exists(ghost_media)))
 
     _, outside = by_name.get("outside.txt", (None, {}))
     check("out-of-scope doc -> stamped Skip",
