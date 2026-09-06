@@ -47,6 +47,15 @@
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
  *
+ * v1.22 (figure variety — testplangen/CHANGES.md v2.43): the figures
+ * prompt is v0.4 — five more figure kinds (timeline, state, matrix,
+ * wireframe, workflow) with their selection rules R6–R9, a
+ * kind-choice table so the kind follows the case's ASSERTION rather
+ * than its data, and a variety clause in the X6 budget — and
+ * lib/figurespec.mjs v1.3 grounds and renders them. The Generated
+ * Figures addendum names each figure's kind beside its rule, and
+ * Gen_summary gains `genKinds=<kind>:<n>,…` so a run shows its mix.
+ *
  * v1.21 (change made visible — testplangen/CHANGES.md v2.41):
  * lib/figurespec.mjs v1.2 shares one measure scale across a figure's
  * panels and draws each panel's changed prior extents as ghosts.
@@ -492,16 +501,17 @@ import { stemOf } from "./lib/slug.mjs";
 import { storyTextFirst } from "./lib/storyprofile.mjs";
 import {
   parseFiguresReply, draftCorpus, verifyFigureSpec, renderFigureSvg, figureFileName,
+  KINDS as FIGURE_KINDS,
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.21";
+const JOB_VERSION = "v1.22";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
-const FIG_PROMPT_VERSION = "v0.3"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
+const FIG_PROMPT_VERSION = "v0.4"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
 const FIG_INPUT_KEYS = ["PlanTitle", "Draft", "FiguresCap"];
 const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 
@@ -532,7 +542,8 @@ const USAGE =
   "--stream echoes the model's thinking summary and reply to stderr as they " +
   "arrive (anthropic lane only — Dataverse Predict cannot stream). " +
   "--figures adds a second model pass over the verified draft that selects the " +
-  "cases worth a schematic and renders grounded SVG figures beside the draft " +
+  "cases worth a figure and renders grounded SVG figures beside the draft — route " +
+  "schematics, topology, sequence, timeline, state, matrix, UI wireframe, workflow " +
   "(prompts/TestPlanFigures_Prompt.md; manual runs only). " +
   "--preview resolves the story and builds every lane, writes the five " +
   "prompt inputs to workDir, and stops BEFORE the model call (zero AI " +
@@ -2184,7 +2195,7 @@ async function generateOne(ctx, story) {
       .map(
         (r) =>
           `\n### ${r.title}\n\n![${r.caption.replace(/[\[\]]/g, "")}](<${r.url}>)\n\n` +
-          `_${r.caption}_ (rule ${r.rule})\n`
+          `_${r.caption}_ (${r.kind}, rule ${r.rule})\n`
       )
       .join("");
     const dropped = figs.dropped.length
@@ -2316,7 +2327,7 @@ async function generateOne(ctx, story) {
     `caseTrim=${caseTrim} exCases=${exCasesKept}/${exCasesTotal} ` +
     `relatedCases=${related.count} relatedPlans=${related.plans.length} ` +
     `relCaseChars=${related.chars} genFigures=${figs.rendered.length}/${figs.proposed} ` +
-    `deck=${deck.slides}/${deck.proposed}`;
+    `genKinds=${figureKindMix(figs.rendered)} deck=${deck.slides}/${deck.proposed}`;
 
   // opt-in notification (v1.1) — one webhook line per WRITTEN draft;
   // best-effort by alerts.mjs design, a down webhook never fails a run
@@ -2426,6 +2437,14 @@ async function generateDeck(ctx, story, draft, provider, prog, names) {
     (out.dropped.length ? `, ${out.dropped.length} dropped by the grounding check` : "")
   );
   return out;
+}
+
+/** v1.22: "route-measure:2,wireframe:1" over the rendered figures, in KINDS order; "-" when none. */
+function figureKindMix(rendered) {
+  const counts = new Map();
+  for (const r of rendered) counts.set(r.kind, (counts.get(r.kind) || 0) + 1);
+  const mix = FIGURE_KINDS.filter((k) => counts.has(k)).map((k) => `${k}:${counts.get(k)}`);
+  return mix.length ? mix.join(",") : "-";
 }
 
 /**

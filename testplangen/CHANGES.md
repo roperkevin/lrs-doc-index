@@ -1,3 +1,81 @@
+# TestPlanGen v2.43 — figure variety: timeline, state, matrix, UI wireframe and workflow figures (TestPlanFigures prompt v0.4, figurespec v1.3, testplangen.mjs v1.22)
+
+Owner-requested (2026-09-06): "the current test plan gen flow only
+generates route diagrams — add more variety to the types of
+visualizations", "include UI wireframes if needed", "in some cases
+it might be useful to include workflow diagrams as well". The v0.3
+prompt already had three kinds, but its selection rules ranked
+route-measure first (R2 > R3 > R1 …), R3 fell back to route-measure
+whenever a measure was named, and R4 drew time slices as route
+panels — so nearly every generated figure was a route schematic.
+Three changes, one per layer:
+
+- **Prompt v0.4 — five more kinds, four more rules, a kind-choice
+  table, variety in the budget.** New kinds: `timeline` (dates on an
+  ordinal time axis, spans and points — for "when does it hold /
+  what does a query at date X see"), `state` (named states and the
+  transitions between them, a denied transition included), `matrix`
+  (a combinations grid — input dimensions × outcomes, ONE figure for
+  a whole parameterized family), `wireframe` (a low-fidelity sketch
+  of ONE named pane or dialog with only the controls, values and
+  messages the Steps name, step numbers as callouts) and `workflow`
+  (a flowchart of the Steps with its decisions and branches). New
+  rules R6 LIFECYCLE, R7 COMBINATIONS, R8 UI WORKFLOW, R9 PROCEDURE
+  carry them; R3 now picks topology when the RELATIONSHIP is the
+  assertion even if measures are mentioned, and R4 picks timeline
+  when the TIME is the assertion. A KIND CHOICE table maps "what the
+  case asserts" to a kind, and X1 no longer excludes a UI case with
+  three or more named controls. X6 becomes BUDGET WITH VARIETY: after
+  ranking, every kind at least one candidate earned keeps one figure
+  before any kind gets a second — never by changing a candidate's
+  kind. Grounding extends to the new material: states, matrix axes,
+  frame titles, control labels, values and table columns are whole
+  phrases the plan writes (case-insensitive); axis dates verbatim.
+  Two worked examples (a wireframe, a family matrix) join the split.
+- **`local/lib/figurespec.mjs` v1.3 — verifier and renderer for
+  every kind.** `KINDS` grows to eight, `RULES` to R1–R9; each new
+  kind has its own closed vocabulary check and grounding (`phraseIn`,
+  a case-insensitive whole-phrase match, beside the existing
+  case-sensitive id and verbatim date checks), and its own SVG
+  renderer in the SlideFigures palette: an arrowed date axis with
+  toned bars and an open span dotted off the end; ellipse states with
+  straight, arced (forward above, backward below) and self-loop
+  transitions, the denied one dashed red, an initial-state dot; a
+  grid of `node` cells (ink headers, ok/denied/n-a self-toned,
+  unstated cells blank); a 440-px pane with a title bar, fields,
+  dropdowns, checkboxes/radios, tables, lists, messages, a hatched
+  map placeholder, right-aligned button rows and numbered warm
+  callouts; a top-down flowchart ranked by longest forward path with
+  elbow branches, a right-hand rail for back edges and two-line step
+  labels. Two classes join `FIG_STYLE` (`.frame` — a container that
+  owns no label, so svg2pptx never attaches a pane's inner labels to
+  the pane; `.cell` — an empty matrix cell). The label placer gains
+  `wall()` obstacles at the drawing's edges so a right-hand label
+  falls back to its next candidate instead of leaving the plate.
+  Route-measure, topology and sequence output is byte-identical to
+  v1.2; svg2pptx / deck2pptx parse every new figure with no unknown
+  element (classes are resolved from the SVG's own style block) and
+  attach each nlabel to exactly one shape.
+- **`local/testplangen.mjs` v1.22 — stamps and visibility.**
+  `TestPlanFiguresPromptVersion v0.4`; the Generated Figures addendum
+  reads `(wireframe, rule R8)` beside each caption instead of `(rule
+  R8)`; `Gen_summary` gains `genKinds=<kind>:<n>,…` (vocabulary
+  order; `-` when none) so a run shows its mix at a glance; `--help`
+  names the kinds.
+- Gate: `check_testplangen.py` leg 18 renders and svg2pptx-parses one
+  spec of each new kind against a mini draft, checks the drawn
+  features (dated ticks, the dashed-red denied transition, the red
+  cell and blank cells, the frame/title/callouts/close glyph, the
+  diamond and the dashed back edge), drops six ungrounded or
+  off-vocabulary specs with their named findings, and reads the
+  prompt for the kinds, rules and clauses — **241/241** (was 231).
+
+Rollout: nothing on the tenant (the anthropic lane runs the repo
+prompt verbatim; no tenant figures prompt exists). The next
+`--figures` run on a plan with UI-driven, temporal, lifecycle or
+parameterized cases should come back with a mix — read `genKinds=`
+in Gen_summary. Existing route-measure figures re-render identically.
+
 # TestPlanGen v2.42 — the design tokens verified against the published packages (designsystem v1.3, check_design_tokens.py)
 
 Owner question (2026-09-06): could the Carbon MCP server (a hosted,
