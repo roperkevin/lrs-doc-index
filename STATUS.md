@@ -3,13 +3,25 @@
 Updated with every promotion/paste. If a number here disagrees with a
 file header or CHANGES entry, this table wins the argument about what
 is *deployed*; the file's own header wins about what is *authored*.
-Last updated: **2026-09-05ll** — see "Current state" below.
+Last updated: **2026-09-06** — see "Current state" below.
 Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
 review r7): this file keeps the deployed-truth TABLES; the story of
 each change belongs to the component CHANGES files.
 
 ## Current state (2026-09-03q)
 
+- **2026-09-06 (figure variety — TestPlanGen v2.43, TestPlanFigures
+  prompt v0.4, figurespec v1.3, testplangen.mjs v1.22; authored on
+  branch `claude/test-plan-visualizations-80cho5`; owner request "add
+  more variety to the types of visualizations … include UI wireframes
+  if needed … workflow diagrams as well"):** five more figure kinds —
+  timeline, state, matrix, wireframe, workflow — with selection rules
+  R6–R9, a kind-choice table (the kind follows the case's assertion),
+  and a variety clause in the X6 budget; every new kind grounded
+  (states, UI labels and values as plan phrases, dates verbatim) and
+  rendered in the SlideFigures palette, svg2pptx-convertible; the
+  addendum names each figure's kind and Gen_summary gains
+  `genKinds=`. Gate: `check_testplangen.py` **241/241**.
 - **2026-09-06 (change made visible — TestPlanGen v2.41, figurespec
   v1.2, testplangen.mjs v1.21; authored on branch
   `claude/exemplar-method-names-gc3oth`):** every panel of a

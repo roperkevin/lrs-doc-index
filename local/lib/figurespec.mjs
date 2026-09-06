@@ -1,6 +1,25 @@
 /**
- * figurespec.mjs v1.2 — generated figures for TestPlanGen drafts
- * (`prompts/TestPlanFigures_Prompt.md` v0.3, testplangen.mjs `--figures`).
+ * figurespec.mjs v1.3 — generated figures for TestPlanGen drafts
+ * (`prompts/TestPlanFigures_Prompt.md` v0.4, testplangen.mjs `--figures`).
+ *
+ * v1.3 (figure variety — testplangen/CHANGES.md v2.43): five more
+ * figure KINDS beside route-measure / topology / sequence, each with
+ * its own closed vocabulary, grounding check, and SlideFigures-palette
+ * renderer — "timeline" (dates on an ordinal time axis with spans and
+ * points, for time-aware cases), "state" (a lifecycle: named states
+ * and the transitions between them, a denied transition dashed red),
+ * "matrix" (a combinations grid: input dimensions × outcomes, one
+ * figure for a whole parameterized family), "wireframe" (a low-
+ * fidelity sketch of ONE named pane/dialog with the controls, values
+ * and messages the Steps name, step numbers as callouts) and
+ * "workflow" (a flowchart of the Steps: start/step/decision/end
+ * nodes ranked top-down, branches labelled). Every id, date, state,
+ * control label and value is grounded in the case or the Setup
+ * tables exactly as before; labels stay length-capped. Two classes
+ * join FIG_STYLE for the new shapes (`.frame`, `.cell`) — the
+ * converter resolves classes from the SVG's own style block, so
+ * svg2pptx / deck2pptx need no change. Route-measure rendering is
+ * byte-identical to v1.2.
  *
  * v1.2 (change made visible — testplangen/CHANGES.md v2.41): every
  * panel of a route-measure figure shares ONE measure scale, so an
@@ -51,7 +70,14 @@
  *
  * The vocabulary is CLOSED and mirrors the prompt's FIGURE
  * SPECIFICATION VOCABULARY key for key; anything outside it is a
- * finding. Grounding: every id must appear as a whole word in the
+ * finding. Grounding posture per kind (v1.3): ids (routes, events,
+ * spans, points) are whole-word matches, case-sensitive; dates are
+ * verbatim substrings; states, matrix row/column ids, wireframe
+ * titles, control labels, values and table columns are whole-word
+ * PHRASE matches, case-insensitive (the plan writes "Active" and
+ * "active" for the same state); workflow node labels and sequence
+ * step labels are length-capped only, like every other label.
+ * Grounding: every id must appear as a whole word in the
  * case's own section or the Setup tables; every measure must appear
  * as a number there AND sit inside its route's range; dates on
  * panels must appear verbatim; tones and kinds are enums. Labels are
@@ -63,7 +89,14 @@
 export const FIGURES_BEGIN = "[[[FIGURES BEGIN]]]";
 export const FIGURES_END = "[[[FIGURES END]]]";
 
-export const KINDS = ["route-measure", "topology", "sequence"];
+export const KINDS = ["route-measure", "topology", "sequence", "timeline", "state", "matrix", "wireframe", "workflow"];
+export const RULES = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"]; // v1.3: R6 lifecycle, R7 combinations, R8 UI, R9 procedure
+const CONTROL_KINDS = ["field", "dropdown", "button", "checkbox", "radio", "table", "list", "message", "map", "text"];
+const FRAME_KINDS = ["pane", "dialog", "window"];
+const STATE_SHAPES = ["ellipse", "box"];
+const FLOW_KINDS = ["start", "step", "decision", "end"];
+const CHECKED = ["checked", "unchecked"];
+const CELL_TONE = { ok: "green", denied: "red", "n/a": "muted" }; // default cell tone by value
 const EVENT_TONES = ["cool", "warm", "green", "red", "violet", "muted"];
 const ROUTE_TONES = ["ink", "muted"];
 const NODE_TONES = [...EVENT_TONES, "plain"];
@@ -75,6 +108,12 @@ const LIMITS = {
   caption: 200, label: 24, stepLabel: 40, notes: 3, legend: 6, panels: 3, routes: 3,
   calibration: 8, ticks: 60, events: 8, marks: 6, nodesMin: 2, nodesMax: 8, edges: 10,
   actorsMin: 2, actorsMax: 5, stepsMin: 2, stepsMax: 12,
+  // v1.3
+  axisMin: 2, axisMax: 8, spans: 8, points: 8,
+  statesMin: 2, statesMax: 6, transitionsMin: 1, transitionsMax: 10,
+  rowsMin: 2, rowsMax: 8, colsMin: 2, colsMax: 6, cells: 48, cellValue: 12,
+  controlsMin: 2, controlsMax: 12, controlLabel: 40, messageLabel: 80, columns: 5,
+  flowMin: 3, flowMax: 10, flowLabel: 32, flowEdgesMin: 2, flowEdgesMax: 14, flowEdgeLabel: 16,
 };
 
 /** The reply's JSON object, fail closed. */
@@ -126,6 +165,8 @@ export function draftCorpus(draft) {
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const wordIn = (corpus, id) => new RegExp(`(?<![A-Za-z0-9_])${esc(id)}(?![A-Za-z0-9_])`).test(corpus);
 const numIn = (corpus, n) => new RegExp(`(?<![0-9.])${esc(String(n))}(?![0-9.])`).test(corpus);
+// v1.3: a whole-word phrase, case-insensitive — states, UI labels, matrix axes
+const phraseIn = (corpus, s) => new RegExp(`(?<![A-Za-z0-9_])${esc(String(s).trim())}(?![A-Za-z0-9_])`, "i").test(corpus);
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
 const isStr = (v, max = 1e9) => typeof v === "string" && v.length <= max;
 
@@ -141,8 +182,8 @@ export function verifyFigureSpec(spec, corpus) {
   const section = corpus.cases.get(id);
   if (!section) return [`${id}: not a TC case in the plan`];
   const text = `${corpus.title}\n${corpus.setup}\n${section}`;
-  if (!/^R[1-5]$/.test(String(spec.rule ?? ""))) say("rule is not R1..R5");
-  if (!KINDS.includes(spec.kind)) say(`kind "${spec.kind}" is not route-measure | topology | sequence`);
+  if (!RULES.includes(String(spec.rule ?? ""))) say("rule is not R1..R9");
+  if (!KINDS.includes(spec.kind)) say(`kind "${spec.kind}" is not one of ${KINDS.join(" | ")}`);
   if (!isStr(spec.title, 160) || !spec.title.startsWith(id)) say("title must start with the case id");
   if (!isStr(spec.caption, LIMITS.caption) || !spec.caption.trim()) say(`caption missing or over ${LIMITS.caption} chars`);
   if (spec.notes !== undefined && (!Array.isArray(spec.notes) || spec.notes.length > LIMITS.notes || !spec.notes.every((n) => isStr(n, 120)))) say("notes: at most 3 short strings");
@@ -283,6 +324,159 @@ export function verifyFigureSpec(spec, corpus) {
       if (st.outcome !== undefined && !OUTCOMES.includes(st.outcome)) say(`step outcome "${st.outcome}" must be ok | denied | ""`);
       if (st.step !== undefined && !(Number.isInteger(st.step) && st.step > 0)) say("step number must be a positive integer");
     }
+  } else if (spec.kind === "timeline") {
+    // v1.3: dates on an ordinal axis — every date verbatim in the plan,
+    // every span/point end one of the axis dates
+    const axis = Array.isArray(spec.axis) ? spec.axis : [];
+    if (axis.length < LIMITS.axisMin || axis.length > LIMITS.axisMax) say("axis: 2 to 8 dates required");
+    const seen = new Set();
+    axis.forEach((d, i) => {
+      if (!isStr(d, 40) || !d.trim()) { say(`axis entry ${i + 1} must be a date string`); return; }
+      if (seen.has(d)) say(`axis date "${d}" repeats`);
+      seen.add(d);
+      if (!text.includes(d)) say(`axis date "${d}" is not written in the case or the Setup tables`);
+    });
+    const idx = (d) => axis.indexOf(d);
+    const spans = Array.isArray(spec.spans) ? spec.spans : [];
+    const points = Array.isArray(spec.points) ? spec.points : [];
+    if (spans.length > LIMITS.spans) say("spans: at most 8");
+    if (points.length > LIMITS.points) say("points: at most 8");
+    if (!spans.length && !points.length) say("timeline needs at least one span or point");
+    for (const sp of spans) {
+      if (!sp || typeof sp !== "object") { say("span is not an object"); continue; }
+      groundId(sp.id, "span");
+      if (idx(sp.from) < 0) say(`span ${sp.id} from "${sp.from}" is not an axis date`);
+      if (sp.to !== undefined) {
+        if (idx(sp.to) < 0) say(`span ${sp.id} to "${sp.to}" is not an axis date`);
+        else if (idx(sp.from) >= 0 && !(idx(sp.from) < idx(sp.to))) say(`span ${sp.id}: from must precede to on the axis`);
+      }
+      label(sp.label, `span ${sp.id}`);
+      if (sp.tone !== undefined && !EVENT_TONES.includes(sp.tone)) say(`span ${sp.id} tone "${sp.tone}" is not a tone`);
+    }
+    for (const pt of points) {
+      if (!pt || typeof pt !== "object") { say("point is not an object"); continue; }
+      groundId(pt.id, "point");
+      if (idx(pt.at) < 0) say(`point ${pt.id} at "${pt.at}" is not an axis date`);
+      label(pt.label, `point ${pt.id}`);
+      if (pt.tone !== undefined && !EVENT_TONES.includes(pt.tone)) say(`point ${pt.id} tone "${pt.tone}" is not a tone`);
+    }
+  } else if (spec.kind === "state") {
+    // v1.3: a lifecycle — state ids are plan words (case-insensitive)
+    const states = Array.isArray(spec.states) ? spec.states : [];
+    if (states.length < LIMITS.statesMin || states.length > LIMITS.statesMax) say("states: 2 to 6 required");
+    const ids = new Set();
+    for (const st of states) {
+      if (!st || typeof st !== "object" || !isStr(st.id, 40) || !st.id.trim()) { say("state id missing"); continue; }
+      if (ids.has(st.id)) say(`state id "${st.id}" repeats`);
+      ids.add(st.id);
+      if (!phraseIn(text, st.id)) say(`state "${st.id}" is not in the case or the Setup tables`);
+      label(st.label, `state ${st.id}`);
+      if (st.shape !== undefined && !STATE_SHAPES.includes(st.shape)) say(`state ${st.id} shape must be ellipse | box`);
+      if (st.tone !== undefined && !NODE_TONES.includes(st.tone)) say(`state ${st.id} tone "${st.tone}" is not a tone`);
+    }
+    const trans = Array.isArray(spec.transitions) ? spec.transitions : [];
+    if (trans.length < LIMITS.transitionsMin || trans.length > LIMITS.transitionsMax) say("transitions: 1 to 10 required");
+    for (const t of trans) {
+      if (!t || typeof t !== "object") { say("transition is not an object"); continue; }
+      if (!ids.has(t.from)) say(`transition from "${t.from}" is not a state id`);
+      if (!ids.has(t.to)) say(`transition to "${t.to}" is not a state id`);
+      label(t.label, `transition ${t.from}→${t.to}`, LIMITS.stepLabel);
+      if (t.outcome !== undefined && !OUTCOMES.includes(t.outcome)) say(`transition ${t.from}→${t.to} outcome must be ok | denied | ""`);
+      if (t.step !== undefined && !(Number.isInteger(t.step) && t.step > 0)) say("transition step number must be a positive integer");
+    }
+    if (spec.initial !== undefined && !ids.has(spec.initial)) say(`initial "${spec.initial}" is not a state id`);
+  } else if (spec.kind === "matrix") {
+    // v1.3: a combinations grid — axis ids are plan phrases, cell
+    // values a short closed set or a short label
+    const rows = Array.isArray(spec.rows) ? spec.rows : [];
+    const cols = Array.isArray(spec.cols) ? spec.cols : [];
+    if (rows.length < LIMITS.rowsMin || rows.length > LIMITS.rowsMax) say("rows: 2 to 8 required");
+    if (cols.length < LIMITS.colsMin || cols.length > LIMITS.colsMax) say("cols: 2 to 6 required");
+    const axisIds = (list, what) => {
+      const ids = new Set();
+      for (const a of list) {
+        if (!a || typeof a !== "object" || !isStr(a.id, 40) || !a.id.trim()) { say(`${what} id missing`); continue; }
+        if (ids.has(a.id)) say(`${what} id "${a.id}" repeats`);
+        ids.add(a.id);
+        if (!phraseIn(text, a.id)) say(`${what} "${a.id}" is not in the case or the Setup tables`);
+        label(a.label, `${what} ${a.id}`);
+      }
+      return ids;
+    };
+    const rowIds = axisIds(rows, "row");
+    const colIds = axisIds(cols, "col");
+    label(spec.rowsTitle, "rowsTitle");
+    label(spec.colsTitle, "colsTitle");
+    const cells = Array.isArray(spec.cells) ? spec.cells : [];
+    if (cells.length < 1 || cells.length > LIMITS.cells) say("cells: 1 to 48 required");
+    const filled = new Set();
+    for (const c of cells) {
+      if (!c || typeof c !== "object") { say("cell is not an object"); continue; }
+      if (!rowIds.has(c.row)) say(`cell row "${c.row}" is not a row id`);
+      if (!colIds.has(c.col)) say(`cell col "${c.col}" is not a col id`);
+      const key = `${c.row}\u0000${c.col}`;
+      if (filled.has(key)) say(`cell ${c.row} × ${c.col} repeats`);
+      filled.add(key);
+      if (!isStr(c.value, LIMITS.cellValue) || !c.value.trim()) say(`cell ${c.row} × ${c.col} value missing or over ${LIMITS.cellValue} chars`);
+      if (c.tone !== undefined && !NODE_TONES.includes(c.tone)) say(`cell ${c.row} × ${c.col} tone "${c.tone}" is not a tone`);
+    }
+  } else if (spec.kind === "wireframe") {
+    // v1.3: ONE named pane/dialog; every control label, value and
+    // table column is a phrase the case or the Setup tables write
+    const fr = spec.frame;
+    if (!fr || typeof fr !== "object") say("frame missing");
+    else {
+      if (!isStr(fr.title, 40) || !fr.title.trim()) say("frame title missing or over 40 chars");
+      else if (!phraseIn(text, fr.title)) say(`frame title "${fr.title}" is not in the case or the Setup tables`);
+      if (fr.kind !== undefined && !FRAME_KINDS.includes(fr.kind)) say(`frame kind "${fr.kind}" must be pane | dialog | window`);
+    }
+    const controls = Array.isArray(spec.controls) ? spec.controls : [];
+    if (controls.length < LIMITS.controlsMin || controls.length > LIMITS.controlsMax) say("controls: 2 to 12 required");
+    controls.forEach((c, i) => {
+      const where = `control ${i + 1}`;
+      if (!c || typeof c !== "object") { say(`${where} is not an object`); return; }
+      if (!CONTROL_KINDS.includes(c.kind)) say(`${where} kind "${c.kind}" is not in the vocabulary`);
+      const max = c.kind === "message" ? LIMITS.messageLabel : LIMITS.controlLabel;
+      if (!isStr(c.label, max) || !c.label.trim()) say(`${where} label missing or over ${max} chars`);
+      else if (!phraseIn(text, c.label)) say(`${where} label "${c.label}" is not in the case or the Setup tables`);
+      if (c.value !== undefined) {
+        if (c.kind === "checkbox" || c.kind === "radio") {
+          if (!CHECKED.includes(c.value)) say(`${where} ${c.kind} value must be checked | unchecked`);
+        } else if (!isStr(c.value, 40) || !c.value.trim()) say(`${where} value must be a string of at most 40 chars`);
+        else if (!phraseIn(text, c.value)) say(`${where} value "${c.value}" is not in the case or the Setup tables`);
+      }
+      if (c.columns !== undefined) {
+        if (c.kind !== "table") say(`${where} ${c.kind} takes no "columns"`);
+        else if (!Array.isArray(c.columns) || c.columns.length > LIMITS.columns || !c.columns.every((h) => isStr(h, 16) && h.trim())) say(`${where} columns: at most 5 short strings`);
+        else for (const h of c.columns) if (!phraseIn(text, h)) say(`${where} column "${h}" is not in the case or the Setup tables`);
+      }
+      if (c.tone !== undefined && !NODE_TONES.includes(c.tone)) say(`${where} tone "${c.tone}" is not a tone`);
+      if (c.step !== undefined && !(Number.isInteger(c.step) && c.step > 0)) say(`${where} step number must be a positive integer`);
+    });
+  } else if (spec.kind === "workflow") {
+    // v1.3: a flowchart of the Steps — node ids are the spec's own
+    // handles (not test data), labels length-capped like sequence steps
+    const nodes = Array.isArray(spec.nodes) ? spec.nodes : [];
+    if (nodes.length < LIMITS.flowMin || nodes.length > LIMITS.flowMax) say("nodes: 3 to 10 required");
+    const ids = new Set();
+    for (const n of nodes) {
+      if (!n || typeof n !== "object" || !isStr(n.id, 20) || !n.id.trim()) { say("node id missing"); continue; }
+      if (ids.has(n.id)) say(`node id "${n.id}" repeats`);
+      ids.add(n.id);
+      if (!FLOW_KINDS.includes(n.kind)) say(`node ${n.id} kind "${n.kind}" is not start | step | decision | end`);
+      if (!isStr(n.label, LIMITS.flowLabel) || !n.label.trim()) say(`node ${n.id} label missing or over ${LIMITS.flowLabel} chars`);
+      if (n.tone !== undefined && !NODE_TONES.includes(n.tone)) say(`node ${n.id} tone "${n.tone}" is not a tone`);
+      if (n.step !== undefined && !(Number.isInteger(n.step) && n.step > 0)) say(`node ${n.id} step number must be a positive integer`);
+    }
+    const edges = Array.isArray(spec.edges) ? spec.edges : [];
+    if (edges.length < LIMITS.flowEdgesMin || edges.length > LIMITS.flowEdgesMax) say("edges: 2 to 14 required");
+    for (const e of edges) {
+      if (!e || typeof e !== "object") { say("edge is not an object"); continue; }
+      if (!ids.has(e.from)) say(`edge from "${e.from}" is not a node id`);
+      if (!ids.has(e.to)) say(`edge to "${e.to}" is not a node id`);
+      label(e.label, `edge ${e.from}→${e.to}`, LIMITS.flowEdgeLabel);
+      if (e.style !== undefined && !["solid", "dashed"].includes(e.style)) say(`edge ${e.from}→${e.to} style must be solid | dashed`);
+    }
   }
   return f;
 }
@@ -309,6 +503,8 @@ export const FIG_STYLE =
   ".freefill{stroke-width:2.2;stroke-linejoin:round}" +
   ".dashed{stroke-dasharray:7 4.5}.dotted{stroke-dasharray:1.6 3.6}" +
   ".node{fill:#FFFFFF;stroke:#16302F;stroke-width:1.6}" +
+  ".frame{fill:#FFFFFF;stroke:#16302F;stroke-width:1.6}" +  // v1.3: a container that owns no label
+  ".cell{fill:#FFFFFF;stroke:#B9C6C6;stroke-width:1}" +      // v1.3: an empty matrix cell
   ".t-plain{fill:#FFFFFF}.t-ink{fill:#E9EDED}.t-muted{fill:#EFF2F2}" +
   ".t-cool{fill:#E5F0F5}.t-warm{fill:#F9F0E2}.t-green{fill:#E6F2EC}" +
   ".t-violet{fill:#EFEAF7}.t-red{fill:#F8E9E5}" +
@@ -369,6 +565,7 @@ function textBox(cls, x, y, str, anchor) {
 class Placer {
   constructor() { this.boxes = []; this.maxY = -Infinity; this.minY = Infinity; }
   reserve(b) { this.boxes.push(b); this.maxY = Math.max(this.maxY, b.y1); this.minY = Math.min(this.minY, b.y0); }
+  wall(b) { this.boxes.push(b); } // v1.3: an obstacle that never counts toward the drawing's extent
   free(b) { return !this.boxes.some((o) => b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1); }
   /** Emits the text at the first free candidate; returns the box or null. */
   place(out, cls, str, candidates, { required = true, nudges = 3 } = {}) {
@@ -670,6 +867,383 @@ function renderSequence(spec, out) {
   return bottom + 12;
 }
 
+// ---- v1.3: the five variety kinds -----------------------------------
+// Every renderer below draws with the classes above only (line / rect /
+// ellipse / circle / polygon / path / text), keeps nlabel texts inside
+// exactly one `node` shape (svg2pptx attaches them as the shape's own
+// text) and uses `frame` for a container that must NOT swallow labels.
+
+const cut = (str, n) => { const t = String(str ?? ""); return t.length > n ? t.slice(0, Math.max(1, n - 1)) + "…" : t; };
+const DRAW_W = W - PAD * 2;
+// a placer that also refuses boxes crossing the drawing's left/right edge
+function boundedPlacer() {
+  const pl = new Placer();
+  pl.wall({ x0: DRAW_W, x1: 1e9, y0: -1e9, y1: 1e9 });
+  pl.wall({ x0: -1e9, x1: 0, y0: -1e9, y1: 1e9 });
+  return pl;
+}
+const toneCls = (t) => `note${t === "denied" ? " f-red" : t === "ok" ? " f-green" : ""}`;
+// a node label on one line when it fits, else wrapped at a word break
+// into two nlabel rows (svg2pptx reads the rows as the shape's text)
+function nodeLabel(out, x, y, str, maxChars) {
+  const t = String(str ?? "");
+  if (t.length <= maxChars) { out.push(text("nlabel", x, y, t)); return; }
+  let brk = t.lastIndexOf(" ", maxChars);
+  if (brk < Math.floor(maxChars / 3)) brk = maxChars;
+  out.push(text("nlabel", x, y - 7, t.slice(0, brk).trim()));
+  out.push(text("nlabel", x, y + 7, cut(t.slice(brk).trim(), maxChars)));
+}
+
+/** kind "timeline": an ordinal date axis; spans as bars below, points on it. */
+function renderTimeline(spec, out) {
+  const axis = spec.axis;
+  const x0 = 50, x1 = DRAW_W - 50;
+  const step = axis.length > 1 ? (x1 - x0) / (axis.length - 1) : 0;
+  const sx = (d) => x0 + axis.indexOf(d) * step;
+  const placer = boundedPlacer();
+  const ay = 34;
+  out.push(`<line class="ln edge" x1="${fmt(x0 - 18)}" y1="${fmt(ay)}" x2="${fmt(x1 + 22)}" y2="${fmt(ay)}" marker-end="url(#ae)"/>`);
+  placer.reserve({ x0: x0 - 18, x1: x1 + 32, y0: ay - 4, y1: ay + 4 });
+  for (const d of axis) {
+    const x = sx(d);
+    out.push(`<line class="ln tick maj" x1="${fmt(x)}" y1="${fmt(ay - 7.5)}" x2="${fmt(x)}" y2="${fmt(ay + 7.5)}"/>`);
+    placer.place(out, "measure", d, [{ x, y: ay + 15.5, anchor: "middle" }, { x, y: ay + 28, anchor: "middle" }]);
+  }
+  for (const p of spec.points || []) {
+    const tone = p.tone || "green";
+    const px = sx(p.at);
+    out.push(`<circle class="node t-${tone} s-${tone}" cx="${fmt(px)}" cy="${fmt(ay)}" r="5"/>`);
+    placer.reserve({ x0: px - 6, x1: px + 6, y0: ay - 6, y1: ay + 6 });
+    placer.place(out, `id f-${tone}`, p.label || p.id, [
+      { x: px, y: ay - 17, anchor: "middle" }, { x: px + 9, y: ay - 15, anchor: "start" }, { x: px - 9, y: ay - 15, anchor: "end" },
+    ]);
+  }
+  const ROW = 26;
+  const spans = spec.spans || [];
+  const y = ay + 46;
+  spans.forEach((sp, i) => {
+    const ey = y + i * ROW;
+    const tone = sp.tone || "cool";
+    const fx = sx(sp.from);
+    const open = sp.to === undefined;
+    const tx = open ? x1 : sx(sp.to);
+    out.push(`<line class="ln event flat s-${tone}" x1="${fmt(fx)}" y1="${fmt(ey)}" x2="${fmt(tx)}" y2="${fmt(ey)}"/>`);
+    if (open) out.push(`<line class="ln event flat s-${tone} dotted" x1="${fmt(tx)}" y1="${fmt(ey)}" x2="${fmt(tx + 16)}" y2="${fmt(ey)}"/>`);
+    placer.reserve({ x0: fx - 1, x1: (open ? tx + 16 : tx) + 1, y0: ey - 5, y1: ey + 5 });
+    placer.place(out, `id f-${tone}`, sp.label || sp.id, [
+      { x: (open ? tx + 16 : tx) + 6, y: ey, anchor: "start" }, { x: fx - 8, y: ey, anchor: "end" }, { x: (fx + tx) / 2, y: ey - 11, anchor: "middle" },
+    ]);
+  });
+  return Math.max(y + spans.length * ROW, placer.maxY + 10) + 6;
+}
+
+/** kind "state": states in one or two rows; forward arcs above, backward arcs below, self-loops on top. */
+function renderState(spec, out) {
+  const states = spec.states;
+  const w = 112, h = 44;
+  const perRow = states.length > 4 ? Math.ceil(states.length / 2) : states.length;
+  const gapX = perRow > 1 ? Math.min(120, (DRAW_W - 60 - perRow * w) / (perRow - 1)) : 0;
+  const rowW = perRow * w + (perRow - 1) * gapX;
+  const left = (DRAW_W - rowW) / 2 + w / 2;
+  const top = 64, gapY = 100;
+  const pos = new Map();
+  states.forEach((st, i) => {
+    const r = Math.floor(i / perRow), c = i % perRow;
+    pos.set(st.id, { x: left + c * (w + gapX), y: top + r * (h + gapY), r, c });
+  });
+  const placer = boundedPlacer();
+  for (const { x, y } of pos.values()) placer.reserve({ x0: x - w / 2, x1: x + w / 2, y0: y - h / 2, y1: y + h / 2 });
+  let below = 0;
+  for (const t of spec.transitions) {
+    const a = pos.get(t.from), b = pos.get(t.to);
+    const cls = `ln edge${t.outcome === "denied" ? " s-red dashed" : t.outcome === "ok" ? " s-green" : ""}`;
+    const label = (t.step ? `${t.step}. ` : "") + (t.label || "") + (t.outcome ? ` — ${t.outcome}` : "");
+    const lcls = toneCls(t.outcome);
+    let cands;
+    if (a === b) {
+      const y0 = a.y - h / 2;
+      out.push(`<path class="${cls}" d="M ${fmt(a.x - 14)} ${fmt(y0)} C ${fmt(a.x - 34)} ${fmt(y0 - 44)} ${fmt(a.x + 34)} ${fmt(y0 - 44)} ${fmt(a.x + 14)} ${fmt(y0)}" marker-end="url(#ae)"/>`);
+      cands = [{ x: a.x, y: y0 - 44, anchor: "middle" }, { x: a.x + 30, y: y0 - 30, anchor: "start" }];
+    } else if (a.r === b.r && Math.abs(a.c - b.c) === 1 && b.c > a.c) {
+      out.push(`<line class="${cls}" x1="${fmt(a.x + w / 2)}" y1="${fmt(a.y)}" x2="${fmt(b.x - w / 2 - 6)}" y2="${fmt(b.y)}" marker-end="url(#ae)"/>`);
+      const mx = (a.x + b.x) / 2;
+      cands = [{ x: mx, y: a.y - 12, anchor: "middle" }, { x: mx, y: a.y + 12, anchor: "middle" }];
+    } else if (a.r === b.r) {
+      const fwd = b.c > a.c;
+      const hop = Math.abs(a.c - b.c);
+      const sag = (h / 2 + 18 + 16 * (hop - 1)) * (fwd ? -1 : 1);
+      const ay = a.y + (fwd ? -h / 2 : h / 2), by = b.y + (fwd ? -h / 2 : h / 2) + (fwd ? -6 : 6);
+      const mx = (a.x + b.x) / 2, my = a.y + (fwd ? -h / 2 : h / 2) + 2 * sag;
+      out.push(`<path class="${cls}" d="M ${fmt(a.x)} ${fmt(ay)} Q ${fmt(mx)} ${fmt(my)} ${fmt(b.x)} ${fmt(by)}" marker-end="url(#ae)"/>`);
+      const apex = a.y + (fwd ? -h / 2 : h / 2) + sag;
+      if (!fwd) below = Math.max(below, Math.abs(sag) + 16);
+      cands = [{ x: mx, y: apex + (fwd ? -10 : 10), anchor: "middle" }, { x: mx, y: apex + (fwd ? -22 : 22), anchor: "middle" }];
+    } else {
+      // rows differ: a straight run trimmed to the rims (the topology precedent)
+      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+      const horiz = Math.abs(dx) > Math.abs(dy);
+      const ax = a.x + (dx / len) * (horiz ? w / 2 : h / 2), ay = a.y + (dy / len) * (horiz ? w / 2 : h / 2);
+      const bx = b.x - (dx / len) * (horiz ? w / 2 + 6 : h / 2 + 6), by = b.y - (dy / len) * (horiz ? w / 2 + 6 : h / 2 + 6);
+      out.push(`<line class="${cls}" x1="${fmt(ax)}" y1="${fmt(ay)}" x2="${fmt(bx)}" y2="${fmt(by)}" marker-end="url(#ae)"/>`);
+      cands = [{ x: (ax + bx) / 2 + 8, y: (ay + by) / 2, anchor: "start" }, { x: (ax + bx) / 2 - 8, y: (ay + by) / 2, anchor: "end" }];
+    }
+    if (label.trim()) placer.place(out, lcls, cut(label, 44), cands);
+  }
+  if (spec.initial && pos.has(spec.initial)) {
+    const s0 = pos.get(spec.initial);
+    const x = s0.x - w / 2;
+    out.push(`<circle class="f-ink" cx="${fmt(x - 30)}" cy="${fmt(s0.y)}" r="4"/>`);
+    out.push(`<line class="ln edge" x1="${fmt(x - 26)}" y1="${fmt(s0.y)}" x2="${fmt(x - 7)}" y2="${fmt(s0.y)}" marker-end="url(#ae)"/>`);
+  }
+  for (const st of states) {
+    const { x, y } = pos.get(st.id);
+    out.push(nodeShape({ shape: st.shape === "box" ? "box" : "ellipse", tone: st.tone || "plain" }, x, y, w, h));
+    out.push(text("nlabel", x, y, cut(st.label || st.id, 15)));
+  }
+  const rows = Math.ceil(states.length / perRow);
+  const bottom = top + (rows - 1) * (h + gapY) + h / 2 + Math.max(20, below);
+  return Math.max(bottom, placer.maxY + 12);
+}
+
+/** kind "matrix": a combinations grid — header cells ink, body cells toned by value. */
+function renderMatrix(spec, out) {
+  const rows = spec.rows, cols = spec.cols;
+  const rl = (r) => r.label || r.id, cl = (c) => c.label || c.id;
+  const headW = Math.min(200, Math.max(96, Math.max(...rows.map((r) => rl(r).length)) * CHAR_W.nlabel + 20));
+  const colW = Math.min(150, Math.floor((DRAW_W - headW) / cols.length));
+  const rowH = 32;
+  const gridW = headW + colW * cols.length;
+  const left = Math.floor((DRAW_W - gridW) / 2);
+  let top = 0;
+  if (spec.colsTitle) { out.push(text("legend", left + headW + (colW * cols.length) / 2, 8, spec.colsTitle)); top = 20; }
+  const rect = (cls, x, y, w, h) => `<rect class="${cls}" x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}"/>`;
+  out.push(rect("cell", left, top, headW, rowH));
+  if (spec.rowsTitle) out.push(text("legend", left + 8, top + rowH / 2, cut(spec.rowsTitle, 24), "start"));
+  cols.forEach((c, j) => {
+    const x = left + headW + j * colW;
+    out.push(rect("node t-ink", x, top, colW, rowH));
+    out.push(text("nlabel", x + colW / 2, top + rowH / 2, cut(cl(c), Math.floor((colW - 10) / CHAR_W.nlabel))));
+  });
+  const byKey = new Map((spec.cells || []).map((k) => [`${k.row} ${k.col}`, k]));
+  rows.forEach((r, i) => {
+    const y = top + rowH * (i + 1);
+    out.push(rect("node t-ink", left, y, headW, rowH));
+    out.push(text("nlabel", left + headW / 2, y + rowH / 2, cut(rl(r), Math.floor((headW - 10) / CHAR_W.nlabel))));
+    cols.forEach((c, j) => {
+      const k = byKey.get(`${r.id} ${c.id}`);
+      const x = left + headW + j * colW;
+      if (!k) { out.push(rect("cell", x, y, colW, rowH)); return; }
+      const tone = k.tone || CELL_TONE[String(k.value).toLowerCase()] || "plain";
+      out.push(rect(`node t-${tone}`, x, y, colW, rowH));
+      out.push(text("nlabel", x + colW / 2, y + rowH / 2, cut(k.value, Math.floor((colW - 10) / CHAR_W.nlabel))));
+    });
+  });
+  return top + rowH * (rows.length + 1) + 8;
+}
+
+/** kind "wireframe": ONE pane/dialog, its controls stacked, step callouts at the left. */
+function renderWireframe(spec, out) {
+  const fw = 440, left = Math.floor((DRAW_W - fw) / 2), inner = 16;
+  const cx0 = left + inner, cw = fw - inner * 2;
+  const titleH = 28;
+  const body = [];
+  let y = titleH + 14;
+  const fit = (str, wpx, cls = "nlabel") => cut(str, Math.max(3, Math.floor((wpx - 10) / CHAR_W[cls])));
+  const rect = (cls, x, yy, w, h, rx = 3) => `<rect class="${cls}" x="${fmt(x)}" y="${fmt(yy)}" width="${fmt(w)}" height="${fmt(h)}" rx="${rx}"/>`;
+  const callout = (step, cx, cy) => {
+    if (!step) return;
+    body.push(`<circle class="node t-warm s-warm" cx="${fmt(cx)}" cy="${fmt(cy)}" r="9"/>`);
+    body.push(text("nlabel", cx, cy, String(step)));
+  };
+  const controls = spec.controls;
+  for (let i = 0; i < controls.length; i++) {
+    const c = controls[i];
+    const tone = c.tone || "plain";
+    switch (c.kind) {
+      case "field":
+      case "dropdown": {
+        body.push(text("note", cx0, y + 6, fit(c.label, cw, "note"), "start"));
+        const by = y + 16;
+        body.push(rect(`node t-${tone}`, cx0, by, cw, 24));
+        if (c.value) body.push(text("nlabel", cx0 + 8, by + 12, fit(c.value, cw - 30), "start"));
+        if (c.kind === "dropdown") body.push(`<path class="ln edge" d="M ${fmt(cx0 + cw - 19)} ${fmt(by + 9)} L ${fmt(cx0 + cw - 14)} ${fmt(by + 15)} L ${fmt(cx0 + cw - 9)} ${fmt(by + 9)}"/>`);
+        callout(c.step, left - 16, by + 12);
+        y = by + 24 + 12;
+        break;
+      }
+      case "button": {
+        // consecutive buttons share one row, right-aligned like a dialog's OK / Cancel
+        const run = [c];
+        while (controls[i + 1] && controls[i + 1].kind === "button") run.push(controls[++i]);
+        let x = cx0 + cw;
+        for (const b of [...run].reverse()) {
+          const bw = Math.min(cw, Math.max(72, b.label.length * CHAR_W.nlabel + 24));
+          x -= bw;
+          body.push(rect(`node t-${b.tone || "plain"}`, x, y, bw, 28, 4));
+          body.push(text("nlabel", x + bw / 2, y + 14, fit(b.label, bw)));
+          callout(b.step, x - 12, y + 14);
+          x -= 12;
+        }
+        y += 28 + 12;
+        break;
+      }
+      case "checkbox":
+      case "radio": {
+        const cy = y + 9;
+        const on = c.value === "checked";
+        if (c.kind === "checkbox") {
+          body.push(rect(`node t-${tone}`, cx0, y + 2, 14, 14, 2));
+          if (on) body.push(`<path class="ln edge s-green" d="M ${fmt(cx0 + 3)} ${fmt(cy)} L ${fmt(cx0 + 6.5)} ${fmt(cy + 3.5)} L ${fmt(cx0 + 11.5)} ${fmt(cy - 3.5)}"/>`);
+        } else {
+          body.push(`<circle class="node t-${tone}" cx="${fmt(cx0 + 7)}" cy="${fmt(cy)}" r="7"/>`);
+          if (on) body.push(`<circle class="f-ink" cx="${fmt(cx0 + 7)}" cy="${fmt(cy)}" r="3.5"/>`);
+        }
+        body.push(text("note", cx0 + 22, cy, fit(c.label, cw - 22, "note"), "start"));
+        callout(c.step, left - 16, cy);
+        y += 18 + 10;
+        break;
+      }
+      case "table": {
+        body.push(text("note", cx0, y + 6, fit(c.label, cw, "note"), "start"));
+        const ty = y + 16, th = 64;
+        body.push(rect("frame", cx0, ty, cw, th));
+        body.push(rect("node t-ink", cx0, ty, cw, 18, 0));
+        const cols = c.columns && c.columns.length ? c.columns : [];
+        const n = Math.max(cols.length, 3), colw = cw / n;
+        cols.forEach((hd, j) => body.push(text("nlabel", cx0 + colw * j + colw / 2, ty + 9, fit(hd, colw))));
+        for (let j = 1; j < n; j++) body.push(`<line class="ln tick" x1="${fmt(cx0 + colw * j)}" y1="${fmt(ty + 18)}" x2="${fmt(cx0 + colw * j)}" y2="${fmt(ty + th)}"/>`);
+        body.push(`<line class="ln tick" x1="${fmt(cx0)}" y1="${fmt(ty + 41)}" x2="${fmt(cx0 + cw)}" y2="${fmt(ty + 41)}"/>`);
+        if (c.value) body.push(text("note", cx0 + 8, ty + 29.5, fit(c.value, cw, "note"), "start"));
+        callout(c.step, left - 16, ty + th / 2);
+        y = ty + th + 12;
+        break;
+      }
+      case "list": {
+        body.push(text("note", cx0, y + 6, fit(c.label, cw, "note"), "start"));
+        const ly = y + 16, lh = 54;
+        body.push(rect("frame", cx0, ly, cw, lh));
+        if (c.value) {
+          body.push(rect(`node t-${tone === "plain" ? "cool" : tone}`, cx0 + 1, ly + 1, cw - 2, 16, 0));
+          body.push(text("nlabel", cx0 + 8, ly + 9, fit(c.value, cw - 16), "start"));
+        }
+        for (const dy of [18, 36]) body.push(`<line class="ln tick" x1="${fmt(cx0)}" y1="${fmt(ly + dy)}" x2="${fmt(cx0 + cw)}" y2="${fmt(ly + dy)}"/>`);
+        callout(c.step, left - 16, ly + lh / 2);
+        y = ly + lh + 12;
+        break;
+      }
+      case "message": {
+        const mh = 26;
+        body.push(rect(`node t-${c.tone || "red"}`, cx0, y, cw, mh));
+        body.push(text("nlabel", cx0 + 8, y + mh / 2, fit(c.label, cw - 16), "start"));
+        callout(c.step, left - 16, y + mh / 2);
+        y += mh + 10;
+        break;
+      }
+      case "map": {
+        const mh = 96;
+        body.push(rect("node t-muted dashed", cx0, y, cw, mh));
+        body.push(`<line class="ln ctx" x1="${fmt(cx0 + 20)}" y1="${fmt(y + mh - 16)}" x2="${fmt(cx0 + cw - 20)}" y2="${fmt(y + 16)}"/>`);
+        body.push(`<line class="ln ctx" x1="${fmt(cx0 + 20)}" y1="${fmt(y + 30)}" x2="${fmt(cx0 + cw - 40)}" y2="${fmt(y + mh - 30)}"/>`);
+        body.push(text("legend", cx0 + cw / 2, y + mh / 2, fit(c.label, cw, "legend")));
+        callout(c.step, left - 16, y + mh / 2);
+        y += mh + 12;
+        break;
+      }
+      default: { // "text"
+        body.push(text("note", cx0, y + 8, fit(c.label + (c.value ? `: ${c.value}` : ""), cw, "note"), "start"));
+        callout(c.step, left - 16, y + 8);
+        y += 22;
+      }
+    }
+  }
+  const fh = y + 4;
+  const fr = spec.frame || {};
+  out.push(rect("frame", left, 0, fw, fh, 6));
+  out.push(rect("node t-ink", left, 0, fw, titleH, 6));
+  out.push(text("nlabel", left + fw / 2, titleH / 2, cut(fr.title || "", 48)));
+  if (fr.kind === "dialog" || fr.kind === "window") out.push(text("note", left + fw - 14, titleH / 2, "×"));
+  out.push(...body);
+  return fh + 4;
+}
+
+/** kind "workflow": a top-down flowchart — nodes ranked by longest forward path, back edges routed on the right. */
+function renderWorkflow(spec, out) {
+  const nodes = spec.nodes;
+  const order = new Map(nodes.map((n, i) => [n.id, i]));
+  const isFwd = (e) => order.get(e.from) < order.get(e.to);
+  const rank = new Map();
+  for (const n of nodes) {
+    const preds = spec.edges.filter((e) => e.to === n.id && isFwd(e)).map((e) => rank.get(e.from) ?? 0);
+    rank.set(n.id, preds.length ? Math.max(...preds) + 1 : 0);
+  }
+  const tiers = [];
+  for (const n of nodes) (tiers[rank.get(n.id)] ||= []).push(n);
+  const size = (n) => n.kind === "decision" ? [164, 60] : n.kind === "step" ? [164, 44] : [116, 34];
+  const PITCH = 84, GAPX = 40;
+  const widest = Math.max(...tiers.map((t) => t.reduce((a, n) => a + size(n)[0], 0) + (t.length - 1) * GAPX));
+  const pos = new Map();
+  tiers.forEach((tier, r) => {
+    const tw = tier.reduce((a, n) => a + size(n)[0], 0) + (tier.length - 1) * GAPX;
+    let x = (DRAW_W - tw) / 2;
+    for (const n of tier) {
+      const [w, h] = size(n);
+      pos.set(n.id, { x: x + w / 2, y: 30 + r * PITCH, w, h });
+      x += w + GAPX;
+    }
+  });
+  const placer = boundedPlacer();
+  for (const p of pos.values()) placer.reserve({ x0: p.x - p.w / 2, x1: p.x + p.w / 2, y0: p.y - p.h / 2, y1: p.y + p.h / 2 });
+  const railX = (DRAW_W + widest) / 2 + 28; // the back-edge rail, right of the widest tier
+  let rails = 0;
+  for (const e of spec.edges) {
+    const a = pos.get(e.from), b = pos.get(e.to);
+    const dash = e.style === "dashed" ? " dashed" : "";
+    const lower = String(e.label || "").toLowerCase();
+    // only an OUTCOME word tints a branch — "yes"/"no" are neutral (a
+    // "yes" branch may well lead to the denial)
+    const tone = lower === "denied" ? " s-red" : lower === "ok" ? " s-green" : "";
+    let cands;
+    if (isFwd(e)) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      if (Math.abs(dy) < 1) {
+        const dir = dx > 0 ? 1 : -1;
+        out.push(`<line class="ln edge${tone}${dash}" x1="${fmt(a.x + dir * a.w / 2)}" y1="${fmt(a.y)}" x2="${fmt(b.x - dir * (b.w / 2 + 6))}" y2="${fmt(b.y)}" marker-end="url(#ae)"/>`);
+        cands = [{ x: (a.x + b.x) / 2, y: a.y - 12, anchor: "middle" }];
+      } else if (Math.abs(dx) < 1) {
+        out.push(`<line class="ln edge${tone}${dash}" x1="${fmt(a.x)}" y1="${fmt(a.y + a.h / 2)}" x2="${fmt(b.x)}" y2="${fmt(b.y - b.h / 2 - 6)}" marker-end="url(#ae)"/>`);
+        cands = [{ x: a.x + 8, y: (a.y + a.h / 2 + b.y - b.h / 2) / 2, anchor: "start" }];
+      } else {
+        // an elbow: down out of a, across, down into b
+        const my = a.y + a.h / 2 + Math.max(14, (b.y - b.h / 2 - a.y - a.h / 2) / 2);
+        out.push(`<path class="ln edge${tone}${dash}" d="M ${fmt(a.x)} ${fmt(a.y + a.h / 2)} L ${fmt(a.x)} ${fmt(my)} L ${fmt(b.x)} ${fmt(my)} L ${fmt(b.x)} ${fmt(b.y - b.h / 2 - 6)}" marker-end="url(#ae)"/>`);
+        cands = [{ x: (a.x + b.x) / 2, y: my - 10, anchor: "middle" }, { x: a.x + (dx > 0 ? 8 : -8), y: (a.y + a.h / 2 + my) / 2, anchor: dx > 0 ? "start" : "end" }];
+      }
+    } else if (a === b) {
+      out.push(`<path class="ln edge${tone}${dash}" d="M ${fmt(a.x + a.w / 2)} ${fmt(a.y - 8)} L ${fmt(a.x + a.w / 2 + 26)} ${fmt(a.y - 8)} L ${fmt(a.x + a.w / 2 + 26)} ${fmt(a.y + 8)} L ${fmt(a.x + a.w / 2 + 6)} ${fmt(a.y + 8)}" marker-end="url(#ae)"/>`);
+      cands = [{ x: a.x + a.w / 2 + 32, y: a.y, anchor: "start" }];
+    } else {
+      // a back edge: out of a's right rim, along the rail, into b's right rim
+      const rx = railX + rails * 14;
+      rails++;
+      out.push(`<path class="ln edge${tone}${dash}" d="M ${fmt(a.x + a.w / 2)} ${fmt(a.y)} L ${fmt(rx)} ${fmt(a.y)} L ${fmt(rx)} ${fmt(b.y)} L ${fmt(b.x + b.w / 2 + 6)} ${fmt(b.y)}" marker-end="url(#ae)"/>`);
+      cands = [{ x: rx + 4, y: (a.y + b.y) / 2, anchor: "start" }, { x: rx - 4, y: (a.y + b.y) / 2, anchor: "end" }];
+    }
+    if (e.label) placer.place(out, toneCls(lower), e.label, cands);
+  }
+  for (const n of nodes) {
+    const p = pos.get(n.id);
+    const tone = n.tone || (n.kind === "start" ? "ink" : n.kind === "end" ? "green" : "plain");
+    const shape = n.kind === "decision" ? "diamond" : n.kind === "step" ? "box" : "ellipse";
+    out.push(nodeShape({ shape, tone }, p.x, p.y, p.w, p.h));
+    const maxChars = n.kind === "decision" ? 15 : Math.floor((p.w - 12) / CHAR_W.nlabel);
+    const label = (n.step ? `${n.step}. ` : "") + n.label;
+    if (n.kind === "step" || n.kind === "decision") nodeLabel(out, p.x, p.y, label, maxChars);
+    else out.push(text("nlabel", p.x, p.y, cut(label, maxChars)));
+  }
+  const bottom = 30 + (tiers.length - 1) * PITCH + 30;
+  return Math.max(bottom, placer.maxY + 12);
+}
+
 /** The SVG for a verified spec. */
 export function renderFigureSvg(spec) {
   const body = [];
@@ -677,6 +1251,11 @@ export function renderFigureSvg(spec) {
   let y;
   if (spec.kind === "route-measure") y = renderRouteMeasure(spec, body, meta);
   else if (spec.kind === "topology") y = renderTopology(spec, body);
+  else if (spec.kind === "timeline") y = renderTimeline(spec, body);
+  else if (spec.kind === "state") y = renderState(spec, body);
+  else if (spec.kind === "matrix") y = renderMatrix(spec, body);
+  else if (spec.kind === "wireframe") y = renderWireframe(spec, body);
+  else if (spec.kind === "workflow") y = renderWorkflow(spec, body);
   else y = renderSequence(spec, body);
   // legend + notes ride below the drawing; v1.2: a figure that drew
   // prior-state ghosts adds its own key after the spec's items
@@ -684,6 +1263,10 @@ export function renderFigureSvg(spec) {
   if (legend.length) {
     const tones = [];
     for (const p of spec.panels || []) for (const e of p.events || []) tones.push([e.id, e.tone || "cool"]);
+    // v1.3: a timeline's spans/points and a state figure's states name legend tones too
+    for (const sp of spec.spans || []) tones.push([sp.id, sp.tone || "cool"]);
+    for (const pt of spec.points || []) tones.push([pt.id, pt.tone || "green"]);
+    for (const st of spec.states || []) tones.push([st.id, st.tone || "plain"]);
     let lx = 0;
     y += 6;
     for (const item of legend) {

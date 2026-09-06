@@ -137,7 +137,11 @@ verifier the cloud flow could not have
                      eTag manifest) and the lanes come out exactly
                      as from the synced folder; a second run
                      downloads nothing
-  leg 18 figures     the generated-figures pass (v1.11, --figures):
+  leg 18 figures     the generated-figures pass (v1.11, --figures;
+                     v1.22 adds the five variety kinds — timeline,
+                     state, matrix, wireframe, workflow — grounded,
+                     rendered, svg2pptx-parsed, and dropped when
+                     ungrounded; genKinds=; prompt v0.4 text):
                      a second model call over the verified draft
                      (aibuilder routed by llm.figuresModelId,
                      anthropic by the repo prompt's text); two
@@ -2056,6 +2060,9 @@ def main():
           json.dumps(state.fig_last_inputs)[:300])
     check("genFigures= counts rendered/proposed (2 of 4; two dropped)",
           summ.get("genFigures") == "2/4", str(summ))
+    # v1.22 (figurespec v1.3): the kind mix of the rendered figures
+    check("genKinds= names the rendered figures' kinds in vocabulary order",
+          summ.get("genKinds") == "route-measure:1,sequence:1", str(summ))
     local_drafts = sorted(
         (f for f in os.listdir(work_dir)
          if f.startswith("testplangen-draft-") and f.endswith(".md")),
@@ -2073,7 +2080,7 @@ def main():
           "## Generated Figures" in latest
           and f"![R1 (0–100) and R2 (0–60) before the merge" in latest
           and f"](<{stem}--fig-tc-p1.svg>)" in latest and f"](<{stem}--fig-tc-n1.svg>)" in latest
-          and "(rule R2)" in latest and "(rule R5)" in latest
+          and "(route-measure, rule R2)" in latest and "(sequence, rule R5)" in latest
           and "2 rendered of 4 proposed, 2 dropped" in latest
           and "- TC-P2 — TC-P2: panel 1 route R1 ticks 0.1 would draw 1000 ticks — at most 60; "
               "TC-P2: panel 1 event E1 at 999 is not a value" in latest
@@ -2150,6 +2157,148 @@ def main():
           and 'class="ln swatch flat s-muted dotted"' in svg
           and 'class="id f-muted"' in svg and ">E3<" in svg,
           (res.stderr or svg)[:600])
+    # v1.22 (figurespec v1.3, prompt v0.4): five more kinds — each grounded
+    # against a mini draft, rendered, and parsed by svg2pptx with no
+    # unknown element; the matching ungrounded / off-vocabulary specs drop
+    variety_draft = (
+        "# Test Plan — Route Retirement\n\n## Setup / Prerequisites\n\nRoutes:\n\n"
+        "| Route | From | To | Status | Effective |\n| --- | --- | --- | --- | --- |\n"
+        "| R1 | 0 | 100 | Active | 2026-01-01 |\n\n## Positive Tests\n\n"
+        "### TC-P1 — Retire route R1 on a date\n**Steps:**\n"
+        "- [ ] 1. Open the Retire Route pane.\n- [ ] 2. In the Route Name field enter R1.\n"
+        "- [ ] 3. Set Retire Date to 2026-03-01.\n- [ ] 4. Check Retire dependent events.\n- [ ] 5. Click Run.\n\n"
+        "**Expected Result:** R1 is Active until 2026-03-01 and Retired after it; a time-aware query at "
+        "2026-06-01 returns no route. The Results table lists Route, Status, Effective.\n\n**Trace:** \"x\" — story.\n\n"
+        "### TC-P2 — Edit types by event type\n**Steps:**\n"
+        "- [ ] 1. For each of Point event and Line event, run Split, Merge and Retire.\n\n"
+        "**Expected Result:** Split is ok for Line event and denied for Point event; Merge is ok for both.\n\n"
+        "**Trace:** \"y\" — story.\n\n## Negative Tests\n\n"
+        "### TC-N1 — Reactivating a Retired route is denied\n**Steps:**\n"
+        "- [ ] 1. Select the Retired route R1.\n- [ ] 2. Attempt to set Status to Active.\n"
+        "- [ ] 3. Confirm the Reactivate dialog.\n\n"
+        "**Expected Result:** The change is denied with \"Retired routes cannot be reactivated\"; R1 stays Retired.\n\n"
+        "**Trace:** \"z\" — story.\n")
+    variety_specs = [
+        {"case": "TC-P1", "rule": "R4", "kind": "timeline", "title": "TC-P1 — Retire route R1 on a date", "caption": "c",
+         "axis": ["2026-01-01", "2026-03-01", "2026-06-01"],
+         "spans": [{"id": "R1", "label": "R1 Active", "from": "2026-01-01", "to": "2026-03-01", "tone": "cool"},
+                   {"id": "R1", "label": "R1 Retired", "from": "2026-03-01", "tone": "red"}],
+         "points": [{"id": "R1", "label": "query → no route", "at": "2026-06-01", "tone": "green"}],
+         "legend": ["R1 Active → Retired"]},
+        {"case": "TC-N1", "rule": "R6", "kind": "state", "title": "TC-N1 — Reactivating", "caption": "c",
+         "states": [{"id": "Active", "tone": "green"}, {"id": "Retired", "tone": "red"}],
+         "transitions": [{"from": "Active", "to": "Retired", "label": "retire @ 2026-03-01", "outcome": "ok"},
+                         {"from": "Retired", "to": "Active", "label": "reactivate", "outcome": "denied", "step": 2},
+                         {"from": "Retired", "to": "Retired", "label": "stays Retired"}],
+         "initial": "Active"},
+        {"case": "TC-P2", "rule": "R7", "kind": "matrix", "title": "TC-P2 — Edit types", "caption": "c",
+         "rows": [{"id": "Point event"}, {"id": "Line event"}], "cols": [{"id": "Split"}, {"id": "Merge"}, {"id": "Retire"}],
+         "rowsTitle": "event type", "colsTitle": "edit",
+         "cells": [{"row": "Point event", "col": "Split", "value": "denied"}, {"row": "Line event", "col": "Split", "value": "ok"},
+                   {"row": "Point event", "col": "Merge", "value": "ok"}, {"row": "Line event", "col": "Merge", "value": "ok"}]},
+        {"case": "TC-P1", "rule": "R8", "kind": "wireframe", "title": "TC-P1 — Retire route R1 on a date", "caption": "c",
+         "frame": {"title": "Retire Route", "kind": "dialog"},
+         "controls": [{"kind": "field", "label": "Route Name", "value": "R1", "step": 2, "tone": "cool"},
+                      {"kind": "dropdown", "label": "Retire Date", "value": "2026-03-01", "step": 3},
+                      {"kind": "checkbox", "label": "Retire dependent events", "value": "checked", "step": 4},
+                      {"kind": "table", "label": "Results", "columns": ["Route", "Status", "Effective"]},
+                      {"kind": "button", "label": "Run", "step": 5, "tone": "green"}]},
+        {"case": "TC-N1", "rule": "R9", "kind": "workflow", "title": "TC-N1 — Reactivating", "caption": "c",
+         "nodes": [{"id": "s", "kind": "start", "label": "Retired R1"}, {"id": "n1", "kind": "step", "label": "Set Status to Active", "step": 2},
+                   {"id": "d", "kind": "decision", "label": "Route Retired?"}, {"id": "n3", "kind": "step", "label": "Confirm Reactivate", "step": 3},
+                   {"id": "e1", "kind": "end", "label": "denied", "tone": "red"}, {"id": "e2", "kind": "end", "label": "Status Active"}],
+         "edges": [{"from": "s", "to": "n1"}, {"from": "n1", "to": "d"}, {"from": "d", "to": "e1", "label": "yes"},
+                   {"from": "d", "to": "n3", "label": "no"}, {"from": "n3", "to": "e2"}, {"from": "e1", "to": "s", "label": "stays Retired", "style": "dashed"}]},
+        # each of these must DROP with the named finding
+        {"case": "TC-P1", "rule": "R4", "kind": "timeline", "title": "TC-P1 — x", "caption": "c", "axis": ["2026-01-01", "2027-12-31"],
+         "spans": [{"id": "R1", "from": "2026-01-01", "to": "2027-12-31"}]},
+        {"case": "TC-N1", "rule": "R6", "kind": "state", "title": "TC-N1 — x", "caption": "c",
+         "states": [{"id": "Active"}, {"id": "Archived"}], "transitions": [{"from": "Active", "to": "Archived"}]},
+        {"case": "TC-P2", "rule": "R7", "kind": "matrix", "title": "TC-P2 — x", "caption": "c",
+         "rows": [{"id": "Point event"}, {"id": "Curve event"}], "cols": [{"id": "Split"}, {"id": "Merge"}],
+         "cells": [{"row": "Point event", "col": "Split", "value": "denied"}, {"row": "Point event", "col": "Split", "value": "ok"}]},
+        {"case": "TC-P1", "rule": "R8", "kind": "wireframe", "title": "TC-P1 — x", "caption": "c", "frame": {"title": "Retire Route"},
+         "controls": [{"kind": "field", "label": "Route Name", "value": "R7"}, {"kind": "slider", "label": "Run"}, {"kind": "button", "label": "Cancel"}]},
+        {"case": "TC-N1", "rule": "R9", "kind": "workflow", "title": "TC-N1 — x", "caption": "c",
+         "nodes": [{"id": "a", "kind": "start", "label": "x"}, {"id": "b", "kind": "loop", "label": "y"}, {"id": "c", "kind": "end", "label": "z"}],
+         "edges": [{"from": "a", "to": "b"}, {"from": "b", "to": "q"}]},
+        {"case": "TC-P1", "rule": "R10", "kind": "sketch", "title": "TC-P1 — x", "caption": "c"},
+    ]
+    script = (
+        "import { draftCorpus, verifyFigureSpec, renderFigureSvg, KINDS } from %r;\n"
+        "import { parseFigureSvg } from %r;\n"
+        "const corpus = draftCorpus(%s);\n"
+        "const out = { kinds: KINDS, results: [] };\n"
+        "for (const spec of %s) {\n"
+        "  const findings = verifyFigureSpec(spec, corpus);\n"
+        "  if (findings.length) { out.results.push({ kind: spec.kind, findings }); continue; }\n"
+        "  const svg = renderFigureSvg(spec);\n"
+        "  const parsed = parseFigureSvg(svg, spec.kind + '.svg');\n"
+        "  const labels = parsed.items.filter((it) => it.labelRows && it.labelRows.length).map((it) => it.labelRows.join('|'));\n"
+        "  out.results.push({ kind: spec.kind, svg, w: parsed.w, h: parsed.h, unknown: parsed.unknown, labels });\n"
+        "}\n"
+        "process.stdout.write(JSON.stringify(out));\n"
+        % ("file://" + os.path.join(REPO, "local", "lib", "figurespec.mjs"),
+           "file://" + os.path.join(REPO, "local", "svg2pptx.mjs"),
+           json.dumps(variety_draft), json.dumps(variety_specs)))
+    res = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, cwd=REPO)
+    try:
+        vout = json.loads(res.stdout)
+    except Exception:
+        vout = {"kinds": [], "results": []}
+    vres = vout.get("results", [])
+    check("figurespec v1.3 exports eight kinds",
+          vout.get("kinds") == ["route-measure", "topology", "sequence", "timeline", "state", "matrix", "wireframe", "workflow"],
+          (res.stderr or res.stdout)[:400])
+    rendered = [r for r in vres[:5] if "svg" in r]
+    check("the five variety kinds ground and render; svg2pptx parses each with no unknown element",
+          len(rendered) == 5 and all(not r["unknown"] and r["w"] == 760 and 120 <= r["h"] <= 600 for r in rendered),
+          json.dumps([{k: v for k, v in r.items() if k != "svg"} for r in vres[:5]])[:600])
+    by_kind = {r["kind"]: r for r in rendered}
+    tl = by_kind.get("timeline", {}).get("svg", "")
+    check("timeline SVG: three dated ticks on an arrowed axis, a closed and an open (dotted) span, a point",
+          tl.count('class="ln tick maj"') == 3 and ">2026-06-01<" in tl
+          and 'class="ln event flat s-red dotted"' in tl and 'class="ln event flat s-cool"' in tl
+          and 'class="node t-green s-green"' in tl and ">query → no route<" in tl, tl[-700:])
+    st = by_kind.get("state", {}).get("svg", "")
+    check("state SVG: two state nodes carrying their names, a denied transition dashed red, a self-loop, the initial dot",
+          by_kind.get("state", {}).get("labels") == ["Active", "Retired"]
+          and 'class="ln edge s-red dashed"' in st and ">2. reactivate — denied<" in st
+          and st.count('<path class="ln edge') == 2 and 'class="f-ink"' in st and 'class="ln edge s-green"' in st, st[-700:])
+    mx = by_kind.get("matrix", {}).get("svg", "")
+    check("matrix SVG: header cells hold their labels, a denied cell is red, unstated cells render blank",
+          set(by_kind.get("matrix", {}).get("labels", [])) >= {"Split", "Merge", "Retire", "Point event", "Line event", "denied", "ok"}
+          and 'class="node t-red"' in mx and mx.count('class="node t-green"') == 3
+          and mx.count('class="cell"') == 3 and ">event type<" in mx and ">edit<" in mx, mx[-700:])
+    wf = by_kind.get("wireframe", {}).get("svg", "")
+    check("wireframe SVG: a frame that owns no label, a titled bar, fields with values, a checked box, a table, callouts, the dialog close",
+          wf.count('class="frame"') == 2 and "Retire Route" in by_kind.get("wireframe", {}).get("labels", [])
+          and "R1" in by_kind.get("wireframe", {}).get("labels", []) and "2026-03-01" in by_kind.get("wireframe", {}).get("labels", [])
+          and wf.count('class="node t-warm s-warm"') == 4 and 'class="ln edge s-green"' in wf
+          and ">Route<" in wf and ">Effective<" in wf and ">×<" in wf and 'class="node t-green"' in wf, wf[-900:])
+    fl = by_kind.get("workflow", {}).get("svg", "")
+    check("workflow SVG: a diamond decision, ellipse terminals, a two-line step label, labelled branches, a dashed back edge",
+          "<polygon " in fl and fl.count("<ellipse ") == 3 and ">2. Set Status to<" in fl and ">Active<" in fl
+          and ">yes<" in fl and ">no<" in fl and 'class="ln edge dashed"' in fl and ">stays Retired<" in fl
+          and 'class="node t-red s-red"' in fl, fl[-900:])
+    drops = [r.get("findings", []) for r in vres[5:]]
+    check("ungrounded or off-vocabulary variety specs drop with the named finding",
+          len(drops) == 6
+          and any('axis date "2027-12-31" is not written' in f for f in drops[0])
+          and any('state "Archived" is not in the case' in f for f in drops[1])
+          and any('row "Curve event" is not in the case' in f for f in drops[2]) and any("repeats" in f for f in drops[2])
+          and any('value "R7" is not in the case' in f for f in drops[3]) and any('kind "slider" is not in the vocabulary' in f for f in drops[3])
+          and any('label "Cancel" is not in the case' in f for f in drops[3])
+          and any('kind "loop" is not start | step | decision | end' in f for f in drops[4]) and any('edge to "q" is not a node id' in f for f in drops[4])
+          and any("rule is not R1..R9" in f for f in drops[5]) and any('kind "sketch" is not one of' in f for f in drops[5]),
+          json.dumps(drops)[:900])
+    fig_prompt = open(os.path.join(REPO, "prompts", "TestPlanFigures_Prompt.md"), encoding="utf-8").read()
+    check("TestPlanFigures prompt v0.4 names every kind, rules R6–R9, the kind-choice table and the variety clause",
+          "TestPlanFiguresPromptVersion: v0.4" in fig_prompt
+          and all(f'"{k}"' in fig_prompt for k in ["timeline", "state", "matrix", "wireframe", "workflow"])
+          and all(f"- {r}:" in fig_prompt for r in ["R6 LIFECYCLE", "R7 COMBINATIONS", "R8 UI WORKFLOW", "R9 PROCEDURE"])
+          and "KIND CHOICE" in fig_prompt and "X6 BUDGET WITH VARIETY" in fig_prompt
+          and all(f"{{{k}}}" in fig_prompt for k in ["PlanTitle", "Draft", "FiguresCap"]), "")
     check("sequence SVG: actors, lifelines, the denied step in red",
           ">User A<" in s_n1 and ">User B<" in s_n1
           and s_n1.count('class="ln leader dashed"') == 2
@@ -2203,7 +2352,7 @@ def main():
           r.returncode == 0 and state.ant_calls == ant_before + 2 and state.fig_calls == fig_before + 1
           and "SELECTION RULES" in prompt and "<<<DRAFT BEGIN>>>" in prompt
           and "### TC-P1 — Merge preserves measures" in prompt
-          and "X6 BUDGET: at most 6 figures per plan" in prompt
+          and "X6 BUDGET WITH VARIETY: at most 6 figures per plan" in prompt
           and not re.search(r"\{(PlanTitle|Draft|FiguresCap)\}", prompt)
           and state.ant_last_body.get("max_tokens") == 24000
           and summ.get("genFigures") == "2/4", r.stdout + r.stderr[-300:] + prompt[-200:])
@@ -2227,7 +2376,7 @@ def main():
     summ = summary_of(r.stdout)
     log = json.load(open(json.loads(r.stdout.splitlines()[0])["logFile"], encoding="utf-8"))
     check("figuresCap 1: the prompt asks for at most 1, the pass keeps the first grounded spec and drops the second with X6",
-          r.returncode == 0 and "X6 BUDGET: at most 1 figures per plan" in prompt and summ.get("genFigures") == "1/4"
+          r.returncode == 0 and "X6 BUDGET WITH VARIETY: at most 1 figures per plan" in prompt and summ.get("genFigures") == "1/4"
           and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P1"]
           and any(d["case"] == "TC-N1" and "over the figures cap (testplangen.figuresCap 1)" in d["findings"][0] for d in log["figures"]["dropped"]),
           (summ.get("genFigures"), json.dumps(log.get("figures"))[:300]))
