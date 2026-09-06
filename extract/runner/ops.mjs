@@ -117,7 +117,10 @@ export function runOp(mains, op) {
                   },
           })),
       };
-      return m(mock, op.maxCells === undefined ? 60000 : Number(op.maxCells));
+      // a non-numeric maxCells must not disable the truncation guard (NaN
+      // compares false against everything) — fall back to the default
+      const maxCells = Number(op.maxCells);
+      return m(mock, Number.isFinite(maxCells) && maxCells > 0 ? maxCells : 60000);
     }
     case "related":
       return m(

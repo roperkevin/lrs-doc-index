@@ -189,6 +189,7 @@ let mains;
 try {
   mains = await loadScripts(scriptsDir, needed, tmpDir);
 } catch (e) {
+  fs.rmSync(tmpDir, { recursive: true, force: true }); // never leak the temp dir on a load failure
   fail(`failed to load scripts from ${scriptsDir}: ${e.message}`);
 }
 
