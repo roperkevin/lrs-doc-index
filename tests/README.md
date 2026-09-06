@@ -26,6 +26,7 @@ python3 check_local_sweep.py                # any single gate
 | `check_slug.py` | fixture-free | `pipeline/lib/slug.mjs`: sidecar stem rules | Node |
 | `check_storyprofile.py` | fixture-free | `pipeline/lib/storyprofile.mjs`: the User Story body profile | Node |
 | `check_deckspec.py` | fixture-free | `pipeline/lib/designsystem.mjs` + `deckspec.mjs`: tokens, grid, grounding, layout | Node |
+| `check_wiki.py` | fixture-free | `pipeline/wiki.mjs`: the site tree from a small sidecar library, every link resolving, the keyword canonical map, MkDocs-identical section anchors, comment/yaml hygiene, the push flow against a bare repository | Node, mkdocs-material (the strict-build legs) |
 | `check_pad_runner.py` | fixture-free | `extract/runner/run_job.mjs` + `ops.mjs`: every extractor op through the loader, parity with `wrap.py` | Node |
 | `check_related.py` | fixture-free | `extract/RelatedRank.ts` + `SidecarPatch.ts` | Node, PyYAML |
 | `check_regex.py` | fixture-free | `extract/RegexExtract.ts`: ids, precedence, revision, slug, products | Node |

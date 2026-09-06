@@ -39,6 +39,13 @@
     "apiKey": {"$env": "ANTHROPIC_API_KEY"}
   },
 
+  "wiki": {
+    "$comment": "The catalog as a wiki (pipeline/wiki.mjs — docs/setup.md §15): every sidecar rendered into an MkDocs site and pushed to a PRIVATE git repository whose Pages workflow serves it (devtopia — this repository is public, the sidecars are internal). Optional; the job reads paths.sidecarLibrary and the newest list backup in paths.workDir, never SharePoint or a model. repoUrl = the clone URL of the wiki repository (credentials from the machine's git credential helper; with --push the tree is committed and pushed, unchanged corpus = no commit); branch = the branch its Pages workflow builds (main); outDir = where the tree is rendered (<workDir>/wiki); siteName / siteUrl land in mkdocs.yml; recent = rows on the Recent page. Schedule ops\\run_wiki.cmd after the nightly sweep (ops\\wiki_task.xml).",
+    "repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git",
+    "branch": "main",
+    "siteName": "LRS Doc Index"
+  },
+
   "spo": {
     "$comment": "The SharePoint REST route the sweep uses for hyperlink columns (SourceLink, TextFileUrl, FigureLink, ImageLink — Graph rejects them). Auth inherits the graph section. v1.62: SharePoint throttles this route by cumulative request rate (429 / 503 with Retry-After — a whole-list --refigure / --recase backfill trips it): every call honors Retry-After (up to maxRetries), keeps paceMs between calls, and a throttle widens the pace for the rest of the run; the run summary reports spo_throttled. Raise paceMs (e.g. 500) if a backfill keeps getting throttled; updates already patch only the fields that changed, so a reflow that touches no hyperlink makes no SPO call.",
     "paceMs": 150,
