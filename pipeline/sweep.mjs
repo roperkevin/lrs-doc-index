@@ -387,6 +387,22 @@ function issueByDoc(rows, docIdRows) {
 
 /** Stems already used in a kind folder — the rows' files plus whatever
  *  is on disk (rows can lag a write). */
+// RelatedRank's recency bonus is measured against `today`; left unset
+// the script used the wall clock at call time. Pin it to the run's date
+// (day precision; or sweep.relatedToday) so every related-write in a
+// run and a re-run on the same day score identically, and a --rerank can
+// be pinned to a date on purpose.
+function relatedConfigJson(sw) {
+  let cfg;
+  try {
+    cfg = typeof sw.relatedWeights === "string" ? JSON.parse(sw.relatedWeights) : { ...(sw.relatedWeights || {}) };
+  } catch {
+    return sw.relatedWeights;
+  }
+  if (!cfg.today) cfg.today = sw.relatedToday || new Date().toISOString().slice(0, 10);
+  return JSON.stringify(cfg);
+}
+
 function takenStems(cfg, sw, rows, kindFolder, exceptRowId) {
   const taken = new Set();
   for (const r of rows || []) {
@@ -2459,7 +2475,7 @@ async function rankRelated(ctx) {
     op: "related", selfId: String(rowId),
     myKwsJson: myKws, sharersJson: sharers, linksJson: idLinks,
     kwMetaJson: kwMeta, selfMetaJson: selfMetaRank,
-    configJson: sw.relatedWeights,
+    configJson: relatedConfigJson(sw),
   };
   const shortlist = op({ ...relatedCommon, mode: "shortlist", candsMetaJson: "[]", topN: sw.relatedShortlist });
   if (shortlist.flags && shortlist.flags !== "") {

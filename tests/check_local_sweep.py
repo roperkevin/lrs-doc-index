@@ -2420,6 +2420,31 @@ def main():
     check("rename is a no-op the second time",
           int(out.get("renamed", 0)) == 0 and int(out.get("errors", 0)) == 0, str(out))
 
+    # ---- related recency date leg ---------------------------------------
+    # RelatedRank's recency bonus is measured against the run's DATE (or
+    # sweep.relatedToday), not the wall clock at call time: a --rerank
+    # pinned to a far date scores differently, and two reranks pinned to
+    # one date are byte-identical
+    print("== related recency date leg")
+    def rerank_with(today):
+        c = json.loads(json.dumps(cfg))
+        c["sweep"]["relatedToday"] = today
+        c["sweep"]["relatedWeights"] = json.loads(c["sweep"].get("relatedWeights", "{}") or "{}") \
+            if isinstance(c["sweep"].get("relatedWeights"), str) else c["sweep"].get("relatedWeights", {})
+        c["sweep"]["relatedWeights"] = json.dumps({**c["sweep"]["relatedWeights"], "recency": {"weight": 50, "halfLifeDays": 180}})
+        cp = os.path.join(tmp, f"config-today-{today}.json")
+        with open(cp, "w") as f:
+            json.dump(c, f)
+        p = run_sweep(cp, ["--rerank", "--live"])
+        txt = open(alpha_sc).read()
+        return p, re.findall(r"<!-- rel:\d+ s=([-\d.]+) -->", txt)
+    p1, s1 = rerank_with("2026-08-20")
+    p2, s2 = rerank_with("2030-01-01")
+    p3, s3 = rerank_with("2026-08-20")
+    check("related recency follows the pinned run date and is reproducible for one date",
+          p1.returncode == 0 and p2.returncode == 0 and p3.returncode == 0
+          and len(s1) > 0 and s1 != s2 and s1 == s3, f"{s1} {s2} {s3} {p2.stderr[-200:]}")
+
     # ---- normalize-cases leg (Sidecar_Format_Plan phase 4) ----------
     # a Test Plan the detectors leave caseless but the audit flags (an
     # old collapsed-cell table): dry lists it and spends nothing; live
