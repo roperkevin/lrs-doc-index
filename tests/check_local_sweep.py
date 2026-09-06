@@ -2304,6 +2304,10 @@ def main():
     old_url = old_url.rsplit("/", 1)[0] + "/" + old_name
     state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"] = {"Url": old_url, "Description": old_name}
     beta_txt = open(beta_sc).read().replace("123-alpha-plan.md", old_name)
+    # a neighbour whose file name merely ENDS with alpha's old name must
+    # keep its link when alpha is renamed (whole-name matching)
+    decoy_name = f"z{old_name}"
+    beta_txt += f"\n[decoy](<https://mock.example/sites/lrsworkspace/LRS Doc Index/Test Plans/{decoy_name}>)\n"
     with open(beta_sc, "w") as f:
         f.write(beta_txt)
     proc = run_sweep(cfg_path, ["--rename-plan"])
@@ -2328,7 +2332,9 @@ def main():
           and "doc10_image1.png" not in renamed, renamed[-500:])
     check("rename rewrote beta's inbound link",
           "123-alpha-plan.md" in open(beta_sc).read()
-          and old_name not in open(beta_sc).read(), open(beta_sc).read()[-500:])
+          and f"/{old_name}" not in open(beta_sc).read(), open(beta_sc).read()[-500:])
+    check("rename left the neighbour whose name only ends with the old name alone",
+          f"/{decoy_name}" in open(beta_sc).read(), open(beta_sc).read()[-300:])
     check("rename patched TextFileUrl",
           state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]["Url"] == new_url_expected,
           str(state.lists[LISTS["docIndex"]][str(alpha_id)]["TextFileUrl"]))

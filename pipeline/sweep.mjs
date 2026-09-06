@@ -1238,9 +1238,13 @@ async function main() {
           }
           next = next.split(ml.link).join(toRel);
         }
-        // every renamed neighbour referenced from this file
+        // every renamed neighbour referenced from this file — matched as a
+        // WHOLE file name (preceded by a path/link delimiter, not followed
+        // by a name character): a stem that is the suffix of another stem
+        // must never rewrite the longer name's links
         for (const [from, to] of fileMap) {
-          if (next.includes(from)) { next = next.split(from).join(to); nsum.links_rewritten++; }
+          const re = new RegExp(`(^|[/<("'\\s])${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![A-Za-z0-9._-])`, "g");
+          if (next.search(re) >= 0) { next = next.replace(re, (m, pre) => pre + to); nsum.links_rewritten++; }
         }
         const newLocal = path.join(path.dirname(e.local), `${e.newStem}.md`);
         if (e.newStem !== e.oldStem) {
