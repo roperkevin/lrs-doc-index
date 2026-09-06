@@ -12,10 +12,9 @@
  *      rows (no CanonicalRef) as "title [kind]" lines; blocked lines
  *      (Filter_blocked) = canonical rows with any CurationStatus
  *      (Proposed = pending review, Rejected = never re-propose).
- *   3. One AI Builder call — the tenant's own "LRS Keyword Curation"
- *      custom prompt via Dataverse Predict (llm.curationModelId),
- *      inputs Vocabulary / DoNotPropose, F3 brace-slice parse
- *      degrading to zero proposals, capped at curation.maxProposals.
+ *   3. The model call — prompts/keyword_curation.md through lrsdoc
+ *      (schema-pinned), inputs Vocabulary / DoNotPropose, one call
+ *      per vocabulary chunk, capped at curation.maxProposals.
  *   4. Hallucination guard (If_valid_proposal, verbatim): alias and
  *      canonical must both be real rows (case-insensitive title),
  *      differ, alias uncurated (no CanonicalRef, no CurationStatus),
@@ -37,21 +36,17 @@
  * columns on its next run.
  *
  * Config: reuses config.json — sharePoint.lists.keywords, graph.*,
- * llm.environmentUrl + llm.curationModelId (find it with --models),
- * optional curation.{digestName,digestDrivePath,maxProposals,
- * promptVersion,dryRun}.
+ * llm.* (see llm.mjs), optional curation.{digestName,digestDrivePath,
+ * maxProposals,vocabChunk,promptVersion,autoApprove,dryRun}.
  *
  * Usage:
- *   node --experimental-strip-types local/curate.mjs --config local/config.json [--live|--dry-run]
- *   node --experimental-strip-types local/curate.mjs --config local/config.json --models
- *     (lists the environment's AI Builder models with their GUIDs —
- *      copy the "LRS Keyword Curation" one into llm.curationModelId)
+ *   node --experimental-strip-types pipeline/curate.mjs --config config.json [--live|--dry-run|--drain|--repoint]
  */
 
 import fs from "node:fs";
 import path from "node:path";
 import { GraphClient } from "./graph.mjs";
-import { aiBuilderPredict, braceSlice, curateChunk, dataverseToken, providerOf } from "./llm.mjs";
+import { curateChunk } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 
 const num = (v) => {
@@ -67,13 +62,12 @@ function loadConfig(argv) {
     if (a === "--config") args.config = argv[++i];
     else if (a === "--live") args.flags.live = true;
     else if (a === "--dry-run") args.flags.dry = true;
-    else if (a === "--models") args.flags.models = true;
     else if (a === "--drain") args.flags.drain = true;
     else if (a === "--repoint") args.flags.repoint = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--models|--drain|--repoint]");
+    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--drain|--repoint]");
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -88,25 +82,13 @@ function loadConfig(argv) {
   cfg.graph = cfg.graph || {};
   const authDir = path.join(cfg.paths?.workDir || ".", "auth");
   cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
-  // aibuilder auth inherits Graph settings, exactly as sweep.mjs does —
-  // delegated modes (device AND interactive, matching sweep.mjs) drop the
-  // Graph clientId so Dataverse keeps its own public client
-  const inherit = { ...cfg.graph };
-  const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
-  if (inheritMode === "device" || inheritMode === "interactive") delete inherit.clientId;
-  delete inherit.baseUrl;
-  cfg.llm.dataverse = {
-    ...inherit,
-    tokenCache: path.join(authDir, "dataverse.json"),
-    ...(cfg.llm.dataverse || {}),
-  };
   cfg.curation = {
     digestName: "Keyword_Curation_Digest.md",
     digestDrivePath: "", // site default drive root = Shared Documents
     maxProposals: 20,
-    // vocabulary lines per Predict call. One giant call over the full
-    // vocabulary times out the AI Builder gateway (408) once replies
-    // grow; alphabetical chunks keep each call small AND keep the
+    // vocabulary lines per model call. One giant call over the full
+    // vocabulary produces a reply too long to trust (and, historically,
+    // timed out); alphabetical chunks keep each call small AND keep the
     // main variant classes (plural/typo/hyphen/concatenation)
     // adjacent in the same chunk. Cross-chunk pairs (abbreviation vs
     // expansion far apart alphabetically) are the accepted miss.
@@ -122,43 +104,17 @@ function loadConfig(argv) {
   };
   if (args.flags.live) cfg.curation.dryRun = false;
   if (args.flags.dry) cfg.curation.dryRun = true;
-  cfg._models = !!args.flags.models;
   cfg._drain = !!args.flags.drain;
   cfg._repoint = !!args.flags.repoint;
   return cfg;
 }
 
-async function listModels(cfg) {
-  const url =
-    `${cfg.llm.environmentUrl}/api/data/v9.2/msdyn_aimodels` +
-    `?$select=msdyn_aimodelid,msdyn_name&$orderby=msdyn_name`;
-  const res = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: "Bearer " + (await dataverseToken(cfg.llm)),
-    },
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!res.ok) {
-    throw new Error(`model list failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
-  }
-  const json = await res.json();
-  for (const m of json.value || []) {
-    console.log(`${m.msdyn_aimodelid}  ${m.msdyn_name}`);
-  }
-  console.log("\nCopy the \"LRS Keyword Curation\" GUID into config llm.curationModelId");
-}
-
 async function main() {
   const cfg = loadConfig(process.argv.slice(2));
-  if (cfg._models) return listModels(cfg);
   if (cfg._repoint) {
     const graph = new GraphClient(cfg.graph);
     const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
     return runRepoint(cfg, graph, siteId);
-  }
-  if (!cfg.llm.curationModelId) {
-    throw new Error("llm.curationModelId is not set — run with --models to find the LRS Keyword Curation model GUID");
   }
   const graph = new GraphClient(cfg.graph);
   const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
@@ -323,9 +279,10 @@ async function runCuration(cfg, graph, siteId) {
   const blockedRows = canon.filter((r) => r.CurationStatus);
   const blockedLines = blockedRows.map((r) => r.Title).join("\n");
 
-  // 3) the tenant's curation prompt — one call per alphabetical
-  // vocabulary chunk (see vocabChunk above); per-chunk cap applies,
-  // proposals concatenate across chunks
+  // 3) the curation prompt (prompts/keyword_curation.md through the
+  // Python layer, schema-pinned) — one call per alphabetical vocabulary
+  // chunk (see vocabChunk above); per-chunk cap applies, proposals
+  // concatenate across chunks
   const canonSorted = [...canon].sort((a, b) =>
     lower(a.Title) < lower(b.Title) ? -1 : lower(a.Title) > lower(b.Title) ? 1 : 0
   );
@@ -335,21 +292,7 @@ async function runCuration(cfg, graph, siteId) {
   for (let i = 0; i < canonSorted.length; i += chunkSize) {
     const chunk = canonSorted.slice(i, i + chunkSize);
     const vocabulary = chunk.map((r) => `${r.Title} [${r.Kind}]`).join("\n");
-    let parsed = {};
-    if (providerOf(cfg.llm) === "aibuilder") {
-      const response = await aiBuilderPredict(
-        cfg.llm, { Vocabulary: vocabulary, DoNotPropose: blockedLines }, cfg.llm.curationModelId
-      );
-      const text = response?.responsev2?.predictionOutput?.text ?? "{}";
-      try {
-        parsed = JSON.parse(braceSlice(text));
-      } catch {
-        process.stderr.write("curate: unparseable model output for one chunk — skipping it\n");
-      }
-    } else {
-      // prompts/keyword_curation.md through the Python layer (schema-pinned)
-      parsed = await curateChunk(cfg.llm, { vocabulary, doNotPropose: blockedLines });
-    }
+    const parsed = await curateChunk(cfg.llm, { vocabulary, doNotPropose: blockedLines });
     proposals.push(
       ...(Array.isArray(parsed?.proposals) ? parsed.proposals : []).slice(0, cap)
     );

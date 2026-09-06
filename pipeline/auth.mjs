@@ -9,8 +9,6 @@
  *
  *   Graph:     14d82eec-204b-4c2f-b7e8-296a70dab67e
  *              (Microsoft Graph Command Line Tools)
- *   Dataverse: 51f81489-12ee-4a9e-aaae-a2591f45987d
- *              (Microsoft's public sample client for Dataverse)
  *
  * First use prints a code + https://microsoft.com/devicelogin and
  * waits for the browser sign-in; the refresh token is then cached
@@ -18,7 +16,7 @@
  * the refresh token alive; if the machine sits unused long enough
  * for it to expire, the next run prompts again — run it once from a
  * console. All actions are performed AS THE SIGNED-IN USER with that
- * user's existing SharePoint/Dataverse permissions — the same
+ * user's existing SharePoint permissions — the same
  * identity model as the cloud flow's connections.
  *
  * If the tenant's consent policy blocks a scope for these clients,
@@ -44,7 +42,6 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const GRAPH_PUBLIC_CLIENT = "14d82eec-204b-4c2f-b7e8-296a70dab67e";
-export const DATAVERSE_PUBLIC_CLIENT = "51f81489-12ee-4a9e-aaae-a2591f45987d";
 // Azure CLI — broadly pre-consented against SharePoint Online itself
 export const AZURE_CLI_PUBLIC_CLIENT = "04b07795-8ddb-461a-bbee-02f9e1bf7b46";
 

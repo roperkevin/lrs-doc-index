@@ -50,7 +50,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../extract/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
-import { classifyDoc, generate, aiBuilderPredict } from "./llm.mjs";
+import { classifyDoc, generate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.mjs";
 import {
   lower, cut, folderOf, yamlEscape, stripQuotes, pipeToSlash, fmtDate,
@@ -88,14 +88,12 @@ const FLOW_DEFAULTS = {
   promptVersion: "v2.0",
   // --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane
   // for plans the detectors leave caseless. enabled = the owner switch
-  // (a live run refuses without it); maxPerRun caps model calls;
-  // provider "" follows llm.provider ("anthropic" runs
-  // prompts/case_normalize.md verbatim; "aibuilder" needs
-  // llm.normalizeModelId); maxTokens bounds the anthropic reply.
+  // (a live run refuses without it); maxPerRun caps model calls
+  // (prompts/case_normalize.md); maxTokens bounds the reply.
   // maxInputChars skips (and counts) a plan whose body is larger — a
   // 350 KB pdf body is a very expensive call and a reply that size
   // would overrun any maxTokens; such plans stay on the audit list.
-  normalizeCases: { enabled: false, maxPerRun: 10, provider: "", maxTokens: 32000, maxInputChars: 150000 },
+  normalizeCases: { enabled: false, maxPerRun: 10, maxTokens: 32000, maxInputChars: 150000 },
   // figure indexing (Figure_Index_Plan; sweep v1.59): enabled by
   // sharePoint.lists.figures alone. kinds [] = every DocKind gets
   // figure rows; contextCap bounds the per-figure skim text.
@@ -481,24 +479,14 @@ function loadConfig(argv) {
   // device-mode refresh-token caches (one per resource) live in workDir
   const authDir = path.join(cfg.paths.workDir || ".", "auth");
   cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
-  // the aibuilder provider inherits the Graph auth settings by default
-  // (device mode: same tenant/sign-in, its own public client + cache;
-  // app mode: same registration/secret)
+  // SPO REST (hyperlink-column writes) inherits the Graph auth settings
+  // (device mode: same tenant/sign-in, the Graph CLI public client, its
+  // first token seeded from the Graph sign-in's cache — no extra prompt;
+  // app mode: same registration/secret) (SpoClient)
   const inherit = { ...cfg.graph };
   const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
-  // delegated modes (device / interactive): each resource keeps its own
-  // public client — Dataverse has its own, and SPO must stay on the Graph
-  // CLI client whose tokens carry real SharePoint permissions
   if (inheritMode === "device" || inheritMode === "interactive") delete inherit.clientId;
   delete inherit.baseUrl; // Graph-only
-  cfg.llm.dataverse = {
-    ...inherit,
-    tokenCache: path.join(authDir, "dataverse.json"),
-    ...(cfg.llm.dataverse || {}),
-  };
-  // SPO REST (hyperlink-column writes) inherits the same way; device
-  // mode uses the Graph CLI public client and seeds its first token
-  // from the Graph sign-in's cache — no extra prompt (SpoClient)
   cfg.spo = {
     ...inherit,
     siteUrl: (cfg.sweep.siteUrl || FLOW_DEFAULTS.siteUrl),
@@ -1100,8 +1088,7 @@ async function main() {
   // reachable from the nightly index, --reformat or --recase.
   if (sw.normalize) {
     const nc = { ...FLOW_DEFAULTS.normalizeCases, ...(sw.normalizeCases || {}) };
-    const provider = nc.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
-    const zsum = { mode: "normalize-cases", dry_run: dry, provider, prompt_version: NORMALIZE_PROMPT_VERSION,
+    const zsum = { mode: "normalize-cases", dry_run: dry, prompt_version: NORMALIZE_PROMPT_VERSION,
                    eligible: 0, candidates: 0, normalized: 0, refused: 0, errors: 0, skipped_cap: 0, skipped_large: 0,
                    cases_upserted: 0, cases_removed: 0, case_errors: 0, plans_caseless: 0, cases_shape_mixed: 0 };
     if (!dry && !nc.enabled) {
@@ -1109,9 +1096,6 @@ async function main() {
         "--normalize-cases --live requires sweep.normalizeCases.enabled: true in config — " +
         "the owner switch for AI spend on sidecar bodies (dry runs list the candidates without it)"
       );
-    }
-    if (!dry && provider === "aibuilder" && !cfg.llm.normalizeModelId) {
-      throw new Error("llm.normalizeModelId is not set — paste prompts/case_normalize.md as a tenant prompt (inputs PlanTitle, Body) or use provider \"anthropic\"");
     }
     const plans = [];
     for (const r of docIndexRows) {
@@ -1144,13 +1128,7 @@ async function main() {
       if (dry) { entry.failures = ["dry run: not called"]; continue; }
       try {
         const inputs = { PlanTitle: p.r.Title || p.r.FileName || "", Body: p.body };
-        let raw;
-        if (provider === "aibuilder") {
-          const res = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.normalizeModelId);
-          raw = res?.responsev2?.predictionOutput?.text ?? "";
-        } else {
-          raw = await generate(cfg.llm, "case_normalize", inputs, { maxTokens: Number(nc.maxTokens) });
-        }
+        const raw = await generate(cfg.llm, "case_normalize", inputs, { maxTokens: Number(nc.maxTokens) });
         const out = unwrapReply(raw);
         const v = verifyNormalized(p.body, out);
         entry.cases = v.cases;
@@ -1874,8 +1852,8 @@ async function main() {
       errorLane.delete(docKey);
     } catch (e) {
       // Catch_index: Error row, LastError "{step}: {detail}", continue.
-      // One failure class is NOT retryable (v1.28): AI Builder's input
-      // content moderation (InputContentFiltered) is deterministic on the
+      // One failure class is NOT retryable (v1.28): the model REFUSING
+      // the document (stop_reason: refusal) is deterministic on the
       // doc's own text — a deck that quotes model-instruction-like content
       // trips it every time — so an Error stamp would re-burn one AI call
       // per night failing identically. It stamps Skipped instead (the
@@ -1884,7 +1862,7 @@ async function main() {
       // stays quiet; like any Skipped row it re-enters on the next
       // promptVersion bump or a source edit.
       const errDetail = cut(`${step}: ${e.message}`, 4000);
-      const filtered = step === "llm" && errDetail.indexOf("InputContentFiltered") >= 0;
+      const filtered = step === "llm" && (e.type === "Refused" || /stop_reason: refusal/.test(errDetail));
       if (filtered) {
         errorLane.delete(docKey);
         process.stderr.write(`SKIP (content-filtered) ${name}: ${errDetail}\n`);
@@ -1909,7 +1887,7 @@ async function main() {
           Title: name, FileName: name, DocKey: docKey,
           IndexStatus: status, IndexedOn: new Date().toISOString(),
           LastError: filtered
-            ? cut("content filter: AI Builder refused the document text — " +
+            ? cut("content filter: the model refused the document text — " +
                   "re-enters on the next PromptVersion bump or source edit. " + errDetail, 4000)
             : errDetail,
         };

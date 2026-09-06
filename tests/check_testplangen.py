@@ -2,7 +2,7 @@
 
 Proves the local job reproduces TestPlanGenCore's G1-G13 semantics
 with the cloud replaced by mocks (stdlib http.server standing in for
-Graph, Dataverse Predict, and the Anthropic API), plus the phase-1
+Graph and the Anthropic API), plus the phase-1
 verifier the cloud flow could not have
 (testplangen/Local_TestPlanGen_Plan.md):
 
@@ -17,7 +17,7 @@ verifier the cloud flow could not have
                      silently); the G6 release-matched exemplar
                      fallback; '(none)' placeholders; the live draft
                      write (timestamped name, WARNING banner,
-                     provider stamp) and the dry-run plan (no upload,
+                     version stamp) and the dry-run plan (no upload,
                      local draft copy); the anthropic transport
                      (verbatim prompt substitution, no leftover
                      placeholders, maxTokens honored)
@@ -63,8 +63,7 @@ verifier the cloud flow could not have
                      selection with zero model calls, drafted +
                      refused in one live run with both webhook
                      messages, idempotency skip and refusal retry,
-                     --force re-arm, autoMaxPerRun deferral, and
-                     the provider override
+                     --force re-arm, autoMaxPerRun deferral
   leg 10 issues      the phase-4 Issue Trace addendum: appended after
                      the verified body, deduped per issue, Issue Refs
                      enrichment with em-dash degrade, absent for a
@@ -143,8 +142,7 @@ verifier the cloud flow could not have
                      rendered, svg2pptx-parsed, and dropped when
                      ungrounded; genKinds=; prompt v0.4 text):
                      a second model call over the verified draft
-                     (aibuilder routed by llm.figuresModelId,
-                     anthropic by the repo prompt's text); two
+                     (prompts/testplan_figures.md); two
                      grounded specs (a before/after route-measure
                      pair, a lock-conflict sequence) render to SVG
                      in the SlideFigures vocabulary beside the draft
@@ -154,21 +152,19 @@ verifier the cloud flow could not have
                      measure and an unknown case are DROPPED with
                      their findings; genFigures=; a sentinel-less
                      reply skips the pass and the draft still lands;
-                     --auto refuses; aibuilder without a model id
-                     refuses BEFORE the generation spend; v1.18
+                     --auto refuses; v1.18
                      figuresCap: substituted as the FiguresCap input,
                      a cap of 1 keeps one grounded spec and drops the
                      next with X6, 0 refuses before spend
   leg 19 stream      console streaming (v1.12, llm.mjs v1.7): --stream
-                     on the anthropic lane asks for summarized
+                     asks for summarized
                      thinking and echoes the thinking chunks, then the
                      reply chunks, to stderr in arrival order — for
                      the draft call AND the figures call — with the
                      rules and the end-of-stream char count, no
                      heartbeat line, stdout untouched, the written
                      draft identical; without --stream no thinking
-                     key is sent and nothing is echoed; on the
-                     aibuilder lane --stream prints one note
+                     key is sent and nothing is echoed
   leg 20 related     the RELATED CASES retrieval lane (v1.14, prompt
                      v1.11's sixth input): plans outside the
                      exemplar/reference lanes are ranked against the
@@ -199,10 +195,8 @@ Usage: python3 check_testplangen.py
                      the notes page, the Review Deck addendum, the
                      run log's deck record, deck= in the summary;
                      a sentinel-less reply skips the pass and the
-                     draft still lands; --auto refuses; aibuilder
-                     without llm.deckModelId refuses BEFORE the
-                     generation spend, with it the Predict call is
-                     routed by GUID with the three inputs by name;
+                     draft still lands; --auto refuses; the deck call
+                     carries the three inputs by name;
                      v1.17 deckDesign / deckTheme — an unknown name
                      refuses before spend, "carbon" + "dark" renders
                      in IBM Plex Sans on the Gray 100 theme
@@ -226,9 +220,10 @@ REPO = os.path.dirname(HERE)
 JOB = os.path.join(REPO, "pipeline", "testplangen.mjs")
 DRAFTLINT = os.path.join(REPO, "pipeline", "lib", "draftlint.mjs")
 PY_LINT = os.path.join(HERE, "check_draft_coverage.py")
-GEN_MODEL = "feedf00d-0000-4000-8000-000000000001"
-FIG_MODEL = "feedf00d-0000-4000-8000-000000000002"
-DECK_MODEL = "feedf00d-0000-4000-8000-000000000003"
+# every model call goes through the Python layer, which dumps the
+# rendered request + its inputs here (LRSDOC_DUMP_DIR) — the mock reads
+# a call's inputs by name from the newest dump for that prompt
+DUMP_DIR = ""
 SITE_URL = "https://mock.example/sites/lrsworkspace"
 
 PASS = []
@@ -480,14 +475,14 @@ Verifies realignment of a route.
 """
 
 
-# ---- mock Graph + Dataverse Predict + Anthropic ---------------------
+# ---- mock Graph + Anthropic -------------------------------------------
 
 class MockState:
     def __init__(self):
         self.sidecar_dir = ""     # the "drive" the remote mirror (leg 17) serves
         self.drive_downloads = 0
         self.lists = {}           # list guid -> items ([{id, fields}])
-        self.gen_text = ""        # the model reply, both providers
+        self.gen_text = ""        # the model reply
         self.fig_text = ""        # the figures-pass reply (leg 18)
         self.fig_stop_reason = "end_turn"  # v1.15: "max_tokens" = a cut figures reply
         self.fig_calls = 0
@@ -496,12 +491,24 @@ class MockState:
         self.deck_last_inputs = {}
         self.gen_by_doc = {}      # doc id -> reply (routed by StoryMeta's doc_id)
         self.gen_calls = 0
-        self.gen_last_inputs = {}     # Predict requestv2
+        self.gen_last_inputs = {}     # the draft call's inputs (from the dump)
         self.webpages = {}        # path -> HTML (the web-reference mock)
         self.ant_calls = 0
         self.ant_last_body = {}       # /v1/messages request body
         self.drafts = {}          # drive path -> content
         self.alerts = []          # webhook payloads
+
+
+def latest_dump_inputs(prompt_name):
+    """The inputs of the newest lrsdoc request dump for `prompt_name`
+    (written by lrsdoc.llm before the request goes out)."""
+    if not DUMP_DIR or not os.path.isdir(DUMP_DIR):
+        return {}
+    names = sorted(f for f in os.listdir(DUMP_DIR) if f.endswith(f"-{prompt_name}.json"))
+    if not names:
+        return {}
+    with open(os.path.join(DUMP_DIR, names[-1]), encoding="utf-8") as f:
+        return dict(json.load(f).get("inputs") or {})
 
 
 def make_handler(state):
@@ -538,14 +545,24 @@ def make_handler(state):
                 is_deck = "DECK SPECIFICATION VOCABULARY" in prompt_text
                 if is_fig:
                     state.fig_calls += 1
-                if is_deck:
+                    state.fig_last_inputs = latest_dump_inputs("testplan_figures")
+                elif is_deck:
                     state.deck_calls += 1
+                    state.deck_last_inputs = latest_dump_inputs("testplan_deck")
+                else:
+                    state.gen_calls += 1
+                    state.gen_last_inputs = latest_dump_inputs("testplan_draft")
+                # the draft reply, routed by StoryMeta's doc_id when a leg
+                # keys replies per story (the --auto legs)
+                dm = re.search(r"doc_id: (\d+)", state.gen_last_inputs.get("StoryMeta", "")) \
+                    if not (is_fig or is_deck) else None
+                gen_text = state.gen_by_doc.get(int(dm.group(1)) if dm else -1, state.gen_text)
                 if body.get("stream"):
                     # the generate task streams — serve a real SSE stream;
                     # a request carrying thinking.display "summarized" gets
                     # a thinking block first, as the API streams it
                     text = ((state.deck_text_fn() if getattr(state, "deck_text_fn", None) else state.deck_text)
-                            if is_deck else state.fig_text if is_fig else state.gen_text)
+                            if is_deck else state.fig_text if is_fig else gen_text)
                     thinking = (["Reading the story; ", "two positive cases fit."]
                                 if (body.get("thinking") or {}).get("display") == "summarized" else None)
                     payload = mock.sse_bytes(text, state.fig_stop_reason if is_fig else "end_turn", thinking)
@@ -555,28 +572,7 @@ def make_handler(state):
                     self.end_headers()
                     self.wfile.write(payload)
                     return
-                return self._json(mock.message_json(state.gen_text))
-            m = re.match(
-                r"^/api/data/v9\.2/msdyn_aimodels\(([0-9a-f-]+)\)"
-                r"/Microsoft\.Dynamics\.CRM\.Predict$", p)
-            if m:
-                body = json.loads(self._read())
-                rv = dict(body.get("requestv2", {}))
-                rv.pop("@odata.type", None)
-                if m.group(1) == FIG_MODEL:
-                    state.fig_calls += 1
-                    state.fig_last_inputs = rv
-                    return self._json({"responsev2": {"predictionOutput": {"text": state.fig_text}}})
-                if m.group(1) == DECK_MODEL:
-                    state.deck_calls += 1
-                    state.deck_last_inputs = rv
-                    return self._json({"responsev2": {"predictionOutput": {"text": state.deck_text}}})
-                state.gen_calls += 1
-                state.gen_last_inputs = rv
-                dm = re.search(r"doc_id: (\d+)", rv.get("StoryMeta", ""))
-                text = state.gen_by_doc.get(int(dm.group(1)) if dm else -1,
-                                            state.gen_text)
-                return self._json({"responsev2": {"predictionOutput": {"text": text}}})
+                return self._json(mock.message_json(gen_text))
             return self._json({"error": "unhandled POST " + p}, 500)
 
         def do_PUT(self):
@@ -704,6 +700,7 @@ def run_job(cfg_path, extra):
     return subprocess.run(
         ["node", "--experimental-strip-types", JOB, "--config", cfg_path] + extra,
         capture_output=True, text=True, cwd=REPO,
+        env=dict(os.environ, LRSDOC_DUMP_DIR=DUMP_DIR),
     )
 
 
@@ -745,10 +742,12 @@ def auto_summary(stdout):
 # ---- main -----------------------------------------------------------
 
 def main():
+    global DUMP_DIR
     tmp = tempfile.mkdtemp(prefix="testplangen-gate-")
     sidecar_dir = os.path.join(tmp, "sidecar")
     work_dir = os.path.join(tmp, "work")
     os.makedirs(work_dir, exist_ok=True)
+    DUMP_DIR = os.path.join(tmp, "dumps")
 
     state = MockState()
     state.sidecar_dir = sidecar_dir
@@ -941,8 +940,7 @@ def main():
                 "maxRetries": 0,
             },
             "llm": llm if llm is not None else {
-                "provider": "aibuilder", "environmentUrl": base,
-                "testPlanModelId": GEN_MODEL, "maxRetries": 0,
+                "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0,
             },
             "sweep": {"siteUrl": SITE_URL},
             "testplangen": {"neighborCap": 8, **(testplangen or {})},
@@ -1015,9 +1013,10 @@ def main():
              if re.match(r"^/Test Plan Drafts/route-merge__doc12--draft-\d{8}-\d{6}\.md$", p)]
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
-    check("banner: comment stamp with prompt version + provider",
+    check("banner: comment stamp with prompt version + job version (no transport stamp)",
           draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.13")
-          and "provider aibuilder" in draft.splitlines()[0], draft[:200])
+          and " · local/testplangen.mjs v" in draft.splitlines()[0]
+          and "provider" not in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
           and f"Source sidecar: <{url_story}>" in draft, draft[:600])
@@ -1073,13 +1072,11 @@ def main():
 
     # ---- leg 2c: anthropic transport --------------------------------
     print("== leg 2c: anthropic transport")
-    cfg_ant = write_cfg("config-ant.json",
-                        llm={"provider": "anthropic", "apiKey": "mock-key",
-                             "baseUrl": base, "maxRetries": 0})
     state.drafts.clear()
-    r = run_job(cfg_ant, ["--story", "12", "--live"])
+    ant_before = state.ant_calls
+    r = run_job(cfg_main, ["--story", "12", "--live"])
     check("anthropic run succeeds", r.returncode == 0, r.stdout + r.stderr)
-    check("one /v1/messages call", state.ant_calls == 1, str(state.ant_calls))
+    check("one /v1/messages call", state.ant_calls == ant_before + 1, str(state.ant_calls))
     prompt = mock.prompt_text(state.ant_last_body)
     check("prompt: the repo prompt text, inputs substituted",
           "GROUNDING RULES" in prompt
@@ -1091,10 +1088,12 @@ def main():
                         prompt), prompt[-300:])
     check("maxTokens honored (default 32000)",
           state.ant_last_body.get("max_tokens") == 32000, str(state.ant_last_body.get("max_tokens")))
-    check("anthropic draft written, provider stamped",
+    check("anthropic draft written",
           len(state.drafts) == 1
-          and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
+          and list(state.drafts.values())[0].startswith("<!-- machine-generated test-plan draft"),
           str(list(state.drafts)))
+    check("generation request streams (llm.mjs v1.6 — SSE, not one long silent call)",
+          state.ant_last_body.get("stream") is True, str(state.ant_last_body)[:200])
 
     # ---- leg 3: caps ------------------------------------------------
     print("== leg 3: remaining-budget caps")
@@ -1480,25 +1479,6 @@ def main():
     check("autoMaxPerRun caps the run, the rest defers",
           summ.get("gaps") == "2" and summ.get("selected") == "1"
           and summ.get("deferred") == "1", r.stdout)
-
-    # testplangen.provider override: generation on anthropic while the
-    # llm section stays aibuilder-shaped
-    cfg_prov = write_cfg("config-prov.json",
-                         testplangen={"neighborCap": 8, "provider": "anthropic"},
-                         llm={"provider": "aibuilder", "environmentUrl": base,
-                              "testPlanModelId": GEN_MODEL, "maxRetries": 0,
-                              "apiKey": "mock-key", "baseUrl": base})
-    ant_calls = state.ant_calls
-    gen_calls = state.gen_calls
-    state.drafts.clear()
-    r = run_job(cfg_prov, ["--story", "12", "--live"])
-    check("testplangen.provider overrides llm.provider for generation only",
-          r.returncode == 0 and state.ant_calls == ant_calls + 1
-          and state.gen_calls == gen_calls
-          and "provider anthropic" in list(state.drafts.values())[0].splitlines()[0],
-          r.stdout + r.stderr)
-    check("generation request streams (llm.mjs v1.6 — SSE, not one long silent call)",
-          state.ant_last_body.get("stream") is True, str(state.ant_last_body)[:200])
 
     # ---- leg 10: issue trace addendum ------------------------------
     print("== leg 10: issue trace addendum")
@@ -1935,8 +1915,8 @@ def main():
     check("--preview succeeds with ZERO model calls and nothing uploaded (even with --live)",
           r.returncode == 0 and state.gen_calls == calls_before
           and state.drafts == drafts_before, r.stdout + r.stderr)
-    check("preview summary line: lane counters + inputChars/provider/preview=1",
-          summ.get("preview") == "1" and summ.get("provider") == "aibuilder"
+    check("preview summary line: lane counters + inputChars/preview=1",
+          summ.get("preview") == "1" and "provider" not in summ
           and summ.get("exemplars") == "2" and summ.get("references") == "3"
           and summ.get("neighbors") == "7" and int(summ.get("inputChars", "0")) > 1000
           and "draftChars" not in summ, str(summ))
@@ -2024,10 +2004,7 @@ def main():
     print("== leg 18: generated figures")
     state.gen_text = wrap(FIG_DRAFT)
     state.fig_text = FIG_REPLY_WRAPPED
-    cfg_fig = write_cfg("config-fig.json",
-                        llm={"provider": "aibuilder", "environmentUrl": base,
-                             "testPlanModelId": GEN_MODEL, "figuresModelId": FIG_MODEL,
-                             "maxRetries": 0})
+    cfg_fig = write_cfg("config-fig.json")
     gen_before, fig_before = state.gen_calls, state.fig_calls
     r = run_job(cfg_fig, ["--story", "12", "--dry-run", "--figures"])
     summ = summary_of(r.stdout)
@@ -2324,7 +2301,7 @@ def main():
     state.fig_text = FIG_REPLY_WRAPPED
     # anthropic lane: the repo prompt verbatim, inputs substituted, its own maxTokens
     cfg_fig_ant = write_cfg("config-fig-ant.json",
-                            llm={"provider": "anthropic", "apiKey": "mock-key",
+                            llm={"apiKey": "mock-key",
                                  "baseUrl": base, "maxRetries": 0},
                             testplangen={"neighborCap": 8, "figures": True})
     ant_before, fig_before = state.ant_calls, state.fig_calls
@@ -2352,7 +2329,7 @@ def main():
     state.fig_stop_reason = "end_turn"
     # v1.18: the X6 budget as a knob — substituted into the prompt, enforced after grounding
     cfg_fig_cap = write_cfg("config-fig-cap.json",
-                            llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                            llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                             testplangen={"neighborCap": 8, "figures": True, "figuresCap": 1})
     r = run_job(cfg_fig_cap, ["--story", "12", "--dry-run"])
     prompt = mock.prompt_text(state.ant_last_body)
@@ -2364,21 +2341,16 @@ def main():
           and any(d["case"] == "TC-N1" and "over the figures cap (testplangen.figuresCap 1)" in d["findings"][0] for d in log["figures"]["dropped"]),
           (summ.get("genFigures"), json.dumps(log.get("figures"))[:300]))
     cfg_fig_bad = write_cfg("config-fig-bad.json",
-                            llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                            llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                             testplangen={"neighborCap": 8, "figures": True, "figuresCap": 0})
     ant_before = state.ant_calls
     r = run_job(cfg_fig_bad, ["--story", "12", "--dry-run"])
     check("figuresCap 0 refused before the generation call",
           r.returncode != 0 and "testplangen.figuresCap must be a whole number from 1 to 60" in r.stderr and state.ant_calls == ant_before, r.stderr[:300])
-    # refusals: --auto, and aibuilder without a figures model BEFORE any spend
+    # refusal: --auto
     r = run_job(cfg_fig, ["--auto", "--figures"])
     check("--figures refused with --auto",
           r.returncode != 0 and "cannot be combined with --auto" in r.stderr, r.stderr[:200])
-    gen_before = state.gen_calls
-    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--figures"])
-    check("aibuilder without llm.figuresModelId refuses before the generation call",
-          r.returncode != 0 and "needs llm.figuresModelId" in r.stderr
-          and state.gen_calls == gen_before, r.stderr[:300])
     state.gen_text = wrap(GOOD_DRAFT)
 
     # ---- leg 19: console streaming (v1.12) ---------------------------
@@ -2418,11 +2390,6 @@ def main():
           r.returncode == 0 and "thinking" not in state.ant_last_body
           and "--- draft:" not in r.stderr and "Reading the story" not in r.stderr,
           r.stderr[-300:])
-    # aibuilder lane: one note, otherwise ignored
-    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--stream"])
-    check("aibuilder lane: --stream prints one note and is ignored",
-          r.returncode == 0 and "progress: stream — the aibuilder lane cannot stream" in r.stderr
-          and "--- draft:" not in r.stderr, r.stderr[-400:])
     state.gen_text = wrap(GOOD_DRAFT)
 
     # ---- leg 20: the RELATED CASES retrieval lane (v1.14) ----------
@@ -2464,7 +2431,7 @@ def main():
     check("no Test Cases list: the block reads (none)",
           r.returncode == 0 and state.gen_last_inputs.get("RelatedCases") == "(none)"
           and summary_of(r.stdout).get("relatedCases") == "0", r.stdout)
-    r = run_job(cfg_ant, ["--story", "12", "--dry-run"])
+    r = run_job(cfg_main, ["--story", "12", "--dry-run"])
     prompt = mock.prompt_text(state.ant_last_body)
     check("anthropic prompt: the RELATED CASES block, the VARIATION clause, no leftover placeholder",
           r.returncode == 0 and "<<<RELATED CASES BEGIN>>>\n--- RELATED PLAN: Plan F" in prompt
@@ -2485,7 +2452,7 @@ def main():
     state.gen_text = wrap(FIG_DRAFT)
     state.fig_text = FIG_REPLY_WRAPPED
     cfg_deck = write_cfg("config-deck.json",
-                         llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                         llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                          testplangen={"neighborCap": 8, "deckMaxTokens": 4321})
     # the generated figure's file name carries the LOCAL draft stem on a
     # dry run — the mock cannot know it, so the reply is patched per
@@ -2570,29 +2537,25 @@ def main():
     check("sentinel-less deck reply: pass skipped, draft written with the addendum saying why, deck=0/0",
           r.returncode == 0 and "deck skipped: deck reply is missing the DECK BEGIN/END sentinels" in r.stderr
           and summary_of(r.stdout).get("deck") == "0/0" and "Pass skipped: deck reply is missing" in latest_live, r.stderr[-300:])
-    # refusals: --auto, and aibuilder without a deck model BEFORE any spend
+    # refusal: --auto
     r = run_job(cfg_deck, ["--auto", "--deck"])
     check("--deck refused with --auto", r.returncode != 0 and "--deck is a MANUAL generation" in r.stderr, r.stderr[:200])
-    gen_before = state.gen_calls
-    r = run_job(cfg_main, ["--story", "12", "--dry-run", "--deck"])
-    check("aibuilder without llm.deckModelId refuses before the generation call",
-          r.returncode != 0 and "needs llm.deckModelId" in r.stderr and state.gen_calls == gen_before, r.stderr[:300])
     # v1.17: the design knob — an unknown name refuses before spend, carbon renders in Plex
     cfg_deck_bad = write_cfg("config-deck-bad.json",
-                             llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                             llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                              testplangen={"neighborCap": 8, "deckDesign": "bogus"})
     ant_before = state.ant_calls
     r = run_job(cfg_deck_bad, ["--story", "12", "--dry-run", "--deck"])
     check("testplangen.deckDesign unknown: refused before the generation call",
           r.returncode != 0 and 'testplangen.deckDesign / deckTheme: unknown design "bogus"' in r.stderr and state.ant_calls == ant_before, r.stderr[:300])
     cfg_deck_bad2 = write_cfg("config-deck-bad2.json",
-                              llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                              llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                               testplangen={"neighborCap": 8, "deckTheme": "dusk"})
     r = run_job(cfg_deck_bad2, ["--story", "12", "--dry-run", "--deck"])
     check("testplangen.deckTheme unknown: refused before the generation call",
           r.returncode != 0 and 'unknown theme "dusk"' in r.stderr and state.ant_calls == ant_before, r.stderr[:300])
     cfg_deck_cb = write_cfg("config-deck-carbon.json",
-                            llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                            llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                             testplangen={"neighborCap": 8, "deckDesign": "carbon", "deckTheme": "dark"})
     state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
     r = run_job(cfg_deck_cb, ["--story", "12", "--dry-run", "--deck"])
@@ -2607,14 +2570,12 @@ def main():
           r.returncode == 0 and 'typeface="IBM Plex Sans"' in cb1 and 'val="002D9C"' in cb1 and 'typeface="IBM Plex Sans"' in cbt
           and log_cb.get("deck", {}).get("design") == "IBM Carbon (dark)" and "on the IBM Carbon (dark) design system" in latest_md_cb,
           (r.stderr[-300:], json.dumps(log_cb.get("deck"))[:200]))
-    # aibuilder lane with a deck model: routed by GUID, inputs by name
+    # the deck call's three inputs by name (from the Python layer's dump)
     state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
-    cfg_deck_ab = write_cfg("config-deck-ab.json",
-                            llm={"provider": "aibuilder", "environmentUrl": base,
-                                 "testPlanModelId": GEN_MODEL, "deckModelId": DECK_MODEL, "maxRetries": 0})
+    cfg_deck_in = write_cfg("config-deck-inputs.json")
     deck_before = state.deck_calls
-    r = run_job(cfg_deck_ab, ["--story", "12", "--dry-run", "--deck"])
-    check("aibuilder deck pass: routed by llm.deckModelId with PlanTitle + Draft + Figures inputs",
+    r = run_job(cfg_deck_in, ["--story", "12", "--dry-run", "--deck"])
+    check("deck pass: PlanTitle + Draft + Figures inputs by name",
           r.returncode == 0 and state.deck_calls == deck_before + 1
           and state.deck_last_inputs.get("PlanTitle") == "Test Plan — Route Merge"
           and "### TC-P1" in state.deck_last_inputs.get("Draft", "")

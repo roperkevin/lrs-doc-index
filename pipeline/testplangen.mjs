@@ -32,8 +32,7 @@
  * deck2pptx --spec) land beside the draft (live) or beside the local
  * copy (dry), linked from a deterministic `## Review Deck` addendum.
  * Fail soft after the draft is verified (one stderr line, the draft
- * still lands, `deck=0/0`); the aibuilder lane refuses BEFORE the
- * generation spend without llm.deckModelId. Knobs: testplangen.deck
+ * still lands, `deck=0/0`). Knobs: testplangen.deck
  * (default false; `--deck` forces on), deckMaxTokens (24000). v1.18
  * (testplangen/CHANGES.md v2.38): `figuresCap` — the figures pass's
  * X6 budget as a config knob (default 6), substituted into the prompt
@@ -112,12 +111,10 @@
  * evaluated on the 2026-09-05 index for story 910 and replaced
  * before release: generic tool tags let two plans flood every
  * slot while the referent-centric plans ranked 140th and lower;
- * plan-level ranking put those plans in the top six. The aibuilder
- * lane needs the sixth parameter RelatedCases on the tenant prompt
- * (Coverage_Runbook step 2's pattern).
+ * plan-level ranking put those plans in the top six.
  *
  * v1.12 (console streaming — `--stream`, testplangen/CHANGES.md
- * v2.33): on the anthropic lane a manual run echoes the model's
+ * v2.33): a manual run echoes the model's
  * output to STDERR as it streams — first the model's thinking
  * summary (the request asks for `display: "summarized"`; the raw
  * chain of thought is never returned by the API, the summary is
@@ -130,10 +127,8 @@
  * because the echoed partial is discarded exactly as the marker
  * slice would discard it. stdout keeps the JSON + Gen_summary
  * contract byte-for-byte; the written draft is unchanged — the
- * fail-closed slice still runs on the COMPLETE reply. The aibuilder
- * lane cannot stream (Dataverse Predict is one request, one
- * response): `--stream` there prints one note and is otherwise
- * ignored. Manual runs only (the auto and gap-report modes stay
+ * fail-closed slice still runs on the COMPLETE reply. Manual runs
+ * only (the auto and gap-report modes stay
  * quiet for their task logs); `testplangen.stream: true` makes it
  * the default for a machine.
  *
@@ -156,23 +151,20 @@
  * `**Figure:**` lines), the contract lint, and draftlint check e are
  * unaffected. Fail soft AFTER the draft is verified: a missing
  * sentinel, bad JSON, or a transport error skips the pass with one
- * stderr line and the draft still lands (`genFigures=0/0`); a
- * misconfigured transport (aibuilder with no llm.figuresModelId)
- * refuses BEFORE the generation call. Gen_summary gains
+ * stderr line and the draft still lands (`genFigures=0/0`).
+ * Gen_summary gains
  * `genFigures=<rendered>/<proposed>`; the run log lists every spec
  * with its file or its findings. Knobs: testplangen.figures (default
- * false; `--figures` forces on), figuresMaxTokens (24000 since v1.15), and
- * llm.figuresModelId for the aibuilder lane (no tenant prompt exists
- * yet — the anthropic lane executes the repo prompt verbatim).
+ * false; `--figures` forces on), figuresMaxTokens (24000 since v1.15).
  * Manual runs only, like the pins.
  *
  * v1.10 (first-run review — testplangen/CHANGES.md v2.31):
  *   - `--preview`: a ZERO-SPEND single-story run — the guard, the
- *     lookup, the pins, every lane, and the provider resolution run
- *     exactly as for a generation, then the five prompt inputs are
+ *     lookup, the pins and every lane run exactly as for a
+ *     generation, then the five prompt inputs are
  *     written to workDir (`testplangen-preview-<stamp>.md`) and the
  *     job stops BEFORE the model call. The summary line carries the
- *     lane counters plus `inputChars= provider= preview=1`. Meant for
+ *     lane counters plus `inputChars= preview=1`. Meant for
  *     the first run on a machine (auth, config, sidecar mapping,
  *     related routing, and the transport are all proven without a
  *     credit spent) and for tuning caps/pins on a story before
@@ -376,11 +368,7 @@
  *     `testplangen.autoDraft`, capped by `autoMaxPerRun`, idempotent
  *     against existing drafts (`--force` overrides for one run),
  *     verify=strict and notify forced on, dry runs selection-only
- *     (zero model calls). Schedule via local/run_testplangen.cmd.
- *   - `testplangen.provider` — overrides `llm.provider` for the
- *     generation call ONLY, so generation can run the anthropic lane
- *     while the sweep's classify step stays on AI Builder (or the
- *     reverse).
+ *     (zero model calls). Schedule via ops/run_testplangen.cmd.
  *
  * v1.1 (phase 2) adds:
  *   - the lookup front door — `--issue <n>` / `--title "<words>"`
@@ -435,21 +423,16 @@
  *   G7/G7b lane bodies with remaining-budget takes (the v2.13
  *          Ex_remaining/Ref_remaining semantics — exChars/refChars
  *          can never exceed their caps).
- *   G8     ONE model call. Provider "aibuilder" (default): the
- *          tenant's `LRS Test Plan Generation` prompt via Dataverse
- *          Predict (llm.testPlanModelId — find it with --models; the
- *          tenant paste state applies, Coverage_Runbook.md step 2).
- *          Provider "anthropic": prompts/testplan_draft.md
- *          executed VERBATIM between its delimiters — zero tenant
- *          work, the v1.9 rules apply as authored; single-pass
- *          placeholder substitution so document content can never
- *          inject a second substitution.
+ *   G8     ONE model call: prompts/testplan_draft.md rendered and
+ *          sent by the Python layer (lrsdoc) — the v1.9 rules apply
+ *          as authored; single-pass placeholder substitution so
+ *          document content can never inject a second substitution.
  *   G9     marker slice ([[[DRAFT BEGIN]]]/[[[DRAFT END]]],
  *          indexOf/lastIndexOf, strict >begin+17) — fails CLOSED:
  *          missing/misordered markers write NOTHING, with the flow's
  *          Terminate_no_draft message.
  *   G10–11 banner (HTML comment + [!WARNING] + truncation flag, plus
- *          a local provenance/provider stamp) and the timestamped
+ *          a local provenance stamp) and the timestamped
  *          draft in Shared Documents/Test Plan Drafts — via Graph
  *          drive upload (the curation-digest write), never
  *          overwritten, outside the Q&A agent's knowledge source.
@@ -471,19 +454,15 @@
  * housekeeping deletes them after finalize).
  *
  * Config: reuses config.json — sharePoint.{hostname,sitePath,
- * lists.docIndex}, paths.sidecarLibrary, graph.*, llm.* (+ the new
- * llm.testPlanModelId for the aibuilder provider), optional
+ * lists.docIndex}, paths.sidecarLibrary, graph.*, llm.*, optional
  * testplangen.{...} knobs mirroring the flow's Config_gen (see
- * config.sample.json / Local_Setup.md §10).
+ * config.sample.json / docs/setup.md).
  *
  * Usage:
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --story <docId> [--exemplar <docId>]... [--reference <docId>]... [--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify]
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --issue <n> ...
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --title "<words>" ...
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --auto [--force] [--live|--dry-run]
- *   node --experimental-strip-types local/testplangen.mjs --config local/config.json --models
- *     (lists the environment's AI Builder models — copy the
- *      "LRS Test Plan Generation" GUID into llm.testPlanModelId)
+ *   node --experimental-strip-types pipeline/testplangen.mjs --config config.json --story <docId> [--exemplar <docId>]... [--reference <docId>]... [--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify]
+ *   node --experimental-strip-types pipeline/testplangen.mjs --config config.json --issue <n> ...
+ *   node --experimental-strip-types pipeline/testplangen.mjs --config config.json --title "<words>" ...
+ *   node --experimental-strip-types pipeline/testplangen.mjs --config config.json --auto [--force] [--live|--dry-run]
  */
 
 import fs from "node:fs";
@@ -491,7 +470,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GraphClient } from "./graph.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
-import { aiBuilderPredict, dataverseToken, generate } from "./llm.mjs";
+import { generate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft, contentStems, stemMatches } from "./lib/draftlint.mjs";
@@ -533,9 +512,9 @@ const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
   "[--exemplar <docId>]... [--reference <docId>|<https-url>]... " +
-  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--deck] [--stream] | --models | --help\n" +
+  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--deck] [--stream] | --help\n" +
   "--stream echoes the model's thinking summary and reply to stderr as they " +
-  "arrive (anthropic lane only — Dataverse Predict cannot stream). " +
+  "arrive. " +
   "--figures adds a second model pass over the verified draft that selects the " +
   "cases worth a figure and renders grounded SVG figures beside the draft — route " +
   "schematics, topology, sequence, timeline, state, matrix, UI wireframe, workflow " +
@@ -568,7 +547,6 @@ function loadConfig(argv) {
     else if (a === "--deck") args.flags.deck = true;
     else if (a === "--stream") args.flags.stream = true;
     else if (a === "--help" || a === "-h") args.flags.help = true;
-    else if (a === "--models") args.flags.models = true;
     else if (a === "--notify") args.flags.notify = true;
     else if (a === "--auto") args.flags.auto = true;
     else if (a === "--force") args.flags.force = true;
@@ -583,23 +561,23 @@ function loadConfig(argv) {
     process.exit(0);
   }
   const refs = [args.story, args.issue, args.title].filter((v) => v !== undefined);
-  const modeless = args.flags.models || args.flags.auto || args.flags.gapReport;
+  const modeless = args.flags.auto || args.flags.gapReport;
   if (args.flags.figures && modeless) {
     throw new Error(
       "--figures is a MANUAL generation's second pass (one more model call " +
-      "per draft) — it cannot be combined with --auto, --gap-report, or --models\n" + USAGE
+      "per draft) — it cannot be combined with --auto or --gap-report\n" + USAGE
     );
   }
   if (args.flags.deck && modeless) {
     throw new Error(
       "--deck is a MANUAL generation's extra pass (one more model call per " +
-      "draft) — it cannot be combined with --auto, --gap-report, or --models\n" + USAGE
+      "draft) — it cannot be combined with --auto or --gap-report\n" + USAGE
     );
   }
   if (args.flags.preview && modeless) {
     throw new Error(
       "--preview is a single-story check (the lanes for ONE story, no model " +
-      "call) — it cannot be combined with --auto, --gap-report, or --models; " +
+      "call) — it cannot be combined with --auto or --gap-report; " +
       "an unattended selection preview is `--auto --dry-run`\n" + USAGE
     );
   }
@@ -650,8 +628,8 @@ function loadConfig(argv) {
   if ((pinEx.length || pinRef.length) && modeless) {
     throw new Error(
       "--exemplar/--reference pin documents into a MANUAL generation's " +
-      "lanes — they cannot be combined with --auto, --gap-report, or " +
-      "--models (those modes work from catalog state alone)\n" + USAGE
+      "lanes — they cannot be combined with --auto or --gap-report " +
+      "(those modes work from catalog state alone)\n" + USAGE
     );
   }
   const doubled = pinEx
@@ -673,18 +651,6 @@ function loadConfig(argv) {
   cfg.graph = cfg.graph || {};
   const authDir = path.join(cfg.paths?.workDir || ".", "auth");
   cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
-  // aibuilder auth inherits Graph settings, exactly as sweep.mjs does —
-  // delegated modes (device AND interactive, matching sweep.mjs) drop the
-  // Graph clientId so Dataverse keeps its own public client
-  const inherit = { ...cfg.graph };
-  const inheritMode = inherit.auth || (inherit.clientSecret !== undefined ? "app" : "device");
-  if (inheritMode === "device" || inheritMode === "interactive") delete inherit.clientId;
-  delete inherit.baseUrl;
-  cfg.llm.dataverse = {
-    ...inherit,
-    tokenCache: path.join(authDir, "dataverse.json"),
-    ...(cfg.llm.dataverse || {}),
-  };
   // Config_gen, name for name (TestPlanGen_Setup.md §3 G0) + the
   // local-job knobs (draftFolder is drive-root-relative — the site's
   // default drive root IS Shared Documents, the curation-digest rule)
@@ -701,13 +667,12 @@ function loadConfig(argv) {
     verify: "annotate",
     grounding: true,
     notify: false,
-    provider: "", // "" = follow llm.provider; "aibuilder"|"anthropic" overrides for generation only
     // v1.6+ split-case drafts run long — the first live run blew a
     // 16384 default (v1.3 raised it; claude-opus-5 allows up to 128k)
     maxTokens: 32000,
     webRefTimeoutMs: 30000,
     figures: false, // v1.11: the generated-figures pass (--figures forces on for a run)
-    stream: false, // v1.12: echo the model's thinking summary + reply to stderr (anthropic lane)
+    stream: false, // v1.12: echo the model's thinking summary + reply to stderr
     // v1.15: 8000 truncated the first real run (22 cases: six specs +
     // the mandatory per-case skipped list is ~9k tokens of JSON, and
     // --stream's thinking summary shares the cap) — see generateFigures
@@ -751,14 +716,13 @@ function loadConfig(argv) {
     siteUrl: cfg.sweep?.siteUrl || "https://esriis.sharepoint.com/sites/lrsworkspace",
     textsFolder: cfg.sweep?.textsFolder || "/LRS Doc Index",
   };
-  cfg._models = !!args.flags.models;
   cfg._preview = !!args.flags.preview;
   cfg._auto = !!args.flags.auto;
   cfg._force = !!args.flags.force;
   cfg._pinEx = pinEx;
   cfg._pinRef = pinRef;
   cfg._gapReport = !!args.flags.gapReport;
-  if (!cfg._models && !cfg._auto && !cfg._gapReport) {
+  if (!cfg._auto && !cfg._gapReport) {
     if (args.story !== undefined) {
       cfg._storyId = num(args.story);
       if (cfg._storyId === undefined) {
@@ -776,26 +740,6 @@ function loadConfig(argv) {
     }
   }
   return cfg;
-}
-
-async function listModels(cfg) {
-  const url =
-    `${cfg.llm.environmentUrl}/api/data/v9.2/msdyn_aimodels` +
-    `?$select=msdyn_aimodelid,msdyn_name&$orderby=msdyn_name`;
-  const res = await fetch(url, {
-    headers: {
-      accept: "application/json",
-      authorization: "Bearer " + (await dataverseToken(cfg.llm)),
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`model list failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
-  }
-  const json = await res.json();
-  for (const m of json.value || []) {
-    console.log(`${m.msdyn_aimodelid}  ${m.msdyn_name}`);
-  }
-  console.log('\nCopy the "LRS Test Plan Generation" GUID into config llm.testPlanModelId');
 }
 
 // the sweep's docIndex row normalization, reduced to this job's reads
@@ -951,24 +895,6 @@ async function run(cfg) {
   // a human asked for these exact documents, so a silent degrade
   // (the lanes' Try_* posture for automatic picks) is wrong here
   ctx.pins = validatePins(ctx, story, cfg._pinEx, cfg._pinRef);
-  // the figures pass (v1.11) needs its transport BEFORE the generation
-  // spend: aibuilder has no tenant prompt for it unless one was pasted
-  if (tp.figures && !cfg._preview && providerOf(cfg) === "aibuilder" && !cfg.llm.figuresModelId) {
-    throw new Error(
-      "--figures on the aibuilder lane needs llm.figuresModelId (a tenant " +
-      "custom prompt pasted from prompts/testplan_figures.md with inputs " +
-      "PlanTitle + Draft) — none exists yet; set testplangen.provider to " +
-      "\"anthropic\" for the figures pass, which executes the repo prompt verbatim"
-    );
-  }
-  if (tp.deck && !cfg._preview && providerOf(cfg) === "aibuilder" && !cfg.llm.deckModelId) {
-    throw new Error(
-      "--deck on the aibuilder lane needs llm.deckModelId (a tenant custom " +
-      "prompt pasted from prompts/testplan_deck.md with inputs PlanTitle + " +
-      "Draft + Figures) — none exists yet; set testplangen.provider to " +
-      "\"anthropic\" for the deck pass, which executes the repo prompt verbatim"
-    );
-  }
   if (tp.figures && !cfg._preview) {
     const cap = Number(tp.figuresCap);
     if (!Number.isInteger(cap) || cap < 1 || cap > 60) {
@@ -1013,7 +939,7 @@ async function run(cfg) {
     process.stdout.write(res.line + "\n");
     process.stdout.write(
       `preview: no model call made — the five prompt inputs are at ${res.localInputs} ` +
-      `(provider ${res.provider} would be called with ~${res.inputChars} chars; ` +
+      `(the model would be called with ~${res.inputChars} chars; ` +
       "re-run with --dry-run to generate a local draft, --live to write it)\n"
     );
     return;
@@ -1048,16 +974,9 @@ async function run(cfg) {
 // quiet (auto / gap-report), the knob is off, or the lane cannot
 // stream — the caller then keeps its heartbeat. The echo goes to
 // stderr only; stdout's JSON + Gen_summary contract is untouched.
-function streamEcho(ctx, provider, label) {
+function streamEcho(ctx, label) {
   const { tp } = ctx;
   if (!tp.stream || !ctx.progress) return null;
-  if (provider !== "anthropic") {
-    ctx.progress(
-      `stream — the ${provider} lane cannot stream (Dataverse Predict is one ` +
-      "request, one response); --stream ignored for this call"
-    );
-    return null;
-  }
   let mode = "";
   let chars = 0;
   const w = (s) => process.stderr.write(s);
@@ -1080,11 +999,6 @@ function streamEcho(ctx, provider, label) {
   onDelta.done = () => w(`\n--- ${label}: end of stream (${chars} chars) ---\n`);
   return onDelta;
 }
-
-// the generation transport: testplangen.provider overrides llm.provider
-// for this job only (v1.2); the figures pass rides the same lane
-const providerOf = (cfg) =>
-  cfg.testplangen.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
 
 // Pinned-lane guards (v1.4). Returns { ex, ref } as normalized rows
 // — plus, since v1.7, {web: true, url} entries in ref, validated by
@@ -1992,22 +1906,11 @@ async function generateOne(ctx, story) {
     RelatedCases: related.text === "" ? "(none)" : related.text,
   };
 
-  // testplangen.provider overrides llm.provider for the generation
-  // call ONLY (v1.2) — so generation can run on the anthropic lane
-  // while the sweep's classify step stays on AI Builder, or vice versa
-  const provider = providerOf(cfg);
   const inChars = Object.values(inputs).reduce((n, v) => n + String(v).length, 0);
   if (ctx.preview) {
     // --preview (v1.10): everything a generation does up to the model
-    // call has now run (guard, lookup, pins, mirror, lanes, provider
-    // and — for aibuilder — the model id check); write the inputs
-    // for inspection and stop. Zero AI spend, nothing uploaded.
-    if (provider === "aibuilder" && !cfg.llm.testPlanModelId) {
-      throw new Error(
-        "llm.testPlanModelId is not set — run with --models to find the " +
-        "LRS Test Plan Generation model GUID (provider \"anthropic\" needs no tenant prompt)"
-      );
-    }
+    // call has now run (guard, lookup, pins, mirror, lanes); write the
+    // inputs for inspection and stop. Zero AI spend, nothing uploaded.
     const logDir = cfg.paths?.workDir || ".";
     fs.mkdirSync(logDir, { recursive: true });
     const localInputs = path.join(
@@ -2017,7 +1920,7 @@ async function generateOne(ctx, story) {
     const body =
       `# TestPlanGen preview — story ${story.ID} "${stripQuotes(story.Title)}"\n\n` +
       `local/testplangen.mjs ${JOB_VERSION} · ${new Date().toISOString()} · ` +
-      `provider ${provider} · ~${inChars} chars of prompt inputs · NO model call was made.\n` +
+      `~${inChars} chars of prompt inputs · NO model call was made.\n` +
       "The five prompt inputs below are exactly what a generation would send " +
       "(prompts/testplan_draft.md's {StoryMeta} {StoryText} {RelatedDigest} " +
       "{ExemplarText} {ReferenceText}); adjust caps, pins, or the story's " +
@@ -2036,16 +1939,15 @@ async function generateOne(ctx, story) {
       `caseRouted=${routedIds.length} caseTrim=${caseTrim} ` +
       `exCases=${exCasesKept}/${exCasesTotal} relatedCases=${related.count} ` +
       `relatedPlans=${related.plans.length} relCaseChars=${related.chars} inputChars=${inChars} ` +
-      `provider=${provider} preview=1`;
-    return { line, preview: true, localInputs, provider, inputChars: inChars };
+      "preview=1";
+    return { line, preview: true, localInputs, inputChars: inChars };
   }
   prog(
-    `calling the model — provider ${provider}, ~${inChars} chars in` +
-    (provider === "anthropic" ? `, maxTokens ${tp.maxTokens}` : "") +
-    " (a long wait here is generation, not a hang; retries print their own llm: lines)"
+    `calling the model — ~${inChars} chars in, maxTokens ${tp.maxTokens} ` +
+    "(a long wait here is generation, not a hang)"
   );
   const genT0 = Date.now();
-  const echo = streamEcho(ctx, provider, "draft");
+  const echo = streamEcho(ctx, "draft");
   const beat = ctx.progress && !echo
     ? setInterval(
         () => prog(`still waiting on the model — ${Math.round((Date.now() - genT0) / 1000)}s elapsed`),
@@ -2055,37 +1957,20 @@ async function generateOne(ctx, story) {
   beat?.unref?.();
   let genRaw;
   try {
-  if (provider === "aibuilder") {
-    if (!cfg.llm.testPlanModelId) {
+    // prompts/testplan_draft.md, rendered and sent by the Python layer
+    genRaw = await generate(cfg.llm, "testplan_draft", inputs,
+      { maxTokens: Number(tp.maxTokens), ...(echo ? { onDelta: echo, showThinking: true } : {}) });
+    echo?.done();
+  } catch (e) {
+    if (/max_tokens/.test(String(e.message))) {
       throw new Error(
-        "llm.testPlanModelId is not set — run with --models to find the " +
-        "LRS Test Plan Generation model GUID (the tenant prompt must carry " +
-        "all FIVE input parameters and the current text — Coverage_Runbook.md " +
-        "step 2; provider \"anthropic\" needs no tenant prompt at all)"
+        `${e.message} — for this job the knob is testplangen.maxTokens ` +
+        `(currently ${tp.maxTokens}; the model allows up to 128000; the ` +
+        "generation streams, so llm.timeoutMs is only the max silent gap " +
+        "between chunks and rarely needs raising)"
       );
     }
-    const response = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.testPlanModelId);
-    genRaw = response?.responsev2?.predictionOutput?.text ?? "";
-  } else if (provider === "anthropic") {
-    try {
-      // prompts/testplan_draft.md, rendered and sent by the Python layer
-      genRaw = await generate(cfg.llm, "testplan_draft", inputs,
-        { maxTokens: Number(tp.maxTokens), ...(echo ? { onDelta: echo, showThinking: true } : {}) });
-      echo?.done();
-    } catch (e) {
-      if (/max_tokens/.test(String(e.message))) {
-        throw new Error(
-          `${e.message} — for this job the knob is testplangen.maxTokens ` +
-          `(currently ${tp.maxTokens}; the model allows up to 128000; the ` +
-          "generation streams, so llm.timeoutMs is only the max silent gap " +
-          "between chunks and rarely needs raising)"
-        );
-      }
-      throw e;
-    }
-  } else {
-    throw new Error(`unknown llm.provider "${provider}" (aibuilder | anthropic)`);
-  }
+    throw e;
   } finally {
     if (beat) clearInterval(beat);
   }
@@ -2184,7 +2069,7 @@ async function generateOne(ctx, story) {
   // never depends on it
   let figs = { proposed: 0, rendered: [], dropped: [], skipped: [], error: "" };
   if (tp.figures) {
-    figs = await generateFigures(ctx, story, draftBody, provider, prog, {
+    figs = await generateFigures(ctx, story, draftBody, prog, {
       draftStem: draftName.replace(/\.md$/, ""),
       localStem: localDraftName.replace(/\.md$/, ""),
     });
@@ -2232,7 +2117,7 @@ async function generateOne(ctx, story) {
   }
 
   // G10 — banner (the flow's Draft_banner, plus the local
-  // provenance/provider stamp in the HTML comment)
+  // provenance stamp in the HTML comment)
   const truncFlag =
     storyMd.length > Number(tp.storyCap) ? " [story text truncated at StoryCap]" : "";
   const pinStamp =
@@ -2247,7 +2132,7 @@ async function generateOne(ctx, story) {
   const caseStamp = routedIds.length ? ` · case-routed [${routedIds.join(",")}]` : "";
   const banner =
     `<!-- machine-generated test-plan draft — TestPlanGen prompt ${tp.promptVersion}` +
-    ` · local/testplangen.mjs ${JOB_VERSION} · provider ${provider}${pinStamp}${caseStamp} -->\n` +
+    ` · local/testplangen.mjs ${JOB_VERSION}${pinStamp}${caseStamp} -->\n` +
     "> [!WARNING]\n" +
     `> **DRAFT — machine-generated, unreviewed.** Generated ${new Date().toISOString()} ` +
     `from user story doc ${story.ID} — "${stripQuotes(story.Title)}". ` +
@@ -2287,7 +2172,7 @@ async function generateOne(ctx, story) {
   // layout + rendering here; fail soft, the draft never depends on it
   let deck = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "", design: "" };
   if (tp.deck) {
-    deck = await generateDeck(ctx, story, draft, provider, prog, {
+    deck = await generateDeck(ctx, story, draft, prog, {
       draftStem: draftName.replace(/\.md$/, ""),
       localStem: localDraftName.replace(/\.md$/, ""),
       svgs: new Map(figs.rendered.map((r) => [r.url.split("/").pop(), r.svg])),
@@ -2380,15 +2265,15 @@ async function generateOne(ctx, story) {
  * the local copy (dry). Returns {proposed, slides, dropped, error,
  * url, specUrl} and never throws.
  */
-async function generateDeck(ctx, story, draft, provider, prog, names) {
+async function generateDeck(ctx, story, draft, prog, names) {
   const { cfg, graph, siteId, tp, sw, dry, plan } = ctx;
   const out = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "", design: "" };
   try {
-    prog(`deck — calling the model (provider ${provider}, ~${draft.length} chars of draft)`);
-    const echo = streamEcho(ctx, provider, "deck");
+    prog(`deck — calling the model (~${draft.length} chars of draft)`);
+    const echo = streamEcho(ctx, "deck");
     const g = await generateDeckSpec({
-      cfg, provider, draft, planTitle: `Test Plan — ${stripQuotes(story.Title)}`,
-      maxTokens: Number(tp.deckMaxTokens), modelId: cfg.llm.deckModelId,
+      cfg, draft, planTitle: `Test Plan — ${stripQuotes(story.Title)}`,
+      maxTokens: Number(tp.deckMaxTokens),
       onDelta: echo || null, showThinking: !!echo,
     });
     echo?.done();
@@ -2397,7 +2282,6 @@ async function generateDeck(ctx, story, draft, provider, prog, names) {
     const r = renderDeck(draft, g.spec, {
       mediaDir: mediaDir && fs.existsSync(mediaDir) ? mediaDir : null,
       svgs: names.svgs,
-      provenance: `provider ${provider}`,
       design: tp.deckDesign,
       theme: tp.deckTheme,
     });
@@ -2458,7 +2342,7 @@ function figureKindMix(rendered) {
  * is reported in `error` (one stderr line) and the draft still
  * lands — the pass is a reading aid, never the deliverable.
  */
-async function generateFigures(ctx, story, draftBody, provider, prog, names) {
+async function generateFigures(ctx, story, draftBody, prog, names) {
   const { cfg, graph, siteId, tp, sw, dry, plan } = ctx;
   const out = { proposed: 0, rendered: [], dropped: [], skipped: [], error: "" };
   const corpus = draftCorpus(draftBody);
@@ -2470,34 +2354,29 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
   };
   let raw;
   try {
-    prog(`figures — calling the model (provider ${provider}, ~${draftBody.length} chars of draft)`);
-    if (provider === "aibuilder") {
-      const response = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.figuresModelId);
-      raw = response?.responsev2?.predictionOutput?.text ?? "";
-    } else {
-      const echo = streamEcho(ctx, provider, "figures");
-      try {
-        raw = await generate(cfg.llm, "testplan_figures", inputs,
-          { maxTokens: Number(tp.figuresMaxTokens), ...(echo ? { onDelta: echo, showThinking: true } : {}) });
-      } catch (e) {
-        // v1.15: name THIS pass's knob — the generic "raise the
-        // caller's maxTokens knob" sent the first --figures run to
-        // testplangen.maxTokens (the DRAFT cap), which this call never
-        // reads; with --stream the thinking summary also counts
-        // against the same cap
-        if (/max_tokens/.test(String(e.message))) {
-          throw new Error(
-            `${e.message} — for the figures pass the knob is ` +
-            `testplangen.figuresMaxTokens (currently ${tp.figuresMaxTokens}; ` +
-            "testplangen.maxTokens bounds only the draft call; the model allows " +
-            "up to 128000, and with --stream the thinking summary spends the " +
-            "same budget)"
-          );
-        }
-        throw e;
+    prog(`figures — calling the model (~${draftBody.length} chars of draft)`);
+    const echo = streamEcho(ctx, "figures");
+    try {
+      raw = await generate(cfg.llm, "testplan_figures", inputs,
+        { maxTokens: Number(tp.figuresMaxTokens), ...(echo ? { onDelta: echo, showThinking: true } : {}) });
+    } catch (e) {
+      // v1.15: name THIS pass's knob — the generic "raise the
+      // caller's maxTokens knob" sent the first --figures run to
+      // testplangen.maxTokens (the DRAFT cap), which this call never
+      // reads; with --stream the thinking summary also counts
+      // against the same cap
+      if (/max_tokens/.test(String(e.message))) {
+        throw new Error(
+          `${e.message} — for the figures pass the knob is ` +
+          `testplangen.figuresMaxTokens (currently ${tp.figuresMaxTokens}; ` +
+          "testplangen.maxTokens bounds only the draft call; the model allows " +
+          "up to 128000, and with --stream the thinking summary spends the " +
+          "same budget)"
+        );
       }
-      echo?.done();
+      throw e;
     }
+    echo?.done();
     const reply = parseFiguresReply(raw);
     out.proposed = reply.figures.length;
     out.skipped = reply.skipped
@@ -2927,7 +2806,6 @@ async function runGapReport(ctx) {
 
 async function main() {
   const cfg = loadConfig(process.argv.slice(2));
-  if (cfg._models) return listModels(cfg);
   return run(cfg);
 }
 

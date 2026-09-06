@@ -46,7 +46,6 @@ REPO = os.path.dirname(HERE)
 SWEEP = os.path.join(REPO, "pipeline", "sweep.mjs")
 CURATE = os.path.join(REPO, "pipeline", "curate.mjs")
 DOC_CRAWL = os.path.join(REPO, "pipeline", "doc_crawl.mjs")
-CURATION_MODEL = "cabcabca-0000-4000-8000-000000000001"
 
 PASS = []
 FAIL = []
@@ -404,16 +403,17 @@ def make_handler(state, lib_guid, src_files):
                 return self._json({"access_token": "mock", "expires_in": 3600})
             if p == "/v1/messages":
                 body = json.loads(self._read())
-                state.llm_calls += 1
                 state.llm_last_headers = {
                     "authorization": self.headers.get("authorization"),
                     "x-api-key": self.headers.get("x-api-key"),
                     "anthropic-beta": self.headers.get("anthropic-beta"),
                 }
                 prompt = mock.prompt_text(body)   # system blocks + the user turn
+                user = mock.user_text(body)
                 if body.get("stream"):
                     # the generate task streams (the --normalize-cases
                     # lane): serve the leg's gen_text as a real SSE stream
+                    state.llm_calls += 1
                     state.gen_prompts.append(prompt)
                     payload = mock.sse_bytes(state.gen_text)
                     self.send_response(200)
@@ -422,42 +422,25 @@ def make_handler(state, lib_guid, src_files):
                     self.end_headers()
                     self.wfile.write(payload)
                     return
-                out = self._classify(lambda fname: fname in mock.user_text(body))
-                return self._json(mock.message_json(json.dumps(out)))
-            # Dataverse Predict — the AI Builder custom prompt endpoint
-            mp = re.match(r"^/api/data/v9\.2/msdyn_aimodels\(([0-9a-f-]+)\)/Microsoft\.Dynamics\.CRM\.Predict$", p)
-            if mp:
-                body = json.loads(self._read())
-                # the curation prompt is its OWN model — route by GUID
-                if mp.group(1) == CURATION_MODEL:
+                # the curation prompt is schema-pinned on {proposals}
+                # (prompts/schemas/keyword_curation.json) — route by it
+                schema = ((body.get("output_config") or {}).get("format") or {}).get("schema") or {}
+                if "proposals" in (schema.get("properties") or {}):
                     state.cur_calls += 1
                     state.cur_last_request = body
-                    text = ("Sure! Here is the JSON:\n```json\n"
-                            + json.dumps(state.cur_response) + "\n```")
-                    return self._json({"responsev2": {"predictionOutput": {"text": text}}})
+                    return self._json(mock.message_json(json.dumps(state.cur_response)))
+                # the classify prompt: File name: <name> in the user turn
                 state.llm_calls += 1
-                state.llm_last_headers = {
-                    "authorization": self.headers.get("authorization"),
-                    "x-api-key": self.headers.get("x-api-key"),
-                    "anthropic-beta": self.headers.get("anthropic-beta"),
-                }
                 state.llm_last_request = body
-                fname_in = body.get("requestv2", {}).get("FileName", "")
+                fm = re.search(r"^File name: (.*)$", user, re.M)
+                fname_in = fm.group(1).strip() if fm else ""
                 state.llm_files.append(fname_in)
                 out = self._classify(lambda fname: fname == fname_in)
-                # sentinel: AI Builder's input content moderation rejecting
-                # the prompt — the real 400 body, verbatim shape
+                # sentinel: the model refusing the document — a real
+                # stop_reason: refusal reply, no text
                 if out.get("__filtered__"):
-                    return self._json({"error": {
-                        "code": "0x80048d0b",
-                        "message": "{\"operationStatus\":\"Error\",\"error\":"
-                                   "{\"type\":\"Error\",\"code\":\"InputContentFiltered\","
-                                   "\"message\":\"Prompt was filtered. []\"},"
-                                   "\"predictionId\":null}"}}, 400)
-                # wrap in prose + fences: the sweep must brace-slice,
-                # exactly like the flow's Prompt_json_slice
-                text = "Sure! Here is the JSON:\n```json\n" + json.dumps(out) + "\n```"
-                return self._json({"responsev2": {"predictionOutput": {"text": text}}})
+                    return self._json(mock.message_json("", stop_reason="refusal"))
+                return self._json(mock.message_json(json.dumps(out)))
             # SPO ValidateUpdateListItem — hyperlink-column writes
             m = re.match(r"^/sites/lrsworkspace/_api/web/lists\(guid'([^']+)'\)/items\((-?\d+)\)/ValidateUpdateListItem$", p)
             if m:
@@ -863,10 +846,10 @@ def main():
                 "<style>p{color:red}</style></head><body>"
                 "<h1>Onboarding &amp; Setup</h1>"
                 "<p>Guide about onboarding new hires.</p></body></html>")
-    # a doc whose text AI Builder's content moderation refuses (v1.28):
-    # extraction succeeds, the Predict call 400s InputContentFiltered —
-    # deterministically, so it must stamp Skipped (no nightly rechurn,
-    # no re-burned AI call), not Error
+    # a doc whose text the model refuses (v1.28): extraction succeeds,
+    # the classify call ends with stop_reason: refusal — deterministically,
+    # so it must stamp Skipped (no nightly rechurn, no re-burned AI
+    # call), not Error
     with open(os.path.join(src_dir, "filtered.txt"), "w") as f:
         f.write("Model instructions the moderation endpoint refuses to read.")
 
@@ -1052,11 +1035,7 @@ def main():
             "baseUrl": base + "/v1.0", "tokenUrl": base + "/token",
             "maxRetries": 0,
         },
-        "llm": {
-            "provider": "aibuilder", "environmentUrl": base,
-            "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6",
-            "curationModelId": CURATION_MODEL, "maxRetries": 0,
-        },
+        "llm": {"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
         "spo": {
             "auth": "app", "tenantId": "mock", "clientId": "mock",
             "clientSecret": "mock-secret", "tokenUrl": base + "/token",
@@ -1144,15 +1123,15 @@ def main():
           outpdf.get("IndexStatus") == "Skipped"
           and "out of sync scope" in str(outpdf.get("LastError", "")), str(outpdf)[:250])
 
-    # content-filter lane (v1.28): AI Builder refused the doc text, which is
+    # content-filter lane (v1.28): the model refused the doc text, which is
     # deterministic — the row must stamp Skipped at the CURRENT
     # PromptVersion (not Error), so it neither rechurns nor re-burns an AI
     # call nightly; the idempotency leg below proves both
     _, filt = by_name.get("filtered.txt", (None, {}))
-    check("content-filtered doc -> stamped Skipped, not Error",
+    check("model-refused doc -> stamped Skipped, not Error",
           filt.get("IndexStatus") == "Skipped"
           and str(filt.get("LastError", "")).startswith("content filter:")
-          and "InputContentFiltered" in str(filt.get("LastError", "")), str(filt)[:300])
+          and "stop_reason: refusal" in str(filt.get("LastError", "")), str(filt)[:300])
     check("content-filtered stamp pins the current PromptVersion",
           filt.get("PromptVersion") == "v2.0", str(filt)[:200])
 
@@ -1403,20 +1382,18 @@ def main():
     check("junction rows keyed {doc}|{kw}", len(junctions) >= 4
           and all("|" in str(r.get("KWKey")) for r in junctions), str(junctions)[:300])
 
-    # AI Builder wire shape (the live leg above ran provider aibuilder;
-    # the fenced/prose-wrapped Predict output parsing is proven by the
-    # field checks — the clamps received real values)
-    check("aibuilder bearer token sent",
-          str(state.llm_last_headers.get("authorization", "")).startswith("Bearer ")
-          and not state.llm_last_headers.get("x-api-key"), str(state.llm_last_headers))
-    check("aibuilder requestv2 inputs shaped like the flow",
-          state.llm_last_request.get("version") == "2.0"
-          and set(state.llm_last_request.get("requestv2", {})) >=
-          {"FileName", "DocText", "ExistingKeywords"},
-          str(state.llm_last_request)[:300])
-    check("aibuilder source telemetry present (Predict rejects without it)",
-          "consumptionSource" in str(state.llm_last_request.get("source", "")),
-          str(state.llm_last_request.get("source"))[:200])
+    # the classify wire shape (the live leg above ran through lrsdoc):
+    # schema-pinned output, the three inputs rendered into the user turn
+    fmt = ((state.llm_last_request.get("output_config") or {}).get("format") or {})
+    check("classify request is schema-pinned (output_config.format json_schema)",
+          fmt.get("type") == "json_schema"
+          and set((fmt.get("schema") or {}).get("required") or []) >= {"title", "docKind", "keywords"},
+          str(state.llm_last_request.get("output_config"))[:300])
+    user_last = mock.user_text(state.llm_last_request)
+    check("classify user turn carries the file name, the established keywords and the fenced text",
+          re.search(r"^File name: \S", user_last, re.M) is not None
+          and "Established keywords" in user_last
+          and "<<<DOCUMENT TEXT BEGIN>>>" in user_last, user_last[:300])
 
     # ---- case-index leg (Case_Index_Plan phase 2) ------------------
     # alpha (Test Plan) carries one case slide; beta (User Story)
@@ -1723,7 +1700,11 @@ def main():
           not kwrows[CUR["stale"]].get("CurationStatus")
           and not kwrows[CUR["stale"]].get("ProposedCanonical"),
           str(kwrows[CUR["stale"]]))
-    req = (state.cur_last_request or {}).get("requestv2", {})
+    # the rendered user turn: the vocabulary block, then the blocked list
+    cur_user = mock.user_text(state.cur_last_request or {})
+    cut_at = cur_user.find("Titles that must NEVER appear")
+    req = {"Vocabulary": cur_user[:cut_at] if cut_at >= 0 else cur_user,
+           "DoNotPropose": cur_user[cut_at:] if cut_at >= 0 else ""}
     check("vocabulary lines 'title [kind]', canonical rows only",
           "centerlines [topic]" in req.get("Vocabulary", "")
           and "sld [tool]" in req.get("Vocabulary", "")
@@ -1814,15 +1795,15 @@ def main():
           and "drain pass 2" in proc.stdout and "drain pass 3" not in proc.stdout
           and kwrows[CUR["wbs"]].get("CanonicalRefLookupId") == int(CUR["wbsfull"]),
           proc.stdout[-400:])
-    # vocabulary chunking: small chunk size -> one Predict call per
-    # alphabetical chunk (timeout guard for big vocabularies)
+    # vocabulary chunking: small chunk size -> one model call per
+    # alphabetical chunk (a reply-size guard for big vocabularies)
     cfg["curation"]["vocabChunk"] = 3
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
     state.cur_response = {"proposals": []}
     state.cur_calls = 0
     proc = run_curate(cfg_path, ["--live"])
-    check("vocabulary sent in chunks (one Predict call each)",
+    check("vocabulary sent in chunks (one model call each)",
           proc.returncode == 0 and state.cur_calls >= 3,
           f"calls={state.cur_calls} " + proc.stderr[-200:])
     del cfg["curation"]["vocabChunk"]
@@ -2504,13 +2485,13 @@ def main():
           and state.llm_calls == llm_before_nz
           and open(gamma_path).read() == gamma_head + gamma_body, str(out))
     saved_llm = cfg["llm"]
-    cfg["llm"] = {"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0}
+    cfg["llm"] = {"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0}
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
     proc = run_sweep(cfg_path, ["--normalize-cases", "--live"])
     check("normalize live refuses without the owner switch",
           proc.returncode != 0 and "normalizeCases.enabled" in proc.stderr, proc.stderr[-300:])
-    cfg["sweep"]["normalizeCases"] = {"enabled": True, "maxPerRun": 5, "provider": "anthropic"}
+    cfg["sweep"]["normalizeCases"] = {"enabled": True, "maxPerRun": 5}
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
     state.gen_text = ("Here you go:\n```markdown\n## Test Cases\n\n"
@@ -2938,10 +2919,9 @@ def main():
           proc.stderr[-400:] + (rec["content"][:200].decode() if rec else " no upload"))
     state.drive_put_fail = 0
 
-    # ---- leg 4: anthropic provider, apiKey auth --------------------
+    # ---- leg 4: apiKey auth ----------------------------------------
     print("== anthropic apiKey leg")
-    cfg["llm"] = {"provider": "anthropic", "apiKey": "mock-key",
-                  "baseUrl": base, "maxRetries": 0}
+    cfg["llm"] = {"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0}
     cfg["sweep"]["promptVersion"] = "v2.0-apikey-leg"  # force one reindex
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
@@ -2952,11 +2932,11 @@ def main():
           and not state.llm_last_headers.get("authorization"),
           str(state.llm_last_headers))
 
-    # ---- leg 5: anthropic provider, a bearer token from the environment --
+    # ---- leg 5: a bearer token from the environment ----------------
     # (ANTHROPIC_AUTH_TOKEN — what `ant auth login` provides on a machine;
     # the SDK resolves it, nothing in the pipeline shells out any more)
     print("== anthropic bearer-token leg")
-    cfg["llm"] = {"provider": "anthropic", "baseUrl": base, "maxRetries": 0}
+    cfg["llm"] = {"baseUrl": base, "maxRetries": 0}
     cfg["sweep"]["promptVersion"] = "v2.0-oauth-leg"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
@@ -2981,15 +2961,7 @@ def main():
         "tokenUrl": base + "/token", "deviceUrl": base + "/devicecode",
         "tokenCache": os.path.join(auth_dir, "graph.json"), "maxRetries": 0,
     }
-    cfg["llm"] = {
-        "provider": "aibuilder", "environmentUrl": base,
-        "modelId": "ef04e39d-3775-4655-a8be-60192095c1d6", "maxRetries": 0,
-        "dataverse": {
-            "auth": "device", "tokenUrl": base + "/token",
-            "deviceUrl": base + "/devicecode",
-            "tokenCache": os.path.join(auth_dir, "dataverse.json"),
-        },
-    }
+    cfg["llm"] = {"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0}
     cfg["spo"] = {
         "auth": "device", "tokenUrl": base + "/token",
         "deviceUrl": base + "/devicecode",
@@ -3002,10 +2974,11 @@ def main():
         json.dump(cfg, f)
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
     check("device run exit 0", proc.returncode == 0, proc.stderr[-600:])
-    # graph + dataverse each prompt once; SPO must NOT prompt — same
-    # client as Graph, so it seeds from graph.json via a refresh grant
-    check("device flow ran for graph+dataverse only (SPO seeded, no 3rd prompt)",
-          state.devicecode_hits == 2 and state.device_grants == 2
+    # graph prompts once; SPO must NOT prompt — same client as Graph, so
+    # it seeds from graph.json via a refresh grant (the model call needs
+    # no Entra token at all)
+    check("device flow ran for graph only (SPO seeded, no 2nd prompt)",
+          state.devicecode_hits == 1 and state.device_grants == 1
           and state.refresh_grants >= 1,
           f"devicecode={state.devicecode_hits} grants={state.device_grants} refresh={state.refresh_grants}")
     check("graph write used a delegated token",
@@ -3014,9 +2987,9 @@ def main():
     check("spo write used a seeded (refreshed) token",
           str(state.spo_last_auth) == "Bearer refreshed-token",
           str(state.spo_last_auth))
-    check("refresh tokens cached for all resources",
+    check("refresh tokens cached for both resources (no dataverse cache)",
           os.path.exists(os.path.join(auth_dir, "graph.json"))
-          and os.path.exists(os.path.join(auth_dir, "dataverse.json"))
+          and not os.path.exists(os.path.join(auth_dir, "dataverse.json"))
           and os.path.exists(os.path.join(auth_dir, "spo.json")))
     # second run: cached refresh token, silent refresh, no new sign-in
     cfg["sweep"]["promptVersion"] = "v2.0-device-leg-2"
@@ -3025,7 +2998,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"])
     check("device rerun exit 0", proc.returncode == 0, proc.stderr[-600:])
     check("rerun refreshed silently (no new device prompt)",
-          state.devicecode_hits == 2 and state.refresh_grants >= 2,
+          state.devicecode_hits == 1 and state.refresh_grants >= 2,
           f"devicecode={state.devicecode_hits} refresh={state.refresh_grants}")
 
     # ---- leg 6b: interactive auth (auth-code + PKCE over loopback) ----
@@ -3037,7 +3010,7 @@ def main():
     # first sign-in — caching, silent refresh, SPO seeding — is identical.
     print("== interactive auth leg")
     shutil.rmtree(auth_dir, ignore_errors=True)
-    for sect in (cfg["graph"], cfg["llm"]["dataverse"], cfg["spo"]):
+    for sect in (cfg["graph"], cfg["spo"]):
         sect["auth"] = "interactive"
         sect["authorizeUrl"] = base + "/authorize"
     cfg["sweep"]["promptVersion"] = "v2.0-interactive-leg"
@@ -3047,8 +3020,8 @@ def main():
     proc = run_sweep(cfg_path, ["--live", "--only", "notes.txt"],
                      env_extra={"DOCINDEX_AUTH_BROWSER": "fetch"})
     check("interactive run exit 0", proc.returncode == 0, proc.stderr[-800:])
-    check("interactive sign-in ran for graph+dataverse only (SPO still seeded)",
-          state.authorize_hits - az_before == 2 and state.code_grants - code_before == 2,
+    check("interactive sign-in ran for graph only (SPO still seeded)",
+          state.authorize_hits - az_before == 1 and state.code_grants - code_before == 1,
           f"authorize={state.authorize_hits - az_before} codes={state.code_grants - code_before}")
     check("PKCE challenge sent with S256",
           (state.last_pkce or {}).get("method") == "S256"

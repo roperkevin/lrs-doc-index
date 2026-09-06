@@ -1,8 +1,8 @@
 /**
  * casenormalize.mjs — the opt-in LLM lane for caseless test plans
  * (Sidecar_Format_Plan §4.4 "LLM lane", phase 4). Pure: the sweep
- * owns the model call, the file write and the row sync; this module
- * builds the prompt and VERIFIES the reply so a plan is only ever
+ * owns the model call (prompts/case_normalize.md through lrsdoc), the
+ * file write and the row sync; this module VERIFIES the reply so a plan is only ever
  * rewritten with a body that (a) is in the `testplan/v1` grammar and
  * (b) is grounded in the input — every case title, every table row
  * and every image link must come from the body the model was given.
@@ -14,15 +14,6 @@ import { lintTestPlanBody } from "./casegrammar.mjs";
 
 export const NORMALIZE_PROMPT_VERSION = "v1.0";
 export const LLM_DET = "LLM";
-
-const INPUTS_RE = /\{(PlanTitle|Body)\}/g;
-
-/** Single-pass substitution (a placeholder-shaped string inside the
- *  body stays literal — it can never trigger a second substitution). */
-export function buildNormalizePrompt(template, { planTitle, body }) {
-  const inputs = { PlanTitle: String(planTitle || ""), Body: String(body || "") };
-  return String(template).replace(INPUTS_RE, (m, key) => inputs[key]);
-}
 
 /** The model's reply as a body: an outer ```markdown fence unwrapped,
  *  surrounding prose before the first "## " dropped. */

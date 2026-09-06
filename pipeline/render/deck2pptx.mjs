@@ -20,7 +20,7 @@
  *   node local/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx]
  *                            [--media <dir>] [--figures <dir>] [--design <name>]
  *   node local/deck2pptx.mjs <draft.md> --generate --config <config.json>
- *                            [--provider anthropic|aibuilder] [--stream]
+ *                            [--stream]
  *                            [-o out.pptx] [--media <dir>] [--figures <dir>]
  *                            [--design <name>]
  *
@@ -69,7 +69,7 @@ import {
   parseDeckReply, deckCorpus, verifyDeckSpec, layoutDeck, DECK_BEGIN, DECK_END,
 } from "../lib/deckspec.mjs";
 import { designOf, DESIGN_NAMES, DEFAULT_DESIGN, DEFAULT_THEME, describeDesigns, restyleFigureSvg } from "../lib/designsystem.mjs";
-import { aiBuilderPredict, generate } from "../llm.mjs";
+import { generate } from "../llm.mjs";
 
 export const DECK_VERSION = "v1.2";
 export const DECK_PROMPT_VERSION = "v0.1"; // TestPlanDeckPromptVersion
@@ -252,14 +252,14 @@ export function figuresInput(corpus) {
 }
 
 /**
- * The one model call. {cfg (the whole config), provider, draft,
- * planTitle, maxTokens, modelId (aibuilder), onDelta, showThinking}
+ * The one model call. {cfg (the whole config), draft, planTitle,
+ * maxTokens, onDelta, showThinking}
  * → {raw, spec}. Throws on transport / sentinel / JSON failure (the
  * caller decides whether that is fatal — the CLI: yes; testplangen:
  * fail soft, the draft never depends on the deck).
  */
 export async function generateDeckSpec(args) {
-  const { cfg, provider, draft, maxTokens } = args;
+  const { cfg, draft, maxTokens } = args;
   const corpus = deckCorpus(draft);
   const inputs = {
     PlanTitle: args.planTitle || corpus.title || "Test Plan",
@@ -267,36 +267,29 @@ export async function generateDeckSpec(args) {
     Figures: figuresInput(corpus),
   };
   let raw;
-  if (provider === "aibuilder") {
-    if (!args.modelId) throw new Error("the aibuilder lane needs llm.deckModelId (a tenant custom prompt pasted from prompts/testplan_deck.md with inputs PlanTitle + Draft + Figures)");
-    const response = await aiBuilderPredict(cfg.llm, inputs, args.modelId);
-    raw = response?.responsev2?.predictionOutput?.text ?? "";
-  } else {
-    try {
-      raw = await generate(cfg.llm, DECK_PROMPT, inputs, {
-        maxTokens: Number(maxTokens) || 24000,
-        ...(args.onDelta ? { onDelta: args.onDelta, showThinking: !!args.showThinking } : {}),
-      });
-    } catch (e) {
-      if (/max_tokens/.test(String(e.message))) {
-        throw new Error(`${e.message} — for the deck pass the knob is testplangen.deckMaxTokens (currently ${maxTokens}; the model allows up to 128000, and with --stream the thinking summary spends the same budget)`);
-      }
-      throw e;
+  try {
+    raw = await generate(cfg.llm, DECK_PROMPT, inputs, {
+      maxTokens: Number(maxTokens) || 24000,
+      ...(args.onDelta ? { onDelta: args.onDelta, showThinking: !!args.showThinking } : {}),
+    });
+  } catch (e) {
+    if (/max_tokens/.test(String(e.message))) {
+      throw new Error(`${e.message} — for the deck pass the knob is testplangen.deckMaxTokens (currently ${maxTokens}; the model allows up to 128000, and with --stream the thinking summary spends the same budget)`);
     }
+    throw e;
   }
   return { raw, spec: parseDeckReply(raw), inputs };
 }
 
 // ---------------------------------------------------------------- CLI
 function collectArgs(argv) {
-  const a = { files: [], out: null, spec: null, generate: false, config: null, provider: "", mediaDir: null, figuresDir: null, stream: false, design: "", theme: "" };
+  const a = { files: [], out: null, spec: null, generate: false, config: null, mediaDir: null, figuresDir: null, stream: false, design: "", theme: "" };
   for (let i = 0; i < argv.length; i++) {
     const t = argv[i];
     if (t === "-o") a.out = argv[++i];
     else if (t === "--spec") a.spec = argv[++i];
     else if (t === "--generate") a.generate = true;
     else if (t === "--config") a.config = argv[++i];
-    else if (t === "--provider") a.provider = argv[++i];
     else if (t === "--media") a.mediaDir = argv[++i];
     else if (t === "--figures") a.figuresDir = argv[++i];
     else if (t === "--stream") a.stream = true;
@@ -310,7 +303,7 @@ function collectArgs(argv) {
 
 const USAGE =
   "usage: node local/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
-  "       node local/deck2pptx.mjs <draft.md> --generate --config <config.json> [--provider anthropic|aibuilder] [--stream] [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
+  "       node local/deck2pptx.mjs <draft.md> --generate --config <config.json> [--stream] [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
   "       --spec renders a deck spec (the JSON a --generate run writes beside the deck — edit and re-render);\n" +
   "       --generate makes the one model call with prompts/testplan_deck.md and writes <out>.deck.json;\n" +
   "       --media / --figures name the folders holding story / generated figure SVGs so figures embed as native shapes;\n" +
@@ -351,9 +344,8 @@ async function main() {
   let provenance = "";
   if (a.generate) {
     const cfg = loadCfg(a.config);
-    const provider = a.provider || cfg.testplangen.provider || cfg.llm.provider || (cfg.llm.environmentUrl ? "aibuilder" : "anthropic");
     let onDelta = null;
-    if (a.stream && provider === "anthropic") {
+    if (a.stream) {
       let mode = "";
       onDelta = (kind, text) => {
         if (kind === "restart") { process.stderr.write("\n--- deck: [stream restarted] ---\n"); mode = ""; return; }
@@ -361,9 +353,9 @@ async function main() {
         process.stderr.write(text);
       };
     }
-    process.stderr.write(`deck — calling the model (provider ${provider}, ~${draft.length} chars of draft)\n`);
+    process.stderr.write(`deck — calling the model (~${draft.length} chars of draft)\n`);
     const g = await generateDeckSpec({
-      cfg, provider, draft, maxTokens: cfg.testplangen.deckMaxTokens, modelId: cfg.llm.deckModelId,
+      cfg, draft, maxTokens: cfg.testplangen.deckMaxTokens,
       onDelta, showThinking: !!onDelta,
     });
     if (onDelta) process.stderr.write("\n--- deck: end of stream ---\n");
@@ -371,7 +363,6 @@ async function main() {
     const specPath = dest.replace(/\.pptx$/i, "") + ".deck.json";
     fs.writeFileSync(specPath, JSON.stringify(spec, null, 2) + "\n");
     process.stderr.write(`spec written: ${specPath} (${spec.slides.length} slides proposed)\n`);
-    provenance = `provider ${provider}`;
   } else {
     const raw = fs.readFileSync(a.spec, "utf8");
     // a spec file may be the bare JSON or a full sentinel-wrapped reply
