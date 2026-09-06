@@ -35,7 +35,7 @@ the .pptx back with python-pptx, asserting the deck contract:
      --spec; a sentinel-less reply exits nonzero and writes nothing
   9. --design (v1.1): the same spec on carbon renders in IBM Plex Sans
      with Carbon's heading-05 title (36 pt, regular weight), the Gray
-     100 inverse and square cards; on uswds in Public Sans with the
+     100 inverse and square cards; on uswds in Source Sans Pro with the
      size-13 title (40.5 pt bold) and the primary-darker inverse; the
      provenance line names the design; an unknown design is refused
      up front; --generate takes the design from testplangen.deckDesign
@@ -426,8 +426,8 @@ def main():
     rr, us, ut = deck_on("uswds")
     ufonts = {r.font.name for s in us for r in runs_of(s) if r.font.name}
     utitle = [r for r in runs_of(us[1]) if r.text == "At a glance"]
-    check("uswds: Public Sans on every run, size-13 title = 40.5 pt bold, primary-darker inverse, provenance names the system",
-          rr.returncode == 0 and len(us) == 12 and ufonts == {"Public Sans"} and utitle and utitle[0].font.size.pt == 40.5
+    check("uswds: Source Sans Pro on every run, size-13 title = 40.5 pt bold, primary-darker inverse, provenance names the system",
+          rr.returncode == 0 and len(us) == 12 and ufonts == {"Source Sans Pro"} and utitle and utitle[0].font.size.pt == 40.5
           and utitle[0].font.bold and bg_rgb(us[0]) == "162E51" and "design U.S. Web Design System" in ut[11],
           (ufonts, [(r.font.size, r.font.bold) for r in utitle], bg_rgb(us[0])))
     check("uswds: every shape inside the canvas",
@@ -437,7 +437,7 @@ def main():
           rr.returncode == 2 and 'unknown design "bogus"' in rr.stderr and not os.path.exists(os.path.join(tmp, "bogus.pptx")), rr.stderr)
     rr = run([md, "--help"])
     check("--help lists the designs with licence and font, and the themes",
-          rr.returncode == 0 and "carbon: IBM Carbon (Apache-2.0)" in rr.stdout and "Public Sans" in rr.stdout and "themes: light | dark" in rr.stdout, rr.stdout[-300:])
+          rr.returncode == 0 and "carbon: IBM Carbon (Apache-2.0)" in rr.stdout and "Source Sans Pro" in rr.stdout and "themes: light | dark" in rr.stdout, rr.stdout[-300:])
 
     # ---- 10. themes ----------------------------------------------------
     print("== themes")

@@ -26,7 +26,7 @@
  *
  * --design     v1.1: which design system lays the deck out — fluent
  *              (default; Segoe UI), carbon (IBM Carbon; IBM Plex Sans),
- *              uswds (U.S. Web Design System; Public Sans). The spec
+ *              uswds (U.S. Web Design System; Source Sans Pro). The spec
  *              is design-independent: the same JSON renders on any of
  *              them. A design's typeface that is not installed on the
  *              viewing machine is substituted by PowerPoint — install

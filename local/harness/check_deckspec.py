@@ -29,7 +29,7 @@ back.
      the content width, ordered bands, hex colour roles with a named
      source token); Carbon's tokens verbatim (spacing-01 … 13, the
      productive ramp, square corners, IBM Plex Sans), USWDS's (8 px
-     units, the size / line-height tokens, Public Sans); the same spec
+     units, the size / line-height tokens, Source Sans Pro); the same spec
      lays out inside the canvas with the same page count on every
      design; designOf refuses an unknown name
   8. themes + figures (v1.2): every design has a dark theme with the
@@ -182,8 +182,8 @@ const o = {{
 console.log(JSON.stringify(o));
 """)
     ft = d["fluent"]["type"]
-    check("Fluent 2 type ramp verbatim (caption1 12/16, body1 14/20, title1 32/40, largeTitle 40/52, display 68/92)",
-          ft["caption1"][:2] == [12, 16] and ft["body1"][:2] == [14, 20] and ft["title1"][:2] == [32, 40]
+    check("Fluent 2 type ramp verbatim (caption1 12/16, body1 14/20, subtitle1 20/28, title1 32/40, largeTitle 40/52, display 68/92)",
+          ft["caption1"][:2] == [12, 16] and ft["body1"][:2] == [14, 20] and ft["subtitle1"][:2] == [20, 28] and ft["title1"][:2] == [32, 40]
           and ft["largeTitle"][:2] == [40, 52] and ft["display"][:2] == [68, 92]
           and ft["subtitle1"][2] == 600 and ft["body1"][2] == 400, ft)
     sp = d["fluent"]["spacing"]
@@ -484,20 +484,22 @@ console.log(JSON.stringify(out));
           cb["tokens"]["type"]["body-01"] == [14, 20, 400] and cb["tokens"]["type"]["heading-03"] == [20, 28, 400]
           and cb["tokens"]["type"]["heading-05"] == [32, 40, 400] and cb["tokens"]["type"]["heading-07"] == [54, 64, 300]
           and cb["type"]["title"]["sz"] == 36 and not cb["type"]["title"]["bold"] and cb["type"]["title"]["token"] == "heading-05", cb["type"]["title"])
-    check("carbon: square surfaces (radius large = 0), round tags only; IBM Plex Sans; Gray 100 inverse; Blue 60 brand",
+    check("carbon: square surfaces (radius large = 0), round tags only; IBM Plex Sans; Gray 100 inverse; Blue 60 brand; Gray 30 border-subtle-01",
           cb["radius"]["large"] == 0 and cb["radius"]["circular"] > 0 and cb["font"] == "IBM Plex Sans"
-          and cb["color"]["backgroundInverse"] == "161616" and cb["color"]["brand"] == "0F62FE" and cb["color"]["textPrimary"] == "161616", cb["color"])
+          and cb["color"]["backgroundInverse"] == "161616" and cb["color"]["brand"] == "0F62FE" and cb["color"]["textPrimary"] == "161616"
+          and cb["color"]["border"] == "C6C6C6", cb["color"])
     us = r["designs"]["uswds"]
-    check("uswds: 8 px units (units-1 8, units-2 16, units-4 32, units-10 80), gutter = units-4 (column-gap-desktop)",
+    check("uswds: 8 px units (units-1 8, units-2 16, units-4 32, units-10 80), gutter = units-3 ($theme-column-gap-lg)",
           us["tokens"]["spacing"]["units-1"] == 8 and us["tokens"]["spacing"]["units-2"] == 16 and us["tokens"]["spacing"]["units-4"] == 32
-          and us["tokens"]["spacing"]["units-10"] == 80 and us["grid"]["gt"] == "units-4", us["grid"])
-    check("uswds: size-13 (36 px) at line-height 2 for the title → 40.5 pt bold; size-3 (14 px) at line-height 4 for body; Public Sans; primary-darker inverse",
-          us["type"]["title"]["sz"] == 40.5 and us["type"]["title"]["bold"] and us["type"]["body"]["px"] == 14 and us["type"]["body"]["line"] == 23.63
-          and us["font"] == "Public Sans" and us["color"]["backgroundInverse"] == "162E51" and us["color"]["brand"] == "005EA2", us["type"])
+          and us["tokens"]["spacing"]["units-10"] == 80 and us["grid"]["gt"] == "units-3", us["grid"])
+    check("uswds: size-13 (36 px) at line-height 2 (1.2) for the title → 40.5 / 48.6 pt bold; size-3 (14 px) at line-height 4 for body; Source Sans Pro; primary-darker inverse",
+          us["type"]["title"]["sz"] == 40.5 and us["type"]["title"]["line"] == 48.6 and us["type"]["title"]["bold"]
+          and us["type"]["body"]["px"] == 14 and us["type"]["body"]["line"] == 23.63
+          and us["font"] == "Source Sans Pro" and us["color"]["backgroundInverse"] == "162E51" and us["color"]["brand"] == "005EA2", us["type"])
     check("designOf refuses an unknown name; layoutDeck accepts a design by name",
           "unknown design" in r["bogus"] and "fluent, carbon, uswds" in r["bogus"] and r["byName"] == "carbon", (r["bogus"], r["byName"]))
     check("describeDesigns names all three with licence and font, and the themes",
-          all(x in r["describe"] for x in ("fluent: Fluent 2 (MIT)", "carbon: IBM Carbon (Apache-2.0)", "uswds: U.S. Web Design System", "Public Sans", "themes: light | dark")), r["describe"])
+          all(x in r["describe"] for x in ("fluent: Fluent 2 (MIT)", "carbon: IBM Carbon (Apache-2.0)", "uswds: U.S. Web Design System", "Source Sans Pro", "themes: light | dark")), r["describe"])
 
     # ---- 8. themes + figures --------------------------------------------
     print("== themes + figures")
@@ -513,8 +515,9 @@ console.log(JSON.stringify(out));
               all(dd["src"][t].endswith("25 % over layer (derived)") for t in ("brandTint", "successTint", "warningTint", "dangerTint"))
               and all(lum(c[t]) < 120 for t in ("brandTint", "successTint", "warningTint", "dangerTint")), {t: (c[t], dd["src"][t]) for t in ("successTint",)})
     cd = r["dark"]["carbon"]["color"]
-    check("carbon dark = the Gray 100 theme (background Gray 100, layer Gray 90, text Gray 10, interactive Blue 50, support-error Red 50)",
-          cd["background"] == "161616" and cd["layer"] == "262626" and cd["textPrimary"] == "F4F4F4" and cd["brand"] == "4589FF" and cd["danger"] == "FA4D56", cd)
+    check("carbon dark = the Gray 100 theme (background Gray 100, layer Gray 90, border Gray 70, text Gray 10, helper Gray 40, interactive Blue 50, support-error Red 50)",
+          cd["background"] == "161616" and cd["layer"] == "262626" and cd["border"] == "525252" and cd["textPrimary"] == "F4F4F4"
+          and cd["textTertiary"] == "A8A8A8" and cd["brand"] == "4589FF" and cd["danger"] == "FA4D56", cd)
     rs = r["restyle"]
     check("restyleFigureSvg: identity on fluent / light (empty map); 24-entry map elsewhere; mix() blends",
           rs["identity"] and rs["fluentMapLen"] == 0 and rs["mapLen"] == 24 and rs["mix"] == "808080", (rs["identity"], rs["mapLen"], rs["mix"]))

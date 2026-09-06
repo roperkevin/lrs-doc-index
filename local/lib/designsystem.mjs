@@ -1,5 +1,5 @@
 /**
- * designsystem.mjs v1.2 — the deck's design systems: open-source design
+ * designsystem.mjs v1.3 — the deck's design systems: open-source design
  * tokens on a 16:9 slide, plus the closed LAYOUT PATTERN catalog the
  * TestPlanDeck prompt chooses from (prompts/TestPlanDeck_Prompt.md,
  * local/lib/deckspec.mjs, local/deck2pptx.mjs). Pure module, no I/O.
@@ -14,8 +14,18 @@
  *           machine: PowerPoint substitutes unless the face is installed
  *           or embedded)
  *   uswds   U.S. Web Design System v3 (public domain, `@uswds/uswds`
- *           tokens) — the most readable variant; Public Sans (OFL, same
- *           installation caveat)
+ *           tokens) — the most readable variant; Source Sans Pro, the
+ *           system's default sans (OFL, same installation caveat;
+ *           Public Sans is the alternative the system ships)
+ *
+ * v1.3: every value below was VERIFIED against the published packages
+ * (@carbon/colors 11.57, @carbon/type 11.66, @carbon/layout 11.58,
+ * @carbon/themes 11.80, @fluentui/tokens 1.0.0-alpha.24, @uswds/uswds
+ * 3.14) by `local/harness/check_design_tokens.py`, which downloads them
+ * from the npm registry and diffs — six transcription slips corrected
+ * (Carbon border-subtle-01 on both themes and g100 text-helper, Fluent
+ * subtitle1's line height, USWDS's line-height token 2, its largest
+ * column gap and its default typeface).
  *
  * Every design supplies the SAME shape — `makeDesign` derives it from
  * the design's token block — so deckspec.layoutDeck and deck2pptx
@@ -35,8 +45,8 @@
  *
  * GRID. 12 columns on every design; margin and gutter are named
  * spacing tokens of the design (Fluent: XXXL / XXL; Carbon: spacing-07
- * for both, its 2x Grid gutter is 32 px; USWDS: units-4 for both, its
- * desktop column gap is 4 units). Three vertical bands — header
+ * for both, its 2x Grid gutter is 32 px; USWDS: units-4 margin, units-3
+ * gutter — $theme-column-gap-lg is 3 units). Three vertical bands — header
  * (eyebrow + title), body, footer — derived from the design's own
  * caption and title line heights. Regions are expressed as column
  * spans + band, never as coordinates; deckspec.layoutDeck resolves them.
@@ -127,7 +137,7 @@ export const FLUENT = {
     body1Strong: [14, 20, 600],
     body2: [16, 22, 400],
     subtitle2: [16, 22, 600],
-    subtitle1: [20, 26, 600],
+    subtitle1: [20, 28, 600],
     title3: [24, 32, 600],
     title2: [28, 36, 600],
     title1: [32, 40, 600],
@@ -194,12 +204,18 @@ export const FLUENT = {
   },
 };
 
-// Fluent's own light-theme values for the roles used here (reference)
+// Fluent's own light- and dark-theme values for the roles used here
+// (reference — webLightTheme / webDarkTheme in @fluentui/tokens)
 export const FLUENT_LIGHT = {
   neutralForeground1: "242424", neutralForeground2: "424242", neutralForeground3: "616161",
   neutralForegroundOnBrand: "FFFFFF", neutralBackground1: "FFFFFF", neutralBackground2: "FAFAFA",
   neutralBackground3: "F5F5F5", neutralStroke1: "D1D1D1", neutralStroke2: "E0E0E0",
   brandForeground1: "0F6CBD", brandBackground: "0F6CBD",
+};
+export const FLUENT_DARK = {
+  neutralForeground1: "FFFFFF", neutralForeground2: "D6D6D6", neutralForeground3: "ADADAD",
+  neutralBackground1: "292929", neutralBackground2: "1F1F1F", neutralStroke1: "666666",
+  brandForeground1: "479EF5",
 };
 
 // ------------------------------------------------ IBM Carbon v11 (Apache 2.0)
@@ -259,7 +275,7 @@ export const CARBON = {
     layer: ["F4F4F4", "layer-01 (Gray 10)"],
     backgroundInverse: ["161616", "g100 background (Gray 100)"],
     layerInverse: ["262626", "g100 layer-01 (Gray 90)"],
-    border: ["E0E0E0", "border-subtle-01 (Gray 20)"],
+    border: ["C6C6C6", "border-subtle-01 (Gray 30)"],
     brand: ["0F62FE", "interactive (Blue 60)"],
     brandTint: ["EDF5FF", "Blue 10"],
     success: ["198038", "Green 60 (text); support-success is Green 50 #24A148"],
@@ -274,14 +290,14 @@ export const CARBON = {
   colorsDark: {
     textPrimary: ["F4F4F4", "g100 text-primary (Gray 10)"],
     textSecondary: ["C6C6C6", "g100 text-secondary (Gray 30)"],
-    textTertiary: ["8D8D8D", "g100 text-helper (Gray 50)"],
+    textTertiary: ["A8A8A8", "g100 text-helper (Gray 40)"],
     textOnInverse: ["FFFFFF", "text-on-color"],
     textOnInverseSecondary: ["C6C6C6", "Gray 30"],
     background: ["161616", "g100 background (Gray 100)"],
     layer: ["262626", "g100 layer-01 (Gray 90)"],
     backgroundInverse: ["002D9C", "Blue 80"],
     layerInverse: ["001D6C", "Blue 90"],
-    border: ["393939", "g100 border-subtle-01 (Gray 80)"],
+    border: ["525252", "g100 border-subtle-01 (Gray 70)"],
     brand: ["4589FF", "g100 interactive (Blue 50)"],
     success: ["42BE65", "g100 support-success (Green 40)"],
     warning: ["FF832B", "Orange 40 (text); support-warning stays an icon tint"],
@@ -298,21 +314,21 @@ export const USWDS = {
   name: "U.S. Web Design System",
   license: "CC0-1.0 (public domain)",
   source: "@uswds/uswds design tokens (designsystem.digital.gov)",
-  font: "Public Sans",
-  fontNote: "OFL; not installed on a typical Windows machine — install or embed it, or PowerPoint substitutes",
-  // system font-size tokens (px) × line-height tokens (1 = 1, 2 = 1.15,
+  font: "Source Sans Pro",
+  fontNote: "the system's default sans ($theme-font-type-sans: source-sans-pro; Public Sans is the shipped alternative); OFL; not installed on a typical Windows machine — install or embed it, or PowerPoint substitutes",
+  // system font-size tokens (px) × line-height tokens (1 = 1, 2 = 1.2,
   // 3 = 1.35, 4 = 1.5, 5 = 1.62, 6 = 1.75); weight per theme setting
   type: {
-    "micro/3": [10, 14, 400],
-    "size-1/3": [12, 16, 400],
+    "micro/3": [10, 13.5, 400],
+    "size-1/3": [12, 16.2, 400],
     "size-3/4": [14, 21, 400],
     "size-3/4 bold": [14, 21, 700],
     "size-5/4": [16, 24, 400],
-    "size-5/3 bold": [16, 22, 700],
+    "size-5/3 bold": [16, 21.6, 700],
     "size-8/3 bold": [20, 27, 700],
-    "size-11/2 bold": [28, 32, 700],
-    "size-13/2 bold": [36, 41, 700],
-    "size-15/2 bold": [48, 55, 700],
+    "size-11/2 bold": [28, 33.6, 700],
+    "size-13/2 bold": [36, 43.2, 700],
+    "size-15/2 bold": [48, 57.6, 700],
     "size-18/1 bold": [80, 80, 700],
   },
   roles: {
@@ -328,8 +344,8 @@ export const USWDS = {
     xxs: "units-05", xs: "units-05", s: "units-1", m: "units-105", l: "units-2", xl: "units-205",
     xxl: "units-3", xxxl: "units-4",
   },
-  grid: { margin: "units-4", gutter: "units-4" }, // $theme-column-gap-desktop: 4 units
-  // $theme-border-radius-sm/md/lg = 2 / 4 / 8 px
+  grid: { margin: "units-4", gutter: "units-3" }, // $theme-column-gap-lg: 3 units (the largest gap setting)
+  // $theme-border-radius-sm = 2 px, md = 0.5 unit (4 px), lg = 1 unit (8 px)
   borderRadius: { none: 0, small: 2, medium: 4, large: 4, xLarge: 8, circular: 10000 },
   strokeWidth: { thin: 1, thick: 2, thicker: 4, thickest: 8 },
   colors: {
