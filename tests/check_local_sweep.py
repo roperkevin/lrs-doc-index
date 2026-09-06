@@ -44,6 +44,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 SWEEP = os.path.join(REPO, "pipeline", "sweep.mjs")
+# the Doc Index row stamp = v<version> of the classify prompt's front
+# matter (sweep.mjs classifyPromptStamp) — seeded rows "at the current
+# stamp" and every stamp assertion read it from the file
+with open(os.path.join(REPO, "prompts", "docindex_classify.md"), encoding="utf-8") as _f:
+    STAMP = "v" + re.search(r"^version:\s*([0-9][^\s]*)\s*$", _f.read(), re.M).group(1)
 CURATE = os.path.join(REPO, "pipeline", "curate.mjs")
 DOC_CRAWL = os.path.join(REPO, "pipeline", "doc_crawl.mjs")
 
@@ -892,7 +897,7 @@ def main():
     state.seed(LISTS["docIndex"], {
         "Title": "spec.pdf", "FileName": "spec.pdf",
         "DocKey": "shared documents/general/spec.pdf", "IndexStatus": "Skipped",
-        "SourceModified": "2026-08-10T10:00:00Z", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-10T10:00:00Z", "PromptVersion": STAMP,
         "ExtractionLane": "none",
     })
     # ghost: an Indexed row whose source doc no longer exists in the
@@ -909,7 +914,7 @@ def main():
     ghost_row_id = state.seed(LISTS["docIndex"], {
         "Title": "Ghost Doc", "FileName": "Ghost Doc.pptx",
         "DocKey": "shared documents/ghost doc.pptx", "IndexStatus": "Indexed",
-        "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": STAMP,
         "TextFileUrl": {"Url": "https://mock.example/sites/lrsworkspace/LRS Doc Index/Test Plans/Ghost Doc.md",
                         "Description": "Ghost Doc.md"},
     })
@@ -1094,7 +1099,7 @@ def main():
     _, outside = by_name.get("outside.txt", (None, {}))
     check("out-of-scope doc -> stamped Skip",
           outside.get("IndexStatus") == "Skipped"
-          and outside.get("PromptVersion") == "v2.0"
+          and outside.get("PromptVersion") == STAMP
           and "out of sync scope" in str(outside.get("LastError", "")), str(outside)[:250])
     _, outpdf = by_name.get("outside.pdf", (None, {}))
     check("out-of-scope pdf -> stamped Skip too",
@@ -1111,7 +1116,7 @@ def main():
           and str(filt.get("LastError", "")).startswith("content filter:")
           and "stop_reason: refusal" in str(filt.get("LastError", "")), str(filt)[:300])
     check("content-filtered stamp pins the current PromptVersion",
-          filt.get("PromptVersion") == "v2.0", str(filt)[:200])
+          filt.get("PromptVersion") == STAMP, str(filt)[:200])
 
     _, missing = by_name.get("missing.txt", (None, {}))
     check("in-scope missing file -> retryable Error",
@@ -1122,7 +1127,7 @@ def main():
     check("alpha indexed", alpha.get("IndexStatus") == "Indexed", str(alpha)[:200])
     check("alpha kind clamped fieldset", alpha.get("DocKind") == "Test Plan"
           and alpha.get("Surface") == "Pro" and alpha.get("PE") == "Claire Wang")
-    check("alpha PromptVersion stamped", alpha.get("PromptVersion") == "v2.0")
+    check("alpha PromptVersion stamped", alpha.get("PromptVersion") == STAMP)
     check("alpha TextFileUrl set",
           isinstance(alpha.get("TextFileUrl"), dict)
           and alpha["TextFileUrl"].get("Url", "").endswith("/Test Plans/123-alpha-plan.md"),
@@ -1139,7 +1144,7 @@ def main():
     check("no-text pdf skipped with attempt stamp (lane plaintext)",
           scan.get("IndexStatus") == "Skipped"
           and scan.get("ExtractionLane") == "plaintext"
-          and scan.get("PromptVersion") == "v2.0", str(scan)[:250])
+          and scan.get("PromptVersion") == STAMP, str(scan)[:250])
 
     _, bad = by_name.get("corrupt.pptx", (None, {}))
     check("corrupt doc -> Error row", bad.get("IndexStatus") == "Error", str(bad)[:200])
@@ -1204,7 +1209,7 @@ def main():
           and "<!-- metadata" not in sc and "```yaml" not in sc
           and "| Field | Value |" in sc
           and re.search(r"(?m)^\| \*\*Doc\*\* \| \d+ · Test Plan · Pro \|$", sc) is not None
-          and "· format 3.0 · prompt v2.0 |" in sc, sc[:400])
+          and f"· format 3.0 · prompt {STAMP} |" in sc, sc[:400])
     check("sidecar issue row links the issue", "#123](https://devtopia.esri.com/" in sc
           and "| **Issues** | [" in sc, sc[:400])
     check("sidecar table carries every row in order",
@@ -1516,7 +1521,7 @@ def main():
         floor_ids.append(state.seed(LISTS["docIndex"], {
             "Title": f"Floor Doc {i}", "FileName": f"Floor Doc {i}.pptx",
             "DocKey": f"shared documents/floor doc {i}.pptx", "IndexStatus": "Indexed",
-            "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
+            "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": STAMP,
             "TextFileUrl": {"Url": f"https://mock.example/sites/lrsworkspace/LRS Doc Index/Other/Floor Doc {i}.md",
                             "Description": f"Floor Doc {i}.md"},
         }))
@@ -2231,7 +2236,7 @@ def main():
     decoy_row = state.seed(LISTS["docIndex"], {
         "Title": "Decoy plan", "FileName": "decoy.pptx", "DocKind": "Test Plan",
         "DocKey": "shared documents/general/decoy.pptx", "IndexStatus": "Indexed",
-        "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": STAMP,
         "TextFileUrl": {"Url": f"https://mock.example/sites/lrsworkspace/LRS Doc Index/Test Plans/{lf_stem}.md",
                         "Description": f"{lf_stem}.md"},
     })
@@ -2449,7 +2454,7 @@ def main():
         f.write(gamma_head + gamma_body)
     gamma_id = int(state.seed(LISTS["docIndex"], {
         "Title": "Gamma Plan", "FileName": "Gamma Plan.pptx", "DocKey": "shared documents/general/gamma plan.pptx",
-        "IndexStatus": "Indexed", "DocKind": "Test Plan", "Surface": "Pro", "PromptVersion": "v2.0",
+        "IndexStatus": "Indexed", "DocKind": "Test Plan", "Surface": "Pro", "PromptVersion": STAMP,
         "SourceModified": "2026-08-01T00:00:00Z",
         "TextFileUrl": {"Url": cfg["sweep"]["siteUrl"] + "/LRS Doc Index/Test Plans/gamma-plan.md",
                         "Description": "gamma-plan.md"}}))
@@ -2742,7 +2747,7 @@ def main():
     state.seed(LISTS["docIndex"], {
         "Title": "message.msg", "FileName": "message.msg",
         "DocKey": "shared documents/message.msg", "IndexStatus": "Skipped",
-        "SourceModified": "2026-08-21T09:00:00Z", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-21T09:00:00Z", "PromptVersion": STAMP,
         "ExtractionLane": "none"})
     state.llm_by_file["message.msg"] = {
         "title": "Weekly Sync Notes", "docKind": "Other", "surface": "Other",
@@ -3065,7 +3070,7 @@ def main():
     sched_seed = state.seed(LISTS["docIndex"], {
         "Title": "Iteration Schedule", "FileName": "schedule.xlsx",
         "DocKey": "shared documents/schedule.xlsx", "DocKind": "Schedule",
-        "IndexStatus": "Indexed", "PromptVersion": "v2.0",
+        "IndexStatus": "Indexed", "PromptVersion": STAMP,
         "SourceModified": "2026-08-20T10:00:00Z"})
     gantt_cfg = {
         "sharePoint": dict(cfg["sharePoint"], libraryRootSegment="Shared Documents"),
@@ -3092,7 +3097,7 @@ def main():
     sched2_seed = state.seed(LISTS["docIndex"], {
         "Title": "Sub Schedule", "FileName": "schedule2.xlsx",
         "DocKey": "shared documents/general/schedule2.xlsx", "DocKind": "Schedule",
-        "IndexStatus": "Indexed", "PromptVersion": "v2.0",
+        "IndexStatus": "Indexed", "PromptVersion": STAMP,
         "SourceModified": "2026-08-20T10:00:00Z"})
     sub_cfg = json.loads(json.dumps(gantt_cfg))
     sub_cfg["sharePoint"]["syncedSubfolder"] = "General"

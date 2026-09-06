@@ -167,7 +167,7 @@ def main():
     check("classify: non-streaming, schema-pinned, data parsed, api key header",
           res.data["docKind"] == "Test Plan" and res.data["tools"] == ["Merge Routes"] and not state.last_body.get("stream")
           and state.last_body["output_config"]["format"]["type"] == "json_schema"
-          and state.last_headers.get("x-api-key") == "mock-key" and res.prompt_version == "1.3.0"
+          and state.last_headers.get("x-api-key") == "mock-key" and res.prompt_version == "3.0.0"
           and res.stop_reason == "end_turn" and res.usage.get("output_tokens"), str(res.to_dict())[:300])
     check("classify: the user turn carries the file name and the fenced document text",
           "File name: Alpha.pptx" in mock.user_text(state.last_body) and "<<<DOCUMENT TEXT BEGIN>>>\ntext\n<<<DOCUMENT TEXT END>>>" in mock.user_text(state.last_body),

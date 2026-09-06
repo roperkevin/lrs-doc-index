@@ -1,6 +1,6 @@
 ---
 name: docindex_classify
-version: 1.3.0
+version: 3.0.0
 model: claude-opus-5
 effort: medium
 max_tokens: 4096

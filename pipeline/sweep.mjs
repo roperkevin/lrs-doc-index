@@ -79,12 +79,29 @@ import { writeStatusPage } from "./lib/statuspage.mjs";
 
 // ---- flow v2.8 Config defaults (override via config.sweep) ----------
 
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/**
+ * The Doc Index row stamp that drives reindexing (`PromptVersion`):
+ * `v<version>` of prompts/docindex_classify.md's front matter, so a
+ * classifier change is a version bump in the prompt file and the
+ * nightly run backfills the corpus maxDocsPerRun at a time. Set
+ * `sweep.promptVersion` in config only to PIN an older stamp (a
+ * staged backfill); the pin is loud in the run's first stderr line.
+ */
+export function classifyPromptStamp() {
+  const file = path.join(REPO_ROOT, "prompts", "docindex_classify.md");
+  const m = /^version:\s*["']?([0-9][^"'\s]*)["']?\s*$/m.exec(fs.readFileSync(file, "utf8"));
+  if (!m) throw new Error(`${file}: no "version:" line in the front matter`);
+  return "v" + m[1];
+}
+
 const FLOW_DEFAULTS = {
   siteUrl: "https://esriis.sharepoint.com/sites/lrsworkspace",
   textsFolder: "/LRS Doc Index",
   smokeFile: "",
   defaultRepo: "ArcGISPro/ps-location-referencing",
-  promptVersion: "v2.0",
+  promptVersion: classifyPromptStamp(),
   // --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane
   // for plans the detectors leave caseless. enabled = the owner switch
   // (a live run refuses without it); maxPerRun caps model calls
@@ -443,6 +460,12 @@ function loadConfig(argv) {
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
   cfg.sweep = { ...FLOW_DEFAULTS, ...(cfg.sweep || {}) };
+  if (cfg.sweep.promptVersion !== FLOW_DEFAULTS.promptVersion) {
+    process.stderr.write(
+      `sweep: PromptVersion pinned to ${cfg.sweep.promptVersion} by config ` +
+      `(prompts/docindex_classify.md is ${FLOW_DEFAULTS.promptVersion}; remove sweep.promptVersion to backfill)\n`
+    );
+  }
   if (args.flags.live) cfg.sweep.dryRun = false;
   if (args.flags.dry) cfg.sweep.dryRun = true;
   if (args.flags.max !== undefined) {

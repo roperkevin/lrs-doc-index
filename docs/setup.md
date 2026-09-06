@@ -239,7 +239,7 @@ fields as the flow's Run_summary compose, plus the plan when dry).
    each file's server-relative path) until it matches. Getting this
    wrong and going live would re-index the corpus under new keys.
 2. **Selection sanity.** `library_items_seen` ≈ the library size;
-   `processed` ≤ MaxDocsPerRun; with the corpus stamped v2.0 and no
+   `processed` ≤ MaxDocsPerRun; with the corpus at the current stamp and no
    modifications, processed should be ~0.
 3. **Plan review.** Skim the plan file: row creates/patches against
    the expected lists, sidecar paths under the synced folder.
@@ -338,14 +338,14 @@ Each is behavior-equivalent; all are exercised by the gate:
   reachable (no promptVersion bump, no corpus-wide AI respend). A
   doc IN scope whose file is missing on disk is treated as OneDrive
   sync lag: a retryable Error that clears itself when the file lands.
-- **Content-filter lane** (v1.28): AI Builder's input moderation can
-  refuse a document's own text (`InputContentFiltered` — decks that
-  quote model-instruction-like content trip it), and the refusal is
+- **Content-filter lane** (v1.28): the model can refuse a document's
+  own text (`stop_reason: refusal` — decks that quote
+  model-instruction-like content trip it), and the refusal is
   deterministic, so an Error stamp would re-burn one AI call per
   night failing identically. Such a doc gets a STAMPED `Skipped` row
   with `LastError` `"content filter: ..."` at the current
   PromptVersion — once, no rechurn. It re-enters `Needs_index` on the
-  next `sweep.promptVersion` bump or when the source doc is edited
+  next PromptVersion bump or when the source doc is edited
   (trimming the offending text and re-saving is the way to get the
   doc indexed).
 
@@ -357,8 +357,12 @@ Each is behavior-equivalent; all are exercised by the gate:
   green — a red main can never reach the nightly run). A manual
   `git merge --ff-only origin/deploy` deploys immediately. Record the
   commit in STATUS the way pastes were recorded. Prompt changes
-  deploy the same way (bump `sweep.promptVersion` in config to
-  trigger the backfill).
+  deploy the same way: the Doc Index stamp is `v<version>` of
+  `prompts/docindex_classify.md`, so a classifier change is a
+  version bump in that file and the nightly run backfills the corpus
+  `maxDocsPerRun` at a time. `sweep.promptVersion` in config PINS an
+  older stamp (the run says so on stderr) — remove it to let the
+  backfill start.
 - **Errors**: per-doc failures write `IndexStatus=Error` +
   `LastError="{step}: {detail}"` and retry next run — same recovery
   model as the flow. The summary JSON carries `errors`.

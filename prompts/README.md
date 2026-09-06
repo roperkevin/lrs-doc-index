@@ -11,7 +11,7 @@ read exactly this format.
 
 | File | Version | Called by | Output |
 |---|---|---|---|
-| `docindex_classify.md` | 1.3.0 | the nightly sweep, once per changed document | JSON, `schemas/docindex_classify.json` (nine fields) |
+| `docindex_classify.md` | 3.0.0 | the nightly sweep, once per changed document | JSON, `schemas/docindex_classify.json` (nine fields) |
 | `keyword_curation.md` | 1.1.0 | `curate.mjs`, once per vocabulary chunk, weekly | JSON, `schemas/keyword_curation.json` |
 | `testplan_draft.md` | 1.13.0 | `testplangen.mjs` — the one draft call | markdown between `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` |
 | `testplan_figures.md` | 0.4.0 | `testplangen.mjs --figures` | JSON between `[[[FIGURES BEGIN]]]` / `[[[FIGURES END]]]`, verified by `pipeline/lib/figurespec.mjs` |
@@ -27,8 +27,10 @@ read exactly this format.
 2. Add a line to `CHANGELOG.md`.
 3. Say what it implies operationally in the commit message:
    - `docindex_classify` — a change that alters classifications is a
-     corpus backfill: bump `sweep.promptVersion` in the machine config
-     (the row stamp that drives reindexing, ~150 documents a night).
+     corpus backfill: the Doc Index row stamp is `v<version>` of this
+     file (sweep.mjs reads the front matter), so the bump itself
+     starts the reindex, ~150 documents a night. `sweep.promptVersion`
+     in the machine config only PINS an older stamp.
    - `testplan_draft` — bump `testplangen.promptVersion` (the draft
      banner stamp) when the draft contract changes; the verifier in
      `pipeline/lib/draftlint.mjs` and `tests/check_draft_coverage.py`
