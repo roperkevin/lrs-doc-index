@@ -97,7 +97,7 @@ import yaml
 
 # check_batch.py points this at a staged patch set to gate a script
 # batch with the full suite before pasting; default is the shipped set.
-SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../../scripts')
+SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../../extract')
 
 failures = []
 

@@ -33,9 +33,9 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
-RUNNER = os.path.join(REPO, "pad", "runner", "run_job.mjs")
+RUNNER = os.path.join(REPO, "extract", "runner", "run_job.mjs")
 WRAP = os.path.join(REPO, "review", "harness", "wrap.py")
-SCRIPTS = os.path.join(REPO, "scripts")
+SCRIPTS = os.path.join(REPO, "extract")
 
 PASS = []
 FAIL = []

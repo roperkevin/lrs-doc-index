@@ -288,7 +288,7 @@ else:
     ok = False
 
 # ---- populate via SidecarPatch (set mode, synthetic entries) -------
-scp = open('../../scripts/SidecarPatch.ts', encoding='utf-8').read().replace(
+scp = open('../../extract/SidecarPatch.ts', encoding='utf-8').read().replace(
     'workbook: ExcelScript.Workbook', 'workbook: unknown')
 scp += '''
 // ---- harness appendix ----

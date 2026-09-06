@@ -16,7 +16,7 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "scripts")
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(HERE)), "extract")
 
 WB_MOCK = ('{ getWorksheets: () => { getName: () => string; getUsedRange: () => '
            '{ getRowCount: () => number; getColumnCount: () => number; '
