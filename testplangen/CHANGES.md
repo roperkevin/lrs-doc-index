@@ -36,7 +36,7 @@ check was built from the same source of truth, no approval needed.
   Carbon's colours and both themes, all of USWDS's colours, Fluent's
   sizes, spacing, radii and strokes — matched.
 - Gates: `check_deckspec.py` 99/99 and `check_deck2pptx.py` 56/56
-  updated to the corrected values; `check_testplangen.py` 223/223.
+  updated to the corrected values; `check_testplangen.py` 231/231 on the merged tree.
 
 Rollout: nothing on the tenant; a uswds deck changes face and line
 rhythm, carbon decks change two border greys. Re-run the verifier
