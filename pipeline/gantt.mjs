@@ -238,9 +238,13 @@ async function main() {
   }));
   // the sweep's own root-segment mapping, over the lowercased DocKey
   const rootLower = lower(sp.libraryRootSegment) + "/";
+  // sharePoint.syncedSubfolder (sweep v1.55): the OneDrive sync may root
+  // at a library child — paths.sourceLibrary IS that child, so strip it
+  const synced = String(sp.syncedSubfolder || "").replace(/^\/+|\/+$/g, "");
   const localOf = (docKey) => {
     const k = String(docKey);
-    const rel = lower(k).startsWith(rootLower) ? k.slice(rootLower.length) : k;
+    let rel = lower(k).startsWith(rootLower) ? k.slice(rootLower.length) : k;
+    if (synced && lower(rel).startsWith(lower(synced) + "/")) rel = rel.slice(synced.length + 1);
     return path.join(cfg.paths.sourceLibrary, ...rel.split("/"));
   };
   const schedules = docIndexRows.filter((r) =>

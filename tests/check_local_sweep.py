@@ -3194,6 +3194,30 @@ def main():
             ["node", "--experimental-strip-types", GANTT, "--config", gantt_cfg_path] + extra,
             capture_output=True, text=True, cwd=REPO, env=dict(os.environ))
 
+    # a sync rooted at a library child (sharePoint.syncedSubfolder): the
+    # schedule under "General/" must resolve to <sourceLibrary>/<file>
+    sub_dir = os.path.join(widened_dir, "General")
+    os.makedirs(sub_dir, exist_ok=True)
+    make_gantt_xlsx(os.path.join(sub_dir, "schedule2.xlsx"))
+    sched2_seed = state.seed(LISTS["docIndex"], {
+        "Title": "Sub Schedule", "FileName": "schedule2.xlsx",
+        "DocKey": "shared documents/general/schedule2.xlsx", "DocKind": "Schedule",
+        "IndexStatus": "Indexed", "PromptVersion": "v2.0",
+        "SourceModified": "2026-08-20T10:00:00Z"})
+    sub_cfg = json.loads(json.dumps(gantt_cfg))
+    sub_cfg["sharePoint"]["syncedSubfolder"] = "General"
+    sub_cfg["paths"]["sourceLibrary"] = sub_dir
+    sub_cfg_path = os.path.join(tmp, "gantt-sub-config.json")
+    with open(sub_cfg_path, "w") as f:
+        json.dump(sub_cfg, f)
+    proc = subprocess.run(
+        ["node", "--experimental-strip-types", GANTT, "--config", sub_cfg_path, "--dry-run", "--only", "schedule2.xlsx"],
+        capture_output=True, text=True, cwd=REPO, env=dict(os.environ))
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    check("gantt honours sharePoint.syncedSubfolder when locating a schedule",
+          proc.returncode == 0 and out.get("issues_created") == 2, str(out) + proc.stderr[-300:])
+    state.lists[LISTS["docIndex"]].pop(str(sched2_seed), None)
+
     links_before = len(state.lists.get(LISTS["docLinks"], {}))
     proc = run_gantt(["--dry-run"])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
