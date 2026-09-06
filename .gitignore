@@ -22,3 +22,7 @@ local/config.json
 # local sweep workDir when placed inside the repo (run logs + cached
 # sign-in tokens - must never be committed)
 work/
+
+# a local export of the sidecar library for analysis (never committed;
+# the 2026-09-05 snapshot is in git history under LRSDocIndex/)
+corpus/
