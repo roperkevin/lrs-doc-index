@@ -535,7 +535,18 @@ class Writer {
     const { rest, links } = splitHyperlinks(fields);
     const res = await this.graph.createItem(this.siteId, this.lists[listKey], rest);
     if (Object.keys(links).length) {
-      await this.spo.validateUpdate(this.lists[listKey], Number(res.id), links);
+      try {
+        await this.spo.validateUpdate(this.lists[listKey], Number(res.id), links);
+      } catch (e) {
+        // The row EXISTS at this point (the Graph create succeeded); only
+        // its hyperlink columns are missing. Carry the id on the error so
+        // the caller can register the row and retry the links next run
+        // instead of creating a second row with the same key.
+        e.rowId = Number(res.id);
+        e.listKey = listKey;
+        e.message = `hyperlink write after create (row ${res.id}): ${e.message}`;
+        throw e;
+      }
     }
     return { id: Number(res.id) };
   }
@@ -1623,7 +1634,7 @@ async function main() {
       ? fileRef.slice(sp.docKeyStrip.length)
       : fileRef.replace(/^\//, "");
     const docKey = lower(siteRel);
-    const existing = byDocKey.get(docKey);
+    let existing = byDocKey.get(docKey);
     if (existing) summary.dockey_hits++;
     else summary.dockey_misses++;
 
@@ -1853,6 +1864,16 @@ async function main() {
       }
       try {
         const status = filtered ? "Skipped" : "Error";
+        if (!existing && e.rowId && e.listKey === "docIndex") {
+          // the Doc Index row was created before the failure (a hyperlink
+          // write after a successful Graph create): adopt it, so the Error
+          // stamp patches THAT row and the next run repairs its links,
+          // rather than minting a duplicate DocKey
+          existing = { ID: e.rowId, DocKey: docKey, IndexStatus: "Error", SourceModified: modified,
+                       PromptVersion: "", Title: name, FileName: name, TextFileUrl: "", LastError: "" };
+          byDocKey.set(docKey, existing);
+          docIndexRows.push(existing);
+        }
         const fields = {
           Title: name, FileName: name, DocKey: docKey,
           IndexStatus: status, IndexedOn: new Date().toISOString(),

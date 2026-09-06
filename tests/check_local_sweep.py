@@ -2145,6 +2145,29 @@ def main():
           proc.stderr.count("SharePoint throttled the hyperlink-column route") == 1 and "spo.paceMs" in proc.stderr,
           proc.stderr[-400:])
     state.spo_throttle = 0
+    # a hyperlink write that FAILS after the Graph create (here: one 429
+    # with the gate's maxRetries 0) must not leave the run with two Doc
+    # Index rows for one DocKey — the created row is adopted and stamped
+    # Error, and the next run repairs it in place
+    print("== hyperlink-write-failure leg")
+    lf_dir = os.path.join(cfg["paths"]["sourceLibrary"], "General") \
+        if os.path.isdir(os.path.join(cfg["paths"]["sourceLibrary"], "General")) else src_dir
+    with open(os.path.join(lf_dir, "linkfail.txt"), "w") as f:
+        f.write("Route calibration notes for the link-failure leg.\n")
+    src_files.append(src_item(21, "linkfail.txt", "2026-08-02T10:00:00Z"))
+    state.spo_throttle = 1
+    proc = run_sweep(cfg_path, ["--live", "--only", "linkfail.txt"])
+    lf_rows = [r for r in state.lists[LISTS["docIndex"]].values() if r.get("FileName") == "linkfail.txt"]
+    check("failed hyperlink write leaves exactly ONE Doc Index row, stamped Error",
+          proc.returncode == 0 and len(lf_rows) == 1 and lf_rows[0].get("IndexStatus") == "Error"
+          and "hyperlink write after create" in str(lf_rows[0].get("LastError", "")),
+          f"rows={len(lf_rows)} {str(lf_rows)[:300]}")
+    state.spo_throttle = 0
+    proc = run_sweep(cfg_path, ["--live", "--only", "linkfail.txt"])
+    lf_rows = [r for r in state.lists[LISTS["docIndex"]].values() if r.get("FileName") == "linkfail.txt"]
+    check("the next run repairs that row in place (Indexed, SourceLink written, still one row)",
+          proc.returncode == 0 and len(lf_rows) == 1 and lf_rows[0].get("IndexStatus") == "Indexed"
+          and isinstance(lf_rows[0].get("SourceLink"), dict), f"rows={len(lf_rows)} {str(lf_rows)[:300]}")
     # the shared column-dropper covers the Figures list too
     state.lists[LISTS["figures"]] = {}
     state.reject_fields = {"Bytes"}
