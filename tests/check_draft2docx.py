@@ -26,6 +26,7 @@ Needs python-docx (tests/requirements.txt — the CI
 full-format job installs it). Usage: python3 check_draft2docx.py
 """
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -202,6 +203,19 @@ def main():
 
     # metadata
     check("core title from the H1", d.core_properties.title == "Test Plan — Route Merge", "")
+
+    # ---- CLI: runs from a path with a space (the argv/URL guard) -------
+    # the guard compares argv[1] against import.meta.url; a percent-encoded
+    # URL path never equals a resolved filesystem path with a space (nor a
+    # Windows drive path), so the converter silently did nothing there
+    spaced = os.path.join(tmp, "dir with space")
+    os.makedirs(spaced, exist_ok=True)
+    shutil.copyfile(JOB, os.path.join(spaced, "draft2docx.mjs"))
+    out_sp = os.path.join(spaced, "out.docx")
+    r = subprocess.run(["node", os.path.join(spaced, "draft2docx.mjs"), md1, "-o", out_sp],
+                       capture_output=True, text=True, cwd=REPO)
+    check("CLI runs when its own path contains a space (guard via pathToFileURL)",
+          r.returncode == 0 and os.path.exists(out_sp), r.stderr[-300:])
 
     # ---- CLI: -o, multi-input, usage ---------------------------------
     out2 = os.path.join(tmp, "renamed.docx")
