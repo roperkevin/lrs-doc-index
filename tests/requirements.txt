@@ -1,0 +1,4 @@
+python-pptx
+python-docx
+PyYAML
+anthropic

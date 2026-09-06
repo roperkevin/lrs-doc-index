@@ -1,0 +1,50 @@
+{
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "docKind": {
+      "type": "string"
+    },
+    "surface": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "pe": {
+      "type": "string"
+    },
+    "dev": {
+      "type": "string"
+    },
+    "targetRelease": {
+      "type": "string"
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "title",
+    "docKind",
+    "surface",
+    "summary",
+    "pe",
+    "dev",
+    "targetRelease",
+    "tools",
+    "keywords"
+  ],
+  "additionalProperties": false
+}

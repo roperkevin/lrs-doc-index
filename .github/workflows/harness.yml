@@ -1,8 +1,7 @@
-# Runs the Office Script harness suites on every push/PR (HG-7, r2).
+# Runs every gate under tests/ on every push/PR.
 # Job 1 needs no binary fixtures — just Python + PyYAML + Node 22.
 # Job 2 builds the OOXML fixtures and runs the full format suite.
-# Job 3 type-checks every scripts/*.ts at ES2017 (review r7, C5 — the
-# check every promotion note cites, now standing instead of manual).
+# Job 3 type-checks every extract/*.ts at ES2017.
 # Job 4 (main pushes only) fast-forwards the `deploy` branch once
 # everything is green: the sweep machine's self-update pulls `deploy`,
 # so only harness-passing code ever reaches the nightly run (r7, R3).
@@ -20,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: review/harness
+        working-directory: tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,24 +28,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install PyYAML
+      - run: pip install PyYAML anthropic
+      - run: python3 test_lrsdoc.py
       - run: python3 check_related.py
       - run: python3 check_regex.py
       - run: python3 check_shapes.py
-      - run: python3 ../../pad/harness/check_pad_runner.py
-      - run: python3 ../../local/harness/check_local_sweep.py
-      - run: python3 ../../local/harness/check_testplangen.py
-      - run: python3 ../../local/harness/check_caseindex.py
-      - run: python3 ../../local/harness/check_figureindex.py
-      - run: python3 ../../local/harness/check_slug.py
-      - run: python3 ../../local/harness/check_storyprofile.py
-      - run: python3 ../../local/harness/check_deckspec.py
+      - run: python3 check_pad_runner.py
+      - run: python3 check_local_sweep.py
+      - run: python3 check_testplangen.py
+      - run: python3 check_caseindex.py
+      - run: python3 check_figureindex.py
+      - run: python3 check_slug.py
+      - run: python3 check_storyprofile.py
+      - run: python3 check_deckspec.py
 
   full-format:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: review/harness
+        working-directory: tests
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -58,10 +58,10 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python3 make_fixtures.py
       - run: python3 check_format.py
-      - run: python3 ../../local/harness/check_svg2pptx.py
-      - run: python3 ../../local/harness/check_draft2docx.py
-      - run: python3 ../../local/harness/check_draft2pptx.py
-      - run: python3 ../../local/harness/check_deck2pptx.py
+      - run: python3 check_svg2pptx.py
+      - run: python3 check_draft2docx.py
+      - run: python3 check_draft2pptx.py
+      - run: python3 check_deck2pptx.py
       - run: python3 render_sample.py
 
   typecheck:
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python3 review/harness/check_typecheck.py
+      - run: python3 tests/check_typecheck.py
 
   promote:
     # main is deployable only after every suite is green; the sweep

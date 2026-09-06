@@ -1,0 +1,132 @@
+{
+  "$comment": "Local Doc Index sweep configuration. Copy to config.json next to sweep.mjs (git-ignored) and fill in. Secrets belong in environment variables via {\"$env\": \"NAME\"} — never commit them.",
+
+  "sharePoint": {
+    "hostname": "esriis.sharepoint.com",
+    "sitePath": "/sites/lrsworkspace",
+    "sourceSitePath": "/sites/LocationReferencing",
+    "docKeyStrip": "/sites/LocationReferencing/",
+    "libraryRootSegment": "Shared Documents",
+    "syncedSubfolder": "",
+    "$comment_syncedSubfolder": "Set when the OneDrive sync roots at a library CHILD rather than the library itself — e.g. \"General\" when paths.sourceLibrary is the Teams channel folder 'Location Referencing - General'. The segment is stripped from local source paths (Shared Documents/General/Test Plans/x.pptx -> <sourceLibrary>/Test Plans/x.pptx); documents outside it keep taking the Graph download fallback (sweep.graphDownloadFallback). Scope (libraryRootSegment) is unaffected.",
+    "lists": {
+      "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
+      "keywords": "a7bd004b-84e0-408f-b32d-3f1d791e2af6",
+      "docIds": "6263eeac-471a-489e-96c7-1448f45378d4",
+      "docKeywords": "4eabc799-c856-49ea-bf25-65942b363ec6",
+      "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
+      "issueRefs": "4d0e6561-80e3-49f4-aa20-e5889cc88414",
+      "testCases": "ae9374ab-295a-4321-8afa-a83a08e17711",
+      "figures": "<create the Figures list per schemas/SPList_Figures.csv (docs/setup.md §14) and paste its GUID; absent = figures not indexed>",
+      "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
+    }
+  },
+
+  "paths": {
+    "$comment": "OneDrive-synced local roots. sourceLibrary = the LocationReferencing Documents library; sidecarLibrary = the LRS Doc Index library (sidecars + media/).",
+    "sourceLibrary": "C:\\Users\\me\\Esri\\LocationReferencing - Documents",
+    "sidecarLibrary": "C:\\Users\\me\\Esri\\lrsworkspace - LRS Doc Index",
+    "workDir": "C:\\DocIndex\\work"
+  },
+
+  "graph": {
+    "$comment": "auth 'device' (default): NO Azure app registration — the first run prints a device-code sign-in (you sign in as yourself; your existing SharePoint permissions apply) and caches refresh tokens under paths.workDir/auth/. If the tenant blocks the scope on first sign-in, set clientId to a pre-consented public client (Azure CLI: 04b07795-8ddb-461a-bbee-02f9e1bf7b46). auth 'interactive': same delegated sign-in, but via the authorization-code grant over a loopback redirect instead of a device code — use it when Conditional Access rejects device-code with AADSTS53003 ('does not meet the criteria to access this resource'), which it does on a joined machine because the device-code browser carries no device identity. Everything after the first sign-in is identical. App-registration alternative: {\"auth\": \"app\", \"tenantId\": \"...\", \"clientId\": \"...\", \"clientSecret\": {\"$env\": \"DOCINDEX_GRAPH_SECRET\"}} — docs/setup.md §2.",
+    "auth": "device"
+  },
+
+  "llm": {
+    "$comment": "Every model call goes through the Python layer (lrsdoc/, the official Anthropic SDK; pipeline/llm.mjs spawns it). apiKey: the API key, ideally {\"$env\": \"ANTHROPIC_API_KEY\"}; leave it out to let the SDK use ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN from the environment (or an `ant auth login` profile). Optional: model and effort override every prompt file's front-matter defaults (prompts/*.md); maxRetries (4) and timeoutMs (600000) are the SDK's retry count and per-request timeout; baseUrl redirects the API endpoint (the gates' mock server); python names the interpreter that runs lrsdoc (default python3, python on Windows; LRSDOC_PYTHON in the environment overrides) — docs/setup.md.",
+    "apiKey": {"$env": "ANTHROPIC_API_KEY"}
+  },
+
+  "spo": {
+    "$comment": "The SharePoint REST route the sweep uses for hyperlink columns (SourceLink, TextFileUrl, FigureLink, ImageLink — Graph rejects them). Auth inherits the graph section. v1.62: SharePoint throttles this route by cumulative request rate (429 / 503 with Retry-After — a whole-list --refigure / --recase backfill trips it): every call honors Retry-After (up to maxRetries), keeps paceMs between calls, and a throttle widens the pace for the rest of the run; the run summary reports spo_throttled. Raise paceMs (e.g. 500) if a backfill keeps getting throttled; updates already patch only the fields that changed, so a reflow that touches no hyperlink makes no SPO call.",
+    "paceMs": 150,
+    "maxRetries": 4,
+    "maxRetryAfterMs": 300000
+  },
+
+  "alerts": {
+    "$comment": "Optional push alerting (v1.32). webhookUrl = a Teams/Slack incoming-webhook URL (accepts {\"$env\": \"NAME\"}); the sweep posts {\"text\": ...} on a fatal abort and for docs stuck 3+ nights, and `sweep.mjs --check-heartbeat` (schedule ops\\run_heartbeat.cmd as a second task) alerts when no successful live sweep is recorded within maxSilentHours. Absent section = alerts off.",
+    "webhookUrl": {"$env": "DOCINDEX_ALERT_WEBHOOK"},
+    "maxSilentHours": 48
+  },
+
+  "curation": {
+    "$comment": "Weekly keyword curation (pipeline/curate.mjs — docs/setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur. autoApprove: true applies guard-passing merges immediately (digest becomes an audit log; undo = clear CanonicalRef + set CurationStatus Rejected). Also: vocabChunk (700 vocabulary lines per model call, alphabetical chunks) and digestDrivePath ('' = the site's default drive root, Shared Documents).",
+    "digestName": "Keyword_Curation_Digest.md",
+    "maxProposals": 20,
+    "promptVersion": "v1.0",
+    "autoApprove": false,
+    "dryRun": true
+  },
+
+  "testplangen": {
+    "$comment": "On-demand test-plan generation (pipeline/testplangen.mjs — docs/setup.md §11). Optional; these are the defaults, mirroring the TestPlanGenCore flow's Config_gen name-for-name. promptVersion is the draft-banner stamp (TestPlanGenPromptVersion — NEVER Config.PromptVersion); draftFolder is drive-root-relative (the site default drive root = Shared Documents); verify is the draft-verifier policy: 'annotate' flags findings in the written draft, 'strict' refuses to write a draft with findings, 'off' = cloud-flow parity; grounding false disables just the heuristic story-grounding layer (the contract lint stays); notify true posts one webhook line per WRITTEN draft to alerts.webhookUrl (also per-run via --notify); maxTokens bounds the draft reply (a truncated draft fails closed; the model allows up to 128000). The auto knobs gate `--auto` (unattended gap-drafting after the nightly sweep, schedule ops\\run_testplangen.cmd): autoDraft is the owner switch — the scheduled task is INERT until it is true; autoMaxPerRun caps model calls per night; autoLookbackDays bounds which freshly indexed stories are candidates. issueTrace false drops the deterministic `## Issue Trace` addendum (Doc IDs + Issue Refs rows) from drafts; the gapReport knobs name the `--gap-report` digest and its drive-root folder; webRefTimeoutMs bounds the fetch of a `--reference <https-url>` web-documentation pin (the page is reduced to plain text and fed into the REFERENCE FUNCTIONALITY lane; a fetch failure or unreadable page refuses the run before any model spend). caseIndex (v1.9) turns the Test Cases lane on for generation — with sharePoint.lists.testCases configured, plans whose indexed cases cite the story's issue ids fill open lane slots ahead of the G6 fallback, an exemplar that overflows exemplarCap is trimmed whole cases at a time (most relevant to the story kept), and every draft ends with the deterministic `## Existing Test Cases` addendum; false (or no list GUID) = the pre-v1.9 lanes and draft. figures (v1.11, or --figures per run) adds ONE more model call over the verified draft: prompts/testplan_figures.md selects the cases worth a schematic and emits grounded figure specs, rendered to SVG beside the draft and linked from a `## Generated Figures` addendum; figuresMaxTokens bounds that reply (24000; the pass reads THIS knob, never maxTokens — six specs plus the per-case skipped list run ~9k tokens on a 20-case draft, and --stream's thinking summary shares the cap); figuresCap (v1.18, prompt v0.2's FiguresCap input) is the X6 budget — at most this many figures per plan (6; raise it for a long plan and raise figuresMaxTokens with it, ~1.5k tokens per spec) — asked of the model and enforced after the grounding check. relatedCases (v1.14, prompt v1.11's sixth input RelatedCases) ranks the catalog's test PLANS against the story (a tf\u00b7idf query from its tools, keywords and title; plans outside the exemplar/reference lanes) and sends, per top plan, its best-matching cases with text plus its other case titles, as the RELATED CASES block: relatedCasesPlans caps the plans, relatedCasesPerPlan the cases with text per plan, relatedCaseTitles the title index per plan, relatedCaseChars / relatedCasesCap the per-case and per-lane character budgets; false (or no Test Cases list) = '(none)'. stream (v1.12, or --stream per run) echoes the model's thinking summary and reply to stderr as they arrive (manual runs). deck (v1.16, or --deck per run) adds ONE more model call over the FINISHED draft: prompts/testplan_deck.md makes the review deck's layout decisions (which design-system pattern each slide takes, what goes in which region, the presenter notes) as a closed-vocabulary deck spec; pipeline/lib/deckspec.mjs grounds every slide against the draft and lays it out on pipeline/lib/designsystem.mjs (Fluent 2 tokens, 12-column grid) and pipeline/render/deck2pptx.mjs renders native editable PowerPoint objects (figures as shape groups) to <draft stem>--deck.pptx beside the draft, with the spec as <draft stem>--deck.json (edit + re-render with deck2pptx --spec); deckMaxTokens bounds that reply (24000); deckDesign picks the design system the deck is laid out on \u2014 'fluent' (Microsoft Fluent 2, MIT; Segoe UI), 'carbon' (IBM Carbon, Apache 2.0; IBM Plex Sans \u2014 install or embed the face) or 'uswds' (U.S. Web Design System, public domain; Source Sans Pro) \u2014 and deckTheme its 'light' or 'dark' theme; the spec is design-independent and every embedded figure is re-coloured into the design + theme (deck2pptx --design / --theme do the same standalone).",
+    "storyCap": 45000,
+    "exemplarCap": 20000,
+    "referenceCap": 12000,
+    "neighborCap": 5,
+    "digestSummaryCap": 400,
+    "exemplarSlots": 2,
+    "referenceSlots": 3,
+    "promptVersion": "v1.13",
+    "draftFolder": "/Test Plan Drafts",
+    "verify": "annotate",
+    "grounding": true,
+    "notify": false,
+    "maxTokens": 32000,
+    "webRefTimeoutMs": 30000,
+    "figures": false,
+    "figuresMaxTokens": 24000,
+    "figuresCap": 6,
+    "deck": false,
+    "deckMaxTokens": 24000,
+    "deckDesign": "fluent",
+    "deckTheme": "light",
+    "stream": false,
+    "issueTrace": true,
+    "caseIndex": true,
+    "relatedCases": true,
+    "relatedCasesPlans": 5,
+    "relatedCasesPerPlan": 3,
+    "relatedCaseChars": 700,
+    "relatedCaseTitles": 20,
+    "relatedCasesCap": 18000,
+    "autoDraft": false,
+    "autoMaxPerRun": 3,
+    "autoLookbackDays": 7,
+    "gapReportName": "TestPlan_Gap_Report.md",
+    "gapReportDrivePath": "",
+    "dryRun": true
+  },
+
+  "sweep": {
+    "$comment": "Mirrors flow v2.8 Config. Values below are the v2.8 defaults; keep them in sync with STATUS when the flow config changes. Also available: graphDownloadFallback (true = a source file missing from the OneDrive-synced folder is fetched through Graph instead of erroring for the night, v1.33); exportLists (false disables the per-run gzip list backup in workDir, v1.32); indexPages (false disables the _Index.md browse pages, v1.35); tesseractPath + pdftoppmPath + ocrMaxPages (set tesseractPath to enable the OCR lane for image-only PDFs, v1.36); remoteFiles + remoteDriveName (run with NO OneDrive: sidecars mirror down and write through Graph, sources download on demand — docs/hosted-runner.md, v1.39); promptVersion (the Doc Index row stamp that drives reindexing — defaults to v<version> of prompts/docindex_classify.md; set it ONLY to pin an older stamp during a staged backfill, and remove it to let the backfill run). Rarely changed (defaults in sweep.mjs FLOW_DEFAULTS): siteUrl + textsFolder (the sidecar library's site and folder, for the TextFileUrl links); smokeFile (index ONLY this file name — the one-doc live smoke; the CLI's --only does the same per run); kindFolders (DocKind → sidecar subfolder map); pdftotextPath (the Poppler binary, default `pdftotext` on PATH); textCap (100000 chars of extracted text sent to the classifier) + previewCap (5000 chars kept as TextPreview); oversizeBytes (a source larger than this is stamped Skipped); maxArchivesPerRun (20 — ghost archives per run; the ghost floor halts the run when ghosts exceed it AND are at least half of the candidates); relatedBodySimMin (0.15 — the BM25 body-similarity floor for related candidates), relatedWeights (the RelatedRank weight JSON: edge kinds, keyword kinds, metadata, title, recency, softCap, tops), myKwsTop / sharersTop / linksTop (the relatedness read caps), relatedToday (an ISO date that pins the recency clock — gates and reruns only); docLinksFile + docPagesFile (the Esri doc-link rules and the crawled page inventory, default pipeline/data/esri_doc_links.json and workDir/esri_doc_pages.json) + probeDocLinks (false = never HEAD-probe links); slugAbbreviations (extra sidecar-stem abbreviations merged over pipeline/data/slug_abbreviations.json), storyProfile (false disables the User Story body profile).",
+    "maxDocsPerRun": 150,
+    "normalizeCases": {
+      "$comment": "sweep.mjs --normalize-cases (Sidecar_Format_Plan phase 4): the OPT-IN LLM lane for test plans the deterministic detectors leave caseless although _Case Audit.md sees a case shape. enabled is the owner switch (a --live run refuses without it; dry runs always list the candidates); maxPerRun caps model calls per run (prompts/case_normalize.md); maxTokens bounds the reply (the reply is the whole plan body — keep it generous); maxInputChars skips and counts plans whose body is larger than this, so an oversized pdf body never becomes one huge call. Every reply is verified (contract lint + grounding) before a body is written; --reformat keeps LLM-normalized bodies.",
+      "enabled": false,
+      "maxPerRun": 10,
+      "maxTokens": 32000,
+      "maxInputChars": 150000
+    },
+    "defaultRepo": "A/b",
+    "relatedTopN": 5,
+    "relatedShortlist": 12,
+    "maxCellsWorkbookDump": 60000,
+    "caseIndex": {
+      "$comment": "Test-case indexing (Case_Index_Plan.md; sweep v1.42). Enabled by sharePoint.lists.testCases carrying the Test Cases list GUID — the list was created on lrsworkspace 2026-09-05 per schemas/SPList_TestCases.csv and its GUID is in the lists block above; a machine config missing the key indexes documents normally with one loud note. Backfill once with `sweep.mjs --recase --live` (docs/setup.md §12). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text.",
+      "kinds": ["Test Plan"],
+      "caseTextCap": 4000
+    },
+    "drawings": true,
+    "$comment_drawings": "sweep v1.61: every pptx slide that carries a drawing (3+ drawn shapes / connectors / freeforms) yields a faithful SVG of its shapes and text in media/<stem>/ (extract/ShapeExtract.ts) plus a [connections: A → B] line under the slide; indexed as Kind drawing in the Figures list. false turns the lane off.",
+    "figureIndex": {
+      "$comment": "Figure indexing (Figure_Index_Plan.md; sweep v1.59). Enabled by sharePoint.lists.figures carrying the Figures list GUID (schemas/SPList_Figures.csv); a config missing the key indexes documents normally with one loud note. Every indexed document's pasted pictures (media/<stem>/, now named fig-NN-slide-KK-<slug>.<ext>) and collapsed diagram labels become Figures rows — one replace-set per document, rebuilt by the nightly sweep, --reformat and the `sweep.mjs --refigure --live` backfill (docs/setup.md §14). kinds = which DocKinds get figure rows ([] = all); contextCap bounds the per-figure skim text.",
+      "kinds": [],
+      "contextCap": 2000
+    },
+    "dryRun": true
+  }
+}

@@ -8,7 +8,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# harness-generated artifacts have their own review/harness/.gitignore
+# harness-generated artifacts have their own tests/.gitignore
 # check_svg2pptx.py fixtures when the gate is run from the repo root
 fix_*.pptx
 fix_slide*.svg
@@ -17,8 +17,18 @@ fixlib2/
 
 # local sweep machine config (secrets referenced via env vars, but the
 # tenant/client ids and machine paths don't belong in the repo either)
-local/config.json
+config.json
+config.hosted.json
 
 # local sweep workDir when placed inside the repo (run logs + cached
 # sign-in tokens - must never be committed)
 work/
+
+# a local export of the sidecar library for analysis (never committed;
+# the 2026-09-05 snapshot is in git history under LRSDocIndex/)
+corpus/
+
+# Python packaging artifacts
+*.egg-info/
+build/
+dist/

@@ -1,0 +1,164 @@
+/**
+ * llm.mjs v2.0 — the pipeline's model client.
+ *
+ * Every Anthropic call goes through the Python layer (`lrsdoc/`,
+ * `python -m lrsdoc <task>`): this module only spawns it, feeds it
+ * the inputs as JSON, relays streamed deltas and returns the result.
+ * The prompt files, the request shape, retries, timeouts and
+ * credentials live there (see `lrsdoc/llm.py`). Nothing in Node
+ * renders a prompt any more.
+ *
+ * Config (`config.llm`):
+ *   apiKey     the API key, ideally {"$env": "ANTHROPIC_API_KEY"}; when
+ *              absent the child process uses whatever the SDK finds
+ *              (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the
+ *              environment, or an `ant auth login` profile)
+ *   baseUrl    override the API endpoint (the gates' mock server)
+ *   model      override the prompt file's default model
+ *   effort     override the prompt file's effort
+ *   maxRetries SDK retries (default 4)
+ *   timeoutMs  SDK request timeout (default 600 s)
+ *   python     the interpreter to run (default `python3`, `python` on
+ *              Windows; LRSDOC_PYTHON in the environment overrides)
+ */
+
+import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, "..");
+
+function resolveSecret(v, what) {
+  if (v && typeof v === "object" && v.$env) {
+    const s = process.env[String(v.$env)];
+    if (!s) throw new Error(`${what}: environment variable ${v.$env} is not set`);
+    return s;
+  }
+  if (typeof v === "string" && v !== "") return v;
+  throw new Error(`${what}: missing (set it in config, ideally as {"$env": "..."})`);
+}
+
+// ---- the bridge to lrsdoc -----------------------------------------------
+
+function bridgeEnv(cfg) {
+  const env = { ...process.env };
+  env.PYTHONPATH = env.PYTHONPATH ? `${REPO_ROOT}${path.delimiter}${env.PYTHONPATH}` : REPO_ROOT;
+  env.PYTHONIOENCODING = "utf-8";
+  if (cfg.baseUrl) env.ANTHROPIC_BASE_URL = cfg.baseUrl;
+  if (cfg.apiKey !== undefined) {
+    // a configured key wins over anything exported in the environment
+    env.ANTHROPIC_API_KEY = resolveSecret(cfg.apiKey, "llm.apiKey");
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  }
+  return env;
+}
+
+function bridgeOptions(cfg, opts = {}) {
+  const o = { max_retries: cfg.maxRetries === undefined ? 4 : Number(cfg.maxRetries) };
+  if (cfg.model) o.model = cfg.model;
+  if (cfg.effort) o.effort = cfg.effort;
+  if (cfg.timeoutMs !== undefined) o.timeout_s = Number(cfg.timeoutMs) / 1000;
+  if (opts.maxTokens !== undefined) o.max_tokens = Number(opts.maxTokens);
+  else if (cfg.maxTokens !== undefined) o.max_tokens = Number(cfg.maxTokens);
+  if (opts.showThinking) o.show_thinking = true;
+  return o;
+}
+
+/**
+ * Run one lrsdoc task. `payload` is the CLI's input object
+ * ({prompt?, inputs, options}); `onDelta(kind, text)` receives the
+ * streamed chunks ("thinking" | "text") when given. Resolves with the
+ * result object (text, data, stop_reason, model, prompt,
+ * prompt_version, usage); rejects with an Error carrying `type`
+ * (Truncated | Refused | ContractError | ...), `partial` (the text
+ * that arrived before a truncation) and `exitCode`.
+ */
+export function runTask(cfg, task, payload, { onDelta } = {}) {
+  const python = cfg.python || process.env.LRSDOC_PYTHON || (process.platform === "win32" ? "python" : "python3");
+  const args = ["-m", "lrsdoc", task, "--input", "-"];
+  if (onDelta) args.push("--stream");
+  return new Promise((resolve, reject) => {
+    let child;
+    try {
+      child = spawn(python, args, { cwd: REPO_ROOT, env: bridgeEnv(cfg), stdio: ["pipe", "pipe", "inherit"] });
+    } catch (e) {
+      return reject(e);
+    }
+    let buf = "";
+    let result = null;
+    let errorObj = null;
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      buf += chunk;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i);
+        buf = buf.slice(i + 1);
+        if (!line.trim()) continue;
+        let msg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.delta) { if (onDelta) onDelta(msg.delta.kind, msg.delta.text); }
+        else if (msg.result) result = msg.result;
+        else if (msg.error) errorObj = msg.error;
+      }
+    });
+    child.on("error", (e) => {
+      reject(new Error(
+        `lrsdoc: could not start "${python}" (${e.message}) — install Python 3.10+ with the anthropic ` +
+        "package (pip install anthropic), or point llm.python / LRSDOC_PYTHON at the interpreter"
+      ));
+    });
+    child.on("close", (code) => {
+      if (result && code === 0) return resolve(result);
+      const e = new Error(
+        !errorObj ? `lrsdoc ${task} exited with code ${code} and no result`
+        : errorObj.type === "Truncated" ? `LLM output truncated (stop_reason: max_tokens) — ${errorObj.message}`
+        : errorObj.type === "Refused" ? `LLM refused the request (stop_reason: refusal) — ${errorObj.message}`
+        : `LLM ${errorObj.type}: ${errorObj.message}`);
+      if (errorObj) { e.type = errorObj.type; e.partial = errorObj.partial; }
+      e.exitCode = code;
+      reject(e);
+    });
+    child.stdin.on("error", () => { /* the close handler reports */ });
+    child.stdin.end(JSON.stringify(payload));
+  });
+}
+
+/**
+ * Text generation from a prompt file: `generate(cfg, "testplan_draft",
+ * inputs, {maxTokens, onDelta, showThinking})` → the reply text. The
+ * caller keeps its own sentinel slice / verifier. Throws on
+ * truncation (message names stop_reason: max_tokens) and refusal.
+ */
+export async function generate(cfg, promptName, inputs, opts = {}) {
+  const res = await runTask(cfg, "generate",
+    { prompt: promptName, inputs, options: bridgeOptions(cfg, opts) },
+    { onDelta: opts.onDelta });
+  return res.text;
+}
+
+/**
+ * The Doc Index classify step for one document → the nine-field
+ * object (schema-pinned). Throws on transport failure, refusal,
+ * truncation or unparseable output — the Error lane, as in the flow.
+ */
+export async function classifyDoc(cfg, { fileName, docText, existingKeywords }) {
+  const res = await runTask(cfg, "classify", {
+    inputs: { FileName: fileName, ExistingKeywords: existingKeywords, DocText: docText },
+    options: bridgeOptions(cfg),
+  });
+  return res.data;
+}
+
+/**
+ * One keyword-curation chunk → `{proposals: [{alias, canonical, why}]}`
+ * (the schema-pinned reply; curate.mjs applies its own guard).
+ */
+export async function curateChunk(cfg, { vocabulary, doNotPropose }) {
+  const res = await runTask(cfg, "curate", {
+    inputs: { Vocabulary: vocabulary, DoNotPropose: doNotPropose },
+    options: bridgeOptions(cfg),
+  });
+  return res.data;
+}
