@@ -970,6 +970,17 @@ check(has_rel(nreg, 42) and has_rel(nreg, 99) and nreg.find('rel:42') < nreg.fin
 [out] = patch([{'doc': 42, 'name': 'x.md', 'content': '# Just a title\n\n## Summary\n\nno table\n'}])
 check(not out['changed'] and out['note'] == 'not-frontmatter',
       'v1.7: an H1 without the metadata table is still not a frame')
+# v1.8: a neighbour bullet whose link carries a malformed %-escape used
+# to throw URIError out of main and fail the whole write
+tbl_bad = sidecar(frame='table',
+                  region='- [Other](<https://x/50%_done__doc99.md>) — 1 shared keyword: locks <!-- rel:99 s=1 -->')
+try:
+    [out] = patch([{'doc': 17, 'name': 'n.md', 'content': tbl_bad}])
+except Exception as e:  # noqa: BLE001 — the pre-v1.8 behaviour is a crash
+    out = None
+breg = out['content'][out['content'].find(BEGIN):out['content'].find(END)] if out else ''
+check(out is not None and out['changed'] and has_rel(breg, 42) and has_rel(breg, 99),
+      'v1.8: a malformed %-escape in an existing bullet link does not abort the merge')
 
 # -- v1.5: details-frame sidecar (flow v2.7 / PromptVersion v1.9) ---------
 det = sidecar(frame='details')

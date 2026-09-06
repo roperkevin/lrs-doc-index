@@ -437,7 +437,7 @@ function readBullets(inner: string): { [doc: number]: string } {
   return out;
 }
 
-/** v1.7: entries from the marker region itself — `<!-- rel:N s=S -->`
+/** v1.7 (v1.8: decode guard): entries from the marker region itself — `<!-- rel:N s=S -->`
  *  plus the bullet's link target for the file — the table frame's only
  *  merge state. */
 function readMarkerEntries(inner: string): RelEntry[] {
@@ -452,7 +452,11 @@ function readMarkerEntries(inner: string): RelEntry[] {
     let file = "";
     if (u) {
       const parts = u[1].split("/");
-      file = decodeURIComponent(parts[parts.length - 1] || "");
+      const raw = parts[parts.length - 1] || "";
+      // v1.8: a malformed %-escape in an existing bullet's link must not
+      // abort the whole patch (one neighbour's odd file name failed every
+      // related-write for the document) — keep the raw name instead
+      try { file = decodeURIComponent(raw); } catch (e) { file = raw; }
     } else {
       file = line.replace(/<!--.*$/, "").replace(/^- /, "").trim();
     }
