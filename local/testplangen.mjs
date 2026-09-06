@@ -34,7 +34,12 @@
  * Fail soft after the draft is verified (one stderr line, the draft
  * still lands, `deck=0/0`); the aibuilder lane refuses BEFORE the
  * generation spend without llm.deckModelId. Knobs: testplangen.deck
- * (default false; `--deck` forces on), deckMaxTokens (24000). Manual
+ * (default false; `--deck` forces on), deckMaxTokens (24000). v1.18
+ * (testplangen/CHANGES.md v2.38): `figuresCap` — the figures pass's
+ * X6 budget as a config knob (default 6), substituted into the prompt
+ * as its third input FiguresCap and enforced after the grounding
+ * check; a non-positive or non-integer value refuses BEFORE the
+ * generation spend. Manual
  * runs only, like --figures. v1.17 (testplangen/CHANGES.md v2.37):
  * `deckDesign` picks the design system the deck is laid out on —
  * "fluent" (default), "carbon", "uswds" (lib/designsystem.mjs v1.1),
@@ -106,7 +111,8 @@
  * v1.11 (generated figures — `--figures`, testplangen/CHANGES.md
  * v2.32): an OPTIONAL second model pass over the VERIFIED draft
  * (`prompts/TestPlanFigures_Prompt.md` v0.1): the model selects the
- * cases a schematic would help (five rules, six exclusions, cap 6)
+ * cases a schematic would help (five rules, six exclusions, the X6
+ * cap = testplangen.figuresCap since v1.18 / prompt v0.2, default 6)
  * and emits a closed-vocabulary FIGURE SPEC per case — it never
  * draws. lib/figurespec.mjs then grounds every spec against the
  * case's own section + the Setup tables (ids as whole words, every
@@ -471,12 +477,12 @@ import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.17";
+const JOB_VERSION = "v1.18";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
-const FIG_PROMPT_VERSION = "v0.1"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
-const FIG_INPUT_KEYS = ["PlanTitle", "Draft"];
+const FIG_PROMPT_VERSION = "v0.2"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
+const FIG_INPUT_KEYS = ["PlanTitle", "Draft", "FiguresCap"];
 const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 
 const DRAFT_BEGIN = "[[[DRAFT BEGIN]]]";
@@ -680,6 +686,7 @@ function loadConfig(argv) {
     // the mandatory per-case skipped list is ~9k tokens of JSON, and
     // --stream's thinking summary shares the cap) — see generateFigures
     figuresMaxTokens: 24000,
+    figuresCap: 6, // v1.18: the X6 budget — prompt v0.2's FiguresCap input
     deck: false, // v1.16: the model-laid-out review deck pass (--deck forces on for a run)
     deckMaxTokens: 24000,
     deckDesign: DEFAULT_DESIGN, // v1.17: fluent | carbon | uswds
@@ -935,6 +942,15 @@ async function run(cfg) {
       "Draft + Figures) — none exists yet; set testplangen.provider to " +
       "\"anthropic\" for the deck pass, which executes the repo prompt verbatim"
     );
+  }
+  if (tp.figures && !cfg._preview) {
+    const cap = Number(tp.figuresCap);
+    if (!Number.isInteger(cap) || cap < 1 || cap > 60) {
+      throw new Error(
+        `testplangen.figuresCap must be a whole number from 1 to 60 (got ${JSON.stringify(tp.figuresCap)}) — ` +
+        "the figures pass's X6 budget, prompt v0.2's FiguresCap input"
+      );
+    }
   }
   if (tp.deck && !cfg._preview) {
     try { designOf(tp.deckDesign, tp.deckTheme); } catch (e) { throw new Error(`testplangen.deckDesign / deckTheme: ${e.message}`); }
@@ -2398,9 +2414,11 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
   const { cfg, graph, siteId, tp, sw, dry, plan } = ctx;
   const out = { proposed: 0, rendered: [], dropped: [], skipped: [], error: "" };
   const corpus = draftCorpus(draftBody);
+  const cap = Number(tp.figuresCap);
   const inputs = {
     PlanTitle: corpus.title || `Test Plan — ${stripQuotes(story.Title)}`,
     Draft: draftBody,
+    FiguresCap: String(cap),
   };
   let raw;
   try {
@@ -2446,6 +2464,13 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
       const findings = verifyFigureSpec(spec, corpus);
       if (findings.length) {
         out.dropped.push({ case: String(spec?.case ?? "(no case)"), findings });
+        continue;
+      }
+      // v1.18: the X6 budget, enforced here as well as asked of the
+      // model — a reply past the cap keeps its first `cap` grounded
+      // specs in case order (the model ranked; this only guards)
+      if (out.rendered.length >= cap) {
+        out.dropped.push({ case: String(spec.case), findings: [`X6 — over the figures cap (testplangen.figuresCap ${cap})`] });
         continue;
       }
       const svg = renderFigureSvg(spec);

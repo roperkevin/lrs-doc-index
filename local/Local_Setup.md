@@ -826,7 +826,10 @@ the draft is verified. `prompts/TestPlanFigures_Prompt.md` reads the
 draft, selects the cases a schematic would help (measure geometry,
 state change, topology, temporality, interaction; UI/validation-only
 cases, variants, story-figure duplicates and anything ungrounded are
-excluded; at most six) and emits a figure SPEC per case — the model
+excluded; at most `testplangen.figuresCap` — 6 by default, the prompt's
+FiguresCap input since v1.18, raise it for a long plan together with
+`figuresMaxTokens` at roughly 1.5k tokens per spec; the pass also
+enforces it after the grounding check) and emits a figure SPEC per case — the model
 never draws. `local/lib/figurespec.mjs` checks every spec against
 the case's own section and the Setup tables (every id a whole word
 there, every measure a value there and inside its route's range, a

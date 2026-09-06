@@ -146,7 +146,10 @@ verifier the cloud flow could not have
                      their findings; genFigures=; a sentinel-less
                      reply skips the pass and the draft still lands;
                      --auto refuses; aibuilder without a model id
-                     refuses BEFORE the generation spend
+                     refuses BEFORE the generation spend; v1.18
+                     figuresCap: substituted as the FiguresCap input,
+                     a cap of 1 keeps one grounded spec and drops the
+                     next with X6, 0 refuses before spend
   leg 19 stream      console streaming (v1.12, llm.mjs v1.7): --stream
                      on the anthropic lane asks for summarized
                      thinking and echoes the thinking chunks, then the
@@ -1995,8 +1998,9 @@ def main():
     check("figures dry run: one generation call + one figures call",
           r.returncode == 0 and state.gen_calls == gen_before + 1
           and state.fig_calls == fig_before + 1, r.stdout + r.stderr)
-    check("figures inputs: PlanTitle from the draft H1, Draft = the verified body",
+    check("figures inputs: PlanTitle from the draft H1, Draft = the verified body, FiguresCap = the default 6",
           state.fig_last_inputs.get("PlanTitle") == "Test Plan — Route Merge"
+          and state.fig_last_inputs.get("FiguresCap") == "6"
           and "### TC-P1 — Merge preserves measures" in state.fig_last_inputs.get("Draft", "")
           and "[[[DRAFT" not in state.fig_last_inputs.get("Draft", "")
           and "machine-generated" not in state.fig_last_inputs.get("Draft", ""),
@@ -2095,7 +2099,8 @@ def main():
           r.returncode == 0 and state.ant_calls == ant_before + 2 and state.fig_calls == fig_before + 1
           and "SELECTION RULES" in prompt and "<<<DRAFT BEGIN>>>" in prompt
           and "### TC-P1 — Merge preserves measures" in prompt
-          and not re.search(r"\{(PlanTitle|Draft)\}", prompt)
+          and "X6 BUDGET: at most 6 figures per plan" in prompt
+          and not re.search(r"\{(PlanTitle|Draft|FiguresCap)\}", prompt)
           and state.ant_last_body.get("max_tokens") == 24000
           and summ.get("genFigures") == "2/4", r.stdout + r.stderr[-300:] + prompt[-200:])
     # v1.15: a cut figures reply names THIS pass's knob, and the draft still lands
@@ -2109,6 +2114,26 @@ def main():
           and "testplangen.maxTokens bounds only the draft call" in r.stderr,
           r.stdout + r.stderr[-400:])
     state.fig_stop_reason = "end_turn"
+    # v1.18: the X6 budget as a knob — substituted into the prompt, enforced after grounding
+    cfg_fig_cap = write_cfg("config-fig-cap.json",
+                            llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                            testplangen={"neighborCap": 8, "figures": True, "figuresCap": 1})
+    r = run_job(cfg_fig_cap, ["--story", "12", "--dry-run"])
+    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    summ = summary_of(r.stdout)
+    log = json.load(open(json.loads(r.stdout.splitlines()[0])["logFile"], encoding="utf-8"))
+    check("figuresCap 1: the prompt asks for at most 1, the pass keeps the first grounded spec and drops the second with X6",
+          r.returncode == 0 and "X6 BUDGET: at most 1 figures per plan" in prompt and summ.get("genFigures") == "1/4"
+          and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P1"]
+          and any(d["case"] == "TC-N1" and "over the figures cap (testplangen.figuresCap 1)" in d["findings"][0] for d in log["figures"]["dropped"]),
+          (summ.get("genFigures"), json.dumps(log.get("figures"))[:300]))
+    cfg_fig_bad = write_cfg("config-fig-bad.json",
+                            llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                            testplangen={"neighborCap": 8, "figures": True, "figuresCap": 0})
+    ant_before = state.ant_calls
+    r = run_job(cfg_fig_bad, ["--story", "12", "--dry-run"])
+    check("figuresCap 0 refused before the generation call",
+          r.returncode != 0 and "testplangen.figuresCap must be a whole number from 1 to 60" in r.stderr and state.ant_calls == ant_before, r.stderr[:300])
     # refusals: --auto, and aibuilder without a figures model BEFORE any spend
     r = run_job(cfg_fig, ["--auto", "--figures"])
     check("--figures refused with --auto",
