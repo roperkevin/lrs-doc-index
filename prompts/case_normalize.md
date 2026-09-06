@@ -1,36 +1,19 @@
-# Case Normalization Prompt — v1.0
+---
+name: case_normalize
+version: 1.0.0
+model: claude-opus-5
+effort: high
+max_tokens: 32000
+output: markdown
+inputs: ["PlanTitle", "Body"]
+---
 
-The prompt behind `sweep.mjs --normalize-cases` (Sidecar_Format_Plan
-phase 4, `local/lib/casenormalize.mjs`): the OPT-IN LLM lane for test
-plans the six deterministic detectors (`local/lib/casegrammar.mjs`)
-leave caseless although the audit (`_Case Audit.md`) sees a case
-shape in them. It is never called by the nightly index, `--reformat`
-or `--recase`; it runs only under `--normalize-cases --live` with
-`sweep.normalizeCases.enabled: true`, capped per run, and every reply
-is verified before it is written (contract lint + grounding: every
-case title, table row and figure link must come from the input — a
-reply that invents is refused and the plan stays as it was).
+## System
 
-Provider "anthropic" executes this file verbatim (`generateText`);
-provider "aibuilder" needs the same text pasted as a tenant custom
-prompt with the two inputs below and its GUID in `llm.normalizeModelId`.
-
-Inputs, exact names: **PlanTitle**, **Body**.
-
-Versioning: `CaseNormalizePromptVersion: v1.0` (`local/CHANGES.md`);
-bumping it never touches `Config.PromptVersion`.
-
----------------- PROMPT TEXT BEGINS ----------------
 You restructure a software test plan into a fixed markdown layout. You never invent, summarize, or drop test content: every test case you emit must be a case that is literally stated in the input, and every table row and image link you emit must be copied verbatim from the input.
 
 INPUT
-The document title: {PlanTitle}
-
-The document body, as extracted from the source deck or document (sections are "## Slide N — title", "## <heading>" or "## Sheet: name"; tables are markdown tables; some table cells hold several test cases run together in one line):
-
-<<<BODY
-{Body}
-BODY>>>
+The user message carries the document title and the document body, as extracted from the source deck or document (sections are "## Slide N — title", "## <heading>" or "## Sheet: name"; tables are markdown tables; some table cells hold several test cases run together in one line), between the <<<BODY and BODY>>> markers.
 
 OUTPUT — the whole body again, in exactly this layout and nothing else (no preamble, no code fence, no commentary):
 
@@ -58,4 +41,11 @@ Rules for the cases:
 Everything else that is not a test case and comes after the first test case, sections kept as above. Omit this heading when nothing remains.
 
 Return the markdown only.
------------------ PROMPT TEXT ENDS -----------------
+
+## User
+
+The document title: {PlanTitle}
+
+<<<BODY
+{Body}
+BODY>>>

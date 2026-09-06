@@ -1,6 +1,6 @@
 /**
  * figurespec.mjs v1.3 — generated figures for TestPlanGen drafts
- * (`prompts/TestPlanFigures_Prompt.md` v0.4, testplangen.mjs `--figures`).
+ * (`prompts/testplan_figures.md` v0.4, testplangen.mjs `--figures`).
  *
  * v1.3 (figure variety — testplangen/CHANGES.md v2.43): five more
  * figure KINDS beside route-measure / topology / sequence, each with

@@ -8,7 +8,7 @@ back.
      12-column grid summing to the content width, bands inside the
      canvas, every tone resolving to a fg/bg pair
   2. prompt <-> catalog agreement: every line describeCatalog() emits
-     appears verbatim in prompts/TestPlanDeck_Prompt.md, as do the
+     appears verbatim in prompts/testplan_deck.md, as do the
      COUNTS names and the character caps (the "Python authority first"
      precedent, inverted: the module is the authority, the prompt
      mirrors it)
@@ -54,7 +54,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, ".."))
 DS = os.path.join(REPO, "pipeline", "lib", "designsystem.mjs")
 SPEC = os.path.join(REPO, "pipeline", "lib", "deckspec.mjs")
-PROMPT = os.path.join(REPO, "prompts", "TestPlanDeck_Prompt.md")
+PROMPT = os.path.join(REPO, "prompts", "testplan_deck.md")
 
 PASS, FAIL = [], []
 
@@ -215,7 +215,7 @@ console.log(JSON.stringify(o));
     # ---- 2. prompt <-> catalog ---------------------------------------
     print("== prompt agreement")
     prompt = open(PROMPT, encoding="utf-8").read()
-    body = prompt.split("---------------- PROMPT TEXT BEGINS ----------------", 1)[1]
+    body = prompt.split("\n---\n", 1)[1]  # everything after the front matter
     missing = [ln for ln in d["catalog"].splitlines() if ln not in body]
     check("every catalog line appears verbatim in the prompt", not missing, missing[:2])
     caps = d["limits"]

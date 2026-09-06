@@ -1,7 +1,7 @@
 /**
  * designsystem.mjs v1.3 — the deck's design systems: open-source design
  * tokens on a 16:9 slide, plus the closed LAYOUT PATTERN catalog the
- * TestPlanDeck prompt chooses from (prompts/TestPlanDeck_Prompt.md,
+ * TestPlanDeck prompt chooses from (prompts/testplan_deck.md,
  * local/lib/deckspec.mjs, local/deck2pptx.mjs). Pure module, no I/O.
  *
  * v1.1: THREE designs, selectable (`--design`, `testplangen.deckDesign`):

@@ -15,7 +15,7 @@
  * v1.16 (the model-laid-out review deck — `--deck`, testplangen/
  * CHANGES.md v2.36): an OPTIONAL model pass over the FINISHED draft
  * (banner, verified body and every deterministic addendum — figures
- * included) with `prompts/TestPlanDeck_Prompt.md` v0.1: the model
+ * included) with `prompts/testplan_deck.md` v0.1: the model
  * makes the LAYOUT DECISIONS for the review deck — which of the
  * thirteen design-system patterns each slide takes, what goes in
  * which region, how cases group, what earns a divider / statement /
@@ -139,7 +139,7 @@
  *
  * v1.11 (generated figures — `--figures`, testplangen/CHANGES.md
  * v2.32): an OPTIONAL second model pass over the VERIFIED draft
- * (`prompts/TestPlanFigures_Prompt.md` v0.1): the model selects the
+ * (`prompts/testplan_figures.md` v0.1): the model selects the
  * cases a schematic would help (five rules, six exclusions, the X6
  * cap = testplangen.figuresCap since v1.18 / prompt v0.2, default 6)
  * and emits a closed-vocabulary FIGURE SPEC per case — it never
@@ -439,7 +439,7 @@
  *          tenant's `LRS Test Plan Generation` prompt via Dataverse
  *          Predict (llm.testPlanModelId — find it with --models; the
  *          tenant paste state applies, Coverage_Runbook.md step 2).
- *          Provider "anthropic": prompts/TestPlanGen_Prompt.md
+ *          Provider "anthropic": prompts/testplan_draft.md
  *          executed VERBATIM between its delimiters — zero tenant
  *          work, the v1.9 rules apply as authored; single-pass
  *          placeholder substitution so document content can never
@@ -509,8 +509,8 @@ import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs"
 
 const JOB_VERSION = "v1.22";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
-const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
+const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "testplan_draft.md");
+const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "testplan_figures.md");
 const FIG_PROMPT_VERSION = "v0.4"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
 const FIG_INPUT_KEYS = ["PlanTitle", "Draft", "FiguresCap"];
 const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
@@ -544,7 +544,7 @@ const USAGE =
   "--figures adds a second model pass over the verified draft that selects the " +
   "cases worth a figure and renders grounded SVG figures beside the draft — route " +
   "schematics, topology, sequence, timeline, state, matrix, UI wireframe, workflow " +
-  "(prompts/TestPlanFigures_Prompt.md; manual runs only). " +
+  "(prompts/testplan_figures.md; manual runs only). " +
   "--preview resolves the story and builds every lane, writes the five " +
   "prompt inputs to workDir, and stops BEFORE the model call (zero AI " +
   "spend — the first-run check; manual runs only). " +
@@ -961,7 +961,7 @@ async function run(cfg) {
   if (tp.figures && !cfg._preview && providerOf(cfg) === "aibuilder" && !cfg.llm.figuresModelId) {
     throw new Error(
       "--figures on the aibuilder lane needs llm.figuresModelId (a tenant " +
-      "custom prompt pasted from prompts/TestPlanFigures_Prompt.md with inputs " +
+      "custom prompt pasted from prompts/testplan_figures.md with inputs " +
       "PlanTitle + Draft) — none exists yet; set testplangen.provider to " +
       "\"anthropic\" for the figures pass, which executes the repo prompt verbatim"
     );
@@ -969,7 +969,7 @@ async function run(cfg) {
   if (tp.deck && !cfg._preview && providerOf(cfg) === "aibuilder" && !cfg.llm.deckModelId) {
     throw new Error(
       "--deck on the aibuilder lane needs llm.deckModelId (a tenant custom " +
-      "prompt pasted from prompts/TestPlanDeck_Prompt.md with inputs PlanTitle + " +
+      "prompt pasted from prompts/testplan_deck.md with inputs PlanTitle + " +
       "Draft + Figures) — none exists yet; set testplangen.provider to " +
       "\"anthropic\" for the deck pass, which executes the repo prompt verbatim"
     );
@@ -2024,7 +2024,7 @@ async function generateOne(ctx, story) {
       `local/testplangen.mjs ${JOB_VERSION} · ${new Date().toISOString()} · ` +
       `provider ${provider} · ~${inChars} chars of prompt inputs · NO model call was made.\n` +
       "The five prompt inputs below are exactly what a generation would send " +
-      "(prompts/TestPlanGen_Prompt.md's {StoryMeta} {StoryText} {RelatedDigest} " +
+      "(prompts/testplan_draft.md's {StoryMeta} {StoryText} {RelatedDigest} " +
       "{ExemplarText} {ReferenceText}); adjust caps, pins, or the story's " +
       "related: line, then re-run with --dry-run or --live.\n\n" +
       INPUT_KEYS.map(

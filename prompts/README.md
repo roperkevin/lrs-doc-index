@@ -1,17 +1,44 @@
-# prompts/ — the currently deployed AI Builder prompts
+# prompts/ — the model prompts, one versioned file each
 
-One file per prompt, always the version pasted into the live tenant:
+Every model call in the pipeline runs one of these files. A file is
+the whole prompt: a front-matter block (its name, semantic version,
+default model, effort, max tokens, output contract and input names),
+a `## System` section (the instruction block — the stable, cacheable
+prefix) and a `## User` section (the input frame whose `{Placeholder}`
+slots are filled per call). Both the Node loader
+(`pipeline/llm.mjs` `loadPrompt`) and the Python layer (`lrsdoc.prompts`)
+read exactly this format.
 
-| File | Deployed version | Pasted into |
-|---|---|---|
-| DocIndex_Prompt.md | v1.3 (Config.PromptVersion v1.8) | AI Builder custom prompt (DocIndexSweep) |
-| KeywordCuration_Prompt.md | v1.0 | AI Builder custom prompt (KeywordCuration) |
-| TestPlanDeck_Prompt.md | v0.1 — wired as `testplangen.mjs --deck` (v2.36) and `deck2pptx.mjs --generate`, anthropic lane verbatim; **no tenant paste** (an AI Builder prompt with inputs PlanTitle + Draft + Figures would need creating for the aibuilder lane, GUID in `llm.deckModelId`): the optional pass that makes a finished draft's review-deck LAYOUT decisions — which of the thirteen design-system patterns each slide takes, what goes in which region, how cases group, the presenter notes — as a closed-vocabulary deck SPEC whose body content is copied verbatim from the draft or pulled through `from` references; grounded, laid out on `local/lib/designsystem.mjs` (Fluent 2 tokens, MIT, by default; IBM Carbon or USWDS by configuration, each light or dark — the spec is design-independent) and rendered to native editable PowerPoint objects by `local/lib/deckspec.mjs` + `local/deck2pptx.mjs` | — (no AI Builder prompt yet) |
-| TestPlanFigures_Prompt.md | v0.3 — wired as `testplangen.mjs --figures` (v2.32; v0.2 in v2.38; v0.3 in v2.40 — an optional per-route `ticks` interval, rendered as intermediate ticks by figurespec v1.1, which also labels every event's ends and places labels collision-free), anthropic lane verbatim; **no tenant paste** (an AI Builder prompt with inputs PlanTitle + Draft + FiguresCap would need creating for the aibuilder lane, GUID in `llm.figuresModelId`): the optional second pass that selects the test cases in a finished draft worth a schematic (rule-based: measure geometry, state change, topology, temporality, interaction; six exclusions; the cap is the FiguresCap input = `testplangen.figuresCap`, default 6) and emits closed-vocabulary figure SPECS (routes/measures/events/marks, nodes/edges, actors/steps) for a deterministic SlideFigures-palette renderer; grounded + rendered by `local/lib/figurespec.mjs` | — (no AI Builder prompt yet) |
-| TestPlanGen_Prompt.md | v1.13 (**paste pending** — v1.13 adds the METHOD NAMES rule: a method class the story states without naming takes its members' names from the exemplar / reference / related-cases lanes, declared once on a Setup `**Methods:**` line, contract unchanged; v1.12 sends preserved-value behaviors to the Positive lane; a SIX-parameter contract now: create `RelatedCases` (v1.11) and `ReferenceText` (v1.3) on the tenant prompt before pasting; the local anthropic lane runs this file verbatim with nothing to create; — supersedes every pending paste before it; a tenant still on the pre-v1.3 four-parameter contract creates `ReferenceText` first; deploy path: `testplangen/Coverage_Runbook.md`) | AI Builder custom prompt (TestPlanGen) |
+| File | Version | Called by | Output |
+|---|---|---|---|
+| `docindex_classify.md` | 1.3.0 | the nightly sweep, once per changed document | JSON, `schemas/docindex_classify.json` (nine fields) |
+| `keyword_curation.md` | 1.1.0 | `curate.mjs`, once per vocabulary chunk, weekly | JSON, `schemas/keyword_curation.json` |
+| `testplan_draft.md` | 1.13.0 | `testplangen.mjs` — the one draft call | markdown between `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` |
+| `testplan_figures.md` | 0.4.0 | `testplangen.mjs --figures` | JSON between `[[[FIGURES BEGIN]]]` / `[[[FIGURES END]]]`, verified by `pipeline/lib/figurespec.mjs` |
+| `testplan_deck.md` | 0.1.0 | `testplangen.mjs --deck`, `deck2pptx.mjs --generate` | JSON between `[[[DECK BEGIN]]]` / `[[[DECK END]]]`, verified by `pipeline/lib/deckspec.mjs` |
+| `case_normalize.md` | 1.0.0 | `sweep.mjs --normalize-cases` (opt-in) | markdown, verified by `pipeline/lib/casenormalize.mjs` |
 
-Convention (r2): a prompt change is authored as a review patch
-(`review/patches/<name>_vX_Y.md`), gated/reviewed, pasted into AI
-Builder, then copied here — this folder never holds an unpasted
-version. Superseded versions live in `review/patches/` and git
-history. See `STATUS.md` for the full deployed-version table.
+## Changing a prompt
+
+1. Edit the file. Bump `version` in the same commit: patch for a
+   wording fix that cannot change outputs, minor for a rule change,
+   major when the output contract (fields, sentinels, sections) or
+   the input names change and a consumer must follow.
+2. Add a line to `CHANGELOG.md`.
+3. Say what it implies operationally in the commit message:
+   - `docindex_classify` — a change that alters classifications is a
+     corpus backfill: bump `sweep.promptVersion` in the machine config
+     (the row stamp that drives reindexing, ~150 documents a night).
+   - `testplan_draft` — bump `testplangen.promptVersion` (the draft
+     banner stamp) when the draft contract changes; the verifier in
+     `pipeline/lib/draftlint.mjs` and `tests/check_draft_coverage.py`
+     must agree with the new contract.
+   - the others carry their version in the Node constants that stamp
+     outputs (`FIG_PROMPT_VERSION`, `DECK_PROMPT_VERSION`,
+     `NORMALIZE_PROMPT_VERSION`) — keep those in step.
+4. Run the gates (`tests/`). Superseded text lives in git history;
+   there is no copy to keep.
+
+The tenant paste lifecycle that used to surround these files
+(review patches, AI Builder pastes, "promotion") is gone with the
+AI Builder lane; see `docs/history.md`.

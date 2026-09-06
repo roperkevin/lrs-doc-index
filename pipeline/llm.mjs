@@ -47,7 +47,7 @@
  * user in the Power Platform environment — Local_Setup.md §3).
  *
  * Provider "anthropic" (alternative) — a direct Anthropic Messages
- * API call executing prompts/DocIndex_Prompt.md verbatim between its
+ * API call executing prompts/docindex_classify.md verbatim between its
  * BEGIN/END markers, with the nine-field output pinned by a JSON
  * schema. Kept for a future move off Power Platform entirely.
  *
@@ -92,9 +92,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const PROMPT_FILE = path.resolve(HERE, "..", "prompts", "DocIndex_Prompt.md");
-const PROMPT_BEGIN = "---------------- PROMPT TEXT BEGINS ----------------";
-const PROMPT_END = "----------------- PROMPT TEXT ENDS -----------------";
+const PROMPT_FILE = path.resolve(HERE, "..", "prompts", "docindex_classify.md");
 
 // The nine fields of the AI Builder output contract (prompt "OUTPUT" section).
 const OUTPUT_SCHEMA = {
@@ -117,14 +115,44 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
 };
 
-export function loadPromptTemplate(promptFile = PROMPT_FILE) {
-  const raw = fs.readFileSync(promptFile, "utf8");
-  const begin = raw.indexOf(PROMPT_BEGIN);
-  const end = raw.indexOf(PROMPT_END);
-  if (begin < 0 || end < 0 || end <= begin) {
-    throw new Error(`prompt markers not found in ${promptFile}`);
+/**
+ * A prompt file (prompts/<name>.md): a YAML-ish front matter block
+ * (`key: value` lines; lists as JSON arrays) between `---` lines, then
+ * a `## System` section (the instruction block) and a `## User`
+ * section (the input frame with {Placeholder} slots). Returns
+ * {meta, system, user}. The same format the Python layer reads.
+ */
+export function loadPrompt(promptFile = PROMPT_FILE) {
+  const raw = fs.readFileSync(promptFile, "utf8").replace(/\r\n?/g, "\n");
+  if (!raw.startsWith("---\n")) throw new Error(`${promptFile}: no front matter`);
+  const close = raw.indexOf("\n---\n", 4);
+  if (close < 0) throw new Error(`${promptFile}: unterminated front matter`);
+  const meta = {};
+  for (const line of raw.slice(4, close).split("\n")) {
+    const m = /^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    let v = m[2].trim();
+    if (v.startsWith("[")) { try { v = JSON.parse(v); } catch { /* keep the string */ } }
+    else if (/^-?\d+$/.test(v)) v = Number(v);
+    meta[m[1]] = v;
   }
-  return raw.slice(begin + PROMPT_BEGIN.length, end).trim();
+  const body = raw.slice(close + 5);
+  const sys = body.indexOf("## System");
+  const usr = body.indexOf("## User");
+  if (sys < 0 || usr < 0 || usr < sys) throw new Error(`${promptFile}: needs a "## System" then a "## User" section`);
+  return {
+    meta,
+    system: body.slice(sys + "## System".length, usr).trim(),
+    user: body.slice(usr + "## User".length).trim(),
+  };
+}
+
+/** The whole prompt as ONE template string (system, blank line, user)
+ *  — the single-user-message shape the Node lanes send; placeholders
+ *  are substituted by the caller. */
+export function loadPromptTemplate(promptFile = PROMPT_FILE) {
+  const p = loadPrompt(promptFile);
+  return `${p.system}\n\n${p.user}`;
 }
 
 export function buildPrompt(template, { fileName, docText, existingKeywords }) {

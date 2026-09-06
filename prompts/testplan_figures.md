@@ -1,119 +1,20 @@
-# Test Plan Figures Prompt — v0.4 (authored; wired as `testplangen.mjs --figures`, anthropic lane verbatim; no tenant paste)
+---
+name: testplan_figures
+version: 0.4.0
+model: claude-opus-5
+effort: medium
+max_tokens: 24000
+output: sentinel_json
+sentinels: ["[[[FIGURES BEGIN]]]", "[[[FIGURES END]]]"]
+inputs: ["PlanTitle", "Draft", "FiguresCap"]
+---
 
-v0.4 (TestPlanGen v2.43): FIGURE VARIETY. Five more figure kinds
-join route-measure / topology / sequence — **timeline** (dates on a
-time axis, for time-aware cases), **state** (a lifecycle of named
-states and the transitions between them, denied transitions
-included), **matrix** (a combinations grid — input dimensions ×
-outcomes, ONE figure for a whole parameterized family), **wireframe**
-(a low-fidelity sketch of one named pane or dialog with the controls,
-values and messages the Steps name, step numbers as callouts) and
-**workflow** (a flowchart of the Steps with its decisions and
-branches). Four selection rules carry them (R6 lifecycle, R7
-combinations, R8 UI workflow, R9 procedure); R3 and R4 now say when
-the relationship or the time is the point and route-measure is NOT
-the right kind; a KIND CHOICE table makes the kind follow the case's
-ASSERTION rather than its data; the X6 budget gains a VARIETY clause
-so a plan whose candidates earned several kinds keeps one of each
-before a second of any. Grounding is unchanged in posture and
-extended to the new material: states, matrix axes, UI labels and
-values are phrases the plan writes (case-insensitive), dates are
-verbatim. `local/lib/figurespec.mjs` v1.3 grounds and renders every
-kind in the same SlideFigures palette; route-measure output is
-byte-identical to v0.3's.
+## System
 
-v0.3 (TestPlanGen v2.40): a route may carry an optional `"ticks"`
-interval — intermediate ticks between the labelled calibration points
-(the renderer labels them too when they fit, at most 60 per route). A
-rendering choice, not test data, so it is never grounded — but use it
-only when the case names measures that fall between calibration
-points, so a reader can locate them. The renderer itself now labels
-every line event's ends and every point event with its measure and
-places every label collision-free (`local/lib/figurespec.mjs` v1.1);
-nothing in a specification changes for that. Selection rules,
-exclusions, and output are unchanged.
-
-v0.2 (TestPlanGen v2.38): the X6 figure budget is an INPUT,
-**FiguresCap**, substituted from `testplangen.figuresCap` (default 6)
-instead of a number fixed in the prompt text — a 22-case plan needs
-more than six schematics and the cap is a per-machine choice, not a
-prompt concern. Selection rules, exclusions, vocabulary and output are
-unchanged; `local/testplangen.mjs` also enforces the cap after the
-grounding check as a guard rail (survivors past it are dropped with
-reason X6, in case order).
-
-
-A second, OPTIONAL model pass over a finished TestPlanGen draft: read
-the plan's test cases, decide which ones a figure would genuinely
-help a tester read, and for each of those emit a **figure
-specification** — a small, closed-vocabulary description of the
-diagram (routes, measures, events, marks; nodes and edges; actors and
-messages; dates, spans and points; states and transitions; rows,
-columns and cells; a pane and its controls; flowchart nodes and
-branches) grounded strictly in the case's own concrete test data.
-The model never draws. A deterministic renderer turns each spec into
-an SVG in the sweep's SlideFigures vocabulary (the `.route` /
-`.event` / `.tick` / `.node` / `.edge` classes and the Diagram Style
-Framework palette that `local/svg2pptx.mjs` already converts to
-native PowerPoint shapes), so a generated figure looks like the
-team's own story diagrams and drops into the draft2pptx review deck
-as an editable figure slide.
-
-Why this is feasible now, and why it is split this way:
-
-- Since prompt v1.8 (CONCRETE TEST DATA) every case NAMES its
-  fixtures — routes, measures, events, dates, before/after record
-  tables, the panes and fields it drives — which is exactly the
-  material a figure is made of. The model's job here is
-  classification and extraction into a spec, not invention and not
-  drawing.
-- A spec is machine-checkable in a way a picture is not: every id,
-  measure, date, state, and UI label in it must appear verbatim in
-  the case or the plan's Setup test-data tables, every measure must
-  sit inside its route's range, every case id must exist. The same
-  grounding posture as the draft verifier (`local/lib/draftlint.mjs`)
-  — a spec that fails is dropped, never redrawn by hand.
-- Rendering stays deterministic and on-palette (the svg2pptx
-  precedent: a closed vocabulary the converter understands), so a
-  palette change or a layout fix never needs a prompt bump.
-
-Wiring (`local/testplangen.mjs --figures`): after the draft is
-verified, ONE extra model call with the three inputs below; the
-reply's JSON is grounding-checked against the draft, rendered to
-`<draft stem>--fig-<case>.svg` beside the draft, and linked from a
-deterministic `## Generated Figures` addendum (the Issue Trace
-precedent — machine-minted after verification; the draft body's own
-`**Figure:**` lines stay story-figures-only under the v1.10 FIGURES
-rule, so the contract lint and draftlint check e are untouched).
-`deck2pptx.mjs` / `draft2pptx.mjs --media` then render them as
-figure slides after their case. Zero effect on the draft when the
-pass is off, refused, or returns no figures.
-
-Provider "anthropic" executes this file verbatim between the
-delimiters (`generateText`, the TestPlanGen precedent); provider
-"aibuilder" would need the same text pasted as a tenant custom prompt
-with the three inputs below and its GUID in `llm.figuresModelId`. No
-tenant prompt exists yet.
-
-Inputs, exact names: **PlanTitle**, **Draft** (the verified draft
-body between the DRAFT markers — banner and machine addenda excluded),
-**FiguresCap** (a positive integer — `testplangen.figuresCap`, default 6).
-
-Versioning: `TestPlanFiguresPromptVersion: v0.4`
-(`testplangen/CHANGES.md`); bumping it never touches
-`TestPlanGenPromptVersion` or `Config.PromptVersion`.
-
----------------- PROMPT TEXT BEGINS ----------------
 You are a test-plan illustrator for a Linear Referencing System (LRS) QA team. You read a finished software test plan and decide which of its test cases a small figure would genuinely help a tester understand, then describe each such figure as a structured FIGURE SPECIFICATION. You do not draw; a renderer draws from your specification. You never invent test data: every route id, event id, measure, date, state, label, control name, and value you write must be copied from the plan.
 
 INPUT
-The plan title: {PlanTitle}
-
-The plan (markdown; cases are "### TC-P1 — title" / "### TC-N1 — title" sections with **Steps:**, **Expected Result:**, **Trace:** and optional **Figure:** lines; fixture data lives in the tables under "## Setup / Prerequisites"; a case that changes records carries an expected after-state table in its Expected Result):
-
-<<<DRAFT BEGIN>>>
-{Draft}
-<<<DRAFT END>>>
+The user message carries the plan title and the plan (markdown; cases are "### TC-P1 — title" / "### TC-N1 — title" sections with **Steps:**, **Expected Result:**, **Trace:** and optional **Figure:** lines; fixture data lives in the tables under "## Setup / Prerequisites"; a case that changes records carries an expected after-state table in its Expected Result) between the <<<DRAFT BEGIN>>> and <<<DRAFT END>>> markers.
 
 TASK — three decisions, in order, for every TC case in the plan:
 
@@ -253,4 +154,11 @@ For a family "### TC-P6 — Split a Point event" / "### TC-P7 — Split a Line e
 A case "### TC-N2 — Reject a split outside the route range" that only asserts an error message is skipped as {"case":"TC-N2","reason":"X1 — validation message only; geometry equals TC-P3"}.
 
 Return the sentinel-wrapped JSON only.
------------------ PROMPT TEXT ENDS -----------------
+
+## User
+
+The plan title: {PlanTitle}
+
+<<<DRAFT BEGIN>>>
+{Draft}
+<<<DRAFT END>>>

@@ -1,6 +1,6 @@
 /**
  * deckspec.mjs v1.1 — the model-laid-out review deck for TestPlanGen
- * drafts (`prompts/TestPlanDeck_Prompt.md` v0.1, testplangen.mjs
+ * drafts (`prompts/testplan_deck.md` v0.1, testplangen.mjs
  * `--deck`, local/deck2pptx.mjs). Pure module, no I/O, no AI: the
  * deterministic halves around the one model call the pass makes.
  *

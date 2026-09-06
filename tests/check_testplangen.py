@@ -187,7 +187,7 @@ Pure stdlib + Node 22+, generated fixtures, CI-friendly.
 Usage: python3 check_testplangen.py
   leg 21 deck        the review-deck pass (v1.16, --deck): a model
                      call over the FINISHED draft (addenda included)
-                     with prompts/TestPlanDeck_Prompt.md, Figures
+                     with prompts/testplan_deck.md, Figures
                      input naming the run's own generated figures;
                      the deck spec grounded slide by slide (an
                      invented bullet and an uncited figure DROP their
@@ -2307,9 +2307,9 @@ def main():
           and any('kind "loop" is not start | step | decision | end' in f for f in drops[4]) and any('edge to "q" is not a node id' in f for f in drops[4])
           and any("rule is not R1..R9" in f for f in drops[5]) and any('kind "sketch" is not one of' in f for f in drops[5]),
           json.dumps(drops)[:900])
-    fig_prompt = open(os.path.join(REPO, "prompts", "TestPlanFigures_Prompt.md"), encoding="utf-8").read()
+    fig_prompt = open(os.path.join(REPO, "prompts", "testplan_figures.md"), encoding="utf-8").read()
     check("TestPlanFigures prompt v0.4 names every kind, rules R6–R9, the kind-choice table and the variety clause",
-          "TestPlanFiguresPromptVersion: v0.4" in fig_prompt
+          "version: 0.4.0" in fig_prompt
           and all(f'"{k}"' in fig_prompt for k in ["timeline", "state", "matrix", "wireframe", "workflow"])
           and all(f"- {r}:" in fig_prompt for r in ["R6 LIFECYCLE", "R7 COMBINATIONS", "R8 UI WORKFLOW", "R9 PROCEDURE"])
           and "KIND CHOICE" in fig_prompt and "X6 BUDGET WITH VARIETY" in fig_prompt

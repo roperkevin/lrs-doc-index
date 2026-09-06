@@ -4,7 +4,7 @@
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies). Takes a TestPlanGen draft
  * and a DECK SPEC — the layout decisions a model made over it with
- * `prompts/TestPlanDeck_Prompt.md` — and renders a .pptx in which
+ * `prompts/testplan_deck.md` — and renders a .pptx in which
  * every element is a native, editable PowerPoint object: text boxes,
  * cards, chips, checkboxes, tables, chevron flows, and every figure
  * as the same shape group svg2pptx emits. Where draft2pptx.mjs maps
@@ -74,7 +74,7 @@ import { aiBuilderPredict, generateText, loadPromptTemplate } from "../llm.mjs";
 export const DECK_VERSION = "v1.2";
 export const DECK_PROMPT_VERSION = "v0.1"; // TestPlanDeckPromptVersion
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DECK_PROMPT_FILE = path.resolve(HERE, "..", "..", "prompts", "TestPlanDeck_Prompt.md");
+export const DECK_PROMPT_FILE = path.resolve(HERE, "..", "..", "prompts", "testplan_deck.md");
 const DECK_INPUT_KEYS = ["PlanTitle", "Draft", "Figures"];
 const DECK_INPUTS_RE = new RegExp(`\\{(${DECK_INPUT_KEYS.join("|")})\\}`, "g");
 
@@ -270,7 +270,7 @@ export async function generateDeckSpec(args) {
   };
   let raw;
   if (provider === "aibuilder") {
-    if (!args.modelId) throw new Error("the aibuilder lane needs llm.deckModelId (a tenant custom prompt pasted from prompts/TestPlanDeck_Prompt.md with inputs PlanTitle + Draft + Figures)");
+    if (!args.modelId) throw new Error("the aibuilder lane needs llm.deckModelId (a tenant custom prompt pasted from prompts/testplan_deck.md with inputs PlanTitle + Draft + Figures)");
     const response = await aiBuilderPredict(cfg.llm, inputs, args.modelId);
     raw = response?.responsev2?.predictionOutput?.text ?? "";
   } else {
@@ -314,7 +314,7 @@ const USAGE =
   "usage: node local/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
   "       node local/deck2pptx.mjs <draft.md> --generate --config <config.json> [--provider anthropic|aibuilder] [--stream] [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
   "       --spec renders a deck spec (the JSON a --generate run writes beside the deck — edit and re-render);\n" +
-  "       --generate makes the one model call with prompts/TestPlanDeck_Prompt.md and writes <out>.deck.json;\n" +
+  "       --generate makes the one model call with prompts/testplan_deck.md and writes <out>.deck.json;\n" +
   "       --media / --figures name the folders holding story / generated figure SVGs so figures embed as native shapes;\n" +
   `       --design picks the design system (default ${DEFAULT_DESIGN}; testplangen.deckDesign in config), --theme its light or dark theme (default ${DEFAULT_THEME}; testplangen.deckTheme) — figures are re-coloured to match:\n` +
   describeDesigns().split("\n").map((l) => "         " + l).join("\n");

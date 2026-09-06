@@ -90,7 +90,7 @@ const FLOW_DEFAULTS = {
   // for plans the detectors leave caseless. enabled = the owner switch
   // (a live run refuses without it); maxPerRun caps model calls;
   // provider "" follows llm.provider ("anthropic" runs
-  // prompts/CaseNormalize_Prompt.md verbatim; "aibuilder" needs
+  // prompts/case_normalize.md verbatim; "aibuilder" needs
   // llm.normalizeModelId); maxTokens bounds the anthropic reply.
   // maxInputChars skips (and counts) a plan whose body is larger — a
   // 350 KB pdf body is a very expensive call and a reply that size
@@ -1111,10 +1111,10 @@ async function main() {
       );
     }
     const template = provider === "anthropic"
-      ? loadPromptTemplate(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "prompts", "CaseNormalize_Prompt.md"))
+      ? loadPromptTemplate(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "prompts", "case_normalize.md"))
       : "";
     if (!dry && provider === "aibuilder" && !cfg.llm.normalizeModelId) {
-      throw new Error("llm.normalizeModelId is not set — paste prompts/CaseNormalize_Prompt.md as a tenant prompt (inputs PlanTitle, Body) or use provider \"anthropic\"");
+      throw new Error("llm.normalizeModelId is not set — paste prompts/case_normalize.md as a tenant prompt (inputs PlanTitle, Body) or use provider \"anthropic\"");
     }
     const plans = [];
     for (const r of docIndexRows) {
