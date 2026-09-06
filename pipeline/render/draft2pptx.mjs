@@ -588,28 +588,69 @@ function glanceSlide(model, stats, pageNo) {
 }
 
 // checklist slide: Setup / Prerequisites, Open Questions
-function checklistSlide(model, sec, pageNo) {
-  let x = "";
-  x += textbox("h", MARGIN, 0.55 * IN, CONTENT_W, 0.62 * IN,
-    [{ runs: [{ t: sec.name, color: INK, sz: 32, b: true }] }]);
+// v1.4: a long checklist paginates ("(n of m)" on the heading) and the
+// section's tables (Setup fixture data) render as native tables after
+// the items — nothing is dropped and nothing runs past the footer
+function checklistSlides(model, sec, pageRef) {
   const items = sec.blocks.filter((b) => b.kind === "task" || b.kind === "bullet");
+  const tables = sec.blocks.filter((b) => b.kind === "table");
   const prose = sec.blocks.filter((b) => b.kind === "p").map((b) => b.text).join(" ");
-  let y = 1.5 * IN;
-  if (prose) {
-    x += textbox("prose", MARGIN, y, CONTENT_W, 0.8 * IN,
-      [{ line: 20, runs: inlineRuns(prose, { color: MUTED, sz: 13.5 }) }]);
-    y += linesOf(prose, 13.5, CONTENT_W) * lineH(13.5) + 0.25 * IN;
-  }
+  const top = 1.5 * IN;
+  const bottom = SLIDE_H - 0.9 * IN;
   const rowW = CONTENT_W;
   const sz = items.length > 9 ? 12.5 : 14.5;
+  const proseH = prose ? linesOf(prose, 13.5, CONTENT_W) * lineH(13.5) + 0.25 * IN : 0;
+  const itemH = (it) => Math.max(0.34 * IN, linesOf(it.text, sz, rowW - 0.62 * IN) * lineH(sz));
+  const tableH = (t) => tableFrame(MARGIN, 0, t.rows, CONTENT_W, -1).h;
+  // plan the pages
+  const pages = [];
+  let page = { items: [], tables: [] };
+  let y = top + proseH;
   for (const it of items) {
-    const tl = linesOf(it.text, sz, rowW - 0.62 * IN);
-    const rh = Math.max(0.34 * IN, tl * lineH(sz));
-    x += checkbox(MARGIN, y + 0.02 * IN, 0.26 * IN, it.checked);
-    x += textbox("item", MARGIN + 0.46 * IN, y, rowW - 0.62 * IN, rh,
-      [{ line: sz * 1.32, runs: inlineRuns(it.text, { color: INK, sz }) }]);
-    y += rh + 0.17 * IN;
+    const rh = itemH(it) + 0.17 * IN;
+    if (y + rh > bottom && page.items.length) { pages.push(page); page = { items: [], tables: [] }; y = top; }
+    page.items.push(it);
+    y += rh;
   }
+  for (const t of tables) {
+    const th = tableH(t) + 0.2 * IN;
+    if (y + th > bottom && (page.items.length || page.tables.length)) { pages.push(page); page = { items: [], tables: [] }; y = top; }
+    page.tables.push(t);
+    y += th;
+  }
+  pages.push(page);
+  return pages.map((pg, pi) => {
+    let x = "";
+    const cont = pages.length > 1 ? `  (${pi + 1} of ${pages.length})` : "";
+    x += textbox("h", MARGIN, 0.55 * IN, CONTENT_W, 0.62 * IN,
+      [{ runs: [{ t: sec.name + cont, color: INK, sz: 32, b: true }] }]);
+    let yy = top;
+    if (pi === 0 && prose) {
+      x += textbox("prose", MARGIN, yy, CONTENT_W, 0.8 * IN,
+        [{ line: 20, runs: inlineRuns(prose, { color: MUTED, sz: 13.5 }) }]);
+      yy += proseH;
+    }
+    for (const it of pg.items) {
+      const rh = itemH(it);
+      x += checkbox(MARGIN, yy + 0.02 * IN, 0.26 * IN, it.checked);
+      x += textbox("item", MARGIN + 0.46 * IN, yy, rowW - 0.62 * IN, rh,
+        [{ line: sz * 1.32, runs: inlineRuns(it.text, { color: INK, sz }) }]);
+      yy += rh + 0.17 * IN;
+    }
+    for (const t of pg.tables) {
+      const tf = tableFrame(MARGIN, yy, t.rows, CONTENT_W, -1);
+      x += tf.xml;
+      yy += tf.h + 0.2 * IN;
+    }
+    return slide(x + footer(model.title, pageRef.n++), PAPER);
+  });
+}
+
+// a case's data table that did not fit beside its steps: its own slide
+function caseTableSlide(model, heading, rows, pageNo) {
+  let x = textbox("h", MARGIN, 0.55 * IN, CONTENT_W, 0.62 * IN,
+    [{ runs: [{ t: heading, color: INK, sz: 26, b: true }] }]);
+  x += tableFrame(MARGIN, 1.5 * IN, rows, CONTENT_W, -1).xml;
   return slide(x + footer(model.title, pageNo), PAPER);
 }
 
@@ -670,6 +711,7 @@ function caseSlides(model, sec, tc, pageRef) {
   if (g.length) groups.push(g);
 
   const out = [];
+  const overflowTables = []; // v1.4: data tables that do not fit beside the steps
   groups.forEach((steps, gi) => {
     let x = "";
     // header: kind pill + id chip + title
@@ -700,7 +742,9 @@ function caseSlides(model, sec, tc, pageRef) {
         [{ line: stepSz * 1.32, runs: inlineRuns(st.text, { color: INK, sz: stepSz }) }]);
       y += rh + 0.16 * IN;
     }
-    // any non-step content the case carried (tables render as prose rows)
+    // any non-step content the case carried: prose and bullets as muted
+    // lines; a table (after-state / fixture data, prompt v1.8) as a
+    // native table when it fits under the steps, else on its own slide
     for (const b of tc.extra) {
       if (gi !== groups.length - 1) break;
       if (b.kind === "p" || b.kind === "bullet") {
@@ -708,6 +752,14 @@ function caseSlides(model, sec, tc, pageRef) {
         x += textbox("extra", MARGIN, y, leftW, tl * lineH(12.5),
           [{ line: 16.5, runs: inlineRuns(b.text, { color: MUTED, sz: 12.5 }) }]);
         y += tl * lineH(12.5) + 0.14 * IN;
+      } else if (b.kind === "table" && Array.isArray(b.rows) && b.rows.length) {
+        const tf = tableFrame(MARGIN, y, b.rows, leftW, -1);
+        if (y + tf.h <= CASE_BOTTOM) {
+          x += tf.xml;
+          y += tf.h + 0.14 * IN;
+        } else {
+          overflowTables.push(b);
+        }
       }
     }
 
@@ -736,6 +788,9 @@ function caseSlides(model, sec, tc, pageRef) {
     }
     out.push(slide(x + footer(model.title, pageRef.n++), PAPER));
   });
+  for (const b of overflowTables) {
+    out.push(caseTableSlide(model, `${id ? id + " — " : ""}${name} — data`, b.rows, pageRef.n++));
+  }
   return out;
 }
 
@@ -909,7 +964,7 @@ function closingSlide(model, stats) {
   });
   if (model.provenance) {
     x += textbox("prov", MARGIN, SLIDE_H - 0.75 * IN, CONTENT_W, 0.3 * IN,
-      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.3", color: MUTED, sz: 10.5 }] }]);
+      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.4", color: MUTED, sz: 10.5 }] }]);
   }
   return slide(x, INK);
 }
@@ -1218,7 +1273,7 @@ function buildDeck(md, opts) {
     const hasTable = sec.blocks.some((b) => b.kind === "table");
     const hasTasks = sec.blocks.some((b) => b.kind === "task" || b.kind === "bullet");
     if (sec.name === "Setup / Prerequisites" || sec.name === "Open Questions") {
-      slides.push(checklistSlide(model, sec, pageRef.n++));
+      slides.push(...checklistSlides(model, sec, pageRef));
     } else if (hasTable && !hasTasks) {
       slides.push(...tableSlides(model, sec, pageRef));
     } else if (sec.blocks.length) {

@@ -189,6 +189,43 @@ def main():
     with open(md1, "w", encoding="utf-8") as f:
         f.write(DRAFT)
 
+    # ---- v1.4: nothing dropped — tables on case + checklist slides, long
+    # checklists paginate --------------------------------------------------
+    long_setup = "\n".join(f"- [ ] {i}. Fixture step number {i} on the network." for i in range(1, 31))
+    LONG = DRAFT.replace(
+        "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n"
+        "- [x] 2. Two Pro sessions signed in.",
+        long_setup + "\n\n| Route | From | To |\n| --- | --- | --- |\n| R1 | 0 | 10 |\n| R2 | 10 | 25 |"
+    ).replace(
+        "**Expected Result:** The merged route keeps the source measures unchanged.",
+        "**Expected Result:** The merged route keeps the source measures unchanged.\n\n"
+        "| Route | From | To |\n| --- | --- | --- |\n| R1 | 0 | 25 |")
+    md_long = os.path.join(tmp, "long.md")
+    with open(md_long, "w", encoding="utf-8") as f:
+        f.write(LONG)
+    r = subprocess.run(["node", JOB, md_long], capture_output=True, text=True, cwd=REPO)
+    dl = pptx.Presentation(md_long[:-3] + ".pptx") if r.returncode == 0 else None
+    ls = list(dl.slides) if dl else []
+    def first_text(sl):
+        for sh in sl.shapes:
+            if sh.has_text_frame and sh.text_frame.text.strip():
+                return sh.text_frame.text.strip()
+        return ""
+    setup_idx = [i for i, sl in enumerate(ls) if first_text(sl).startswith("Setup / Prerequisites")]
+    check("a 30-item checklist paginates with (n of m) headings",
+          len(setup_idx) >= 2 and first_text(ls[setup_idx[0]]).endswith("(1 of %d)" % len(setup_idx))
+          and first_text(ls[setup_idx[-1]]).endswith("(%d of %d)" % (len(setup_idx), len(setup_idx))),
+          str([first_text(ls[i]) for i in setup_idx]) + r.stderr[-200:])
+    setup_tables = [sh for i in setup_idx for sh in ls[i].shapes if getattr(sh, "has_table", False) and sh.has_table]
+    check("the Setup fixture table is a native table on a checklist slide",
+          len(setup_tables) == 1 and setup_tables[0].table.cell(1, 0).text == "R1", str(len(setup_tables)))
+    case_idx = [i for i, sl in enumerate(ls) if "Merge preserves measures" in slide_text(sl)]
+    case_tables = [sh for i in case_idx for sh in ls[i].shapes if getattr(sh, "has_table", False) and sh.has_table]
+    check("a case's after-state table is a native table on (or right after) its case slide",
+          len(case_tables) == 1 and case_tables[0].table.cell(1, 2).text == "25", str(len(case_tables)))
+    check("no item lost to pagination: all 30 fixture steps are on the deck",
+          all(any(f"Fixture step number {i} " in slide_text(ls[j]) for j in setup_idx) for i in range(1, 31)), "")
+
     # ---- CLI: sibling-name default -----------------------------------
     r = subprocess.run(["node", JOB, md1], capture_output=True, text=True, cwd=REPO)
     out1 = md1[:-3] + ".pptx"
