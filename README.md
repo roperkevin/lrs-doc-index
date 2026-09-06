@@ -53,7 +53,7 @@ with a JSON-lines protocol (`pipeline/llm.mjs`, `lrsdoc/cli.py`).
 | Path | What it is |
 |---|---|
 | `pipeline/` | The jobs (`sweep`, `curate`, `testplangen`, `gantt`, `wiki`), the Graph/SPO client, delegated auth, the model bridge, and helper tools (`probe.mjs` list write probes, `doc_crawl.mjs` Esri help-page inventory) |
-| `pipeline/lib/` | Pure modules the jobs share: case grammar and indexing, figure indexing and specs, doc links, BM25 body index, browse pages, status page, alerts, remote-files mirror, deck layout, design systems, draft lint, run narration (`progress.mjs`) |
+| `pipeline/lib/` | Pure modules the jobs share: case grammar and indexing, figure indexing and specs, doc links, BM25 body index, browse pages, status page, alerts, remote-files mirror, deck layout, design systems, draft lint, the markdown layout kernel (`mdlayout.mjs`), run narration (`progress.mjs`) |
 | `pipeline/render/` | Draft and figure renderers: `draft2docx`, `draft2pptx`, `deck2pptx`, `svg2pptx` |
 | `pipeline/data/` | Data files the jobs read (`esri_doc_links.json`, `slug_abbreviations.json`) |
 | `extract/` | The seven extractors (`ZipTextExtract`, `WorkbookDump`, `MediaExtract`, `ShapeExtract`, `RegexExtract`, `RelatedRank`, `SidecarPatch`), still in their Office-Script shape, run in-process by `extract/runner/` |
@@ -116,8 +116,13 @@ product, release, person and issue, the test cases and figures with
 anchors, a Recent page) and pushes the tree to a private devtopia
 repository whose Pages workflow serves it. Files in, files out: it
 reads the sidecar library and the sweep's list backup, never
-SharePoint or a model. `--build` runs `mkdocs build --strict`
-locally; `--push` commits and pushes.
+SharePoint or a model. The page is a *render* of the sidecar, not a
+copy: `pipeline/lib/mdlayout.mjs` translates the corpus' GitHub-flavored
+markdown into what MkDocs reads (GFM alerts become admonitions,
+`<placeholder>` and trailing `{brace}` runs out of a source document are
+escaped rather than swallowed, code spans and `<br>` are left alone).
+`--build` runs `mkdocs build --strict` locally; `--push` commits and
+pushes.
 
 All five take `--config <config.json>` and `--live | --dry-run`; the
 `ops/*.cmd` wrappers run them from the repo root, self-updating from
@@ -222,7 +227,7 @@ prompt change.
 - `docs/setup.md` — install, sign-in, first run, operations, each job (§15: the wiki)
 - `docs/sharepoint-notes.md` — the lists, their GUIDs, and the tenant behaviours the pipeline works around
 - `docs/qa-agent-instructions.md` — the sidecar format as a Q&A agent reads it (the best description of a sidecar)
-- `docs/design/` — Sidecar format 3.0, case indexing, figure indexing, test-plan generation
+- `docs/design/` — Sidecar format 3.0, case indexing, figure indexing, test-plan generation, the markdown layout strategy
 - `docs/changelog/` — `pipeline.md`, `testplangen.md`, `curation.md`; `prompts/CHANGELOG.md` for the prompts
 - `STATUS.md` — what is deployed on the machine, and the open actions
 - `docs/history.md` — the eras this project went through, why things are the way they are, and where every retired artifact went

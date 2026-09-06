@@ -23,6 +23,11 @@ carry two alias → canonical merges — then renders the site and proves:
      PATH; otherwise the ids are checked against the slug rule alone)
   5. HTML comments (rel markers, src provenance) never reach a page;
      the yaml frame of a legacy sidecar never reaches a page
+  5b. the v1.1 dialect translation (lib/mdlayout.mjs): the whole
+     summary and the docs region reach the page, GFM alerts become
+     admonitions, `<placeholder>` and a trailing `{brace}` run are
+     escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
+     carries the extensions the dialect needs
   6. --push: a first push lands the tree on a bare repository; a
      second run over an unchanged library pushes nothing new; no
      wiki.repoUrl refuses with the fix; a missing library refuses
@@ -72,12 +77,21 @@ PLAN = """# Merge Events Test Plan
 
 Covers merging line events across routes, with the lock conflict case.
 
+A second paragraph the classifier wrote, which the v1.0 summary reader
+cut off at the first line break.
+
 ## Related documents
 
 <!-- related:begin -->
 - [Conflict Prevention Story](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/4855-conflict-story.md>) — shared issue ArcGISPro/ps-location-referencing#4855 · 1 shared keyword: route <!-- rel:42 s=1003 -->
 - [Gone Doc](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/Other/gone.md>) — 1 shared keyword: route <!-- rel:999 s=1 -->
 <!-- related:end -->
+
+<!-- docs:begin -->
+## Esri documentation
+
+[Merge Events](https://pro.arcgis.test/merge-events)
+<!-- docs:end -->
 
 ---
 
@@ -92,10 +106,17 @@ Covers merging line events across routes, with the lock conflict case.
 
 ### TC-N01 — Lock conflict refuses <!-- src: S1 · slide 4 -->
 - **Group:** Conflicts
+- **Steps:**
+  - [ ] 1. Set <RouteID> on the network
+  - [ ] 2. Read the value in {measure}
 
 ## Notes | pipes
 
-Trailing text with a `code` span.
+> [!CAUTION]
+> A pass here is the described denial.
+> Never the edit succeeding.
+
+Trailing text with a `code` span and a kept `<literal>` one.
 """
 
 STORY = """# Conflict Prevention Story
@@ -293,6 +314,31 @@ def main():
     check("the body follows a rule, media link unchanged (resolves through docs/media)",
           "\n---\n\n## Test Cases" in plan and "![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png)" in plan, plan[-600:])
     check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
+
+    # ---- 2b. the MkDocs dialect translation (v1.1) ----------------
+    print("== dialect")
+    check("the whole summary reaches the page, not just its first line",
+          "A second paragraph the classifier wrote" in plan, plan[:1600])
+    check("the docs region becomes an Esri documentation section on the page",
+          "## Esri documentation" in plan and "[Merge Events](https://pro.arcgis.test/merge-events)" in plan,
+          plan[:2000])
+    order = [plan.find(h) for h in ("## Related documents", "## Esri documentation", "\n---\n")]
+    check("the docs section sits above the body seam, below Related documents",
+          all(i >= 0 for i in order) and order == sorted(order), str(order))
+    check("GFM alerts become admonition blocks MkDocs renders",
+          "!!! danger" in plan and "    A pass here is the described denial." in plan
+          and "[!CAUTION]" not in plan, plan[-800:])
+    check("a <placeholder> in body text is escaped, not swallowed as HTML",
+          "&lt;RouteID>" in plan and "<RouteID>" not in plan, plan[-800:])
+    check("a trailing brace run is escaped away from attr_list",
+          "\\{measure}" in plan, plan[-800:])
+    check("code spans keep their angle brackets",
+          "`<literal>`" in plan, plan[-400:])
+    check("<br> and autolinks survive the escape",
+          "](<https://esriis.sharepoint.com" in plan, plan[:1200])
+    check("mkdocs.yml enables the extensions the dialect needs",
+          "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
+          and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
     story = page("user-stories/4855-conflict-story.md")
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 

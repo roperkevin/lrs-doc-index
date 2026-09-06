@@ -1,5 +1,44 @@
 # Local sweep — release notes
 
+## wiki v1.1 + mdlayout v1.0 — the wiki renders the dialect (2026-09-06)
+
+`docs/design/Markdown_Layout_Plan.md` phase 2. The sidecars are
+GitHub-flavored markdown — GFM alerts, task lists, pipe tables — which
+GitHub, the SharePoint preview, the Q&A agent and
+`render/draft2docx.mjs` all read natively. MkDocs Material does not,
+and the wiki was passing the text through unchanged. New
+`pipeline/lib/mdlayout.mjs` is the layout kernel's first inhabitant:
+it owns the dialect and its one translation, and `wiki.mjs` is the
+only lane that applies it.
+
+- **GFM alerts become admonitions.** `> [!WARNING]` / `[!CAUTION]` /
+  `[!IMPORTANT]` render as `!!! warning` / `!!! danger` / `!!! info`
+  blocks. Before, every alert on the site was a blockquote whose first
+  line read `[!WARNING]`.
+- **Body text is escaped where python-markdown would eat it.** A
+  `<RouteID>` placeholder out of a source document was parsed as an
+  HTML tag and vanished; a brace run at the end of a line was consumed
+  by `attr_list`. Both are escaped now. Code spans, fenced blocks,
+  `<br>` inside a table cell (Sidecar_Format_Plan decision 2),
+  autolinks and `](<…>)` link targets are left exactly as they are.
+- **The whole summary reaches the page.** The v1.0 reader's regex
+  ended its lazy match on the `m`-flag `$` — the first line break — so
+  a multi-line summary, and the missing-summary alert's explanation,
+  were cut off.
+- **The `docs:begin/end` region is rendered.** The sweep's per-document
+  Esri documentation links sit between the related region and the
+  `---` seam, so `bodySeamEnd` left them out of the body and the page
+  showed them nowhere. They are now their own `## Esri documentation`
+  section, below Related documents and above the seam.
+- **`mkdocs.yml`** gains `pymdownx.tasklist` (`custom_checkbox: true`)
+  so a task list renders as checkboxes, `sane_lists` so an extracted
+  `1.` run after a paragraph is not a list by accident, and
+  `toc_depth: "2-3"`.
+
+Gate: `tests/check_wiki.py` (40 checks, 7 of them new and all failing
+on wiki v1.0). No corpus backfill — the site is regenerated on every
+run.
+
 ## progress v1.0 — run narration across every job (2026-09-06)
 
 `pipeline/lib/progress.mjs`: the posture `testplangen.mjs` v1.5

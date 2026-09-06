@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.0 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.1 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -26,11 +26,25 @@
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
  *
- * Bodies are rendered as they are in the sidecar (the same relative
+ * Bodies keep their sidecar shape (the same relative
  * `../media/<stem>/` links resolve, because pages sit one folder deep
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v1.1 (Markdown_Layout_Plan.md phase 2) — the page is a RENDER of the
+ * sidecar, not a copy of it. Sidecars are GitHub-flavored markdown;
+ * MkDocs Material is the one consumer that cannot read that dialect,
+ * so `lib/mdlayout.mjs` translates on the way in: GFM alerts become
+ * admonition blocks, a `<placeholder>` or a trailing `{brace}` run out
+ * of a source document is escaped instead of being swallowed by
+ * python-markdown and attr_list, and `<br>`, autolinks and code spans
+ * are left alone. `mkdocs.yml` gains `pymdownx.tasklist` (the drafts'
+ * task lists) and `sane_lists`. Two things that never reached a page
+ * now do: the whole `## Summary` (the v1.0 reader ended its match on
+ * the `m`-flag `$`, i.e. at the first line break) and the sweep's
+ * `docs:begin/end` region, which sits above the body seam and so was
+ * in neither the header nor the body.
  *
  * Usage:
  *   node --experimental-strip-types pipeline/wiki.mjs --config config.json            render only
@@ -60,10 +74,11 @@ import { createProgress, resolveProgress, secs, noProgress } from "./lib/progres
 import { bodySeamEnd } from "./lib/doclinks.mjs";
 import { caseSpans } from "./lib/caseindex.mjs";
 import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
+import { toMkDocs, normalize } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.0";
+export const WIKI_VERSION = "v1.1";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -101,10 +116,33 @@ const mdEscape = (s) => String(s ?? "").replace(/([\\`*_[\]<>])/g, "\\$1");
 const linkText = (s) => mdEscape(cell(s)).replace(/\\\|/g, "|");
 const pageName = (s) => kebab(s) || "untitled";
 
-/** `## Summary` paragraph(s) of a sidecar, "" when absent. */
+/** `## Summary` paragraph(s) of a sidecar, "" when absent. v1.1: cut
+ *  at the next section marker or the end of the file — the previous
+ *  regex ended its lazy match on the `m`-flag `$`, i.e. at the first
+ *  line break, so a multi-line summary (and the missing-summary
+ *  alert's second line) never reached the page. */
 function summaryOf(content) {
-  const m = /^## Summary\s*\n([\s\S]*?)(?=\n## |\n<!-- related:begin -->|\n---\n|$)/m.exec(content);
-  return m ? stripComments(m[1]).trim() : "";
+  const s = String(content || "");
+  const m = /^## Summary[ \t]*\r?\n/m.exec(s);
+  if (!m) return "";
+  const from = m.index + m[0].length;
+  const ends = ["\n## ", "\n<!-- related:begin -->", "\n---\n", "\n<!-- docs:begin -->"]
+    .map((d) => s.indexOf(d, from))
+    .filter((i) => i >= 0);
+  const to = ends.length ? Math.min(...ends) : s.length;
+  return stripComments(s.slice(from, to)).trim();
+}
+
+/** The `docs:begin/end` region's markdown ("" when absent): the
+ *  sweep's per-document Esri documentation links. v1.1 — it sits
+ *  between the related region and the `---` seam, so `bodySeamEnd`
+ *  leaves it out of the body and it reached no page at all. */
+function docsRegionOf(content) {
+  const s = String(content || "");
+  const b = s.indexOf("<!-- docs:begin -->");
+  const e = s.indexOf("<!-- docs:end -->", b + 1);
+  if (b < 0 || e < 0) return "";
+  return s.slice(b + "<!-- docs:begin -->".length, e).trim();
 }
 
 /** The related bullets: [{doc, file, text}] — text is the bullet
@@ -193,6 +231,7 @@ export function buildModel(docs, kw, opts = {}) {
     d.kindDir = pageName(kindFolders[d.kind] || d.kind || "Other");
     d.page = `${d.kindDir}/${pageName(d.stem)}.md`;
     d.summary = summaryOf(d.content);
+    d.docsRegion = docsRegionOf(d.content);
     const seam = bodySeamEnd(d.content);
     d.body = seam >= 0 ? d.content.slice(seam) : "";
     d.issues = issueLinks(d.content);
@@ -323,7 +362,7 @@ function docPage(d, model) {
   const out = [`# ${mdEscape(m.title || d.stem)}`, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("");
-  if (d.summary) out.push("## Summary", "", d.summary, "");
+  if (d.summary) out.push("## Summary", "", normalize(toMkDocs(d.summary)), "");
   if (d.related.length) {
     out.push("## Related documents", "");
     for (const r of d.related) {
@@ -332,7 +371,8 @@ function docPage(d, model) {
     }
     out.push("");
   }
-  const body = stripComments(d.body).replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+  if (d.docsRegion) out.push(normalize(toMkDocs(stripComments(d.docsRegion))), "");
+  const body = normalize(toMkDocs(stripComments(d.body)));
   if (body) out.push("---", "", body, "");
   return out.join("\n");
 }
@@ -464,8 +504,12 @@ function mkdocsYml(model, kindFolders, opts) {
     "  - attr_list",
     "  - admonition",
     "  - fenced_code",
+    "  - sane_lists",
+    "  - pymdownx.tasklist:",
+    "      custom_checkbox: true",
     "  - toc:",
     "      permalink: true",
+    '      toc_depth: "2-3"',
     "nav:",
     ...nav,
     "not_in_nav: |",
