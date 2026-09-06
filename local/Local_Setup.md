@@ -842,7 +842,9 @@ then renders the survivors to SVG in the SlideFigures palette as the
 draft's siblings (`<draft stem>--fig-<case>.svg`; dry runs write
 them beside the local copy; since figurespec v1.1 / prompt v0.3 a
 route may ask for intermediate `ticks`, every event's ends carry
-their measures, and labels are placed collision-free) linked from a `## Generated Figures`
+their measures, and labels are placed collision-free; since v1.2 all
+panels share one measure scale and each panel shows the previous
+panel's extents that changed as dotted ghosts with a legend key) linked from a `## Generated Figures`
 addendum with caption, rule, the dropped specs' findings and the
 model's not-illustrated list. The draft body is untouched; the pass
 fails soft (a bad reply skips it, the draft still lands —

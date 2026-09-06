@@ -2116,6 +2116,40 @@ def main():
     overlaps = [(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1:]
                 if a[0] < b[1] and b[0] < a[1] and a[2] < b[3] and b[2] < a[3]]
     check("route-measure SVG: no two labels overlap (estimated boxes)", overlaps == [], str(overlaps[:3]))
+    # v1.21 (figurespec v1.2): one scale per figure — Before's R1 0–100
+    # and After's R1 0–160 put "100" at the same x in both panels
+    x100 = re.findall(r'<text class="measure" x="([\d.]+)"[^>]*>100</text>', s_p1)
+    check("route-measure SVG: panels share one measure scale",
+          len(x100) == 2 and x100[0] == x100[1], str(x100))
+    # …and a panel is diffed against the one before it: a split spec
+    # rendered in-process shows E1's prior 16–40 dotted under its
+    # bar, E3 (gone after) as a ghost row, P1's prior position as a
+    # hollow dot, the route's prior 0–100 behind the extension, and
+    # the renderer's own legend key
+    split_spec = json.dumps({
+        "case": "TC-P3", "rule": "R2", "kind": "route-measure", "title": "TC-P3 — Split", "caption": "cap",
+        "panels": [
+            {"label": "Before", "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100]}],
+             "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40}, {"id": "E3", "route": "R1", "from": 60, "to": 80},
+                        {"id": "P1", "route": "R1", "at": 30}], "marks": []},
+            {"label": "After", "routes": [{"id": "R1", "from": 0, "to": 160, "calibration": [0, 50, 100, 160]}],
+             "events": [{"id": "E1", "route": "R1", "from": 10, "to": 16}, {"id": "E2", "route": "R1", "from": 16, "to": 40},
+                        {"id": "P1", "route": "R1", "at": 45}], "marks": []}],
+    })
+    script = ("import { renderFigureSvg } from %r;\n"
+              "process.stdout.write(renderFigureSvg(%s));\n"
+              % ("file://" + os.path.join(REPO, "local", "lib", "figurespec.mjs"), split_spec))
+    res = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, cwd=REPO)
+    svg = res.stdout
+    check("route-measure SVG: the later panel shows prior extents as ghosts, with a legend key",
+          res.returncode == 0
+          and svg.count('class="ln event flat s-muted dotted"') == 2       # E1's prior 16–40 + E3's ghost row
+          and svg.count('class="node t-plain s-muted dashed"') == 1       # P1's prior position
+          and svg.count('class="ln ctx dotted"') == 1                     # R1's prior 0–100
+          and ">prior extent (earlier panel)<" in svg
+          and 'class="ln swatch flat s-muted dotted"' in svg
+          and 'class="id f-muted"' in svg and ">E3<" in svg,
+          (res.stderr or svg)[:600])
     check("sequence SVG: actors, lifelines, the denied step in red",
           ">User A<" in s_n1 and ">User B<" in s_n1
           and s_n1.count('class="ln leader dashed"') == 2

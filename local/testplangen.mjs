@@ -47,6 +47,11 @@
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
  *
+ * v1.21 (change made visible — testplangen/CHANGES.md v2.41):
+ * lib/figurespec.mjs v1.2 shares one measure scale across a figure's
+ * panels and draws each panel's changed prior extents as ghosts.
+ * Stamp change only in this file.
+ *
  * v1.20 (route-measure legibility — testplangen/CHANGES.md v2.40):
  * the figures prompt is v0.3 (an optional per-route `ticks` interval
  * in the vocabulary) and lib/figurespec.mjs v1.1 renders intermediate
@@ -492,7 +497,7 @@ import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.20";
+const JOB_VERSION = "v1.21";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");

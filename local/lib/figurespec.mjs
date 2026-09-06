@@ -1,6 +1,18 @@
 /**
- * figurespec.mjs v1.1 — generated figures for TestPlanGen drafts
+ * figurespec.mjs v1.2 — generated figures for TestPlanGen drafts
  * (`prompts/TestPlanFigures_Prompt.md` v0.3, testplangen.mjs `--figures`).
+ *
+ * v1.2 (change made visible — testplangen/CHANGES.md v2.41): every
+ * panel of a route-measure figure shares ONE measure scale, so an
+ * extended route grows on the page instead of being rescaled to
+ * fit; and each panel after the first is diffed against the panel
+ * before it — an event whose extent changed keeps a dotted muted
+ * ghost of its prior extent under its bar (a moved point keeps a
+ * hollow ghost dot), an event that left the route keeps a ghost row,
+ * a route whose extent shrank shows its prior extent dotted behind
+ * the line, and a "prior extent" key joins the legend. Tones stay
+ * the model's (they carry meaning); the diff adds structure only.
+ * No spec vocabulary change.
  *
  * v1.1 (route-measure legibility — testplangen/CHANGES.md v2.40):
  * a route may carry `"ticks": <interval>` — unlabelled intermediate
@@ -330,6 +342,7 @@ const fmt = (n) => (Math.round(n * 100) / 100).toString();
 const W = 760;
 const PAD = 20;
 const MARK_TONE = { gap: "muted", retire: "red", realign: "warm", reassign: "violet", extend: "green" };
+const PRIOR_KEY = "prior extent (earlier panel)"; // v1.2: the renderer's own legend key
 
 function text(cls, x, y, s, anchor = "middle") {
   return `<text class="${cls}" x="${fmt(x)}" y="${fmt(y)}" text-anchor="${anchor}" dominant-baseline="central">${X(s)}</text>`;
@@ -394,12 +407,45 @@ const tickValues = (r) => {
   return vals;
 };
 
-function renderRouteMeasure(spec, out) {
+const sameExtent = (a, b) =>
+  a.at !== undefined || b.at !== undefined ? near(a.at ?? NaN, b.at ?? NaN) : near(a.from, b.from) && near(a.to, b.to);
+
+/**
+ * v1.2: the prior-state ghosts a panel draws for one of its routes,
+ * diffed against the panel before it — {route: prior extent or null,
+ * under: Map<eventId, prior event on this route>, gone: prior events
+ * of this route that the panel no longer shows here}.
+ */
+function panelDiff(prev, p, r) {
+  const none = { route: null, under: new Map(), gone: [] };
+  if (!prev) return none;
+  const pr = (prev.routes || []).find((x) => x.id === r.id);
+  const route = pr && !(near(pr.from, r.from) && near(pr.to, r.to)) ? pr : null;
+  const now = new Map((p.events || []).map((e) => [e.id, e]));
+  const under = new Map();
+  const gone = [];
+  for (const pe of prev.events || []) {
+    if (pe.route !== r.id) continue;
+    const e = now.get(pe.id);
+    if (!e || e.route !== r.id) gone.push(pe);
+    else if (!sameExtent(pe, e)) under.set(e.id, pe);
+  }
+  return { route, under, gone };
+}
+
+function renderRouteMeasure(spec, out, meta = {}) {
   let y = 0;
   const x0 = 70;
   const x1 = W - PAD * 2 - 60;
   const ROW = 26; // line-event pitch: a bar plus its end measures
-  for (const p of spec.panels) {
+  // v1.2: ONE scale for the whole figure — a before/after pair reads
+  // as change only when both panels measure the same way
+  const all = spec.panels.flatMap((p) => p.routes);
+  const lo = Math.min(...all.map((r) => r.from));
+  const hi = Math.max(...all.map((r) => r.to));
+  const sx = (m) => x0 + ((m - lo) / (hi - lo || 1)) * (x1 - x0);
+  spec.panels.forEach((p, pi) => {
+    const prev = pi > 0 ? spec.panels[pi - 1] : null;
     const placer = new Placer();
     if (p.label) {
       const b = textBox("nlabel", 0, y + 8, p.label, "start");
@@ -408,23 +454,40 @@ function renderRouteMeasure(spec, out) {
       y += 22;
     }
     const routes = p.routes;
-    const lo = Math.min(...routes.map((r) => r.from));
-    const hi = Math.max(...routes.map((r) => r.to));
-    const sx = (m) => x0 + ((m - lo) / (hi - lo || 1)) * (x1 - x0);
     for (const r of routes) {
       const ry = y + 36;
+      const diff = panelDiff(prev, p, r);
       const events = (p.events || []).filter((e) => e.route === r.id);
       const marks = (p.marks || []).filter((m) => m.route === r.id);
       const lineEvents = events.filter((e) => e.at === undefined);
       const pointEvents = events.filter((e) => e.at !== undefined);
+      const goneLines = diff.gone.filter((e) => e.at === undefined);
+      const gonePoints = diff.gone.filter((e) => e.at !== undefined);
       placer.place(out, "id f-ink", r.id, [{ x: x0 - 12, y: ry, anchor: "end" }]);
+      // v1.2: the prior extent of a route that changed, dotted behind
+      // the line — visible where the route no longer reaches
+      if (diff.route) {
+        meta.ghost = true;
+        out.push(`<line class="ln ctx dotted" x1="${fmt(sx(diff.route.from))}" y1="${fmt(ry)}" x2="${fmt(sx(diff.route.to))}" y2="${fmt(ry)}"/>`);
+        placer.reserve({ x0: sx(diff.route.from) - 2, x1: sx(diff.route.to) + 2, y0: ry - 4, y1: ry + 4 });
+      }
       const cls = r.tone === "muted" ? "ln ctx" : "ln route";
       out.push(`<line class="${cls}" x1="${fmt(sx(r.from))}" y1="${fmt(ry)}" x2="${fmt(sx(r.to))}" y2="${fmt(ry)}"${r.arrow ? ' marker-end="url(#ar)"' : ""}/>`);
       placer.reserve({ x0: sx(r.from) - 2, x1: sx(r.to) + (r.arrow ? 10 : 2), y0: ry - 4, y1: ry + 4 });
-      // geometry first, so labels route around it: bars, points, marks
-      const bars = lineEvents.map((e, i) => ({ e, ey: ry + 8 + (i + 1) * ROW }));
+      // geometry first, so labels route around it: bars (ghost rows
+      // for events that left this route follow the live ones), points,
+      // marks
+      const bars = [
+        ...lineEvents.map((e) => ({ e, ghost: false })),
+        ...goneLines.map((e) => ({ e, ghost: true })),
+      ].map((b, i) => ({ ...b, ey: ry + 8 + (i + 1) * ROW }));
       for (const { e, ey } of bars) placer.reserve({ x0: sx(e.from) - 1, x1: sx(e.to) + 1, y0: ey - 5, y1: ey + 5 });
+      for (const { e, ey } of bars) {
+        const pe = diff.under.get(e.id);
+        if (pe && pe.at === undefined) placer.reserve({ x0: sx(pe.from) - 1, x1: sx(pe.to) + 1, y0: ey - 5, y1: ey + 5 });
+      }
       for (const e of pointEvents) placer.reserve({ x0: sx(e.at) - 6, x1: sx(e.at) + 6, y0: ry - 6, y1: ry + 6 });
+      for (const e of gonePoints) placer.reserve({ x0: sx(e.at) - 6, x1: sx(e.at) + 6, y0: ry - 6, y1: ry + 6 });
       // calibration: labelled major ticks (above the route first)
       const cal = r.calibration && r.calibration.length ? r.calibration : [r.from, r.to];
       const labelled = new Set();
@@ -462,9 +525,22 @@ function renderRouteMeasure(spec, out) {
       }
       // point events: the id below, the measure above unless the axis
       // already labels that value
+      for (const e of gonePoints) {
+        // v1.2: a point event that left this route — a hollow muted dot
+        meta.ghost = true;
+        const px = sx(e.at);
+        out.push(`<circle class="node t-plain s-muted dashed" cx="${fmt(px)}" cy="${fmt(ry)}" r="5"/>`);
+        placer.place(out, "id f-muted", e.id, [{ x: px, y: ry + 16, anchor: "middle" }, { x: px + 9, y: ry + 14, anchor: "start" }]);
+      }
       for (const e of pointEvents) {
         const tone = e.tone || "cool";
         const px = sx(e.at);
+        const pe = diff.under.get(e.id);
+        if (pe && pe.at !== undefined) {
+          // v1.2: the point's prior position — a hollow muted dot
+          meta.ghost = true;
+          out.push(`<circle class="node t-plain s-muted dashed" cx="${fmt(sx(pe.at))}" cy="${fmt(ry)}" r="4"/>`);
+        }
         out.push(`<circle class="node t-${tone} s-${tone}" cx="${fmt(px)}" cy="${fmt(ry)}" r="5"/>`);
         placer.place(out, `id f-${tone}`, e.id, [
           { x: px, y: ry + 16, anchor: "middle" }, { x: px + 9, y: ry - 14, anchor: "start" }, { x: px + 9, y: ry + 14, anchor: "start" },
@@ -475,12 +551,20 @@ function renderRouteMeasure(spec, out) {
       }
       // line events: the bar, its id at the right end, its measures at
       // both ends (v1.1) — below the bar, else beside it
-      for (const { e, ey } of bars) {
-        const tone = e.tone || "cool";
+      for (const { e, ey, ghost } of bars) {
+        const tone = ghost ? "muted" : e.tone || "cool";
         const fx = sx(e.from), tx = sx(e.to);
-        out.push(`<line class="ln event flat s-${tone}" x1="${fmt(fx)}" y1="${fmt(ey)}" x2="${fmt(tx)}" y2="${fmt(ey)}"/>`);
+        const pe = diff.under.get(e.id);
+        if (pe && pe.at === undefined) {
+          // v1.2: the event's prior extent, dotted under the new bar —
+          // visible where the event no longer reaches
+          meta.ghost = true;
+          out.push(`<line class="ln event flat s-muted dotted" x1="${fmt(sx(pe.from))}" y1="${fmt(ey)}" x2="${fmt(sx(pe.to))}" y2="${fmt(ey)}"/>`);
+        }
+        if (ghost) meta.ghost = true;
+        out.push(`<line class="ln event flat s-${tone}${ghost ? " dotted" : ""}" x1="${fmt(fx)}" y1="${fmt(ey)}" x2="${fmt(tx)}" y2="${fmt(ey)}"/>`);
         placer.place(out, `id f-${tone}`, e.id, [
-          { x: tx + 6, y: ey, anchor: "start" }, { x: fx - 6, y: ey, anchor: "end" }, { x: (fx + tx) / 2, y: ey - 11, anchor: "middle" },
+          { x: tx + 6, y: ey, anchor: "start" }, { x: fx - 10, y: ey, anchor: "end" }, { x: (fx + tx) / 2, y: ey - 11, anchor: "middle" },
         ]);
         const wFrom = textBox("measure", 0, 0, e.from, "middle"), wTo = textBox("measure", 0, 0, e.to, "middle");
         if (tx - fx < (wFrom.x1 - wFrom.x0 + wTo.x1 - wTo.x0) / 2 + 4) {
@@ -501,7 +585,7 @@ function renderRouteMeasure(spec, out) {
       y = Math.max(rowsBottom, placer.maxY + 14);
     }
     y += 10;
-  }
+  });
   return y;
 }
 
@@ -589,20 +673,24 @@ function renderSequence(spec, out) {
 /** The SVG for a verified spec. */
 export function renderFigureSvg(spec) {
   const body = [];
+  const meta = {};
   let y;
-  if (spec.kind === "route-measure") y = renderRouteMeasure(spec, body);
+  if (spec.kind === "route-measure") y = renderRouteMeasure(spec, body, meta);
   else if (spec.kind === "topology") y = renderTopology(spec, body);
   else y = renderSequence(spec, body);
-  // legend + notes ride below the drawing
-  if (spec.legend && spec.legend.length) {
+  // legend + notes ride below the drawing; v1.2: a figure that drew
+  // prior-state ghosts adds its own key after the spec's items
+  const legend = [...(spec.legend || []), ...(meta.ghost ? [PRIOR_KEY] : [])];
+  if (legend.length) {
     const tones = [];
     for (const p of spec.panels || []) for (const e of p.events || []) tones.push([e.id, e.tone || "cool"]);
     let lx = 0;
     y += 6;
-    for (const item of spec.legend) {
+    for (const item of legend) {
       // the LAST panel's tone for an id — the after-state is what the legend names
       const tone = (tones.filter(([id]) => String(item).startsWith(id + " ")).pop() || [, "ink"])[1];
-      body.push(`<line class="ln swatch flat s-${tone}" x1="${fmt(lx)}" y1="${fmt(y)}" x2="${fmt(lx + 22)}" y2="${fmt(y)}"/>`);
+      const swatch = item === PRIOR_KEY ? "ln swatch flat s-muted dotted" : `ln swatch flat s-${tone}`;
+      body.push(`<line class="${swatch}" x1="${fmt(lx)}" y1="${fmt(y)}" x2="${fmt(lx + 22)}" y2="${fmt(y)}"/>`);
       body.push(text("legend", lx + 28, y, item, "start"));
       lx += 28 + Math.min(220, 6.2 * String(item).length + 24);
       if (lx > W - PAD * 2 - 200) { lx = 0; y += 18; }

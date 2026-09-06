@@ -1,3 +1,45 @@
+# TestPlanGen v2.41 — change made visible in before/after figures (figurespec v1.2, testplangen.mjs v1.21)
+
+Owner-requested (2026-09-06), the first pick from the diagram
+review: R2 (state change) is the strongest selection rule and
+produces most figures, yet a Before/After pair rendered each panel
+on its own scale and drew the after-state as if nothing had been
+there before — an extended route was shrunk to fit and a split's
+lost extent simply vanished. Rendering only; no spec vocabulary or
+prompt change (still TestPlanFigures v0.3), grounding unchanged.
+
+- **One scale per figure.** Every panel of a route-measure figure
+  now measures with the same pixels-per-unit (the min and max over
+  ALL panels' routes), so an extension grows on the page and an
+  unchanged route sits exactly under its earlier self.
+- **Each panel diffed against the one before it.** For every route
+  in a later panel: an event whose extent changed on that route
+  keeps a dotted muted ghost of its prior extent under its bar
+  (visible where it no longer reaches — a split's lost half, a
+  move's origin); a moved point event keeps a hollow muted dot at
+  its prior measure; an event that is no longer on the route (gone,
+  or now on another route) keeps a ghost row after the live ones,
+  muted and dotted with its id and end measures; a route whose
+  extent changed shows its prior extent dotted behind the line. The
+  diff is structural only — tones stay the model's, since the prompt
+  gives them meaning (green = correct result, red = rejected or
+  retired).
+- **A renderer-owned legend key**, "prior extent (earlier panel)"
+  with a dotted muted swatch, joins the spec's legend items whenever
+  a ghost was drawn — so a reviewer never reads a ghost as a live
+  event. The ghosts are reserved geometry for the v1.1 label placer,
+  and an id whose right-hand spot a ghost occupies moves left with a
+  little more clearance than before.
+- Date-slice panels (R4) get the same treatment panel by panel;
+  single-panel figures are unchanged apart from the (now trivially
+  shared) scale.
+
+Gates: `check_testplangen.py` **231/231** (leg 18 — "100" lands at
+the same x in both fixture panels; a split spec rendered in-process
+shows E1's prior 16–40 and E3's ghost row dotted, P1's prior dot,
+R1's prior 0–100, the legend key and swatch); `check_deck2pptx.py`
+**56/56**. The split sample was eyeballed in Chromium.
+
 # TestPlanGen v2.40 — route-measure figures made legible (figurespec v1.1, TestPlanFigures prompt v0.3, testplangen.mjs v1.20)
 
 Owner-requested (2026-09-06): "enhance the svg diagrams — allow
