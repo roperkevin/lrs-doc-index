@@ -885,14 +885,27 @@ async function main() {
   // written with the columns that exist; the next backfill after the
   // columns are added fills them in (the replace-set sees the
   // difference). Shared by the case and figure syncs (v1.59).
+  // Two error shapes: Graph's `Field 'X' is not recognized` (a plain
+  // column) and the SharePoint REST route's per-field `SPO field write
+  // failed: X: ...` (a hyperlink column). When the hyperlink write fails
+  // AFTER the Graph create succeeded, the row already exists (the error
+  // carries its id, Writer.createRow) — the retry must PATCH that row,
+  // never create it again.
   const columnDropper = ({ listLabel, rowsLabel, schemaHint, backfillFlag, counter, missing }) =>
-    async (fields, write, sum) => {
+    async (fields, write, sum, patchWrite) => {
       let f = { ...fields };
+      let created = null;
       for (let attempt = 0; attempt < 8; attempt++) {
         try {
-          return { result: await write(f), fields: f };
+          const result = await write(f);
+          return { result: created ? { ...(result || {}), id: created } : result, fields: f };
         } catch (e) {
-          const m = /Field '([^']+)' is not recognized/.exec(String(e.message));
+          if (e.rowId && patchWrite && !created) {
+            created = e.rowId;
+            write = (x) => patchWrite(created, x);
+          }
+          const m = /Field '([^']+)' is not recognized/.exec(String(e.message))
+            || /SPO field write failed: ([A-Za-z0-9_]+):/.exec(String(e.message));
           if (!m || !(m[1] in f)) throw e;
           delete f[m[1]];
           sum[counter] = (sum[counter] || 0) + 1;
@@ -954,7 +967,8 @@ async function main() {
       const plan = diffCaseRows(existing, fresh);
       const next = existing.filter((r) => !plan.delete.includes(r.id));
       for (const f of plan.create) {
-        const { result: created, fields: wrote } = await caseColumns(f, (x) => writer.createRow("testCases", x), sum);
+        const { result: created, fields: wrote } = await caseColumns(
+          f, (x) => writer.createRow("testCases", x), sum, (id, x) => writer.patchRow("testCases", id, x));
         next.push({ id: String(created.id), fields: wrote });
       }
       for (const u of plan.update) {
@@ -1007,7 +1021,8 @@ async function main() {
       const plan = diffFigureRows(existing, fresh);
       const next = existing.filter((r) => !plan.delete.includes(r.id));
       for (const f of plan.create) {
-        const { result: created, fields: wrote } = await figureColumns(f, (x) => writer.createRow("figures", x), sum);
+        const { result: created, fields: wrote } = await figureColumns(
+          f, (x) => writer.createRow("figures", x), sum, (id, x) => writer.patchRow("figures", id, x));
         next.push({ id: String(created.id), fields: wrote });
       }
       for (const u of plan.update) {

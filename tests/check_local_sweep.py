@@ -496,6 +496,11 @@ def make_handler(state, lib_guid, src_files):
                 out = []
                 for fv in body.get("formValues", []):
                     name, val = fv.get("FieldName"), str(fv.get("FieldValue", ""))
+                    if name in state.reject_fields:
+                        # the tenant list lacks the hyperlink column: the REST
+                        # route answers 200 with a per-field error
+                        out.append({"FieldName": name, "ErrorMessage": f"The field '{name}' does not exist"})
+                        continue
                     if val.startswith("http"):
                         url, _, desc = val.partition(", ")
                         row[name] = {"Url": url, "Description": desc}
@@ -2088,6 +2093,17 @@ def main():
           proc.stderr.count("has no 'SourceRef' column") == 1
           and proc.stderr.count("has no 'Confidence' column") == 1
           and "SPList_TestCases.csv" in proc.stderr, proc.stderr[-600:])
+    # a missing HYPERLINK column fails on the REST route AFTER the Graph
+    # create: the row must be kept and patched, never created twice
+    state.lists[LISTS["testCases"]] = {}
+    state.reject_fields = {"FigureLink"}
+    proc = run_sweep(cfg_path, ["--recase", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    mrows = [r for r in state.lists[LISTS["testCases"]].values() if r.get("DocumentLookupId") == alpha_id]
+    check("missing hyperlink column: rows written once without it, no case errors, no duplicates",
+          proc.returncode == 0 and len(mrows) == 2 and all("FigureLink" not in r for r in mrows)
+          and int(out.get("case_errors", 0)) == 0 and int(out.get("case_fields_dropped", 0)) >= 1
+          and proc.stderr.count("has no 'FigureLink' column") == 1, str(out) + str(mrows)[:300] + proc.stderr[-300:])
     state.reject_fields = set()
     proc = run_sweep(cfg_path, ["--recase", "--live"])
     out = json.loads(proc.stdout.splitlines()[0])
