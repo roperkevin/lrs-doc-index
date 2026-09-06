@@ -367,6 +367,32 @@ Each is behavior-equivalent; all are exercised by the gate:
   `maxDocsPerRun` at a time. `sweep.promptVersion` in config PINS an
   older stamp (the run says so on stderr) — remove it to let the
   backfill start.
+- **Progress narration** (`pipeline/lib/progress.mjs`): every job —
+  `sweep`, `curate`, `gantt`, `wiki`, `testplangen` — can narrate its
+  run on **stderr**, one `progress: ...` line per phase, per document
+  and per model call: the sign-in, each list snapshot and its row
+  count, why each document was selected, every step inside it
+  (`extract`, `llm`, `regex`, `upsert-row`, `sidecar`, `case-index`,
+  `figure-index`, `doc-ids`, `keywords`, `related`, `neighbors`,
+  `sidecar-patch`), how long the model took, the ghost pass, the
+  browse pages, and a closing summary with the elapsed time. A wait
+  with nothing to report beats every 30 s (`still waiting on the
+  model — 60s elapsed`), so a hang is never mistaken for progress.
+  **stdout is untouched** — the summary JSON, the `*_summary` line
+  and the dry-run plan notes are byte-for-byte what they were, so
+  anything parsing them keeps working.
+  Default: **on at a console, off when output is redirected** (a
+  scheduled task's log does not grow). Force it either way with
+  `--progress` / `--no-progress` on any job, or set `"progress":
+  true` (or `false`) at the top level of `config.json`. Add
+  `--progress` to the `ops\*.cmd` line for a night that needs
+  watching — the run log then explains where a stall happened. The
+  narration reaches the model calls too: a narrating job sets
+  `LRSDOC_PROGRESS` for `python -m lrsdoc`, which reports the request
+  shape, the latency to the model's first streamed chunk, and the
+  stop reason with token usage. `testplangen` keeps its own default
+  (manual single-story runs narrate; `--auto` and `--gap-report` stay
+  quiet unless a flag says otherwise).
 - **Errors**: per-doc failures write `IndexStatus=Error` +
   `LastError="{step}: {detail}"` and retry next run — same recovery
   model as the flow. The summary JSON carries `errors`.

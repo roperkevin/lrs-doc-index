@@ -23,4 +23,8 @@ rem version already checked out.
 git fetch origin deploy >> work\sweep-task.log 2>&1
 git merge --ff-only origin/deploy >> work\sweep-task.log 2>&1
 
+rem Add --progress to the line below (or set "progress": true in
+rem config.json) to have the run narrate every phase, document and
+rem model call into this log — the way to see where a stalled night
+rem stopped. It is off here by default so the log stays small.
 node --experimental-strip-types pipeline\sweep.mjs --config config.json --live >> work\sweep-task.log 2>&1

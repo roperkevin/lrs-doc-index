@@ -20,6 +20,13 @@
  *   timeoutMs  SDK request timeout (default 600 s)
  *   python     the interpreter to run (default `python3`, `python` on
  *              Windows; LRSDOC_PYTHON in the environment overrides)
+ *   progress   true when the calling job is narrating its run: the
+ *              child gets LRSDOC_PROGRESS=1 and writes its own
+ *              `progress:` lines (request shape, first-chunk latency,
+ *              stop reason + tokens) to the inherited stderr, so the
+ *              model call is not the one silent stretch in a narrated
+ *              run (see pipeline/lib/progress.mjs). Each job sets it
+ *              from its own --progress / config.progress resolution.
  */
 
 import path from "node:path";
@@ -46,6 +53,8 @@ function bridgeEnv(cfg) {
   env.PYTHONPATH = env.PYTHONPATH ? `${REPO_ROOT}${path.delimiter}${env.PYTHONPATH}` : REPO_ROOT;
   env.PYTHONIOENCODING = "utf-8";
   if (cfg.baseUrl) env.ANTHROPIC_BASE_URL = cfg.baseUrl;
+  if (cfg.progress) env.LRSDOC_PROGRESS = "1";
+  else delete env.LRSDOC_PROGRESS;
   if (cfg.apiKey !== undefined) {
     // a configured key wins over anything exported in the environment
     env.ANTHROPIC_API_KEY = resolveSecret(cfg.apiKey, "llm.apiKey");

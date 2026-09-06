@@ -56,6 +56,7 @@ import zlib from "node:zlib";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readMeta, metaTable, relEntries, relatedRegion } from "./lib/sidecarmeta.mjs";
+import { createProgress, resolveProgress, secs, noProgress } from "./lib/progress.mjs";
 import { bodySeamEnd } from "./lib/doclinks.mjs";
 import { caseSpans } from "./lib/caseindex.mjs";
 import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
@@ -530,7 +531,7 @@ function write(outDir, relPath, text) {
 }
 
 /** Render the whole site tree. Returns the summary counters. */
-export function renderSite(cfg, libDir, workDir, outDir) {
+export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   const w = cfg.wiki || {};
   const opts = {
     siteName: w.siteName || "LRS Doc Index",
@@ -540,18 +541,27 @@ export function renderSite(cfg, libDir, workDir, outDir) {
     sourceSite: w.sourceSite || cfg.sweep?.siteUrl || "",
   };
   const kindFolders = { ...KIND_FOLDERS, ...(cfg.sweep?.kindFolders || {}) };
+  const readPhase = prog.phase("read");
   const docs = readLibrary(libDir, kindFolders);
   const kw = readKeywordMap(workDir);
   const model = buildModel(docs, kw, { kindFolders });
+  readPhase.done(
+    `${docs.length} sidecar(s) from ${libDir}, ${model.kinds.size} kind(s), ` +
+    `${model.keywords.size} keyword(s)` +
+    (kw.file ? `, list backup ${path.basename(kw.file)} (${kw.canonical.size} alias(es) merged)` : ", no list backup")
+  );
 
+  const renderPhase = prog.phase("render");
   rmDocs(outDir);
   const docsDir = path.join(outDir, "docs");
   fs.mkdirSync(docsDir, { recursive: true });
   let pages = 0, mediaFiles = 0, mediaMissing = 0;
   const put = (relPath, text) => { write(docsDir, relPath, text); pages++; };
 
+  const docTick = prog.counter(docs.length, "document pages");
   for (const d of docs) {
     put(d.page, docPage(d, model));
+    docTick(d.page, `${d.media.length} media file(s)`);
     for (const m of d.media) {
       const src = path.join(libDir, "media", m.dir, m.legacyPrefix ? m.legacyPrefix + m.name : m.name);
       const dst = path.join(docsDir, "media", m.dir, m.legacyPrefix ? m.legacyPrefix + m.name : m.name);
@@ -561,6 +571,7 @@ export function renderSite(cfg, libDir, workDir, outDir) {
       mediaFiles++;
     }
   }
+  renderPhase.step(`${mediaFiles} media file(s) copied, ${mediaMissing} missing — now the catalogs`);
   for (const [kind, ds] of model.kinds) put(`${pageName(kindFolders[kind] || kind)}/index.md`, kindIndex(kind, ds, model, kindFolders));
   const catalogs = [
     ["keywords", "Keywords", model.keywords, "The catalog's vocabulary, canonical terms only, with the documents each one tags.", "Keyword"],
@@ -573,6 +584,7 @@ export function renderSite(cfg, libDir, workDir, outDir) {
   for (const [section, title, groups, intro, label] of catalogs) {
     put(`${section}/index.md`, catalogIndex(section, title, groups, intro, model, label));
     for (const [value, ds] of groups) put(catalogPage(section, value), catalogValuePage(section, value, ds, model));
+    renderPhase.step(`${section} — ${groups.size} page(s)`);
   }
   put("cases/index.md", casesPage(model));
   put("figures/index.md", figuresPage(model));
@@ -583,6 +595,7 @@ export function renderSite(cfg, libDir, workDir, outDir) {
   write(outDir, ".github/workflows/pages.yml", PAGES_WORKFLOW.replace("BRANCH", opts.branch));
   write(outDir, "README.md", WIKI_README(opts));
   write(outDir, ".gitignore", "site/\n");
+  renderPhase.done(`${pages} page(s) and ${mediaFiles} media file(s) written to ${outDir}`);
   return {
     docs: docs.length, kinds: model.kinds.size, keywords: model.keywords.size,
     keyword_aliases_merged: kw.canonical.size, pages, media_files: mediaFiles, media_missing: mediaMissing,
@@ -635,9 +648,11 @@ function loadConfig(argv) {
     else if (a === "--out") args.out = argv[++i];
     else if (a === "--build") args.flags.build = true;
     else if (a === "--push") args.flags.push = true;
+    else if (a === "--progress") args.flags.progress = true;
+    else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: wiki.mjs --config <config.json> [--out <dir>] [--build] [--push]");
+  if (!args.config) throw new Error("usage: wiki.mjs --config <config.json> [--out <dir>] [--build] [--push] [--progress|--no-progress]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   if (!cfg.paths?.sidecarLibrary) throw new Error(`${args.config}: paths.sidecarLibrary is required`);
@@ -645,6 +660,9 @@ function loadConfig(argv) {
   cfg._out = args.out || cfg.wiki.outDir || path.join(cfg.paths.workDir || ".", "wiki");
   cfg._build = !!args.flags.build;
   cfg._push = !!args.flags.push;
+  cfg._progress = resolveProgress(cfg.progress, {
+    on: args.flags.progress, off: args.flags.noProgress,
+  });
   return cfg;
 }
 
@@ -653,22 +671,44 @@ async function main() {
   const libDir = cfg.paths.sidecarLibrary;
   if (!fs.existsSync(libDir)) throw new Error(`sidecar library not found: ${libDir}`);
   const t0 = Date.now();
-  const summary = { version: WIKI_VERSION, out: cfg._out, ...renderSite(cfg, libDir, cfg.paths.workDir, cfg._out) };
+  const prog = createProgress({ enabled: cfg._progress });
+  prog(
+    `wiki ${WIKI_VERSION} — ${libDir} -> ${cfg._out}` +
+    `${cfg._build ? ", mkdocs build" : ""}${cfg._push ? ", push" : ""}`
+  );
+  const summary = { version: WIKI_VERSION, out: cfg._out, ...renderSite(cfg, libDir, cfg.paths.workDir, cfg._out, prog) };
   process.stderr.write(`wiki: ${summary.docs} documents → ${summary.pages} pages, ${summary.media_files} media files (${cfg._out})\n`);
   if (cfg._build) {
-    buildSite(cfg._out);
+    const buildPhase = prog.phase("mkdocs build --strict");
+    const stopBuild = prog.heartbeat("waiting on mkdocs");
+    try {
+      buildSite(cfg._out);
+    } finally {
+      stopBuild();
+    }
     summary.built = true;
+    buildPhase.done("ok");
     process.stderr.write("wiki: mkdocs build --strict ok\n");
   }
   if (cfg._push) {
-    const r = pushSite(cfg._out, cfg.wiki.repoUrl, cfg.wiki.branch || "main",
-      `wiki ${new Date().toISOString().slice(0, 10)} — ${summary.docs} documents, ${summary.pages} pages`);
+    const pushPhase = prog.phase("push");
+    pushPhase.step(`${cfg.wiki.repoUrl || "(wiki.repoUrl unset)"} branch ${cfg.wiki.branch || "main"}`);
+    const stopPush = prog.heartbeat("waiting on git");
+    let r;
+    try {
+      r = pushSite(cfg._out, cfg.wiki.repoUrl, cfg.wiki.branch || "main",
+        `wiki ${new Date().toISOString().slice(0, 10)} — ${summary.docs} documents, ${summary.pages} pages`);
+    } finally {
+      stopPush();
+    }
+    pushPhase.done(`${r.head}${r.committed ? "" : " (no changes to commit)"}`);
     summary.pushed = true;
     summary.committed = r.committed;
     summary.head = r.head;
     process.stderr.write(`wiki: pushed ${r.head} to ${cfg.wiki.repoUrl}${r.committed ? "" : " (no changes)"}\n`);
   }
   summary.seconds = Math.round((Date.now() - t0) / 1000);
+  prog(`wiki finished in ${secs(Date.now() - t0)}`);
   process.stdout.write(JSON.stringify(summary) + "\n");
   process.stdout.write(`Wiki_summary: docs=${summary.docs} pages=${summary.pages} media=${summary.media_files} built=${summary.built ? 1 : 0} pushed=${summary.pushed ? 1 : 0}\n`);
 }

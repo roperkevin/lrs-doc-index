@@ -1,6 +1,9 @@
 {
   "$comment": "Local Doc Index sweep configuration. Copy to config.json next to sweep.mjs (git-ignored) and fill in. Secrets belong in environment variables via {\"$env\": \"NAME\"} — never commit them.",
 
+  "progress": "auto",
+  "$comment_progress": "Run narration (pipeline/lib/progress.mjs), shared by sweep, curate, gantt, wiki and testplangen: one `progress: ...` line per phase, per document and per model call, on STDERR — stdout keeps each job's machine contract (the summary JSON, the *_summary line). \"auto\" (the default) narrates when a person is at a console (stderr is a TTY) and stays quiet when output is redirected, so the scheduled tasks' logs do not grow; true narrates always — set it, or pass --progress in ops\\*.cmd, when a nightly run needs watching (a stuck sign-in, a slow model, a hang mid-corpus); false never narrates. Every job also takes --progress / --no-progress, which win over this key. A narrating job passes it down to the Python model layer (LRSDOC_PROGRESS), which adds the request shape, the latency to the model's first streamed chunk, and the stop reason with token usage. testplangen keeps its own default: manual single-story runs narrate, --auto and --gap-report stay quiet unless a flag says otherwise.",
+
   "sharePoint": {
     "hostname": "esriis.sharepoint.com",
     "sitePath": "/sites/lrsworkspace",
