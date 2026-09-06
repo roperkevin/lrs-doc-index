@@ -361,7 +361,11 @@ def main():
     calls = state.calls
     deltas = []
     try:
-        t_generate("testplan_draft", {k: "" for k in draft.inputs}, {"max_retries": 0},
+        # an explicit short timeout: a runner that does not surface the
+        # closed socket must fail this leg, not sit on the prompt's
+        # 600 s default
+        t_generate("testplan_draft", {k: "" for k in draft.inputs},
+                   {"max_retries": 0, "timeout_s": 10},
                    on_delta=lambda kind, text: deltas.append(text))
         check("a stream that dies mid-flight is not re-sent to the fallback", False)
     except Exception:
