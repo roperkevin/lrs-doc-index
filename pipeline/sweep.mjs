@@ -66,7 +66,6 @@ import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrate
 import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
 import { writeIndexPages, writeCaseCatalog, writeFigureCatalog, writeManifest } from "./lib/indexpages.mjs";
 import { parseMsg, msgToMarkdown } from "./lib/msg.mjs";
-import { EmbedIndex, mergeSims } from "./lib/embedindex.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
 import {
   loadDocLinks, DocPageIndex, ToolLinkResolver, docsBlock,
@@ -716,9 +715,6 @@ async function main() {
   const graph = new GraphClient(cfg.graph);
   const spo = new SpoClient(cfg.spo);
   const bodyIndex = new BodyIndex();
-  // v1.38 (opt-in): embedding-assisted relatedness — a second body
-  // signal beside BM25, merged through the same BodySim channel
-  const embedIndex = sw.embedRelated ? new EmbedIndex(cfg) : null;
   const docLinks = loadDocLinks(sw);
   // crawled page inventory (doc_crawl.mjs) with section→product from
   // the probe templates, so matches prefer the right product's tree
@@ -1542,7 +1538,7 @@ async function main() {
         );
         if (content !== before) writer.writeFile(local, content);
         await rankRelated({
-          cfg, sw, op, writer, summary: rsum, bodyIndex, embedIndex, caches, kwSnapshot,
+          cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
           setStep: () => {},
           rowId: r.ID,
           name: r.FileName || "",
@@ -1837,7 +1833,7 @@ async function main() {
       }
       step = "extract";
       await indexDoc({
-        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases, syncFigures,
+        cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
@@ -2106,7 +2102,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, embedIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
 
   // Out-of-scope lane: the source lives outside the synced library
@@ -2394,7 +2390,7 @@ async function indexDoc(ctx) {
   // (j) relatedness — extracted to rankRelated so `--rerank` can run
   // the identical path from persisted state (rows + on-disk sidecars)
   await rankRelated({
-    cfg, sw, op, writer, summary, bodyIndex, embedIndex, caches, kwSnapshot, setStep,
+    cfg, sw, op, writer, summary, bodyIndex, caches, kwSnapshot, setStep,
     rowId, name, docKey, title,
     meta: {
       kind: docKind, surface, release: ai.targetRelease || "",
@@ -2416,21 +2412,13 @@ async function indexDoc(ctx) {
  */
 async function rankRelated(ctx) {
   const {
-    cfg, sw, op, writer, summary, bodyIndex, embedIndex, caches, kwSnapshot, setStep,
+    cfg, sw, op, writer, summary, bodyIndex, caches, kwSnapshot, setStep,
     rowId, name, docKey, title, meta, selfFile, textFileUrl, upsertText,
   } = ctx;
   setStep("related");
   bodyIndex.ensureBuilt(caches.docIndexRows, sw, cfg);
   if (upsertText !== undefined) bodyIndex.upsert(rowId, upsertText);
-  let sims = bodyIndex.query(rowId);
-  if (embedIndex) {
-    // v1.38: embedding sims join through the same BodySim channel —
-    // per doc, max(bm25, embed rescaled from [embedSimMin..1] to
-    // [0..1]); the ranker (RelatedRank, untouched) sees one signal
-    embedIndex.ensureBuilt(caches.docIndexRows, sw, cfg);
-    if (upsertText !== undefined) embedIndex.upsert(rowId, upsertText);
-    sims = mergeSims(sims, await embedIndex.query(rowId), sw.embedSimMin);
-  }
+  const sims = bodyIndex.query(rowId);
   const simMin = sw.relatedBodySimMin === undefined ? 0.15 : Number(sw.relatedBodySimMin);
   const simTop = sims.filter((s) => s.sim >= simMin).slice(0, sw.relatedShortlist);
   const myKws = caches.docKwRows.filter((r) => r.DocumentId === rowId).slice(0, sw.myKwsTop);

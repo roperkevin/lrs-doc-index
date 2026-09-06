@@ -9,7 +9,7 @@
  *     sidecar drive is downloaded into the workspace (one delta
  *     listing; the eTag manifest in workDir skips unchanged files,
  *     and .md files deleted remotely are pruned locally) — BodyIndex,
- *     neighbor patches, `--rerank`/`--reformat` and the embed index
+ *     neighbor patches, `--rerank`/`--reformat`
  *     then read exactly what they read on the OneDrive machine;
  *   - write-through: every Writer file write/delete under the
  *     workspace queues a Graph drive upload/delete, flushed at the
