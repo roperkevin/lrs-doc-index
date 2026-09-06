@@ -7,3 +7,707 @@ component CHANGES files, with one summary line in STATUS.md's
 "Current state" block.
 
 Last updated: **2026-09-03p (SlideFigures v2.0 — DF-11, UI screenshots become wireframes: the corpus's pasted pictures of the app's own interface (search forms, results lists, attribute tables) used to stay captions because the trace tier rightly refused anything busier than a ruler; a picture that reads as an interface — flat light ground, assembled closed border rectangles, rows of glyph-sized ink — is now REDRAWN as a standardized wireframe: panels/group boxes/input fields from the assembled rectangles, buttons and header bands from flat colour regions (palette-tinted by the same hue-family rule as everything else, found on a coarse cell grid so glyphs over a fill can't fragment it), interior full-width borders as table-row separators, and text as placeholder pills in two weights at each row's true position and extent (no OCR is attempted or claimed — the alt text says the labels are placeholders; the slide's own extracted text keeps the searchable words). Layout normalises like every other lane: edges snap within 7px, baselines within 4px, one standardized 720px width whatever the capture resolution. The structural gate (≥1 assembled rect + ≥3 text rows + flat ground) screens raster slides BEFORE the ruler trace — window chrome never reaches the ruler classifier, diagram-shaped pictures fall straight through, photos/noise fail the flat-ground test and stay silent — and the decode budget rises 2.6→5.6MP for hi-dpi captures. Rect assembly pairs bottoms farthest-first with single-use sides, so a table's row separators never assemble into phantom boxes. Gates: `check_figures.py` PASSED (17 fixture figures incl. the new two-panel screenshot slide and a noise control; 12 of the 15 new DF-11 assertions fire against v1.9), `check_format.py`, `check_svg2pptx.py` (all 17 fixture figures convert and open in python-pptx), `render_sample.py`, PAD 27/27, `check_local_sweep.py` 158/158, related/regex green, ES2017 type-check clean; wireframe output verified visually in Chromium against a 1.6MP realistic stress screenshot (renders in ~0.5s). `docs/Diagram_Style_Framework.md` v2.0. Reaches the corpus via the open reformat action.)**. Earlier: **2026-09-03o (svg2pptx v1.3 — the slide carries the test case, not just its drawing: from the figure's own sidecar case section the converter now brings the CASE HEADING in as the slide title (sibling "(1 of 2)" tag kept, `## Case N — ...` comment stripped), the section's TABLES as native editable `a:tbl` graphicFrames below the figure (this figure's anchor table first, sibling-anchored tables excluded, 2 tables / 10 body rows capped with an ellipsis row; figure and tables centre as one block, side-by-side when two fit), and a METADATA line — doc kind · surface · products · edited when/by, from the sidecar yaml — right-aligned in the eyebrow band; `--no-tables` suppresses tables, no sidecar keeps the v1.2 slide. Gate: `check_svg2pptx.py` PASSED (91 assertions — sweep-real sidecar fixture, case-title/metadata/anchor-first/sibling-exclusion/row-cap/`--no-tables` legs, python-pptx reads the tables back cell-for-cell); verified visually in LibreOffice Impress. `local/CHANGES.md` svg2pptx v1.3.)**. Earlier: **2026-09-03n (SlideFigures v1.9 — DF-10, calm bands + figure cap: the DF-9 white-cased dash over saturated bars read as a candy stripe (owner feedback); the style is now ONE dark mark on ONE quiet colour field — extents widen into soft mid-tone highlight bands (8px; cool `#4FA7D5`, warm `#E39A45`, green `#4EB183`, violet `#A58BD3`, red `#DC8168`, re-validated: CVD separation, normal-vision ΔE ≥ 16, chroma/lightness in range), the ink dash rides directly on them with a calmer 10/6 rhythm, and the white casing underlay and marker outlines are retired (the DF-9 two-tone structure stays; only the field step softened). Also DF-10: `FIG_MAX_COUNT` 40 → 96 — the 40 predates DF-4's input+output figure pairs, so a 44-slide deck overran it and its tail (including picture-backed slides) was silently `:cap`-skipped, which presented as "PNGs stopped converting"; both real decks now render every diagram slide with zero skips (merge 56 figures, split 40). Gates: `check_figures.py` PASSED (5 new DF-10 assertions fire against v1.8), `check_svg2pptx.py` PASSED (fixture synced to the v1.9 emission), `check_local_sweep.py` 158/158, format/render_sample/PAD/related/regex green, ES2017 clean, all 16 fixture figures convert and open in python-pptx. `docs/Diagram_Style_Framework.md` v1.9. Same reformat rollout.)**. Earlier: **2026-09-03m (svg2pptx v1.2 — clean slides with titles: the sidecar plate card + border is no longer converted (the slide is the background), and every output slide carries a title band — the figure's own `<title>` as the slide title with the source document's title as a muted eyebrow above it, looked up from the corpus naming (`doc{N}_slideK.svg` → sibling kind folder's `{slug}__doc{N}.md` sidecar H1, `--doc-title` override for out-of-corpus SVGs); the figure centres in the area below the band. Gate: `check_svg2pptx.py` PASSED (plate-absence, title-band, group-below-band, sidecar-lookup + override legs); all 15 current fixture figures convert and render with the band in LibreOffice Impress. `local/CHANGES.md` svg2pptx v1.2.)**. Earlier: **2026-09-03l (SlideFigures v1.8 + svg2pptx v1.1 — DF-9, white-cased route dash + two-tone palette: DF-8's ink dash sat directly on the extent colours and ink over the cool teal was mud; every route dash (and its arrow carrier) now rides a white casing line of the same geometry and dash rhythm — the map-cartography move — so the ink separates crisply from any bar colour and disappears against the white plate, with arrowheads getting the same separation as a thin white outline on the marker triangle. The palette goes two-tone: event bars and legend swatches take a brighter field variant per hue (cool `#3A97C4`, warm `#DE8A26`, green `#3FA173`, violet `#9678CC`, red `#D96A50`, via compound `.event.s-hue`/`.swatch.s-hue` rules — class names and hue mapping unchanged; validated: adjacent-pair CVD ΔE ≥ 8, normal-vision ΔE ≥ 20), while node outlines, graph edges, freeforms and text keep the deep variants (`.f-warm` deepens to `#9C5A12` to clear 4.5:1 as text); structural ink/muted untouched. svg2pptx bumps to v1.1: its style resolver now understands compound selectors and comma groups (applied after single-class rules, the browser's more-specific-wins order), so the two-tone stylesheet flows through to PowerPoint. Verified against both real decks (40 figures each). Gates: `check_figures.py` PASSED — all 8 new DF-9 assertions fire against v1.7; `check_svg2pptx.py` PASSED (fixture synced; bright bars, deep freeforms and the white casing all assert through to the pptx); `check_local_sweep.py`, `check_format.py`, `render_sample.py`, PAD, related/regex green; ES2017 clean; all 16 fixture figures convert and open in python-pptx. `docs/Diagram_Style_Framework.md` v1.8 sections. Same reformat rollout.)**. Earlier: **2026-09-03k (SlideFigures v1.7 — DF-8, route lines to the front as dashes + hash marks for labelled anchors: the route used to draw first and vanish entirely under the event extents laid over it (on a fully covered ruler the route existed only as its arrowhead); the z-order is now extents → ticks → route in every lane, with the route restyled as a 3px 8/5 dash (butt caps) whose gaps let the extent colour read through, event extents widened to 6.5px, arrowheads shrunk to 4.4 marker units (~13px; ARROW_EXT 18→14) with every marker-end on a short solid carrier so a head can never land on a dash gap and float detached, and a line whose band carries measure labels but NO ticks now gets a major tick synthesized at each labelled position (bands, not segments, are the unit; a label dragged past the route's end clamps onto the line and re-centres over its tick) — the spanning chain's stated anchors get the same hash marks, the split anchor keeping its dot-and-hairline instead of doubling up. Verified against both real decks (40 figures each from SplittingEventsinPro and MergeEventsToolPro V5_1). Gates: `check_figures.py` PASSED — 16 fixture figures incl. the new labels-without-ticks slide, all 11 new DF-8 assertions fire against v1.6; `check_svg2pptx.py` PASSED with its figStyle fixture synced (route dash → prstDash, 6.5px extents); `check_local_sweep.py` 153/153; `check_format.py`, `render_sample.py`, PAD, related/regex suites green; ES2017 type-check clean. `docs/Diagram_Style_Framework.md` updated (v1.7 sections). Reaches the corpus via the open reformat action.)**. Earlier: **2026-09-03j (svg2pptx v1.0 — figures back into PowerPoint as editable shapes: `local/svg2pptx.mjs` (standalone Node, zero dependencies) converts figure SVGs into a .pptx with one figure per slide, each a native group — lines/arrowheads/ticks/extents/split markers as shapes, nodes as roundRect/ellipse/diamond with labels editable in place, freeform paths as custGeom, styles resolved from the figure's own stylesheet — so a PE can pull a diagram into a test plan review deck and rework it there. Gate: `local/harness/check_svg2pptx.py` PASSED (wired into CI full-format); verified end to end — all 15 `check_figures.py` fixture figures convert, python-pptx opens the deck, LibreOffice Impress loads and renders it. `local/CHANGES.md` svg2pptx v1.0.)**. Earlier: **2026-09-03i (SlideFigures v1.6 — DF-7, spanning events redraw as route chains: a line-network slide states an event running ACROSS routes (From RID R1L3 measure 10 → To RouteID R3L3 measure 25 via R2L3, split at 52.5 in R2L3's own domain); the redraw used to collapse that onto one route's ruler — a 10→25 tick grid that exists on no route, with the split clamped away as degenerate and R2L3/R3L3 missing entirely. Such slides now draw the route chain (order from the route-list table): one segment per route, each ending in its own arrowhead, route ids under their segments, only the stated measure anchors above their points, the split on the route the result table names for it, and a legend qualifying each output range with its routes. Same round: geometry tokenised across lanes (MEAS_OFF/ID_OFF/DOT_R/LEGEND_GAP — split-dot radii and id offsets had drifted per lane) with two standing style-invariant assertions holding them together. Gates: `check_figures.py` PASSED (15 fixture figures; 7 of the 10 spanning assertions fire against v1.5, both style invariants against the pre-token script), `check_local_sweep.py` 153/153, ES2017 clean. Same reformat rollout.)**. Earlier: **2026-09-03h (sweep v1.28 — content-filter lane, found live during the v2.0.1 backfill rehearsal: AI Builder's input moderation deterministically refuses `Descriptions-ModelInstructions-Dependencies.pptx` (`InputContentFiltered` — the deck quotes model-instruction-like text), and the Error lane would have retried it, re-burning one AI call nightly. Such docs now stamp `Skipped` with `LastError` `"content filter: ..."` at the current PromptVersion — once, no rechurn; they re-enter on the next promptVersion bump or a source edit (`local/CHANGES.md` v1.28, Local_Setup §6 lane list). Gate: `check_local_sweep.py` 153/153, all new assertions fire against v1.27. NOTE for the running backfill: the dry run spends real AI calls (`classifyDoc` runs regardless of dryRun; only writes are planned), so the v2.0.1 backfill should go straight to `--live` after the calibration rehearsal.)**. Earlier: **2026-09-03g (SlideFigures v1.5 — DF-6, arrowheads snap to line tips: the v1.4 head still let the line show underneath — its stealth notch was a see-through cutout, and its ~19px back reached under the extent bar because the overshoot was only 15px. The head is now a solid triangle, the overshoot is sized to the head (18px) so it rides wholly on its own stub, refX keeps the line's round cap inside the head, and the ruler lane emits arrowheads after the extents on a carrier retracing the route's final pixels — nothing draws over a head and no line shows through one. Gates: `check_figures.py` PASSED (both new assertions fire against v1.4), `check_local_sweep.py` 150/150, ES2017 clean. Same reformat rollout as 2026-09-03f.)**. Earlier: **2026-09-03f (SlideFigures v1.4 + sweep v1.27 — DF-5 figure legibility + TC-2 heading truncation. Figures: measures and event ids can no longer print over each other (collinear-route tie now breaks measures-above / ids-below, matching the vector lane; event ids anchor on their extent's longest straight run, never a corner), a split stated ON a route end no longer draws a zero-length extent with an orphaned label and a bogus `E1 20–20` legend entry, the route id sits level with its line instead of floating at mid-height, arrowheads sharpen to a stealth profile and ride a 15px overshoot past the final tick so extents and ticks never bury or cross them (mid-band arrows suppressed where a band continues; split-marker arms stop clear of the measure text), and the decks' outlined case-text boxes are dropped from figures instead of rendering as giant nodes that duplicate the heading. Headings: `caseHeadings` no longer truncates a long case line mid-sentence — the heading takes a short title cut at a phrase break and the full text survives as a bold subheader line (`local/CHANGES.md` v1.27). Gates: `check_figures.py` PASSED — 13 fixture figures, 9 of the 12 new DF-5 assertions fire against v1.3 (the rest hold invariants); `check_local_sweep.py` 150/150; PAD 27/27; standing suites + render_sample green; ES2017 type-check clean. Reaches the corpus via the open reformat action.)**. Earlier: **2026-09-03e (SlideFigures v1.3 + sweep v1.26 — DF-4 figure↔table layout: each diagram is one SVG everywhere — the redraw lane's stacked input/output figure is now the sibling pair `slideN_fig1.svg` / `slideN_fig2.svg` (legend on the output figure) — and every figure carries a table `anchor` (geometry for drawn/traced figures, meaning for redrawn ones) that `placeFigure` uses to insert the image directly before its own table in the sidecar body, mirroring the slide's layout; unanchored figures keep the after-heading placement. Gates: `check_figures.py` PASSED (10 fixture figures incl. anchors), `check_local_sweep.py` 147/147, PAD 27/27, standing suites + render_sample green. Reaches the corpus via the open reformat action; the renamed redraw figures orphan their old `slideN.svg` files in the media folder — cleanup noted in `local/CHANGES.md` v1.26.)**. Earlier: **2026-09-03d (sweep v1.25 — TC-1 test-case slide headings: bare "## Slide N" sections in the sidecar bodies of test-plan decks now head with the slide's own case text — `## Case 2 — Loop – Split measure: 20 <!-- slide 5 -->` — with checklist slides, author-titled slides and notes untouched and the slide number kept as a hidden comment. Deterministic by decision (no AI in the `--reformat` path; rationale recorded in `local/CHANGES.md` v1.25). Presentation-layer only: ZipTextExtract, LLM input, preview and similarity index unchanged. Gate `check_local_sweep.py` 146/146, PAD 27/27, standing suites + figures green. Reaches the corpus via the same open-action-11 reformat pass, once action 12 restores auth.)**. Earlier: **2026-09-03c (AUTH: the tenant's Conditional Access now rejects device-code sign-in (AADSTS53003), which took the nightly pipeline down — `auth: "interactive"` (authorization-code + PKCE over a loopback redirect) added as the fix for a joined machine; `auth: "app"` remains the route for an unregistered one. Local sweep gate 135/135.)**. Earlier: **(SlideFigures v1.0 — slide diagrams are now rendered as SVG figures placed directly after each slide heading: vector slides from their true coordinates, raster-backed slides redrawn from the topology and measures the slide itself states. One style framework across the corpus — `docs/Diagram_Style_Framework.md`. Gates: `check_figures.py` PASSED, standing suites green, PAD 27/27, local sweep 128/128. Verified against two real decks: 20 figures from SplittingEventsinPro, 39 from MergeEventsToolPro.)**. Earlier that day: **(ZipTextExtract v2.2 — DL-1 diagram-label collapse: the drawn route diagrams in test-plan decks no longer flatten into hundreds of one-token label lines; they render as one `[figure: 10–22 · R1 · E1 · Output]` line per slide. Gate `check_batch_v2_2.py` PASSED, v2.1-vs-v2.2 byte-identical on every pre-existing fixture, PAD 27/27 and local sweep 128/128 green. Corpus rollout is `sweep.mjs --reformat` — open action 10.)**. Previously: **2026-08-15 (PIPELINE 100% OFF POWER AUTOMATE: keyword curation deployed locally — `local/curate.mjs` v1.11.1, weekly Saturday 08:00 task, `autoApprove` ON by owner decision, first live run merged 2 aliases; the "LRS Keyword Curation" AI Builder prompt was created on-tenant 2026-08-15 (`173b40ef-c376-4f81-b75b-65c72323d533`) — its absence from the model list proves the cloud KeywordCuration flow was never functional, so there was nothing to turn off. Nothing orchestrated remains in the cloud: nightly sweep + weekly curation both run locally under gates; the two AI Builder prompts and SharePoint storage are all that's tenant-side. 2026-08-14: sweep migrated, DocIndexSweep flow OFF; local sweep since hardened v1.5–v1.11.1 — status page, PDFs, out-of-scope + ghost lanes, body-sim relatedness, HTML lane)**.
+
+## STATUS.md before the 2026-09-06 trim (verbatim)
+
+The status file was reduced on 2026-09-06 to the deployed table and the
+open actions (`STATUS.md`); the previous file follows verbatim, its
+per-day narrative, Office-Script paste table and harness ledger included.
+
+
+Updated with every promotion/paste. If a number here disagrees with a
+file header or CHANGES entry, this table wins the argument about what
+is *deployed*; the file's own header wins about what is *authored*.
+Last updated: **2026-09-06** — see "Current state" below.
+Per-day narratives now live in `STATUS_history.md` (moved 2026-09-03,
+review r7): this file keeps the deployed-truth TABLES; the story of
+each change belongs to the component CHANGES files.
+
+### Current state (2026-09-03q)
+
+- **2026-09-06 (figure variety — TestPlanGen v2.43, TestPlanFigures
+  prompt v0.4, figurespec v1.3, testplangen.mjs v1.22; authored on
+  branch `claude/test-plan-visualizations-80cho5`; owner request "add
+  more variety to the types of visualizations … include UI wireframes
+  if needed … workflow diagrams as well"):** five more figure kinds —
+  timeline, state, matrix, wireframe, workflow — with selection rules
+  R6–R9, a kind-choice table (the kind follows the case's assertion),
+  and a variety clause in the X6 budget; every new kind grounded
+  (states, UI labels and values as plan phrases, dates verbatim) and
+  rendered in the SlideFigures palette, svg2pptx-convertible; the
+  addendum names each figure's kind and Gen_summary gains
+  `genKinds=`. Gate: `check_testplangen.py` **241/241**.
+- **2026-09-06 (change made visible — TestPlanGen v2.41, figurespec
+  v1.2, testplangen.mjs v1.21; authored on branch
+  `claude/exemplar-method-names-gc3oth`):** every panel of a
+  route-measure figure shares one measure scale, and each panel is
+  diffed against the one before it — an event's prior extent, a
+  moved point's prior position, an event that left the route, and a
+  route's prior extent are drawn as dotted muted ghosts, with a
+  renderer-owned "prior extent" legend key. Rendering only; prompt
+  and grounding unchanged. Gate: `check_testplangen.py` **231/231**.
+- **2026-09-06 (route-measure figures made legible — TestPlanGen
+  v2.40, figurespec v1.1, TestPlanFigures prompt v0.3, testplangen.mjs
+  v1.20; authored on branch `claude/exemplar-method-names-gc3oth`;
+  owner request "allow intermediate tics … improve label positioning
+  while preventing overlap … measure labels at the beginning and ends
+  of events"):** an optional per-route `ticks` interval draws
+  intermediate ticks (labelled when they fit, at most 60); every line
+  event's ends and every point event carry their measure; every label
+  in a panel is placed collision-free by a placer with reserved
+  geometry, ordered candidates and bounded nudges. Rendering only —
+  grounding unchanged. Gate: `check_testplangen.py` **229/229**.
+- **2026-09-06 (method names from the sources — TestPlanGen v2.39,
+  prompt v1.13, testplangen.mjs v1.19, draftlint v1.5; authored on
+  branch `claude/exemplar-method-names-gc3oth`; owner request "it
+  should be able to pull method names from the exemplar"):** the
+  METHOD NAMES grounding rule — a method class the story states
+  without naming takes its members' names from the exemplar /
+  reference / related-cases lanes, each named in its case, declared
+  once on a Setup `**Methods:**` line with one [VERIFY], Trace still
+  story-first, tool names still never borrowed; the verifier's tools
+  check receives the source lanes and admits a declared, source-
+  carried name. Tenant paste pending (contract unchanged, six
+  parameters). Gate: `check_testplangen.py` **226/226**.
+- **2026-09-05 (Sidecar_Format_Plan phases 0–5, authored on branch
+  `claude/sidecar-format-phases-6oomga`; nothing deployed yet):**
+  format 3.0 (the metadata table replaces the yaml block; sweep
+  v1.48, SidecarPatch v1.7, agent instructions v1.4), filenames
+  `<issue>-<slug>.md` + media/<stem>/ + `_Manifest.json` + `--rename`
+  (v1.49, slug v1.0), ZipTextExtract v2.5 (cell paragraphs, inherited
+  bullets, top-label headings, docx labels/ordered lists; v2.6 TP-2) + pdf
+  re-flow (v1.50), ONE case grammar with six detectors + caseindex
+  v2.0 (v1.51), the opt-in `--normalize-cases` LLM lane (v1.52), the
+  story/v1 profile (v1.53), `--case-audit` (v1.47). TENANT STEPS: Test
+  Cases columns Confidence / Group / SourceRef + Shape choices; then
+  the rollout sequence at the top of `local/CHANGES.md`. Gates:
+  `check_local_sweep.py`, `check_caseindex.py` 78/78, `check_slug.py`,
+  `check_storyprofile.py`, `check_related.py`, `check_format.py`
+  (+§13), `check_testplangen.py` 141/141, `check_svg2pptx.py`,
+  `check_typecheck.py` — all green on the branch.
+- **2026-09-05ll (doc 910 draft review — TestPlanGen v2.35, prompt
+  v1.12, testplangen.mjs v1.15, draftlint v1.4 + check_draft_coverage
+  contract amendment v1.12; authored on branch
+  `claude/test-plan-review-tokens-u7ga2p`; owner request "review the
+  output test plan … it still ran out of tokens for figure
+  generation"):** the figures pass names its own cap on truncation
+  (`testplangen.figuresMaxTokens`, default 8000 → 24000 — the generic
+  message had sent the owner to the DRAFT cap); the verifier stops
+  flagging Coverage Map rows covered by a present Automation Notes /
+  Documentation Impacts section (the prompt's own rule, Python
+  authority first), known terms abutting story words ("Experience
+  Builder Split"), trailing value words ("Date Null"), and
+  enumerations in the sidecar's machine `## Summary`; prompt v1.12
+  sends preserved-value behaviors to the Positive lane. Gate:
+  `check_testplangen.py` **203/203**.
+- **2026-09-05kk (related cases — TestPlanGen v2.34, prompt v1.11,
+  testplangen.mjs v1.14; authored on branch
+  `claude/test-plan-generator-review-cki7wu`; owner request after
+  the doc 910 review):** the RELATED CASES retrieval lane — the
+  catalog's plans ranked against the story (rarity-weighted
+  tools/keywords/title query, same-surface and depth edges), each
+  top plan's best-matching cases with sidecar section text plus its
+  other case titles, sent as prompt v1.11's SIXTH input; evaluated
+  on the owner's pushed index for story 910 before release; the CASE SWEEP covers them and the new VARIATION clause
+  turns an input variation of a story-stated behavior into a
+  parameterized Yes instead of a Verify. No PE-maintained file; no
+  extra AI spend; list absent = "(none)". CONTRACT: the tenant
+  prompt needs the `RelatedCases` parameter before the v1.11 paste
+  (queued, with the v1.10 paste it supersedes). Gate:
+  `check_testplangen.py` **198/198** (leg 20).
+- **2026-09-05jj (console streaming — TestPlanGen v2.33,
+  testplangen.mjs v1.12, llm.mjs v1.7; authored on branch
+  `claude/test-plan-generator-review-cki7wu`; owner request):**
+  `--stream` (or `testplangen.stream`) on a manual anthropic-lane
+  run echoes the model's thinking summary and then its reply to
+  stderr as they arrive, for the draft and figures calls; the
+  request asks for `display: "summarized"` only when echoing;
+  stdout and the written draft unchanged; aibuilder lane prints one
+  note (Predict cannot stream). Gate: `check_testplangen.py`
+  **189/189** (leg 19).
+- **2026-09-05ii (generated figures — TestPlanGen v2.32,
+  testplangen.mjs v1.11, figurespec v1.0, TestPlanFigures prompt v0.1;
+  authored on branch `claude/test-plan-generator-review-cki7wu`;
+  owner request "build the --figures pass and renderer"):**
+  `--figures` (or `testplangen.figures`) adds ONE model call over the
+  verified draft — the model selects the cases worth a schematic by
+  rule and emits closed-vocabulary figure specs; `lib/figurespec.mjs`
+  drops any spec that invents (ids, measures, ranges, vocabulary) and
+  renders the rest to SVG in the SlideFigures palette beside the
+  draft, linked from a `## Generated Figures` addendum; draft body
+  untouched; fail soft after verification; aibuilder lane refuses
+  without `llm.figuresModelId` (no tenant prompt — anthropic lane
+  runs the repo prompt verbatim). Gate: `check_testplangen.py`
+  **183/183** (leg 18), `check_local_sweep.py` green.
+- **2026-09-05hh (first-run review — TestPlanGen v2.31,
+  testplangen.mjs v1.10; authored on branch
+  `claude/test-plan-generator-review-cki7wu`; owner request "review
+  its logic … make any enhancements you see fit" before a first
+  run):** four fixes (the exemplar trimmer overran ExemplarCap when
+  the plan's head was the overflow; minute-stamped draft names let
+  same-minute runs overwrite each other through the drive PUT; the
+  auto-mode stem→id map could match a Test Plan; a duplicate Doc IDs
+  fetch on `--issue`) and three enhancements: `--preview` (every
+  lane built, the five inputs written to workDir, NO model call —
+  the zero-spend first run), `--help`, and remote-files mode
+  (`sweep.remoteFiles: true` mirrors the sidecar library down at
+  run start — the job now runs on a machine with no OneDrive sync,
+  the design record's unbuilt G3 clause). No prompt change, no flow
+  change. Gate: `check_testplangen.py` **168/168** (legs 16–17).
+- **2026-09-05ff (case-aware generation — TestPlanGen v2.30,
+  testplangen.mjs v1.9, caseindex v2.1; authored on branch
+  `claude/test-indexing-plan-generator-wsqf8z`):** the Test Cases
+  index feeds the generator itself (owner request): plans whose
+  indexed cases cite the story's issue ids fill open lane slots
+  ahead of the G6 fallback (`caseRouted=`, banner stamp), an
+  exemplar overflowing ExemplarCap is trimmed whole cases at a time
+  with the story-relevant ones kept (`caseTrim=`, `exCases=`), and
+  every draft ends with the deterministic `## Existing Test Cases`
+  addendum (`existingCases=`, anchor deep links). No prompt change,
+  no AI spend, `testplangen.caseIndex` knob; list absent = the
+  pre-v1.9 draft. Gate: `check_testplangen.py` **156/156**
+  (leg 15), `check_caseindex.py` 78/78. Live effect lands with the
+  §12 backfill (action 12 — same blocker as everything else).
+- **2026-09-05gg (figure indexing + standardized figure names —
+  sweep v1.59, figureindex v1.0, indexpages v1.3; authored on branch
+  `claude/figure-indexing-3n2o1b`; owner request):** every indexed
+  document's figures become rows in an EIGHTH list, **Figures**
+  (`schemas/SPList_Figures.csv`; design record
+  `local/Figure_Index_Plan.md`) — pasted pictures (standardized file
+  name, format, clickable ImageLink + ImageUrl, pixel size from the
+  file header, section/slide/anchor placement, the TC id when inside
+  a case section, skim Context, curated-vocabulary Tools/Keywords)
+  and collapsed `[figure: …]` diagram labels (Kind `diagram`, labels
+  as Caption) — FigureKey replace-sets, synced at index time, on
+  `--reformat`, on `--normalize-cases`, pruned by the ghost pass,
+  backfilled by the new standalone **`--refigure`**; `_Figure
+  Catalog.md` at the library root; counters + a status-page line;
+  missing GUID = loud note (the missing-column dropper is now shared
+  by both lists). AND the media files are named
+  **`fig-<NN>[-slide-<KK>][-<slug>].<ext>`** (ordinal, first slide,
+  slide-title slug, jpeg→jpg) from the extracted text alone, so the
+  nightly index writes them that way and `--reformat` MOVES a
+  legacy `image1.png` corpus to the rule without re-extraction
+  (`media_renamed`), byte-idempotent after. TENANT STEPS: create the
+  Figures list (classic lookup) + GUID in config; then
+  `--reformat --live` (the same pass §13 needs) and
+  `--refigure --live` once (Local_Setup §14) — queued behind action
+  12. Gates: new `check_figureindex.py` **46/46** (CI),
+  `check_local_sweep.py` **307/307** (figure-index, media-rename,
+  refigure, missing-column, missing-GUID legs), `check_caseindex.py`
+  87/87, `check_testplangen.py` 156/156, slug + storyprofile green.
+- **2026-09-05hh (figureindex v1.1 / sweep v1.60 — tuned on the
+  FIRST LIVE Figures export; authored on branch
+  `claude/figure-indexing-3n2o1b`):** the owner created the Figures
+  list and ran the rollout — 1,302 rows / 139 documents (687 pictures,
+  615 diagrams), every picture standardized and sized, TC attribution
+  working. Fixed from the export: pictures ≤ 48 px are Kind **`icon`**
+  (90 docx button glyphs were figures; the catalog counts them, does
+  not list them), untitled slides slug their first text line (155
+  slug-less names), and `--reformat` converges an earlier
+  standardized name by its `fig-NN-slide-KK` prefix. TENANT: add
+  `icon` to Kind, `--reformat --live`, `--refigure --live`. Left as
+  found: DL-1 diagram captions verbatim, template assets repeating
+  across documents (cross-document flag deferred), tag noise =
+  curation. Gates: `check_figureindex.py` **50/50**,
+  `check_local_sweep.py` **311/311**, caseindex 87/87, testplangen
+  156/156, slug + storyprofile green.
+- **2026-09-05ii (drawn shapes and text — ShapeExtract v1.0, sweep
+  v1.61, figureindex v1.2; authored on branch
+  `claude/figure-indexing-3n2o1b`; owner request):** a slide's
+  drawing layer is extracted FAITHFULLY — new `scripts/ShapeExtract.ts`
+  renders every pptx slide with 3+ drawn primitives as one SVG at the
+  shapes' true positions (preset geometries, freeforms, groups,
+  rotations, theme-resolved colours, wrapped text, picture
+  placeholders that reference the sibling file) and reports the
+  glued connectors as `A → B` words; the sweep runs it after
+  ZipTextExtract on index and `--reformat`, links each drawing under
+  its slide with a `[connections: …]` line, names it with the
+  pictures, and the Figures row folds the label line and the drawing
+  into ONE Kind **`drawing`** row. `sweep.drawings` knob; byte-identical
+  media never rewrites. TENANT: add `drawing` to Kind,
+  `--reformat --live`, `--refigure --live`. Not retargeted:
+  svg2pptx / draft2pptx `--media` (they read the removed renderer's
+  vocabulary). Gates: new `check_shapes.py` **28/28**,
+  `check_figureindex.py` **61/61**, `check_local_sweep.py`
+  **317/317**, PAD 28/28, typecheck 8/8, caseindex 87/87,
+  testplangen 156/156.
+- **2026-09-05kk (the two plans normalize could not take — sweep
+  v1.63, casegrammar v1.2, ZipTextExtract v2.6; authored on branch
+  `claude/figure-indexing-3n2o1b`):** docs 527 (a deck printed to
+  PDF, 347 KB) and 528 (a diagram-topped pptx, 181 KB) were skipped
+  by `--normalize-cases` and read as 0 cases by the detectors. Fixed
+  deterministically: the pdf lane splits into PAGE UNITS at form
+  feeds (`page N` src), S6 takes sub-case numbers (`1-b.`, `3-b:`),
+  group labels between cases and lane inheritance across pages, S1/S2
+  take colon / dashed case lines, and a diagram label is never a
+  slide title (TP-2 — a label-shaped shape on a slide with a label
+  cluster). 527 → 29 cases, 528 → 78. Rollout: `--reformat --live`
+  then `--recase --live`; no tenant step. Gates: `check_caseindex.py`
+  **102/102**, `check_format.py` TP-2 leg, sweep 320/320.
+- **2026-09-05jj (SharePoint throttling — sweep v1.62, graph.mjs
+  v1.4; authored on branch `claude/figure-indexing-3n2o1b`):** the
+  first live `--refigure` hit `SPO ValidateUpdateListItem 429` on the
+  hyperlink route (one SPO call per figure row on top of Graph; the
+  client retried only 401). SpoClient now honors Retry-After (429/503,
+  `spo.maxRetries`), paces calls (`spo.paceMs`, widened after a
+  throttle), counts `spo_throttled` into the summaries and notes it
+  once; updates patch only changed fields, so a reflow with no
+  hyperlink change makes no SPO call. Re-run `--refigure --live`; it
+  resumes where the throttle stopped it. Gates: `check_local_sweep.py`
+  **320/320** (spo-throttle + no-SPO-on-churn legs).
+- **Pipeline: DOWN — auth expired** (open action 12): Conditional
+  Access rejects device-code sign-in; fix is `"auth": "interactive"`
+  + one console sign-in on the sweep machine. Nothing indexes until
+  then — including the reformat rollouts (action 11).
+- Nightly sweep + weekly curation run LOCALLY (cloud flows OFF/never
+  functional); SharePoint holds storage + the two AI Builder prompts.
+- **2026-09-03q (review r7 batch, authored on main):** sweep
+  v1.30–v1.36 (hardening: timeouts/config-validation/Node guard;
+  lib/ module split; per-run gzip list backups; webhook alerts +
+  `--check-heartbeat` dead-man task; opt-in Graph download fallback;
+  status-page trend table; `_Index.md` browse pages; opt-in OCR lane
+  for scanned PDFs), curate `--repoint` (the librarian junction
+  backfill), **gantt v1.0** (Flow #2 as a local job: Issue Refs +
+  gantt/titlematch edges), a standing CI typecheck gate, and a
+  green-gated `deploy` branch that the sweep machine now self-updates
+  from. Gates: `check_local_sweep.py` 185/185, `check_typecheck.py`
+  7/7, PAD 27/27, standing suites green. NOTE: list backups, browse
+  pages and the trend table activate on the first nightly run after
+  this lands on `deploy`; alerts/heartbeat/fallback/OCR/gantt are
+  config- or invocation-gated (see "New ops pieces" in open action 13).
+- **2026-09-03r (review r7 PHASE 4, owner-approved):** sweep
+  v1.37–v1.39 — the **msg lane** (Outlook .msg indexes via a
+  zero-dependency CFB parser; previously Skipped rows rescue
+  automatically on the next run — no enable step),
+  **embedding-assisted relatedness** (opt-in `sweep.embedRelated` +
+  `llm.embeddings`; Voyage/OpenAI-compatible endpoint, content-hash
+  cached, RelatedRank untouched, fail-open to BM25 — note document
+  text leaves the tenant when on), and **remote-files mode**
+  (`sweep.remoteFiles`: the sweep with NO OneDrive — sidecars mirror
+  down and write through Graph) with a DISABLED-by-default hosted
+  GitHub Actions sweep (`hosted-sweep.yml`, gated on the
+  `HOSTED_SWEEP_ENABLED` repo variable; prerequisites + the
+  credentials policy decision in `local/Hosted_Runner.md`). Gates:
+  `check_local_sweep.py` **201/201**; standing suites + typecheck
+  green.
+- **2026-09-03s (wireframe fidelity — DF-12, authored on main):**
+  SlideFigures **v2.1** (wireframe text is REAL where OCR provides it
+  — covered rows render as `<text>` in the bar weights, missed rows
+  keep bars, `ocrWanted` names the pictures worth transcribing; and
+  anti-aliasing artifact suppression — parallel 1px scan bars collapse
+  to one stroke, separators crossing content are dropped, killing the
+  full-height line clusters and doubled borders real screenshots
+  produced), sweep **v1.40** (the wireframe-OCR loop over the existing
+  `sweep.tesseractPath` opt-in — no new config), ops **v2.4** (the
+  optional `ocrJson` param). Gates: `check_figures.py` 18 figures (8
+  of 13 new assertions discriminate against v2.0),
+  `check_local_sweep.py` **206/206** incl. the wireframe-OCR leg, PAD
+  27/27, svg2pptx PASS (all 18 figures, transcribed text editable in
+  python-pptx), typecheck green. Corpus refresh: `--reformat` (no AI
+  spend); OCR'd text appears wherever Tesseract is configured.
+- **2026-09-03t (raster coverage — DF-13, authored on main):**
+  SlideFigures **v2.2** — every pasted raster reaches the raster
+  tiers: pngDecode covers ALL of PNG (bit depths 1-16, palettes,
+  tRNS transparency composited onto the white ground, Adam7
+  interlace — sub-8-bit palette mockups and transparent grounds were
+  silently kept at captions), plus new zero-dep baseline-JPEG
+  (huffman/restart/any-sampling, verified against Pillow), GIF (LZW,
+  interlace, transparency) and BMP decoders behind magic-byte
+  dispatch; progressive JPEG refused by design; TRACE_MAX_PX
+  5.6MP→9.5MP so 4K captures decode. No sweep/ops changes. Gates:
+  `check_figures.py` 22 figures (8 of 9 new assertions discriminate
+  against v2.1), 21 decoder cases bit-exact vs Pillow,
+  `check_local_sweep.py` 207/207, PAD 27/27, svg2pptx PASS (22
+  figures), typecheck green. Corpus refresh: `--reformat`.
+- **2026-09-04u (OCR serviceability + control fidelity — DF-14,
+  authored on main):** the answer to "why is there no text": sweep
+  **v1.41** — wireframe OCR needs Tesseract ALONE (pdftoppm is only
+  the scanned-PDF lane's renderer; a machine without Poppler now
+  still transcribes screenshots), and placeholder wireframes are
+  never silent (summary counters `figures_ocr` / `figures_ocr_off`
+  plus one loud stderr note naming the fix when wireframes render
+  with greek bars for lack of OCR). SlideFigures **v2.3** — glyph
+  run acceptance 14→40px (large-font dialog titles used to VANISH
+  from wireframes), and isolated ink-dense square boxes render as
+  icon chips (`wf-ico` — calendar buttons, dropdown glyphs; a
+  density floor keeps rounded-corner arcs from minting phantoms; a
+  solid glyph inside a text row no longer double-renders as a
+  button block). Gates: `check_figures.py` 23 figures (5 of 6 new
+  assertions discriminate against v2.2), `check_local_sweep.py`
+  **211/211** incl. the tess-only and placeholder-note legs, PAD
+  27/27, svg2pptx PASS (23 figures), typecheck green. Corpus
+  refresh: `--reformat`; the run now REPORTS whether OCR ran.
+- **2026-09-04v (screenshots beside diagrams — DF-15, authored on
+  main):** SlideFigures **v2.4** — the figure lanes stop being a
+  waterfall: a screenshot pasted NEXT TO a drawn diagram (or beside
+  redraw tables) used to be silently skipped once the diagram lane
+  produced figures; the wireframe tier now screens every slide's
+  pictures and appends its figures into one numbered sibling
+  sequence (redraw meaning-anchors preserved; appended wireframes
+  anchor only unclaimed tables; the trace tier stays last-resort).
+  And ROUNDED-corner fields assemble: the mockup-style 5px radius
+  trimmed side verticals under the 70% coverage floor, shattering
+  every field into stray lines — floor now 55%. Gates:
+  `check_figures.py` 29 figures (3 new assertions discriminate
+  against v2.3: diagram-slide screenshots emitted nothing, rounded
+  fields assembled 0), `check_local_sweep.py` 211/211, PAD 27/27,
+  svg2pptx PASS, typecheck green. Corpus refresh: `--reformat`.
+- **2026-09-04w (hyperlinks as references — TestPlanGen v2.28,
+  authored on main):** testplangen.mjs **v1.7** — the `--reference`
+  pin also takes an http(s) URL: official product documentation
+  (e.g. an ArcGIS Pro tool-reference page) is fetched up front under
+  the pin posture's hard guard (any fetch/parse failure refuses
+  before model spend), tag-stripped to plain text, defanged, and
+  injected into the REFERENCE FUNCTIONALITY lane with a title + url
+  header; `Gen_summary` gains `webRefs=`, the banner carries the
+  URLs, and drafts end with a deterministic `## Reference
+  Documentation` addendum linking each page. Prompt deliberately
+  unchanged (v1.10 — no TestPlanGenPromptVersion bump, no re-cuts);
+  cloud flows untouched. Gate: `check_testplangen.py` **136/136**.
+- **2026-09-05x (test-case indexing, phases 0–1 — Case_Index_Plan,
+  authored on main):** the plan (`local/Case_Index_Plan.md` —
+  individual test cases out of each test plan, as rows in a seventh
+  list) plus its first two phases: `schemas/SPList_TestCases.csv`
+  (Doc Index lookup, `CaseKey` replace-set key, classification /
+  scenario / skim-text / per-case IssueRefs / anchor columns) and
+  the pure parser `local/lib/caseindex.mjs` v1.0 — both corpus case
+  shapes (the `caseHeadings` deck emission and the draftlint
+  `### TC-[PN]n` contract), per-case issue refs on the Doc IDs
+  patterns, `toRowFields`/`diffCaseRows` replace-set planner.
+  Deterministic, zero AI; config gains the inert `sweep.caseIndex`
+  block; NOTHING writes yet — sweep wiring (`syncCases`,
+  `--recase`, counters) is phase 2, list creation with it
+  (Local_Setup §12). Gate: new `check_caseindex.py` **45/45** (CI
+  fixture-free job), deck fixture produced by
+  `caseHeadings(tidyBody(...))` itself — the D1 coupling leg. No
+  sidecar format change, no PromptVersion implication.
+- **2026-09-05y (test-case indexing, phase 2 — sweep v1.42, authored
+  on main):** the sweep WRITES the case rows: `syncCases`
+  replace-sets each configured-kind document's Test Cases rows from
+  the same rendered body its sidecar carries — at index time, on
+  `--reformat`, and via the new **`--recase`** backfill (sidecars on
+  disk, no extraction, no AI, dry-run default); ghost reconciliation
+  prunes an archived doc's rows; a doc reclassified off the kinds
+  list deletes its rows through the same path. Enablement =
+  `sharePoint.lists.testCases` GUID alone (missing GUID: one loud
+  note, documents index normally; `--recase` refuses naming the
+  fix); case-write failures are counters (`cases_upserted/_removed`,
+  `case_errors`, `plans_caseless`, `cases_shape_mixed` + a
+  status-page bullet), never a failed index. Gates:
+  `check_local_sweep.py` **230/230** (case-index / idempotency /
+  reformat-no-churn / recase / missing-GUID legs; the D1 coupling
+  held through the sweep's own fixture), `check_caseindex.py` 45/45,
+  `check_testplangen.py` 136/136. TENANT STEP QUEUED behind auth
+  (action 12): create the Test Cases list (Local_Setup §12, classic
+  lookup), paste the GUID, run `--recase --live` once.
+- **2026-09-05z (test-case indexing, phase 3 — consumers; sweep
+  v1.43 + TestPlanGen v2.29, authored on main):** the case index
+  becomes usable: **"_Case Catalog.md"** at the sidecar-library root
+  (indexpages v1.1 — every indexed case grouped by plan, newest
+  first, per-plan Positive/Negative counts, each case deep-linking
+  its sidecar section via its stored anchor; rebuilt by live full
+  sweeps AND live `--recase`, dry runs never write it, the
+  `sweep.indexPages` knob and the remote-files upload both apply;
+  the Q&A agent grounds on it for free), **case-level gap tracing**
+  (testplangen.mjs v1.8 — `--gap-report` checks each story's issue
+  ids against every case's IssueRefs: `caseRows=/traced=/
+  coveredUntraced=`, the covered-by-adjacency-ONLY section naming
+  each covering plan's case count, gap stories with existing
+  tracing cases flagged; report byte-identical when the list GUID
+  is absent), and **smoke row 9** (`QA_Smoke_Questions.md` v1.1 —
+  case-level answers; skipped-not-failed until the tenant list
+  exists). Gates: `check_local_sweep.py` **235/235**,
+  `check_testplangen.py` **141/141**, `check_caseindex.py` 45/45.
+  ALL Case_Index_Plan phases are now built; the plan's tenant step
+  (list + GUID + one `--recase --live`) stays queued behind auth
+  (action 12).
+- **2026-09-05aa (Test Cases list CREATED on tenant, owner):** the
+  seventh list exists on lrsworkspace per
+  `schemas/SPList_TestCases.csv` — GUID
+  `ae9374ab-295a-4321-8afa-a83a08e17711`, recorded in
+  `config.sample.json` beside the other six. The remaining go-live
+  is machine + run work, still queued behind auth (action 12): copy
+  the `testCases` line into the sweep machine's `config.json`, then
+  `sweep.mjs --config config.json --recase --live` once (dry first
+  if you want the planned counts); the nightly sweep, the
+  `_Case Catalog.md` page, and the gap report's case tracing all
+  activate from that config line with no other steps. Smoke row 9
+  becomes runnable after the backfill.
+- **2026-09-05bb (caseindex v1.1 — precision + per-case metadata,
+  authored on main):** driven by the FIRST LIVE BACKFILL's export
+  (463 cases / 43 plans, zero dupes/gaps, scenarios+anchors 100%):
+  the explicit `repo#n` issue form now needs 3–5 digits and every
+  scan runs on unfenced text (the list's one issue ref was a phantom
+  `#0` from an Arcade stationing expression — killed), and seven
+  metadata columns join `SPList_TestCases.csv`: `Shape`,
+  `FigureCount`/`TableCount`/`StepCount`, `RouteRefs` (fixture
+  route ids from prose + table cells), `ExpectedResult`/`TraceText`
+  (the draft contract's per-case lines). CaseIndexVersion bump —
+  TENANT STEP: add the seven columns to the live list (modern UI
+  fine, no lookups; Shape choices `deck; draft`) BEFORE the sweep
+  machine picks this up, then `--recase --live` once to reflow.
+  Gates: `check_caseindex.py` **53/53**, `check_local_sweep.py`
+  **236/236**, testplangen 141/141 unaffected.
+- **2026-09-05cc (caseindex v1.2 — per-case tags; sweep v1.44 +
+  indexpages v1.2, authored on main):** cases become searchable by
+  tool: two more columns, `Tools` and `Keywords`, filled
+  DETERMINISTICALLY from the curated Keywords vocabulary — canonical
+  tool names vs topic/product keywords, matched word-boundary
+  against the case's title/scenario/unfenced body PLUS the plan
+  title (which names "the tool being tested" when the slide
+  doesn't; refreshes with every replace-set). Alias rows fold to
+  canonicals, so weekly curation merges sharpen case tags
+  corpus-wide; run-start vocabulary snapshot (the kwSnapshot
+  precedent); no vocabulary = empty columns, never a guess; flat
+  '; '-joined columns by decision, not junction rows. The
+  `_Case Catalog.md` rows gain a Tools column. TENANT STEP folds
+  into the v1.1 one: nine columns total, then one
+  `--recase --live`. Gates: `check_caseindex.py` **59/59**,
+  `check_local_sweep.py` **237/237**, testplangen 141/141.
+- **2026-09-05dd (caseindex v1.3 — figure links + rarest-first
+  tags; sweep v1.45, authored on main):** driven by the SECOND live
+  export (463 rows reflowed cleanly, but 19 at the Keywords 255 cap
+  with alphabetical truncation dropping distinctive tags):
+  **`FigureLinks`** (Multiple lines of text) carries each case's
+  figure/image URLs resolved onto the library media folder —
+  collapsed `[figure: …]` labels count but mint no link — and
+  Tools/Keywords now order **rarest-first** (ascending DocKeywords
+  junction count, then name), so the cap truncates the ubiquitous
+  tail ("route", 439/463) instead of the distinctive terms; rank
+  shifts as the corpus grows are absorbed by the replace-set as
+  occasional one-row updates. TENANT STEP folds into the standing
+  one: TEN columns total, then one `--recase --live`. The
+  vocabulary-noise finding (generic Kind=tool rows: table, time,
+  attributes, identify, …; the merge event/append events near-dupes)
+  is CURATION work, not code — fix Kind/aliases on the Keywords
+  list, then reflow. Gates: `check_caseindex.py` **64/64**,
+  `check_local_sweep.py` **237/237**, testplangen 141/141.
+- **2026-09-05ee (caseindex v1.4 — the primary figure becomes
+  clickable; sweep v1.46, authored on main):** the third live export
+  verified v1.3 (FigureLinks on 360 cases, rarest-first holding on
+  the 19 capped rows); owner wants clickable links. New
+  **`FigureLink`** (Hyperlink column): the case's primary figure,
+  description = file name + "(+N more)"; empty write clears; the
+  full inventory stays in FigureLinks. Image/Thumbnail column
+  REJECTED (single image, brittle write format, SVG thumbnails
+  unreliable). FigureLink joins `HYPERLINK_FIELDS` (the standing
+  SPO ValidateUpdateListItem route), and `diffCaseRows` compares
+  hyperlink values by Url so Description drift never churns.
+  TENANT STEP folds into the standing one: ELEVEN columns total,
+  then one `--recase --live`. Gates: `check_caseindex.py`
+  **68/68**, `check_local_sweep.py` **237/237** (mock Graph now
+  rejects FigureLink like the real tenant), testplangen 141/141.
+
+### Core sweep
+
+| Piece | Deployed | Authoritative file |
+|---|---|---|
+| **Local sweep — THE deployed sweep** | **v1.4.3, DEPLOYED 2026-08-14** on the owner's machine (`C:\Repos\lrs-doc-index`, tracks main): delegated device-code auth (no app registration), the flow's own AI Builder prompt via Dataverse Predict, hyperlink columns via SPO REST, PromptVersion **v2.0** (v2.8 sidecar format + all §v2_7-fixes semantics built in). Scheduled task "LRS Doc Index Sweep" daily 17:00 via `local\run_sweep.cmd`; one-doc live smoke + scheduled test-fire passed | `local/Local_Setup.md` / `local/CHANGES.md` |
+| Flow (DocIndexSweep) | **RETIRED — turned OFF 2026-08-14** (was v2.7 with the §v2_7-fixes defects; kept in the portal solely as rollback: turn it on + disable the scheduled task, never both). Its pending windows (§v2_7-fixes, v2.8) apply ONLY on rollback | live export (see `flow/v2_8/CHANGES.md`) / `flow/v2_8/definition.json` (authored, never imported) |
+| AI Builder prompt (DocIndex) | v1.3 (pasted 2026-08-11) — still live: the local sweep calls this same model via Dataverse Predict | `prompts/DocIndex_Prompt.md` |
+
+### Office Scripts (pasted into the Automate-tab workbook)
+
+**2026-08-14 — pastes moot while the local sweep is the deployed
+sweep**: it runs the repo `scripts/*.ts` directly (via
+`pad/runner/ops.mjs`), so the tenant workbook copies below are only
+exercised on a cloud-flow rollback. The table records their state
+as of the handover; resume the paste plan only if rolling back.
+
+| Script | Repo version | Pasted on tenant |
+|---|---|---|
+| ZipTextExtract | **v2.2** (2026-09-03 — DL-1 diagram-label collapse; `check_batch_v2_2.py` PASSED, v2.1-vs-v2.2 IDENTICAL on every pre-v2.2 fixture) | tenant runs v1.9 (pasted 2026-08-11); v2.0 and v2.1 superseded in-repo before their paste — on rollback **paste v2.2 with the v2.8 window** (it carries CF-1 forward) |
+| MediaExtract | **v1.3** (r2) | **PENDING** — tenant runs v1.2 (pasted 2026-08-11) |
+| RelatedRank | **v2.2** (2026-08-15 — body-sim/filename/folder as dormant optional fields for the local sweep; flow-shaped output byte-identical to v2.1, `check_related` PASSED) | **PASTED v2.1** with the v2.6 window — sufficient on rollback (v2.2's fields stay dormant on the flow); paste v2.2 only if desired |
+| SidecarPatch | **v1.6** (r6) | tenant presumed at v1.5 (the v2.7 window's prereq; not directly verifiable from the export) — **v1.6 is a strict superset, safe to paste any time BEFORE the v2.8 window** |
+| RegexExtract | **v1.4** (r6) | tenant runs v1.2 (pre-v2.2); v1.3 superseded in-repo before its paste — v1.4 is additive-safe under any flow, products surface with the v2.8 window |
+| SlideFigures | **removed** (2026-09-05 — SVG figure generation dropped from the project: no `scripts/SlideFigures.ts`, no `figures` op, no wireframe OCR loop; the sweep keeps ZipTextExtract's `[figure: ...]` caption and extracts pictures as before) | N/A — never a tenant script |
+| WorkbookDump | **v1.2** (r2) | **PENDING** — tenant runs v1.1 (pre-v2.2) |
+
+The r2 batch passed `check_batch_r2.py` (all equivalence IDENTICAL,
+every new behavior green, ES2017 clean) and was promoted to
+`scripts/`. **The tenant paste is the open action**: paste all six in
+the gate's printed order (RegexExtract, WorkbookDump, RelatedRank,
+SidecarPatch, MediaExtract, ZipTextExtract), then update this table.
+No prompt re-paste and no PromptVersion bump needed — the r2 changes
+alter sidecar bodies only on inputs the corpus should not contain
+(corrupt archives, pasted `##` markdown, 200+ table docs, phantom
+revisions), so no backfill is required; changed docs converge as
+their sources change.
+
+**r3 amendment (2026-08-12)**: RelatedRank has since been promoted to
+**v2.0** (`check_batch_r3.py` gate PASSED; `check_batch_r2.py` now
+skips as superseded, like `check_batch.py` before it). For the r2
+paste above, RelatedRank still pastes its r2 artifact
+`review/patches/RelatedRank_v1_3.ts` — same signature as the live
+v1.2, safe under the v2.5 flow (or skip it: v1.3 is output-identical
+to the running v1.2). RelatedRank **v2.0 must NOT be pasted alone**:
+its signature changed, so the paste and the flow v2.6 designer edits
+are one maintenance window (`review/patches/designer-edits.md`
+§v2_6). No PromptVersion bump and no backfill for r3 either — scores
+and `why` prose change but the sidecar format does not; lists
+converge doc-by-doc via normal reindex + reciprocal merges (verified
+against both downstream consumers: TestPlanGen line-slices
+`related: [` and needs only score-descending order; the Q&A agent
+reads the rendered section generically).
+
+**r4 amendment (2026-08-12)**: RelatedRank has since moved again, to
+**v2.1** (`check_batch_r4.py` gate PASSED; `check_batch_r3.py` now
+skips as superseded — v2.0 was never tenant-pasted). v2.1 keeps
+v2.0's signature, so the v2.6 window is unchanged in shape and now
+**pastes v2.1 instead of v2.0** (designer-edits §v2_6, r4
+amendment); it stays fenced against the v2.5 flow exactly as v2.0
+was. The upgrade: total id dominance (non-id edge scores join the
+999 soft cap — no Strength pile outranks an id link), PE/Dev
+name-set overlap matching, and final-mode title-token affinity (new
+`title` line in `Self_rank_meta` + `title` weights in
+`Config.RelatedWeights`; the authored v2.6 definition and zip were
+amended in place — dormant and output-identical to v2.0 until that
+line lands). The gate proves v2.0-vs-v2.1 identical on every
+tenant-producible payload shape, so everything in the r3 amendment
+about PromptVersion, backfill and downstream consumers carries over
+unchanged.
+
+**r6 amendment (2026-08-13, after the live-export reconciliation)**:
+the r6 batch (`check_batch_r6.py` gate PASSED 2026-08-13) promotes
+**ZipTextExtract v2.1** (CF-1 code fencing), **RegexExtract v1.4**
+(PD-1 product detection) and **SidecarPatch v1.6** (comment metadata
+frame), paired with the flow v2.8 format
+(`flow/v2_8/CHANGES.md` — yaml hidden in `<!-- metadata` ... `-->`,
+Product row/column, PromptVersion v1.9 → v2.0). Equivalence legs run
+against the genuinely-old artifacts (v2.0 / v1.3 / v1.5) and prove
+byte-identity on every prose fixture and every pre-r6 frame — so the
+r2 paste guidance below carries over with two substitutions: paste
+**v2.1 for ZipTextExtract** and **v1.4 for RegexExtract** (their r2
+artifacts were superseded in-repo before their paste, the RelatedRank
+v1.3 precedent). SidecarPatch v1.6 pastes safely any time BEFORE the
+v2.8 window; the new Doc Index `Products` column must exist before
+the window's designer edits (`schemas/SPList_DocIndex.csv`).
+
+**r5 amendment (2026-08-13)**: SidecarPatch has since been promoted
+to **v1.5** (`check_batch_r5.py` gate PASSED 2026-08-13), paired with
+the flow v2.7 GFM sidecar format (`flow/v2_7/CHANGES.md`): sidecars
+gain a third metadata frame — H1 title + info table head, yaml block
+collapsed inside `<details><summary>Metadata</summary>` — and v1.5
+patches all three frames, preserving whichever a file carries. Same
+7-param signature; the gate proves v1.4-vs-v1.5 byte-identical on
+every fenced/dashed payload (the genuinely-old
+`review/patches/SidecarPatch_v1_4.ts` is the comparison side, so the
+equivalence leg stays meaningful post-promotion). Paste order is the
+REVERSE of the RelatedRank fencing: v1.5 pastes safely ANY time
+before the v2.7 designer edits (even under the v2.5 flow), while
+flow v2.7 live against v1.4-or-older silently no-ops every
+new-format sidecar in the patcher. The v2.7 window bumps
+`Config.PromptVersion` v1.8 → v1.9, triggering the corpus backfill
+into the new layout; TestPlanGen's `related: [` slice and the Q&A
+agent read both shapes during the transition (agent instructions
+v1.2 describes them — paste with the window, step 6).
+
+### Components
+
+| Component | Version | Prompt | Notes |
+|---|---|---|---|
+| Q&A agent | v1.1 (instructions) — **v1.3 authored** (describes the v2.8 hidden-metadata layout, products field, code fences; supersedes the never-confirmed v1.2 paste — paste v1.3 with the v2.8 window) | — | **OPEN**: v1.1 re-paste date unconfirmed — `agent/CHANGES.md` |
+| Keyword curation | **local job DEPLOYED 2026-08-15** (`local/curate.mjs` v1.11.1, Saturday 08:00 task, `curation.autoApprove: true` — merges apply automatically, digest = audit log): first live run canon=1880, merged the first 2 aliases. The cloud KeywordCuration flow was **never functional** (its AI Builder prompt did not exist until created for this deployment) — no rollback flow; the v1.1 definition remains reference-only | v1.0 pasted 2026-08-15 as tenant prompt "LRS Keyword Curation" (`173b40ef-c376-4f81-b75b-65c72323d533`) | `curation/CHANGES.md` |
+| TestPlanGen | v2.0 deployed — **v2.7 authored, deploy in progress; v2.8 authored (GFM drafts); v2.9 authored (flow nodes embedded in the topic); v2.10 authored (rebuilt-list GUIDs + config-driven site/list bindings, all three flow zips re-cut — fresh imports land on the current lists); v2.11 authored (requirement-driven coverage, prompt v1.5); v2.12 authored (flows v2.2 — design-doc references, same-surface overflow, slot config, budget fix); v2.13 authored (flows v2.3 — the v2.2 budget take self-referenced its own variable and FAILED FLOW SAVE on the tenant; fixed via `Ex_remaining`/`Ref_remaining` composes, both generation zips re-cut — anyone who imported a v2.2 package must re-import); v2.14 authored (prompt v1.6 — granular cases: one behavior / one Expected Result per case, single-action steps, variant-explicit parameterization); v2.15 authored (prompt v1.7 — source case sweep: every case in every exemplar/reference plan judged applies / doesn't-apply, tailored cases minted for the Yes rows, rendered as the `## Source Case Sweep` table; deploy path for the whole coverage push: `testplangen/Coverage_Runbook.md`, open action 9); **v2.16 authored (the LOCAL generation job, phase 1 — `local/testplangen.mjs` v1.0: core-flow semantics over the local stack, both prompt transports, pre-write draft-contract verifier via `local/lib/draftlint.mjs`; delivers the whole authored prompt/flow state with zero tenant work — the anthropic lane needs no tenant paste at all, the aibuilder lane still needs the runbook step-2 paste + `llm.testPlanModelId`); v2.17 authored (local job phase 2 — `--issue`/`--title` lookup in-process, grounding spot-checks as the verifier's second layer, opt-in `--notify` webhook); v2.18 authored (local job phase 3 — `--auto` nightly gap-drafting: lookback candidates, related+edge gap test, draft-folder idempotency, `autoMaxPerRun` budget, forced strict+notify, `run_testplangen.cmd` task wrapper inert until `testplangen.autoDraft`; plus `testplangen.provider` — generation transport independent of the sweep's); **v2.19 authored (local job phase 4 — `local/draft2docx.mjs` v1.0: reviewed draft → Word, zero deps, the docx-handoff follow-on closed locally; the deterministic `## Issue Trace` draft addendum from Doc IDs + Issue Refs; `--gap-report` whole-catalog uncovered-stories digest; maxTokens default 32000 after the first live anthropic run hit truncation at 16384; gates `check_testplangen.py` 108/108 + new `check_draft2docx.py` 23/23. The LOCAL generation job is now feature-complete per the plan — auth restore, action 12, gates every live run); v2.20 authored (prompt v1.8 — concrete test data: cases name fixture routes/events/measures/dates from Setup test-data tables, record-changing cases carry expected after-state tables; stamps + packages re-cut, lint contract unchanged); v2.21 authored (prompt v1.9 — story-first trace: every case's Trace must cite a story statement, exemplar/reference support additive only; draftlint v1.2 makes it checkable and stops flagging source-plan titles inside [VERIFY] items); v2.22 authored (local job v1.4 — pinned lanes: --exemplar/--reference put human-chosen documents into the generation lanes ahead of the automatic related-document selection, hard guards before the model call, banner/Gen_summary provenance, manual runs only; gate 116/116 post-merge); ; v2.24 authored (progress output — stderr progress lines + 30s model-call heartbeat on manual runs, llm.mjs v1.5 prints every backoff retry; gate 118/118); v2.25 authored (llm.mjs v1.6 — the generation call streams via SSE, timeoutMs becomes an idle-gap knob; fixes long drafts dying at Node's 5-minute silent-connection default; gates 119/119 + 211/211); **v2.26 authored (figures in cases — prompt v1.10's FIGURES rule: a case may close with a `**Figure:**` line carrying a story diagram's image link copied VERBATIM, never invented; draftlint v1.3 grounding check e verifies every draft image link against the story sidecar; testplangen.mjs v1.6 rewrites cited `../media/` links to absolute site URLs after verification so figures render from the drafts folder, Gen_summary gains figures=; gate 126/126)**; **v2.27 authored (review deck embeds cited figures — draft2pptx v1.1 `--media <synced media dir>` renders each case's `**Figure:**` SVG as a figure slide after the case, the same native shape group svg2pptx emits via its new v1.4 exports; degrades to a muted note without --media; gate 37/37)**; **v2.28 authored (hyperlinks as references — testplangen.mjs v1.7: `--reference` also takes an http(s) URL, fetched hard-guarded/tag-stripped/defanged into the REFERENCE FUNCTIONALITY lane with a title + url header, `webRefs=` in Gen_summary, pinned URLs in the banner, and a deterministic `## Reference Documentation` addendum linking each page in the draft; prompt deliberately unchanged at v1.10; gate 136/136)**; **v2.29 authored (case-level gap tracing — testplangen.mjs v1.8: with `sharePoint.lists.testCases` configured, `--gap-report` traces each story's issue ids against the sweep's Test Cases rows — `caseRows=/traced=/coveredUntraced=` in the head and summary line, a "Case-level tracing" section listing covered-by-adjacency-ONLY stories with each covering plan's case count, gap stories with existing tracing cases flagged; byte-identical degrade without the list; gate 141/141)**; **v2.30 authored (case-aware generation — testplangen.mjs v1.9: case-traced plans fill open lane slots ahead of the G6 fallback, overflowing exemplars trimmed whole cases at a time with the story-relevant ones kept via caseindex v2.1 `caseSpans`, the deterministic `## Existing Test Cases` addendum with anchor deep links; `existingCases=/caseRouted=/caseTrim=/exCases=` in Gen_summary; `testplangen.caseIndex` knob, list absent = pre-v1.9 draft; gate 156/156)**; **v2.31 authored (first-run review — testplangen.mjs v1.10: `--preview` zero-spend lane preview, `--help`, remote-files mode via `sweep.remoteFiles`; fixes — exemplar trimmer head overrun past ExemplarCap, same-minute draft overwrite (seconds stamp), auto-mode stem map story-only, duplicate Doc IDs fetch on `--issue`; gate 168/168)**; **v2.32 authored (generated figures — testplangen.mjs v1.11 `--figures`: TestPlanFigures prompt v0.1 selects + specifies, figurespec v1.0 grounds + renders SVG beside the draft with a `## Generated Figures` addendum; gate 183/183)**; **v2.33 authored (console streaming — testplangen.mjs v1.12 `--stream` + llm.mjs v1.7 onDelta/showThinking: thinking summary + reply echoed to stderr on the anthropic lane; gate 189/189)**; **v2.34 authored (related cases — prompt v1.11's sixth input RelatedCases + VARIATION clause, testplangen.mjs v1.14 plan-first retrieval lane over the Test Cases index; tenant parameter queued; gate 198/198)**; **v2.35 authored (doc 910 draft review — testplangen.mjs v1.15 figures cap named + 24000 default, draftlint v1.4 / lint contract v1.12 conditional-section citations + two grounding false-positive classes, prompt v1.12 preserved-value behaviors are Positive cases; gate 203/203)**; **v2.36 authored (the review deck laid out by the model — TestPlanDeck prompt v0.1 + testplangen.mjs v1.16 `--deck`: layout decisions from the model over thirteen Fluent 2 design-system patterns (`local/lib/designsystem.mjs`, MIT tokens on a 12-column grid), every slide grounded against the draft by `local/lib/deckspec.mjs` (drop, never repair), rendered as native editable PowerPoint objects incl. figures as shape groups by `local/deck2pptx.mjs`; draft2pptx v1.2 exports its emitter, svg2pptx v1.5 parses SVG text; gates `check_deckspec.py` 62/62, `check_deck2pptx.py` 42/42, `check_testplangen.py` 218/218)**; **v2.37 authored (three design systems — fluent / IBM Carbon / USWDS — each light or dark, `deckDesign` / `deckTheme`, figures re-coloured at embed time to match; gates `check_deckspec.py` 99/99, `check_deck2pptx.py` 56/56, `check_testplangen.py` 221/221)**; **v2.38 authored (the figures budget as a knob — `testplangen.figuresCap`, prompt v0.2's FiguresCap input, enforced after grounding; testplangen.mjs v1.18; gate 223/223)**; **v2.39 authored (method names from the sources — prompt v1.13's METHOD NAMES rule: a method class the story states without naming ("all input methods") takes its members' names from the exemplar / reference / related-cases lanes, declared once on a Setup `**Methods:**` line with one [VERIFY]; draftlint v1.5 admits a declared, source-carried name in the tools check and flags a declared name no source carries; testplangen.mjs v1.19 hands the verifier the source lanes; gate 226/226)**; **v2.40 authored (route-measure figures made legible — figurespec v1.1: optional per-route `ticks` interval (prompt v0.3) drawn as intermediate ticks, labelled when they fit; measure labels at every line event's ends and on point events; a collision-aware label placer with reserved geometry, ordered candidates and bounded nudges; testplangen.mjs v1.20 stamps; gate 229/229)**; **v2.41 authored (change made visible — figurespec v1.2: one measure scale per figure, and each panel diffed against the one before it — prior extents of changed, moved and departed events and of a changed route drawn as dotted muted ghosts with a renderer-owned legend key; rendering only, no prompt change; gate 231/231)****v2.23 authored (review deck — `local/draft2pptx.mjs` v1.0: reviewed draft → designed pptx review deck, zero deps, one slide per TC case, native Coverage Map / Issue Trace tables, Diagram Style Framework palette; gate `check_draft2pptx.py` 28/28, CI full-format)**; **v2.42 authored (design tokens verified against the published npm packages — `check_design_tokens.py` 180/180, six transcription slips corrected in designsystem v1.3 incl. USWDS's default face Source Sans Pro)** | v1.3 pending paste — **v1.10 authored** (`prompts/TestPlanGen_Prompt.md`; the v1.10 paste replaces every pending one before it, see `testplangen/CHANGES.md` v2.26) | agent file set v1.1 live (**v1.9 authored** — GenerateTestPlan now embeds both flow nodes with the live tenant GUIDs, `testplangen/CHANGES.md` v2.9; the v1.6 topic body + both flow nodes are pasted and checker-clean on the live tenant as of 2026-08-13 — test-pane/smoke verification is the open step). **OPEN**: v2.0 deploy window (replaces the pending v1.1/v1.2 pastes) — CONTRACT change: add the fifth AI Builder input parameter `ReferenceText` + paste v1.3, apply the §3 reference-lane flow additions in BOTH live flows (or re-import the re-cut packages), plus the v1.8 marker edits if still on v1.0 markers — `testplangen/CHANGES.md` v2.0. Then finish the v2.3–v2.5 delta: StoryLookupFlow is built and wired (current GUID `a9e637bb-5197-f111-8075-6045bd0706c5`, generation agent flow `e31f2b0e-5397-f111-8075-6045bd0706c5` — per the 2026-08-13 canvas skeleton, superseding the earlier `180ed782-…`/`0e279e86-…` ids, so those flows were evidently rebuilt); run agent smoke rows 1–2c and 7, re-pasting the v1.9 topic (brings the v1.7 classify group AND both flow nodes; add the v1.8 starters + About topic — the v1.6 classification crashes on issue references), and record in `testplangen/CHANGES.md` v2.6-v2.9 |
+
+### Harness
+
+| Suite | Last green |
+|---|---|
+| check_local_sweep.py incl. the r7 legs — config validation, list backup, heartbeat/alerts, Graph fallback, OCR lane, browse pages, trend table, `--repoint`, gantt — plus the msg/embeddings/remote-files legs and the v1.40 wireframe-OCR leg (206/206) + check_pad_runner.py (27/27) + standing suites (check_format, check_related, check_regex, check_figures) + render_sample.py | 2026-09-03 (DF-12 round) |
+| check_typecheck.py — standing ES2017 tsc gate over scripts/ (7/7; also a CI job, alongside the new `deploy`-promotion job) | 2026-09-03 |
+| check_testplangen.py (local/harness — testplangen.mjs v1.9: guard, lanes + G6 fallback, remaining-budget caps, fail-closed marker slice, verifier incl. draftlint↔check_draft_coverage agreement + grounding legs, lookup front door, notify, auto mode + provider override, issue trace, gap report incl. the v2.29 case-tracing + degrade legs, pinned lanes, figures incl. the link-absolutizing leg, web references, the v2.30 case-lane leg — routing, trimming, addendum, degrades, the v2.31 preview/help/trimmer-head leg, the remote-files mirror leg, the v2.32 generated-figures leg, the v2.33 console-streaming leg, the v2.34 related-cases leg, and the v2.35 draft-review checks — conditional-section agreement pair, the two grounding false-positive classes, the cut figures reply, and the v2.39 METHOD NAMES checks — a declared, source-carried method name passes the tools check, an undeclared one is flagged, a declared one no source carries is its own finding, and the v2.40 figure checks — labelled intermediate ticks, event-end measures, a no-overlap scan, the ticks cap finding, and the v2.41 diff checks — a shared scale across panels, ghosts of prior extents with the legend key; 231/231; CI fixture-free job) | 2026-09-06 (v2.41) |
+| check_shapes.py (review/harness — ShapeExtract.ts v1.0: qualification (prose / two-box slides silent, the flow slide draws) + presentation-order numbering, geometry + style (EMU→px, dash + width, adj radius, theme lumMod/lumOff, style lnRef shade / fillRef, grouped rotated diamond, freeform path, picture href), text (bold centred wrapped, plain text box as text only, connector label, entities), connectors (markers, the connections string), labels + alt + viewBox crop; 28/28; CI fixture-free job) | 2026-09-05 (v1.0) |
+| check_figureindex.py (local/harness — figureindex.mjs v1.2 (placeDrawings, the drawing fold) / v1.1 (icon kind, first-line slugs) / v1.0: the naming rule (ordinal / first slide / slug cap + stopword trim / jpeg→jpg / one name per source file / one link per line / docx headings / fenced code / fixed point), the index against the case grammar's OWN body (image + diagram rows, TC attribution, captions, context, legacy paths, URL resolution, sizeOf plumbing, vocabulary tags), header sizing (PNG/GIF/BMP/JPEG/junk), row shaping + the FigureKey replace-set planner; 61/61; CI fixture-free job). Sweep-level figure legs (write contract incl. size-from-disk + SPO hyperlink, ghost pruning, idempotency, catalog + status line, reformat no-churn + media-rename convergence, --refigure, shared missing-column dropper, missing-GUID fail-soft) live in check_local_sweep.py | 2026-09-05 (v1.0) |
+| check_caseindex.py (local/harness — caseindex.mjs v1.2: both case shapes via the presentation layer's own emission (the Case_Index_Plan D1 coupling leg at module level), scenario/classification/provenance, per-case issue refs incl. claimed-number suppression + the 3–5-digit floor + the fenced-code trap, the v1.1 metadata legs (Shape/counts/RouteRefs/ExpectedResult/TraceText), the v1.2 vocabulary-tag legs (plan-title tool tagging, alias folding, word-boundary, fenced-vocab trap, no-vocab empty), the v1.3 legs (figure-link resolution incl. the collapsed-label no-link rule, rarest-first df ordering), the v1.4 legs (primary-figure hyperlink shaping incl. "(+N more)" and the figure-less clear, Url-only hyperlink diff), replace-set planner incl. SweptOn-never-dirties, caps; 68/68; CI fixture-free job). Sweep-level case-index legs (write contract incl. the v1.1–v1.4 columns, kinds filter, ghost pruning, idempotency, reformat no-churn, --recase, missing-GUID fail-soft, catalog + recase-rebuild) live in check_local_sweep.py, 237/237 | 2026-09-05 (v1.4) |
+| check_draft2docx.py (local/harness — draft2docx.mjs v1.0: python-docx read-back of a converted draft — heading order, tables incl. Issue Trace, checkbox glyphs, alert labels, bold runs, comment dropping, prose joining, CLI contract; 23/23; CI full-format job) | 2026-09-04 (v2.19) |
+| check_deckspec.py (local/harness — designsystem.mjs v1.2 + deckspec.mjs v1.1: per-design shape, Carbon / USWDS tokens verbatim, light + dark themes, figure restyle; Fluent 2 tokens verbatim + presentation scale, grid arithmetic, bands, tones, prompt ↔ catalog agreement, fail-closed parse incl. the 60-slide cap, corpus counts / figures / normalization, fourteen drop cases + the surviving quoted literal, `from` resolution, every pattern inside the canvas, pagination; 99/99; CI fixture-free job) | 2026-09-06 (v2.37) |
+| check_design_tokens.py (local/harness — designsystem.mjs v1.3 against @carbon/colors 11.57 / type 11.66 / layout 11.58 / themes 11.80, @fluentui/tokens 1.0.0-alpha.24, @uswds/uswds 3.14: spacing, type ramps, radii, strokes, named colours, theme roles, USWDS theme assignments resolved through the colour families; 180/180 with --all; manual, network) | 2026-09-06 (v2.42) |
+| check_deck2pptx.py (local/harness — deck2pptx.mjs v1.2: `--design` / `--theme` legs incl. the re-coloured figure group; python-pptx read-back of a rendered spec — the walk minus the dropped slide, title1/body2/caption sizes + Segoe UI, ink/paper grounds, footer, canvas bounds, checkboxes / cards / tables / chevrons / tiles / pills, story + generated + inline figures as native groups, the not-embedded degrade, notes page, amber flags, CLI contract, `--generate` against a mock; 56/56; CI full-format job) | 2026-09-06 (v2.37) |
+| check_draft2pptx.py (local/harness — draft2pptx.mjs v1.2 (v1.1 contract, emitter exported): python-pptx read-back of a converted draft — slide walk, banner suppression, glance counts incl. the colon-flag rule, case-slide contract, amber VERIFY runs, native Coverage Map / Issue Trace tables, provenance, CLI contract, figure slides incl. the --media degrades; 37/37; CI full-format job) | 2026-09-04 (v2.27) |
+| check_svg2pptx.py (svg2pptx v1.5 (v1.4 contract + parseFigureSvg) — SVG figures → editable pptx shapes: package/shape/style/label contract, no-plate + title-band dress, case-heading titles + native case tables + metadata line from the sidecar, sidecar lookup + override + --no-tables legs, python-pptx open leg incl. table read-back; v1.4 exports the parser/emitter for draft2pptx's figure slides, CLI unchanged) | 2026-09-04 (v2.27) |
+| check_batch_v2_2.py (ZipTextExtract v2.2 / DL-1) + the standing suites (check_format incl. the new §12 diagram-label contract, check_related, check_regex) + render_sample.py + check_pad_runner.py (27/27) + check_local_sweep.py (128/128) | 2026-09-03 (see `review/harness/README.md` run records) |
+| check_batch_r6.py / render_sample.py (v2.8 format) + full re-run of the standing suites (check_format incl. §11 code fences, check_related incl. v1.6 frames, check_regex incl. products) | 2026-08-13 (historical — r6 skips as superseded since the v2.2 promotion) |
+| check_batch.py / check_batch_r2.py / check_batch_r3.py / check_batch_r4.py / check_batch_r5.py / check_batch_r6.py | skip as superseded by design (v1.9 / r2 / r3 / r4 / r5 / r6 generations). **r4 has skipped since the RelatedRank v2.2 promotion (2026-08-15)** — the 2026-08-13 row above claimed it still passed, which stopped being true then; verified skipping 2026-09-03 |
+
+### Open actions
+
+1. ~~URGENT — §v2_7-fixes on the live flow~~ — **SUPERSEDED by the 2026-08-14 migration**: the cloud flow is OFF; the local sweep implements all seven fixes' semantics natively (config-driven list GUIDs, correct list bindings, no SmokeFile knob). Resurrect this action (designer edits or `flow/DocIndexSweep_v2_7_fix.zip`) only on rollback.
+2. Confirm + record the Q&A agent v1.1 instruction paste (`agent/CHANGES.md`).
+3. ~~Confirm the curation v1.1 fix~~ — **SUPERSEDED 2026-08-15**: the cloud flow proved never-functional (no prompt existed); the local job carries DX-11 natively and its empty-queue path is gate-proven. Watch the first all-resolved Saturday digest as a courtesy check.
+4. ~~r6 / flow v2.8 window~~ — **MOSTLY SUPERSEDED by the 2026-08-14 migration** (the local sweep ships the v2.8 format + PromptVersion v2.0, and script pastes are moot — see the Office Scripts note). **Still live from this action**: (a) let the v2.0 backfill converge under the nightly local runs (the Doc Index **Products** column exists — the 2026-08-14 probe wrote it); (b) paste Q&A agent instructions v1.3 + re-run the agent smoke; then update this table.
+5. ~~Designer edits §r2~~ — **SUPERSEDED by the migration** (cloud-flow-only; resurrect on rollback).
+6. ~~PV-1 residual~~ — **CLOSED (owner decision, 2026-08-12): accepted.** The repo stays public; the pre-scrub zips (containing the work email) remain reachable in git history, knowingly. Current-tree manifests stay scrubbed; the v2.8 zip (cut from the 2026-08-13 export) is scrubbed the same way. Revisit only if circumstances change (`review/REVIEW_v2_5_r2.md` §PV-1).
+7. ~~v2.6 window~~ / ~~v2.7 window~~ — **DONE on tenant** (evidenced by the 2026-08-13 live export: RelatedRank v2.x bindings + two-phase wiring, GFM header template, PromptVersion v1.9) — but see action 1 for the mis-picks the windows introduced; the sidecar-format benefit is NOT live until FX-5 unsticks the backfill.
+8. TestPlanGen v2.8 (independent window): paste prompt v1.4 + designer edits §testplangen-v2_8 (both live flows), smoke one draft in a GFM viewer, then update the TestPlanGen row (`testplangen/CHANGES.md` v2.8).
+9. **TestPlanGen coverage rollout** (`testplangen/Coverage_Runbook.md`): the ordered, import/paste-only path through the pieces of actions 1, 4 and 8 plus the v2.0 ReferenceText contract — live drafts stay case-thin and doc-blind until FX-3/FX-5 revive `related:` retrieval, the fifth prompt parameter exists, and the current prompt is pasted. Every fix is baked into the current zips and prompt files (no designer edits required — that doc is now the patch-in-place alternative only); the runbook sequences imports, pastes and clicks with per-step checks and `Gen_summary` telemetry verification. Work it top to bottom instead of cherry-picking the pieces.
+10. **Roll DL-1 over the corpus** (`sweep.mjs --reformat`, no AI
+    spend): ZipTextExtract v2.2 changes sidecar *bodies* for
+    diagram-bearing decks. New and re-indexed docs pick it up
+    automatically on the nightly run; existing sidecars keep their old
+    label debris until a reformat pass re-extracts them. Run
+    `local\run_sweep.cmd --reformat` (or `node local/sweep.mjs --config
+    <cfg> --live --reformat`) once — it rewrites only the text below
+    the `---` seam, preserving header, metadata yaml, related region
+    and docs block byte-for-byte. No PromptVersion bump: the metadata
+    format is unchanged, so this must NOT trigger a full reindex.
+11. **Re-run `sweep.mjs --reformat`** — SVG figure generation was removed
+    from the project on 2026-09-05 (sweep v1.58): a reformat pass now
+    re-extracts diagram slides to ZipTextExtract's `[figure: ...]` caption
+    and stops linking `slideN.svg` files; the SVGs already in the media
+    folders are left in place but no longer referenced. This supersedes
+    open action 10 — one pass covers both.
+    Since sweep v1.25 the same pass also applies the test-case slide
+    headings (`local/CHANGES.md` v1.25; reshaped v1.29 / TC-3 —
+    classification H2 + scenario H3, specifics kept in the body, so
+    sidecars carrying TC-1-shaped `## Case N — …` headings need this
+    pass too) — still one pass for everything.
+    Since sweep v1.59 the same pass also renames every document's
+    media to the standardized `fig-NN-slide-KK-<slug>.<ext>` names and
+    relinks the sidecars (`media_renamed`); run `--refigure --live`
+    after it once the Figures list exists (Local_Setup §14).
+12. **Restore sweep auth** — device-code sign-in is refused by
+    Conditional Access (`AADSTS53003`), so the nightly pipeline has been
+    failing closed with `AUTH EXPIRED` since the refresh token expired.
+    Fix on a joined machine: set `"auth": "interactive"` in
+    `local/config.json` (local/CHANGES.md v1.24) and run once from a
+    console to complete the browser sign-in. If `dsregcmd /status` shows
+    the machine unregistered, use `"auth": "app"` with an Entra app
+    registration instead (Local_Setup.md §2). Until this clears, nothing
+    indexes — including the SlideFigures rollout in action 11.
+    **Consider moving to `"auth": "app"` regardless** (review r7, risk
+    R2): client credentials survive CA policy changes and idle refresh
+    tokens, and make the runner machine fungible.
+13. **Activate the r7 ops pieces** (review r7; all authored + gated,
+    each needs one enable step on the sweep machine / tenant):
+    (a) alerts — set `alerts.webhookUrl` (Teams incoming webhook) in
+    `local/config.json`; (b) dead-man — register a second scheduled
+    task for `local\run_heartbeat.cmd` (e.g. daily 09:00);
+    (c) gantt — the Issue Refs list GUID is VERIFIED
+    (`4d0e6561-80e3-49f4-aa20-e5889cc88414`, owner-provided
+    2026-09-04; recorded in `docs/SP_Adaptation_Notes.md` and
+    `local/config.sample.json`) — remaining: add
+    `sharePoint.lists.issueRefs` to the machine's config, run
+    `gantt.mjs --config ... [--dry-run]` then `--live` and record the
+    first run here; (d) repoint — after the next approved keyword
+    merges, run `curate.mjs --repoint --live` then `sweep.mjs
+    --rerank`; (e) optional — `sweep.graphDownloadFallback: true`
+    (sync-lag nights become Graph downloads) and
+    `sweep.tesseractPath` (OCR lane; install Tesseract).
+    Auto-on with the next deploy: list backups, `_Index.md` browse
+    pages, the status-page trend table, **and the msg lane** (phase 4
+    — previously Skipped .msg rows rescue by themselves). NOTE: the
+    machine's self-update now tracks the `deploy` branch (CI promotes
+    it from main when all suites are green) — no action needed, the
+    first `git fetch origin deploy` just works.
+    **Phase-4 opt-ins** (each needs an owner decision recorded here):
+    (f) embeddings — provision a Voyage (or compatible) key, set
+    `sweep.embedRelated: true` + `llm.embeddings` in config, run
+    `sweep --rerank` once; DATA EGRESS: document text goes to the
+    embeddings endpoint (Local_Setup §8's decision class);
+    (g) hosted runner — work `local/Hosted_Runner.md` top to bottom:
+    app-registration auth first, then the org-policy call on tenant
+    credentials in GitHub secrets, then the `HOSTED_SWEEP_ENABLED`
+    variable; never both the hosted run and the desktop task live.

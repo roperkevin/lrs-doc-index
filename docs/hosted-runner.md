@@ -14,10 +14,10 @@ the v1.33 fallback. This removes the last single-machine dependency
 1. **App-registration auth is a prerequisite.** Delegated sign-ins
    (device/interactive) need a human at first run and on token
    expiry — useless on an ephemeral runner. Provision the Entra app
-   per Local_Setup §2's app alternative (`Sites.Selected` write on
+   per docs/setup.md §2's app alternative (`Sites.Selected` write on
    lrsworkspace + read on LocationReferencing, or
-   `Sites.ReadWrite.All`; add it as a Power Platform application
-   user for the AI Builder call, §3).
+   `Sites.ReadWrite.All`). The model call needs only the Anthropic
+   API key (docs/setup.md §3).
 2. **Tenant credentials would live in GitHub secrets.** That is an
    organizational policy decision, not a technical one — clear it
    with whoever owns that call before setting the secrets. If the
@@ -44,20 +44,16 @@ repository variable `HOSTED_SWEEP_ENABLED` is `"true"`.
        "graph": { "auth": "app", "tenantId": "<guid>",
                   "clientId": "<app id>",
                   "clientSecret": {"$env": "DOCINDEX_GRAPH_SECRET"} },
-       "llm": { "provider": "aibuilder", "environmentUrl": "...",
-                "modelId": "...",
-                "dataverse": { "auth": "app", "tenantId": "<guid>",
-                               "clientId": "<app id>",
-                               "clientSecret": {"$env": "DOCINDEX_GRAPH_SECRET"} } },
+       "llm": { "apiKey": {"$env": "ANTHROPIC_API_KEY"} },
        "spo": { "auth": "app", "tenantId": "<guid>",
                 "clientId": "<app id>",
                 "clientSecret": {"$env": "DOCINDEX_GRAPH_SECRET"} },
        "alerts": { "webhookUrl": {"$env": "DOCINDEX_ALERT_WEBHOOK"} },
-       "sweep": { "remoteFiles": true, "promptVersion": "v2.0",
-                  "dryRun": false }
+       "sweep": { "remoteFiles": true, "dryRun": false }
      }
      ```
    - `DOCINDEX_GRAPH_SECRET` — the app registration's client secret.
+   - `ANTHROPIC_API_KEY` — the API key the Python layer uses.
    - `DOCINDEX_ALERT_WEBHOOK` — optional; alerts are MORE important
      here (nobody tails a runner log nightly).
 2. **Variable**: set `HOSTED_SWEEP_ENABLED` = `true`.
@@ -98,6 +94,6 @@ repository variable `HOSTED_SWEEP_ENABLED` is `"true"`.
   webhook alerts, or keep `run_heartbeat.cmd` on any machine with
   the same webhook config and a synced `workDir`… simplest is the
   webhook alerts alone).
-- AI spend is identical to the desktop sweep (same Predict calls).
+- AI spend is identical to the desktop sweep (same model calls).
 - Rollback: set `HOSTED_SWEEP_ENABLED` to `false`, re-enable the
   desktop task.

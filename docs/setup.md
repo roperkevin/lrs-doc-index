@@ -1,24 +1,27 @@
-# Local sweep — build + deploy guide (component v1.0)
+# Setup and operations guide
 
 Runs the entire Doc Index sweep as a local Node process
-(`local/sweep.mjs`), replacing the DocIndexSweep Power Automate cloud
-flow. Power Automate leaves the pipeline completely: no Run-script
-quota, no AI Builder, no premium connectors, no import packages, no
-designer mis-picks. SharePoint stays exactly where it is — the corpus,
-the six lists, and every consumer (Q&A agent, TestPlanGen, colleagues)
-are untouched. Deployment becomes `git pull`; the whole pipeline sits
-under the repo's gate discipline (`local/harness/check_local_sweep.py`,
-CI `fixture-free` job).
+(`pipeline/sweep.mjs`), the descendant of the DocIndexSweep Power
+Automate cloud flow. Nothing Power Platform remains: no Run-script
+quota, no AI Builder, no premium connectors, no import packages.
+SharePoint stays exactly where it is — the corpus, the lists, and every
+consumer are untouched. Every model call goes to the Anthropic API
+through the Python layer (`lrsdoc/`, §3). Deployment is a `git pull`
+(the `ops/*.cmd` wrappers do it from the CI-promoted `deploy` branch);
+the whole pipeline sits under the repo's gate discipline
+(`tests/check_local_sweep.py`, CI `fixture-free` job). The section
+numbers below are referenced from code messages and the config sample.
 
-What replaces what:
+What replaced what (the flow-era vocabulary still appears in comments
+and changelogs):
 
 | Cloud flow piece | Local replacement |
 |---|---|
 | Recurrence trigger (daily 17:00 MST) | Windows Task Scheduler (§4) — runs headless, machine can stay locked |
-| Nine Run-script actions | `scripts/*.ts` in-process via `pad/runner/ops.mjs` (the gated PAD loader) |
-| AI Builder prompt | The **same AI Builder prompt**, invoked directly via the Dataverse Web API (`local/llm.mjs`) — same model, same tenant prompt text, same credits |
+| Nine Run-script actions | `extract/*.ts` in-process via `extract/runner/ops.mjs` (the gated PAD loader) |
+| AI Builder prompt | `prompts/docindex_classify.md` on Claude through the Anthropic API (`pipeline/llm.mjs` → `python -m lrsdoc classify`, §3) |
 | SharePoint file reads/writes (docs, sidecars, media) | OneDrive-synced library folders, plain file I/O |
-| SharePoint list actions (six lists) | Microsoft Graph (`local/graph.mjs`), Entra app registration |
+| SharePoint list actions (the lists) | Microsoft Graph + SharePoint REST (`pipeline/graph.mjs`), delegated sign-in or an Entra app registration (§2) |
 | Catch_index / LastError / retry-next-run | Same semantics, reimplemented (Error rows retrigger via Needs_index) |
 
 The orchestrator mirrors flow v2.8 action-for-action (Needs_index
@@ -29,7 +32,7 @@ neighbor patching, Skip/Error lanes). Documented deviations: §6.
 ## 1. Machine prerequisites
 
 - The PAD machine setup (Node 22.6+, repo clone at e.g.
-  `C:\DocIndex\lrs-doc-index`, scratch dir) — see `pad/PAD_Setup.md`
+  `C:\DocIndex\lrs-doc-index`, scratch dir) — see `docs/history/PAD_Setup.md`
   §1. Power Automate Desktop itself is NOT needed for the local sweep.
 - **Optional but recommended — Poppler's `pdftotext`**, which lets
   the sweep index PDFs (the cloud flow always skipped them). Install
@@ -58,23 +61,22 @@ Microsoft's own pre-registered public client applications — the same
 identities the Azure CLI and Microsoft Graph PowerShell sign in with,
 present in every tenant. Nothing to register, nothing to ask an
 admin for. All reads and writes run under your existing SharePoint
-and Dataverse permissions — the same identity model as the cloud
-flow's connections, which also ran as you (list rows will show your
-name as Created/Modified By, as they do today).
+permissions — the same identity model as the cloud flow's
+connections, which also ran as you (list rows will show your name as
+Created/Modified By, as they do today).
 
 How it works:
 
 1. **First run** (do it from a console): the sweep prints
    `Open https://microsoft.com/devicelogin and enter the code XXXX`
-   — twice: Graph (list reads/writes) and Dataverse (the AI Builder
-   call). Sign in with your normal account each time. The third
-   token — SharePoint REST, for the hyperlink-column writes Graph
+   — once, for Graph (list reads/writes). Sign in with your normal
+   account. The second token — SharePoint REST, for the hyperlink-column writes Graph
    cannot do (`SourceLink`/`TextFileUrl` go through
    `ValidateUpdateListItem`) — is minted **silently** from the Graph
    sign-in: it uses the same public client, so its refresh token
    converts to a SharePoint-audience token with no extra prompt.
 2. The refresh tokens are cached under `paths.workDir\auth\`
-   (`graph.json`, `dataverse.json`, `spo.json`, mode 0600). Every later run —
+   (`graph.json`, `spo.json`, mode 0600). Every later run —
    including scheduled ones — refreshes silently; nightly runs keep
    the tokens alive indefinitely.
 3. If the machine sits idle long enough for a refresh token to
@@ -86,7 +88,7 @@ How it works:
 sign-in ("Need admin approval"), point `graph.clientId` at a public
 client your tenant already allows — the Azure CLI's
 `04b07795-8ddb-461a-bbee-02f9e1bf7b46` is usually pre-consented
-everywhere. Same knob on `llm.dataverse.clientId`. Note the SPO token
+everywhere. Note the SPO token
 (`spo.clientId`) is the one place the Azure CLI client does NOT work:
 its SharePoint grant carries only `user_impersonation`, which SP REST
 rejects with 401 — the Graph CLI client is the one whose tokens carry
@@ -100,7 +102,7 @@ sign-in completes in a browser with no relationship to this machine, so
 it can present no device identity, and a policy requiring a compliant or
 joined device refuses it. Changing `clientId` does not help — the
 symptom reproduces on every public client. Set `"auth": "interactive"`
-instead (on `graph`, and it flows to Dataverse/SPO):
+instead (on `graph`, and it flows to SPO):
 
 ```json
 "graph": { "auth": "interactive", "tenantId": "<tenant guid>" }
@@ -128,65 +130,67 @@ setup, if someone with Entra rights ever provisions one): set
 `"auth": "app"` with `tenantId`/`clientId` and a `clientSecret` as
 `{"$env": "DOCINDEX_GRAPH_SECRET"}`; application permission
 `Sites.Selected` (grant write on lrsworkspace, read on
-LocationReferencing) or `Sites.ReadWrite.All`, and add the app as a
-Power Platform application user for the AI Builder call (§3). The
-gate covers both modes.
+LocationReferencing) or `Sites.ReadWrite.All`. The gate covers both
+modes. The model call needs no Entra identity at all (§3).
 
-## 3. The AI step — same model as the cloud flow
+## 3. The AI step — the Anthropic API through `lrsdoc`
 
-`llm.provider: "aibuilder"` (the default) calls the **same AI Builder
-custom prompt the cloud flow calls today** — the flow's `Run_prompt`
-action is just the Dataverse connector wrapping the Web API `Predict`
-action, and the sweep invokes that action directly:
+Every model call — the sweep's classify step, `--normalize-cases`,
+keyword curation, test-plan drafting and its figures/deck passes —
+is `python -m lrsdoc <task>`: `pipeline/llm.mjs` spawns the Python
+layer, which loads the prompt file, renders the inputs, sends the
+request through the official Anthropic SDK and prints the result as
+JSON lines (streamed deltas first when the job asks). The prompt
+files live in `prompts/` with their versions, models, effort levels
+and output schemas in front matter (`prompts/README.md`); the
+classify and curation prompts return schema-pinned JSON, so nothing
+is brace-sliced any more.
 
-```
-POST {environmentUrl}/api/data/v9.2/msdyn_aimodels({modelId})/Microsoft.Dynamics.CRM.Predict
-```
+Setup (one-time, on the machine that runs the jobs):
 
-Same model, same tenant-hosted prompt text, same nine-field output,
-same lax response parsing (coalesce → brace-slice → parse, so fences
-and prose around the JSON are tolerated exactly as the flow tolerates
-them), same AI Builder credit metering. **Zero behavior drift in the
-AI step** — prompt promotion remains the AI Builder paste + STATUS
-entry, exactly as today.
+1. Python 3.10+ with the SDK: `pip install anthropic` (the CI job
+   pins nothing else). `python3` must be on PATH (`python` on
+   Windows); `llm.python` in config or `LRSDOC_PYTHON` in the
+   environment names another interpreter.
+2. Credentials: an Anthropic API key. Put it in the environment as
+   `ANTHROPIC_API_KEY` and reference it from config as
+   `"llm": {"apiKey": {"$env": "ANTHROPIC_API_KEY"}}` (the sample
+   does), or leave `llm.apiKey` out and let the SDK pick up
+   `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` from the environment.
+   The scheduled tasks inherit the machine's user environment, so a
+   user-level variable is enough.
+3. Smoke: `python -m lrsdoc prompts` lists the six prompt files;
+   `tests/test_lrsdoc.py` exercises the layer against a mock server.
+   A live check is one document: `sweep.mjs --live --only "<doc>"`.
 
-Setup (one-time):
+Knobs (`llm.*`, all optional): `model` and `effort` override every
+prompt's front matter; `maxRetries` (4) and `timeoutMs` (600000) are
+the SDK's retry count and per-request timeout — a generation streams,
+so the timeout is only the longest silent gap; `baseUrl` redirects
+the endpoint (the gates' mock). `LRSDOC_DUMP_DIR=<dir>` in the
+environment writes every rendered request beside its inputs, the
+first thing to look at when a reply is not what you expected.
 
-1. `llm.environmentUrl` — the environment's Dataverse URL (Power
-   Platform → Settings/Environments, or the maker portal's session
-   details, e.g. `https://org1234.crm.dynamics.com`).
-2. `llm.modelId` — the AI Builder prompt's model GUID. It's the
-   `recordId` bound in the flow's Run_prompt action
-   (`ef04e39d-3775-4655-a8be-60192095c1d6` per the v2.8 definition);
-   verify against your tenant if the prompt is ever re-created.
-3. Auth: nothing — the §2 device sign-in covers Dataverse too (its
-   own prompt on first run, its own cached token). You built the
-   prompt and the flow ran it under your connection, so your user
-   already has every permission it needs. (App-mode alternative:
-   register the §2 app as a Power Platform **application user** with
-   an AI-Builder-capable role.)
+Spend: the classify step runs once per changed document (≤
+`maxDocsPerRun` a night) on Claude Opus 5 at effort `medium`, ~6k
+input tokens per document. A classifier change is a corpus-wide
+backfill (~760 documents): bump the version in
+`prompts/docindex_classify.md` and the stamp follows (§7).
+`prompts/CHANGELOG.md` records every bump with its backfill
+implication.
 
-Licensing note: calling Dataverse/AI Builder through the Web API uses
-AI Builder credits exactly as the connector call did; no Power
-Automate license is involved.
-
-**Alternative — `"provider": "anthropic"`** (kept for a future move
-off Power Platform entirely): a direct Anthropic Messages API call
-that executes `prompts/DocIndex_Prompt.md` verbatim with schema-
-pinned output, authenticating with your Claude account via
-`ant auth login` (or `auth: "apiKey"`). Details: `local/CHANGES.md`
-v1.1. Switching providers is a config edit, but it changes the model
-that classifies the corpus — treat it as a PromptVersion-bumped
-backfill event, not a tweak.
+Data egress: document text goes to the Anthropic API under its data
+terms — the decision the owner recorded when the AI Builder lane was
+retired (`docs/history.md`, D2).
 
 ## 4. Configure + first run
 
 ```
 cd C:\DocIndex\lrs-doc-index
-copy local\config.sample.json local\config.json    (git-ignored)
+copy config.sample.json config.json    (git-ignored)
 :: fill in paths.*, graph.tenantId/clientId; verify list GUIDs vs
-:: docs/SP_Adaptation_Notes.md
-node --experimental-strip-types local\sweep.mjs --config local\config.json
+:: docs/sharepoint-notes.md
+node --experimental-strip-types pipeline\sweep.mjs --config config.json
 ```
 
 `config.sample.json` ships with `sweep.dryRun: true` — the first run
@@ -209,10 +213,10 @@ the repo-tracked task definition — it carries settings a plain
 was off/asleep at 17:00; don't-block-on-battery for laptops):
 
 ```
-schtasks /create /tn "LRS Doc Index Sweep" /xml C:\Repos\lrs-doc-index\local\sweep_task.xml /f
+schtasks /create /tn "LRS Doc Index Sweep" /xml C:\Repos\lrs-doc-index\ops\sweep_task.xml /f
 ```
 
-The action is `local\run_sweep.cmd`, which self-updates (`git pull
+The action is `ops\run_sweep.cmd`, which self-updates (`git pull
 --ff-only` — merged fixes deploy on the next run; a non-fast-forward
 state just runs the checked-out version), rotates
 `work\sweep-task.log` at ~5 MB, and runs the live sweep. The sweep
@@ -265,17 +269,17 @@ Each is behavior-equivalent; all are exercised by the gate:
   treats any non-`shortlist` mode as final).
 - **Recycle_old_sidecar → local delete** (OneDrive syncs the delete;
   the file still lands in the site recycle bin).
-- With the default `aibuilder` provider the AI step is NOT a
-  deviation at all — same model, same prompt, same brace-slice
-  parsing. (The `anthropic` alternative replaces brace-slice with
-  schema-guaranteed JSON; malformed output lands in the Error lane
-  either way.)
+- The AI step is a different model on the same prompt text: Claude
+  through the Anthropic API with schema-pinned JSON instead of the
+  tenant's AI Builder model with brace-slice parsing (§3). A refusal
+  stamps Skipped (the content-filter lane); any other bad output lands
+  in the Error lane.
 - **No XmlBuf** (vestigial in the flow).
 - **List GUIDs live in config**, not hand-typed URIs — the FX-6
   failure class is gone; a list re-creation is a config edit.
-- WorkbookDump reads the xlsx via `pad/runner/xlsx_grid.mjs` — the
+- WorkbookDump reads the xlsx via `extract/runner/xlsx_grid.mjs` — the
   same content-equivalence caveat as the PAD offload
-  (`pad/PAD_Setup.md` §7).
+  (`docs/history/PAD_Setup.md` §7).
 - **Oversize cap 50 MB** (deviation — the flow skipped anything over
   3.5 MB, a Power Automate payload limit that doesn't apply locally):
   tune with `sweep.oversizeBytes`. LLM input is still `textCap`-bound.
@@ -286,8 +290,8 @@ Each is behavior-equivalent; all are exercised by the gate:
   sidecars carry a `## Product documentation` section — product-level
   links (from the detected `Products`), per-tool links, and per-topic
   links. Resolution per tool: the `tools` map in
-  `local/esri_doc_links.json` → **match against the crawled page
-  inventory** (`local/doc_crawl.mjs` writes
+  `pipeline/data/esri_doc_links.json` → **match against the crawled page
+  inventory** (`pipeline/doc_crawl.mjs` writes
   `workDir/esri_doc_pages.json`; token match, product-tree aware) →
   a probed URL (`probeTemplates`, first HTTP 200, cached in
   `workDir/doc-links-cache.json`; `sweep.probeDocLinks: false`
@@ -370,7 +374,7 @@ Each is behavior-equivalent; all are exercised by the gate:
   Slack incoming-webhook URL, `{"$env": ...}` supported) and the
   sweep posts on a fatal abort and for docs stuck 3+ nights.
   Best-effort delivery — a down webhook never fails a run.
-- **Dead-man check** (v1.32): register `local\run_heartbeat.cmd` as a
+- **Dead-man check** (v1.32): register `ops\run_heartbeat.cmd` as a
   SECOND scheduled task (e.g. daily 09:00). It runs
   `sweep.mjs --check-heartbeat` — local stamp only, no sign-in — and
   alerts when no successful live sweep is recorded within
@@ -396,38 +400,33 @@ Each is behavior-equivalent; all are exercised by the gate:
   nothing to enable; previously Skipped rows rescue on the next run.
 - **Remote-files mode / hosted runner** (v1.39, optional):
   `sweep.remoteFiles: true` runs the whole sweep with NO OneDrive —
-  see `local/Hosted_Runner.md` for the mode's behavior, the
+  see `docs/hosted-runner.md` for the mode's behavior, the
   disabled-by-default GitHub Actions nightly, and the two decisions
   (app auth; where tenant credentials live) that come first.
-- **Rollback**: re-enable the cloud flow in the portal; both read the
-  same PromptVersion stamps, so the handover back is seamless. Keep
-  the flow import packages (`flow/*.zip`) as the durable fallback.
-- **Quota math**: zero Excel Online Run-script calls, zero Power
-  Platform/Power Automate requests. AI Builder credits are consumed
-  exactly as the cloud flow consumed them (same prompt, per-doc, only
-  for docs that need indexing).
+- **Rollback**: to a previous commit of this repository (`git
+  checkout <tag>` on the machine, or move the `deploy` branch) — the
+  cloud flow and its import packages are gone from the tree (they
+  remain in git history, `docs/history.md` names the commit).
+- **Spend**: zero Power Platform requests. Anthropic API tokens are
+  consumed per document that needs indexing (§3).
 
 ## 8. Security
 
-Same footprint as the PAD machine (`pad/PAD_Setup.md` §8). In the
-default device-auth mode the machine holds no provisioned secret —
-just the cached refresh tokens under `paths.workDir\auth\` (0600;
-they act as your signed-in session, so keep the folder inside the
-machine's disk encryption and delete it when decommissioning; you
-can also revoke sessions from your Microsoft account's security
-page). With the default `aibuilder`
-provider there is **no new data egress**: document text goes to the
-same tenant AI Builder endpoint the cloud flow sends it to today.
-(Switching to the `anthropic` provider changes that — document text
-would flow to the Anthropic API under its data terms; clear that with
-whoever owns the decision before flipping the config.)
+In the default device-auth mode the machine holds one provisioned
+secret — the Anthropic API key in the user environment (§3) — plus
+the cached refresh tokens under `paths.workDir\auth\` (0600; they act
+as your signed-in session, so keep the folder inside the machine's
+disk encryption and delete it when decommissioning; you can also
+revoke sessions from your Microsoft account's security page). App
+mode adds the Entra client secret, referenced from config as
+`{"$env": ...}` and never written into it. Document text leaves the
+tenant for the Anthropic API (§3); nothing else leaves it.
 
 ## 9. Weekly keyword curation (curate.mjs)
 
-The KeywordCuration cloud flow (v1.1) as a local weekly job — the
-LAST Power Automate piece; with this deployed the pipeline is 100%
-local. Same identities, same tenant AI Builder prompt
-("LRS Keyword Curation"), same propose-then-approve contract: the
+The KeywordCuration cloud flow (v1.1) as a local weekly job. Same
+identities, the `keyword_curation` prompt through `lrsdoc` (§3),
+same propose-then-approve contract: the
 job NEVER writes CanonicalRef — a human approves by setting the
 lookup, and the job clears the flow-owned columns
 (CurationStatus/ProposedCanonical) on its next run. The digest
@@ -435,21 +434,15 @@ overwrites `Keyword_Curation_Digest.md` in the site's **Shared
 Documents root** (outside the LRS Doc Index library so the Q&A agent
 never ingests it) via a Graph drive upload — no extra sync needed.
 
-Setup (after the sweep's §1–§4 — it reuses the same config and
-sign-ins, no new prompts):
+Setup (after the sweep's §1–§4 — it reuses the same config, sign-in
+and API key):
 
-1. Find the curation model GUID:
-   `node --experimental-strip-types local\curate.mjs --config local\config.json --models`
-   and copy the "LRS Keyword Curation" line's GUID into config as
-   `llm.curationModelId`.
-2. Smoke: `... curate.mjs --config local\config.json --dry-run`
+1. Smoke: `node --experimental-strip-types pipeline\curate.mjs --config config.json --dry-run`
    (plan only), then `--live` once and check the digest file + the
    Cur_summary line (`canon= blocked= proposed_by_model= written=
-   dropped= cleared=`) against a portal run of the flow.
-3. Schedule (Saturday 08:00, the flow's slot):
-   `schtasks /create /tn "LRS Keyword Curation" /xml C:\Repos\lrs-doc-index\local\curation_task.xml /f`
-4. **Turn the KeywordCuration cloud flow OFF** in the portal (keep as
-   rollback) — never both live — and record the handover in STATUS.
+   dropped= cleared=`).
+2. Schedule (Saturday 08:00):
+   `schtasks /create /tn "LRS Keyword Curation" /xml C:\Repos\lrs-doc-index\ops\curation_task.xml /f`
 
 **Optional — `curation.autoApprove: true`** trades the human gate
 for convenience: guard-passing merges apply immediately (the job
@@ -460,17 +453,17 @@ CurationStatus = Rejected (blocks re-proposal). The guard still
 drops anything not matching real, uncurated rows verbatim — but
 nothing reviews semantic judgment before it lands; default is false.
 
-Prompt promotion stays the AI Builder paste (CurationPromptVersion in
-`curation/CHANGES.md`; update `curation.promptVersion` in config so
-the digest header reports it). Parse-failure behavior deviates
-gently: malformed model JSON degrades to zero proposals with a log
-note (the flow failed the run); everything else is action-for-action
-from `curation/flow/v1_1/definition.json`.
+A prompt change is an edit to `prompts/keyword_curation.md` with a
+version bump (`prompts/README.md`); update `curation.promptVersion`
+in config so the digest header reports it. The reply is schema-pinned
+(`prompts/schemas/keyword_curation.json`); everything else is
+action-for-action from the retired flow's definition
+(`docs/history.md`, G2).
 
 **`--repoint` — the librarian junction backfill** (2026-09-03, from
 Curation_Setup's queued follow-ons): after approving merges (or an
 autoApprove Saturday), run
-`node --experimental-strip-types local\curate.mjs --config local\config.json --repoint --live`
+`node --experimental-strip-types pipeline\curate.mjs --config config.json --repoint --live`
 to re-point historical DocKeywords rows from merged aliases onto
 their canonical (duplicates deleted, KWKey/Title recomposed), then
 `sweep.mjs --rerank` to propagate the corrected keyword overlaps into
@@ -482,19 +475,19 @@ sweep).
 ## 10. Gantt schedules → Issue Refs (gantt.mjs — Flow #2)
 
 The long-queued feeder for the (deliberately empty) Issue Refs list,
-as an on-demand local job (`local/gantt.mjs` v1.0 — details in
-`local/CHANGES.md` "gantt v1.0"). Prerequisites: the sweep set up
+as an on-demand local job (`pipeline/gantt.mjs` v1.0 — details in
+`docs/changelog/pipeline.md` "gantt v1.0"). Prerequisites: the sweep set up
 (§1–§4; same config and sign-ins), and `sharePoint.lists.issueRefs`
 added to config. The list GUID is owner-verified on the tenant
 (2026-09-04): `4d0e6561-80e3-49f4-aa20-e5889cc88414` — it is in
-`config.sample.json` and the `docs/SP_Adaptation_Notes.md` GUID
+`config.sample.json` and the `docs/sharepoint-notes.md` GUID
 table (no flow ever referenced Issue Refs, so the live exports never
 confirmed it; the owner's verification closed that gap).
 
 1. Make sure the schedule workbooks are indexed (DocKind
    **Schedule**) and present in the synced source library.
 2. Dry run:
-   `node --experimental-strip-types local\gantt.mjs --config local\config.json --dry-run`
+   `node --experimental-strip-types pipeline\gantt.mjs --config config.json --dry-run`
    — review the plan (`issues_created= gantt_edges= titlematch_edges=`
    and the per-write detail in the `gantt-*.json` log).
 3. `--live` (add `--only <schedule.xlsx>` for one workbook). Re-runs
@@ -512,62 +505,49 @@ RelatedRank already weights the minted `gantt` (60) and `titlematch`
 ## 11. Test-plan generation (testplangen.mjs)
 
 The TestPlanGenCore cloud flow (v2.3) as an on-demand local job
-(`local/testplangen.mjs` v1.0 — design record
-`testplangen/Local_TestPlanGen_Plan.md`, component record
-`testplangen/CHANGES.md` v2.16): draft a test plan from one indexed
+(`pipeline/testplangen.mjs` v1.0 — design record
+`docs/design/Local_TestPlanGen_Plan.md`, component record
+`docs/changelog/testplangen.md` v2.16): draft a test plan from one indexed
 **User Story** row, grounded strictly in that story with the
 catalog's related documentation as reference. It delivers the entire
 AUTHORED TestPlanGen state — prompt v1.7's coverage/granularity/
 source-sweep rules, the v2.2 lane routing, the v2.3 budget
 semantics — with zero tenant designer work, plus a verifier the
 cloud flow could not have: every draft is checked against the v1.7
-coverage contract (`local/lib/draftlint.mjs`, the in-process port of
-`review/harness/check_draft_coverage.py`) BEFORE it is written.
+coverage contract (`pipeline/lib/draftlint.mjs`, the in-process port of
+`tests/check_draft_coverage.py`) BEFORE it is written.
 Read-only over every list; the only write is the timestamped draft
 in **Shared Documents/Test Plan Drafts/** (outside the LRS Doc Index
 library so the Q&A agent never ingests unreviewed drafts — the
 curation-digest rule), via a Graph drive upload, never overwritten.
-The §4 human review loop in `testplangen/TestPlanGen_Setup.md` is
+The §4 human review loop in `docs/history/TestPlanGen_Setup.md` is
 unchanged and remains a REQUIRED control.
 
 Setup (after the sweep's §1–§4 — same config, sign-ins, and synced
 sidecar library; the sidecars ARE the retrieval source):
 
-1. Pick the prompt transport — `llm.provider`, shared with the
-   sweep, or `testplangen.provider` to override it for GENERATION
-   ONLY (v1.2: e.g. drafts on the anthropic lane while the nightly
-   classify step keeps burning AI Builder credits, or the reverse):
-   - **aibuilder** (default): the tenant's `LRS Test Plan
-     Generation` AI Builder prompt via Dataverse Predict. Find its
-     GUID with
-     `node --experimental-strip-types local\testplangen.mjs --config local\config.json --models`
-     and set `llm.testPlanModelId`. CAVEAT: the TENANT paste state
-     applies — the prompt must carry all FIVE input parameters
-     (ReferenceText) and the current v1.9 text
-     (`testplangen/Coverage_Runbook.md` step 2, one-time).
-   - **anthropic**: executes `prompts/TestPlanGen_Prompt.md`
-     VERBATIM — zero tenant prompt work, the v1.9 rules apply as
-     authored. `testplangen.maxTokens` (default 32000) bounds the
-     reply; a token-truncated draft loses its END marker and fails
-     CLOSED, loudly.
+1. The model call is `prompts/testplan_draft.md` through `lrsdoc`
+   (§3) — the same `llm.*` settings as the sweep; nothing to pick.
+   `testplangen.maxTokens` (default 32000) bounds the reply; a
+   token-truncated draft loses its END marker and fails CLOSED,
+   loudly, naming the knob.
 2. **Preview first (v1.10 — zero AI spend):**
-   `node --experimental-strip-types local\testplangen.mjs --config local\config.json --story <docId> --preview`
+   `node --experimental-strip-types pipeline\testplangen.mjs --config config.json --story <docId> --preview`
    runs everything a generation does up to the model call — the
-   guard, the lookup, the pins, the remote mirror, every lane, the
-   provider resolution (and the aibuilder model-id check) — then
+   guard, the lookup, the pins, the remote mirror, every lane — then
    writes the five prompt inputs to workDir
    (`testplangen-preview-<stamp>.md`, one delimited block per input
    with its size) and stops. The summary line keeps the lane
    counters (`neighbors= exemplars= references= exChars= …`) and adds
-   `inputChars= provider= preview=1`. This is the first-run check on
+   `inputChars= preview=1`. This is the first-run check on
    any machine: auth, config, the sidecar mapping, and the related
    routing are all proven before a credit is spent, and the inputs
    file shows exactly which exemplar/reference bodies the model
    would see — tune caps or pins on it, then generate. Manual runs
-   only (not with `--auto`/`--gap-report`/`--models`); `--help`
+   only (not with `--auto`/`--gap-report`); `--help`
    prints the usage.
 3. Dry run against a real story:
-   `node --experimental-strip-types local\testplangen.mjs --config local\config.json --story <docId> --dry-run`
+   `node --experimental-strip-types pipeline\testplangen.mjs --config config.json --story <docId> --dry-run`
    — instead of a Doc Index row id, `--issue <n>` (a devtopia issue
    number, `#`-prefix tolerated) or `--title "<words>"` resolve the
    story for you (v1.1 — StoryLookupFlow's deterministic queries
@@ -581,7 +561,7 @@ sidecar library; the sidecars ARE the retrieval source):
    either way. Nothing uploads on a dry run; the would-be draft lands
    in workDir
    (`testplangen-draft-*.md`, lintable with
-   `review/harness/check_draft_coverage.py`) and the summary line
+   `tests/check_draft_coverage.py`) and the summary line
    (`story= neighbors= exemplars= references= … verify=`) reads
    exactly like the flow's `Gen_summary`
    (`TestPlanGen_Setup.md` §3 G13; `neighbors=0` on a story with
@@ -652,8 +632,8 @@ override of the same-surface routing, style/coverage only under
 the prompt's exemplar rules), `--reference` takes Test Plans and
 Design Spikes. Provenance: the draft banner's HTML comment carries
 the pinned ids, and `Gen_summary` gains `pinnedEx=`/`pinnedRef=`.
-Manual runs only — refused with `--auto`, `--gap-report`, and
-`--models` (those modes work from catalog state alone).
+Manual runs only — refused with `--auto` and `--gap-report` (those
+modes work from catalog state alone).
 
 Since v1.7 `--reference` ALSO takes an **http(s) URL** — a
 hyperlink to official product documentation (e.g. an ArcGIS Pro
@@ -661,7 +641,7 @@ tool-reference page) pinned into the REFERENCE FUNCTIONALITY lane
 beside the catalog's own documents:
 
 ```
-node --experimental-strip-types local\testplangen.mjs --config local\config.json ^
+node --experimental-strip-types pipeline\testplangen.mjs --config config.json ^
   --story 12 --reference "https://pro.arcgis.com/en/pro-app/latest/tool-reference/location-referencing/enable-referent-fields.htm" --live
 ```
 
@@ -774,7 +754,7 @@ a sibling .docx with real heading styles, Word tables, checkbox
 task lists, and the machine banner/verify comments dropped. The
 output is an unstyled fresh document: apply the team template on
 top; what it saves is the transcription, not the branding. Gate:
-`local/harness/check_draft2docx.py` (CI).
+`tests/check_draft2docx.py` (CI).
 
 **pptx review deck** (v2.23): for walking the §4 review as slides —
 `node local\draft2pptx.mjs "<draft>.md"` (zero dependencies) writes
@@ -790,12 +770,12 @@ native, editable shape group svg2pptx emits; without the flag the
 deck still converts and the case slide carries a muted
 "Figure: … (not embedded)" note. The docx stays the document of
 record; the deck is the review surface. Gate:
-`local/harness/check_draft2pptx.py` (CI).
+`tests/check_draft2pptx.py` (CI).
 
-Schedule it: register a daily task for `local\run_testplangen.cmd`
+Schedule it: register a daily task for `ops\run_testplangen.cmd`
 offset AFTER the nightly sweep (e.g. 18:30 — the sweep fires 17:00
 Mountain), e.g.
-`schtasks /create /tn "LRS Test Plan Auto Draft" /tr C:\Repos\lrs-doc-index\local\run_testplangen.cmd /sc daily /st 18:30`.
+`schtasks /create /tn "LRS Test Plan Auto Draft" /tr C:\Repos\lrs-doc-index\ops\run_testplangen.cmd /sc daily /st 18:30`.
 The wrapper self-updates from `deploy` and logs to
 `work\testplangen-task.log`, like the sweep and curation tasks. It
 stays inert until `autoDraft` is set, so registering it early costs
@@ -812,8 +792,7 @@ flow's `Config_gen` name-for-name — storyCap (45000), exemplarCap
 (400), exemplarSlots (2), referenceSlots (3), promptVersion (v1.9,
 the banner stamp; NEVER `Config.PromptVersion`) — plus draftFolder
 (`/Test Plan Drafts`, drive-root-relative), verify (annotate),
-grounding (true), notify (false), provider ("" = follow
-llm.provider), maxTokens (32000), caseIndex (true — the Test Cases
+grounding (true), notify (false), maxTokens (32000), caseIndex (true — the Test Cases
 lane below), autoDraft (false), autoMaxPerRun
 (3), autoLookbackDays (7), dryRun (true). Deliberate deviations from the
 flow, all bounded: one run-start Doc Index snapshot replaces the
@@ -822,9 +801,9 @@ the flow orders by list Modified (same newest-first intent); a story
 sidecar missing from the synced library is a hard error naming the
 sync, not a silent degrade.
 
-**`--figures` — generated figures** (v1.11, `testplangen/CHANGES.md`
+**`--figures` — generated figures** (v1.11, `docs/changelog/testplangen.md`
 v2.32; or `testplangen.figures: true`): one more model call after
-the draft is verified. `prompts/TestPlanFigures_Prompt.md` reads the
+the draft is verified. `prompts/testplan_figures.md` reads the
 draft, selects the cases a schematic would help (measure geometry,
 state change, topology, temporality, interaction; UI/validation-only
 cases, variants, story-figure duplicates and anything ungrounded are
@@ -832,7 +811,7 @@ excluded; at most `testplangen.figuresCap` — 6 by default, the prompt's
 FiguresCap input since v1.18, raise it for a long plan together with
 `figuresMaxTokens` at roughly 1.5k tokens per spec; the pass also
 enforces it after the grounding check) and emits a figure SPEC per case — the model
-never draws. `local/lib/figurespec.mjs` checks every spec against
+never draws. `pipeline/lib/figurespec.mjs` checks every spec against
 the case's own section and the Setup tables (every id a whole word
 there, every measure a value there and inside its route's range, a
 closed vocabulary of kinds/tones/marks) and DROPS any that fails,
@@ -847,35 +826,32 @@ addendum with caption, rule, the dropped specs' findings and the
 model's not-illustrated list. The draft body is untouched; the pass
 fails soft (a bad reply skips it, the draft still lands —
 `genFigures=<rendered>/<proposed>` in the summary, every spec in the
-run log). Transport: the anthropic lane executes the repo prompt
-verbatim (`figuresMaxTokens`, 24000 since v1.15 — the pass reads
-THIS knob, never `maxTokens`; a cut reply says so, and with
-`--stream` the thinking summary shares the cap); the aibuilder lane needs
-`llm.figuresModelId` and refuses before the generation spend without
-it (no tenant prompt exists yet — set `testplangen.provider` to
-`anthropic` for the pass). Manual runs only. To put the SVGs on
+run log). `prompts/testplan_figures.md` through `lrsdoc`
+(`figuresMaxTokens`, 24000 since v1.15 — the pass reads THIS knob,
+never `maxTokens`; a cut reply says so, and with `--stream` the
+thinking summary shares the cap). Manual runs only. To put the SVGs on
 slides today, run `svg2pptx.mjs` on them; draft2pptx's `--media`
 still renders story `**Figure:**` lines only — or add `--deck`
 (next), which embeds them from memory.
 
 **`--deck` — the review deck laid out by the model** (v1.16,
-`testplangen/CHANGES.md` v2.36; or `testplangen.deck: true`): one
+`docs/changelog/testplangen.md` v2.36; or `testplangen.deck: true`): one
 more model call over the FINISHED draft (addenda and figures
-included). `prompts/TestPlanDeck_Prompt.md` makes the deck's LAYOUT
+included). `prompts/testplan_deck.md` makes the deck's LAYOUT
 DECISIONS — which of thirteen design-system patterns each slide
 takes (title, section, stats, bullets, checklist, two-column, cards,
 comparison, table, flow, figure, statement, closing), what goes in
 which region, how cases group, what earns a divider, a quoted
 requirement or a step flow, and the presenter notes — as a deck
 SPEC. It never chooses a size, a gap or a colour: those are
-`local/lib/designsystem.mjs`'s (Microsoft's Fluent 2 tokens, MIT —
+`pipeline/lib/designsystem.mjs`'s (Microsoft's Fluent 2 tokens, MIT —
 type ramp, spacing, radii, colour roles — on a 12-column grid), and
 it never writes body content: every item, card, cell and statement
 is copied verbatim from the draft or pulled through a `from`
-reference, and `local/lib/deckspec.mjs` DROPS any slide that says
+reference, and `pipeline/lib/deckspec.mjs` DROPS any slide that says
 something the draft does not (the dropped slides and their findings
-are listed in the draft's `## Review Deck` addendum). `local/
-deck2pptx.mjs` then renders native, editable PowerPoint objects —
+are listed in the draft's `## Review Deck` addendum).
+`pipeline/render/deck2pptx.mjs` then renders native, editable PowerPoint objects —
 text, cards, chips, checkboxes, tables, chevron flows, and every
 story or generated figure as the same shape group svg2pptx emits —
 to `<draft stem>--deck.pptx` beside the draft, with the spec as
@@ -883,18 +859,15 @@ to `<draft stem>--deck.pptx` beside the draft, with the spec as
 spec is a text file: edit it (reorder, regroup, change a pattern,
 fix a note) and re-render without a model call —
 `node local\deck2pptx.mjs "<draft>.md" --spec "<draft>--deck.json" --media "<synced library>\media" --figures <folder holding the --fig SVGs>`;
-`node local\deck2pptx.mjs "<draft>.md" --generate --config local\config.json`
+`node local\deck2pptx.mjs "<draft>.md" --generate --config config.json`
 makes the call standalone for a draft that already exists. Fail soft
 (a bad reply skips the pass, the draft still lands —
 `deck=<slides>/<proposed>` in the summary); `deckMaxTokens` (24000)
-bounds the reply; the aibuilder lane needs `llm.deckModelId` and
-refuses before the generation spend without it (no tenant prompt
-exists — set `testplangen.provider` to `anthropic`). Manual runs
-only. Gates: `local/harness/check_deckspec.py` (fixture-free) and
+bounds the reply. Manual runs only. Gates: `tests/check_deckspec.py` (fixture-free) and
 `check_deck2pptx.py` (python-pptx), both in CI. The rule-built
 `draft2pptx.mjs` deck stays as the zero-model-call fallback.
 
-**Design systems and themes** (v1.17, `testplangen/CHANGES.md` v2.37):
+**Design systems and themes** (v1.17, `docs/changelog/testplangen.md` v2.37):
 `testplangen.deckDesign` picks the system the deck is laid out on —
 `fluent` (default; Microsoft Fluent 2, MIT; Segoe UI), `carbon` (IBM
 Carbon, Apache 2.0; IBM Plex Sans — denser, square surfaces, the
@@ -913,12 +886,12 @@ PowerPoint substitutes — and USWDS publishes no dark theme, so its
 dark deck uses the system's own darkest base steps (named in
 `lib/designsystem.mjs`). An unknown design or theme name refuses the
 run before any model spend. Every token value is verified against the
-published packages by `local/harness/check_design_tokens.py --all`
+published packages by `tests/check_design_tokens.py --all`
 (manual, needs the npm registry; v2.42) — run it after editing a
 token block.
 
 **Related cases — the retrieval lane** (v1.14, prompt v1.11,
-`testplangen/CHANGES.md` v2.34): with §12's Test Cases list in
+`docs/changelog/testplangen.md` v2.34): with §12's Test Cases list in
 config, the catalog's test PLANS are ranked against the story (a
 rarity-weighted query from its tools, keywords and title; a plan's
 terms are its title plus its cases' tags; same-surface and deep plans
@@ -935,11 +908,9 @@ draft without anyone curating a list: the nightly sweep's index is
 the source. `relatedCases=`/`relatedPlans=`/`relCaseChars=` in the summary; the
 progress line names the plans drawn from with their relevance;
 `--preview` shows the block. `testplangen.relatedCases: false` (or no list) = "(none)".
-The aibuilder lane's tenant prompt needs the `RelatedCases`
-parameter created before the v1.11 paste; the anthropic lane runs
-the repo prompt as-is.
+The prompt file carries the `RelatedCases` input since 1.11.0.
 
-**`--stream` — watch the model work** (v1.12, `testplangen/CHANGES.md`
+**`--stream` — watch the model work** (v1.12, `docs/changelog/testplangen.md`
 v2.33; or `testplangen.stream: true`): on the anthropic lane a manual
 run echoes the model's output to stderr as it streams — first its
 THINKING SUMMARY (the request asks the API for
@@ -952,12 +923,10 @@ heartbeat stays silent while a stream echoes; a transport retry
 prints a `[stream restarted]` rule because the partial output is
 discarded exactly as the marker slice would discard it. stdout's
 JSON + `Gen_summary` and the written draft are unchanged — the
-fail-closed slice still runs on the complete reply. The aibuilder
-lane cannot stream (Dataverse Predict is one request, one response):
-`--stream` there prints one note. Manual runs only.
+fail-closed slice still runs on the complete reply. Manual runs only.
 
 **No OneDrive on this machine?** (v1.10) Set `sweep.remoteFiles:
-true` — the sweep's v1.39 remote-files mode (§7, `Hosted_Runner.md`)
+true` — the sweep's v1.39 remote-files mode (§7, `docs/hosted-runner.md`)
 — and the run mirrors the sidecar library down into
 `paths.sidecarLibrary` at start through the same `RemoteLibrary` the
 sweep uses, sharing its eTag manifest (`workDir/mirror-manifest.json`),
@@ -968,7 +937,7 @@ folder write is unchanged. Without the flag, an empty workspace
 refuses with the sidecar-not-found message, which now names this
 switch.
 
-**The Test Cases lane** (v1.9, `testplangen/CHANGES.md` v2.30) —
+**The Test Cases lane** (v1.9, `docs/changelog/testplangen.md` v2.30) —
 once §12's list GUID is in config, the sweep's per-case index feeds
 generation three ways, all deterministic and read-only, no prompt
 change: plans whose indexed cases cite one of the story's devtopia
@@ -988,19 +957,18 @@ case index found what RelatedRank had not yet linked; a large
 `existingCases=` is the dedupe list to read FIRST in the §4 review.
 `testplangen.caseIndex: false` turns the lane off; absent list =
 off; either way the draft is the pre-v1.9 one. Prompt promotion stays the
-`TestPlanGenPromptVersion` paste path (`testplangen/CHANGES.md`) —
-the anthropic lane picks a promoted prompt up on its next run
-automatically; the aibuilder lane still needs the tenant paste.
+`TestPlanGenPromptVersion` paste path (`docs/changelog/testplangen.md`) —
+every job picks a changed prompt file up on its next run.
 
 ## 12. Test-case indexing (caseindex — the Test Cases list)
 
 Individual test cases out of each indexed test plan, as rows in a
 seventh list — design record and phased build order in
-`local/Case_Index_Plan.md`. Shipped: the deterministic parser
-(`local/lib/caseindex.mjs` — deck-derived `## Case N` sections and
+`docs/design/Case_Index_Plan.md`. Shipped: the deterministic parser
+(`pipeline/lib/caseindex.mjs` — deck-derived `## Case N` sections and
 draft-style `### TC-P/TC-N` headings, per-case issue references,
 replace-set planner) under its own CI gate
-(`local/harness/check_caseindex.py`), the sweep wiring (sweep
+(`tests/check_caseindex.py`), the sweep wiring (sweep
 v1.42): documents of the configured kinds sync their case rows at
 index time and on `--reformat`, ghost reconciliation prunes an
 archived doc's rows, and `--recase` backfills the whole corpus from
@@ -1069,7 +1037,7 @@ Before the first nightly run on the new code:
    medium; low; llm), `Group` (text), `SourceRef` (text); extend
    `Shape`'s choices to S1; S2; S3; S4; S5; S6; LLM; draft; deck
    (`schemas/SPList_TestCases.csv`).
-2. `node local/sweep.mjs --config local/config.json --reformat --live`
+2. `node pipeline/sweep.mjs --config config.json --reformat --live`
    — every sidecar rewrites once: the metadata table (no yaml block),
    the v2.5 re-extraction, the case grammar on test plans, the story
    profile on stories. No AI spend. Byte-idempotent on a second run.
@@ -1082,13 +1050,12 @@ Before the first nightly run on the new code:
    `sweep.normalizeCases.enabled: true` and run
    `--normalize-cases --live` in batches (`maxPerRun`); LLM-shaped rows
    show as `LLM · llm` in `_Case Catalog.md`.
-5. Paste `agent/QA_Agent_Instructions_v1_4.md` and re-run the smoke
+5. Paste `docs/qa-agent-instructions.md` and re-run the smoke
    questions.
 
 Config knobs added: `sweep.slugAbbreviations` (extend the shipped
-`local/slug_abbreviations.json`), `sweep.storyProfile` (default on),
-`sweep.normalizeCases` (see `config.sample.json`), `llm.normalizeModelId`
-(aibuilder lane only).
+`pipeline/data/slug_abbreviations.json`), `sweep.storyProfile` (default on),
+`sweep.normalizeCases` (see `config.sample.json`).
 
 ## 14. Figure indexing + standardized figure names (figureindex — the Figures list)
 
@@ -1096,10 +1063,10 @@ Every indexed document's figures — pasted pictures in `media/<stem>/`
 and drawn diagrams ZipTextExtract collapsed into `[figure: …]` label
 lines — as rows in an eighth list, plus the standardized media file
 names `fig-NN[-slide-KK][-<slug>].<ext>` (design record:
-`local/Figure_Index_Plan.md`). Shipped (sweep v1.59): the pure
-module `local/lib/figureindex.mjs` (naming rule, body parser,
+`docs/design/Figure_Index_Plan.md`). Shipped (sweep v1.59): the pure
+module `pipeline/lib/figureindex.mjs` (naming rule, body parser,
 replace-set planner) under its own CI gate
-(`local/harness/check_figureindex.py`), the sweep wiring (documents
+(`tests/check_figureindex.py`), the sweep wiring (documents
 sync their figure rows at index time, on `--reformat` and on
 `--normalize-cases`; ghost reconciliation prunes an archived doc's
 rows; `--refigure` backfills the whole corpus from the sidecars on

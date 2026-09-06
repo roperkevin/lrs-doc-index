@@ -55,10 +55,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # every model call runs through lrsdoc (the Python layer)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install anthropic
       # PDF text extraction (the OCR lane stays opt-in via config —
       # add tesseract-ocr here if the config enables it)
       - run: sudo apt-get update -qq && sudo apt-get install -y -qq poppler-utils
-      # caches (embeddings, doc-link probes, mirror manifest, run
+      # caches (doc-link probes, mirror manifest, run
       # logs) persist across runs; list backups ride along
       - uses: actions/cache@v4
         with:
@@ -78,6 +83,7 @@ jobs:
         env:
           DOCINDEX_GRAPH_SECRET: ${{ secrets.DOCINDEX_GRAPH_SECRET }}
           DOCINDEX_ALERT_WEBHOOK: ${{ secrets.DOCINDEX_ALERT_WEBHOOK }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MODE: ${{ github.event.inputs.mode || 'nightly' }}
         run: |
           case "$MODE" in
