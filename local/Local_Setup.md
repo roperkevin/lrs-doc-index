@@ -893,7 +893,7 @@ only. Gates: `local/harness/check_deckspec.py` (fixture-free) and
 `fluent` (default; Microsoft Fluent 2, MIT; Segoe UI), `carbon` (IBM
 Carbon, Apache 2.0; IBM Plex Sans — denser, square surfaces, the
 table-friendly one) or `uswds` (U.S. Web Design System, public
-domain; Public Sans — the most readable) — and `deckTheme` its
+domain; Source Sans Pro — the most readable) — and `deckTheme` its
 `light` (default) or `dark` theme. The spec is design-independent,
 so one `--deck.json` renders on any of them:
 `node local\deck2pptx.mjs "<draft>.md" --spec "<draft>--deck.json" --design carbon --theme dark --media "<synced library>\media"`.
@@ -901,12 +901,15 @@ Every embedded figure — story, generated, inline — is re-coloured
 into the chosen design + theme before it becomes a shape group, so
 the diagrams never show a seam (the SVG files, the sidecars and the
 sweep are untouched; on fluent / light nothing changes). Two things
-to know: Plex and Public Sans are not on a typical Windows machine —
+to know: Plex and Source Sans Pro are not on a typical Windows machine —
 install them on the reviewers' PCs or embed them in the file, or
 PowerPoint substitutes — and USWDS publishes no dark theme, so its
 dark deck uses the system's own darkest base steps (named in
 `lib/designsystem.mjs`). An unknown design or theme name refuses the
-run before any model spend.
+run before any model spend. Every token value is verified against the
+published packages by `local/harness/check_design_tokens.py --all`
+(manual, needs the npm registry; v2.39) — run it after editing a
+token block.
 
 **Related cases — the retrieval lane** (v1.14, prompt v1.11,
 `testplangen/CHANGES.md` v2.34): with §12's Test Cases list in

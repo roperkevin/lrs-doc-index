@@ -1,3 +1,48 @@
+# TestPlanGen v2.39 — the design tokens verified against the published packages (designsystem v1.3, check_design_tokens.py)
+
+Owner question (2026-09-06): could the Carbon MCP server (a hosted,
+authenticated service that makes an assistant "an expert in Carbon" —
+component docs, code examples, guidelines) help here? The owner is
+not approved for it. It would not have changed the pipeline: the
+sweep machine has no MCP at run time, and the deck needs tokens as
+NUMBERS, which the open packages already publish. What it would have
+given is a check that the transcribed values are right — so that
+check was built from the same source of truth, no approval needed.
+
+- **`local/harness/check_design_tokens.py`** downloads @carbon/colors,
+  @carbon/type, @carbon/layout, @carbon/themes and @fluentui/tokens
+  from the npm registry (and @uswds/uswds with `--all`, 34 MB) and
+  diffs every value in `designsystem.mjs`'s token blocks against
+  them: Carbon's spacing scale, productive type ramp, named colours
+  and the White / Gray 100 theme roles; Fluent's type ramp, spacing,
+  radii, strokes, `FLUENT_LIGHT` / `FLUENT_DARK`; USWDS's type scale
+  and line-height tokens, spacing units, column-gap setting, radii,
+  default typeface, and every colour role resolved through the theme
+  assignments into the system colour families. Manual, not CI (a
+  registry hiccup must never redden main): **180/180** on
+  @carbon/colors 11.57.0, @carbon/type 11.66.0, @carbon/layout
+  11.58.0, @carbon/themes 11.80.0, @fluentui/tokens 1.0.0-alpha.24,
+  @uswds/uswds 3.14.0.
+- **Six transcription slips corrected (`designsystem.mjs` v1.3):**
+  Carbon border-subtle-01 is Gray 30 on White (was Gray 20) and Gray
+  70 on Gray 100 (was Gray 80), g100 text-helper is Gray 40 (was Gray
+  50); Fluent subtitle1's line height is 28 px (was 26); USWDS's
+  line-height token 2 is 1.2 (was 1.15 — six line heights move, the
+  title's to 43.2 px), its largest column gap is `$theme-column-gap-lg`
+  = 3 units (the gutter was 4), and its DEFAULT sans is Source Sans
+  Pro (`$theme-font-type-sans: source-sans-pro`; Public Sans is the
+  shipped alternative — the uswds deck now renders in Source Sans Pro).
+  `FLUENT_DARK` added for reference. Every other value — all of
+  Carbon's colours and both themes, all of USWDS's colours, Fluent's
+  sizes, spacing, radii and strokes — matched.
+- Gates: `check_deckspec.py` 99/99 and `check_deck2pptx.py` 56/56
+  updated to the corrected values; `check_testplangen.py` 223/223.
+
+Rollout: nothing on the tenant; a uswds deck changes face and line
+rhythm, carbon decks change two border greys. Re-run the verifier
+after any token edit:
+`python3 local/harness/check_design_tokens.py --all`.
+
 # TestPlanGen v2.38 — the figures budget as a knob (TestPlanFigures prompt v0.2, testplangen.mjs v1.18)
 
 Owner-requested (2026-09-06): doc 910 has 22 cases and the figures
