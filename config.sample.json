@@ -7,7 +7,7 @@
     "sourceSitePath": "/sites/LocationReferencing",
     "docKeyStrip": "/sites/LocationReferencing/",
     "libraryRootSegment": "Shared Documents",
-    "syncedSubfolder": "",
+    "syncedSubfolder": "General",
     "$comment_syncedSubfolder": "Set when the OneDrive sync roots at a library CHILD rather than the library itself — e.g. \"General\" when paths.sourceLibrary is the Teams channel folder 'Location Referencing - General'. The segment is stripped from local source paths (Shared Documents/General/Test Plans/x.pptx -> <sourceLibrary>/Test Plans/x.pptx); documents outside it keep taking the Graph download fallback (sweep.graphDownloadFallback). Scope (libraryRootSegment) is unaffected.",
     "lists": {
       "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
@@ -17,7 +17,7 @@
       "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
       "issueRefs": "4d0e6561-80e3-49f4-aa20-e5889cc88414",
       "testCases": "ae9374ab-295a-4321-8afa-a83a08e17711",
-      "figures": "<create the Figures list per schemas/SPList_Figures.csv (docs/setup.md §14) and paste its GUID; absent = figures not indexed>",
+      "figures": "a8446677-e32f-4d8b-8265-fe42f20201d9",
       "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
     }
   },
@@ -41,9 +41,9 @@
 
   "wiki": {
     "$comment": "The catalog as a wiki (pipeline/wiki.mjs — docs/setup.md §15): every sidecar rendered into an MkDocs site and pushed to a PRIVATE git repository whose Pages workflow serves it (devtopia — this repository is public, the sidecars are internal). Optional; the job reads paths.sidecarLibrary and the newest list backup in paths.workDir, never SharePoint or a model. repoUrl = the clone URL of the wiki repository (credentials from the machine's git credential helper; with --push the tree is committed and pushed, unchanged corpus = no commit); branch = the branch its Pages workflow builds (main); outDir = where the tree is rendered (<workDir>/wiki); siteName / siteUrl land in mkdocs.yml; recent = rows on the Recent page. Schedule ops\\run_wiki.cmd after the nightly sweep (ops\\wiki_task.xml).",
-    "repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git",
+    "repoUrl": "https://devtopia.esri.com/kev14953/lrs-docs.git",
     "branch": "main",
-    "siteName": "LRS Doc Index"
+    "siteName": "LRS Docs"
   },
 
   "spo": {
