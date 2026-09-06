@@ -172,6 +172,12 @@ async function crawlSection(section, seeds, cap, verbose, titles) {
     fetched++;
     await sleep(160);
     if (fetched <= 6 || verbose) say(`   seed/page ${u} -> ${statusOf(r)}`);
+    // a long crawl went silent after the sixth page: one progress line
+    // per 25 fetches says it is still walking (lib/progress.mjs posture,
+    // in this tool's own `say` voice — its narration IS its output)
+    else if (fetched % 25 === 0) {
+      say(`   ...${fetched} page(s) fetched of at most ${cap}, ${urls.size} kept, ${queue.length} queued`);
+    }
     if (!r.ok) continue;
     if (u.endsWith(".html")) {
       urls.add(u);

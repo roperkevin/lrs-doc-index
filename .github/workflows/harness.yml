@@ -39,6 +39,7 @@ jobs:
       - run: python3 check_caseindex.py
       - run: python3 check_figureindex.py
       - run: python3 check_slug.py
+      - run: python3 check_progress.py
       - run: python3 check_storyprofile.py
       - run: python3 check_deckspec.py
       - run: python3 check_wiki.py

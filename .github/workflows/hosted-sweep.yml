@@ -98,4 +98,8 @@ jobs:
             *) echo "unknown mode: $MODE"; exit 1 ;;
           esac
           echo "mode=$MODE flags=$FLAGS"
-          node --experimental-strip-types pipeline/sweep.mjs --config config.hosted.json $FLAGS
+          # --progress: this log is the ONLY view of a hosted run, and
+          # a workflow log has no TTY, so ask for the narration by name
+          # (pipeline/lib/progress.mjs) — phases, per-document steps and
+          # model-call latencies, on stderr
+          node --experimental-strip-types pipeline/sweep.mjs --config config.hosted.json $FLAGS --progress

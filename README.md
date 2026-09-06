@@ -53,7 +53,7 @@ with a JSON-lines protocol (`pipeline/llm.mjs`, `lrsdoc/cli.py`).
 | Path | What it is |
 |---|---|
 | `pipeline/` | The jobs (`sweep`, `curate`, `testplangen`, `gantt`, `wiki`), the Graph/SPO client, delegated auth, the model bridge, and helper tools (`probe.mjs` list write probes, `doc_crawl.mjs` Esri help-page inventory) |
-| `pipeline/lib/` | Pure modules the jobs share: case grammar and indexing, figure indexing and specs, doc links, BM25 body index, browse pages, status page, alerts, remote-files mirror, deck layout, design systems, draft lint |
+| `pipeline/lib/` | Pure modules the jobs share: case grammar and indexing, figure indexing and specs, doc links, BM25 body index, browse pages, status page, alerts, remote-files mirror, deck layout, design systems, draft lint, run narration (`progress.mjs`) |
 | `pipeline/render/` | Draft and figure renderers: `draft2docx`, `draft2pptx`, `deck2pptx`, `svg2pptx` |
 | `pipeline/data/` | Data files the jobs read (`esri_doc_links.json`, `slug_abbreviations.json`) |
 | `extract/` | The seven extractors (`ZipTextExtract`, `WorkbookDump`, `MediaExtract`, `ShapeExtract`, `RegexExtract`, `RelatedRank`, `SidecarPatch`), still in their Office-Script shape, run in-process by `extract/runner/` |
@@ -122,6 +122,19 @@ locally; `--push` commits and pushes.
 All five take `--config <config.json>` and `--live | --dry-run`; the
 `ops/*.cmd` wrappers run them from the repo root, self-updating from
 the CI-promoted `deploy` branch first.
+
+**Watching a run.** Every job narrates itself on **stderr** through
+`pipeline/lib/progress.mjs` — one `progress: ...` line per phase, per
+document and per model call: the sign-in, each list snapshot and its
+size, why a document was selected, every step inside it, how long the
+model took (and, from the Python layer, the latency to its first
+streamed chunk), the ghost pass, the pages written, and a closing
+summary with elapsed time. A wait with nothing to report beats every
+30 seconds, so a hang never looks like work. It is on at a console and
+off when output is redirected — `--progress` / `--no-progress` on any
+job, or `"progress": true` in the config, override that, so a
+scheduled night can be made to explain itself. **stdout is untouched:**
+the summary JSON and `*_summary` lines are unchanged.
 
 ## The model layer
 

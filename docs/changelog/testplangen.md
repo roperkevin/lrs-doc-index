@@ -1,3 +1,27 @@
+# TestPlanGen v2.44 — the progress lines become the pipeline's shared narration (testplangen.mjs v1.23)
+
+The v1.5 progress posture — narrate on stderr, keep stdout's JSON +
+`Gen_summary` contract — is now `pipeline/lib/progress.mjs`, the module
+every job in the pipeline narrates through (record:
+`docs/changelog/pipeline.md`, "progress v1.0"). For this job:
+
+- The lines are **byte-for-byte** what they were, and the default
+  posture is unchanged: a manual single-story run narrates (snapshot
+  size, lane sizes, the call's input size, a 30 s heartbeat while the
+  one generation is in flight, the reply size and elapsed, the
+  verifier's verdict); `--auto` and `--gap-report` stay quiet so their
+  scheduled-task logs do not grow.
+- It is now a **default, not a rule.** `--progress` / `--no-progress`,
+  and the config's top-level `progress` key, override it — so an
+  `--auto` night can be watched (its selection counts, then a
+  per-story ticker) and a manual run can be silenced.
+- A narrating run sets `LRSDOC_PROGRESS` for the Python layer, which
+  adds the request shape going out, **the latency to the model's first
+  streamed chunk** (a stuck request vs a thinking model) and the stop
+  reason with token usage coming back.
+- Gate: `tests/check_testplangen.py` unchanged at 238 — the v1.5 line
+  assertions still pin the output, which is the point.
+
 # TestPlanGen v2.43 — figure variety: timeline, state, matrix, UI wireframe and workflow figures (TestPlanFigures prompt v0.4, figurespec v1.3, testplangen.mjs v1.22)
 
 Owner-requested (2026-09-06): "the current test plan gen flow only

@@ -22,6 +22,16 @@
  *        [--live | --dry-run]   override config.sweep.dryRun
  *        [--max N]              override MaxDocsPerRun
  *        [--only <filename>]    SmokeFile equivalent (single-doc run)
+ *        [--progress]           narrate the run on stderr (see below)
+ *        [--no-progress]        stay quiet even at a console
+ *
+ * Progress output (pipeline/lib/progress.mjs): every phase of the run
+ * — the snapshots, each standalone mode's loop, every document's
+ * steps, ghost reconciliation, the index pages — writes one
+ * `progress: ...` line to STDERR when progress is on (a console by
+ * default, `--progress` / `config.progress` for a scheduled task).
+ * stdout keeps its contract byte-for-byte: the summary JSON, the
+ * Sweep_summary line, the dry-run plan note.
  *
  * Deliberate deviations from the cloud flow (each equivalent, all
  * documented in docs/setup.md §6):
@@ -76,6 +86,7 @@ import { renderTestPlanBody, lintTestPlanBody } from "./lib/casegrammar.mjs";
 import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
+import { createProgress, resolveProgress, secs, noProgress } from "./lib/progress.mjs";
 
 // ---- flow v2.8 Config defaults (override via config.sweep) ----------
 
@@ -453,9 +464,11 @@ function loadConfig(argv) {
     else if (a === "--normalize-cases") args.flags.normalize = true;
     else if (a === "--rename-plan") { args.flags.rename = true; args.flags.dry = true; }
     else if (a === "--check-heartbeat") args.flags.checkHeartbeat = true;
+    else if (a === "--progress") args.flags.progress = true;
+    else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--refigure] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--refigure] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat] [--progress|--no-progress]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -521,6 +534,13 @@ function loadConfig(argv) {
   cfg.sharePoint.docKeyStrip = cfg.sharePoint.docKeyStrip || "/sites/LocationReferencing/";
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";
   cfg.sharePoint.syncedSubfolder = cfg.sharePoint.syncedSubfolder || "";
+  // progress narration (lib/progress.mjs): a console gets it by
+  // default, a scheduled task opts in with --progress / config.progress
+  cfg._progress = resolveProgress(cfg.progress, {
+    on: args.flags.progress, off: args.flags.noProgress,
+  });
+  // a narrated run narrates its model calls too (llm.mjs → LRSDOC_PROGRESS)
+  cfg.llm.progress = cfg._progress;
   return cfg;
 }
 
@@ -715,12 +735,27 @@ async function main() {
     return;
   }
 
+  // the run's narrator (lib/progress.mjs) — stderr only, off unless a
+  // person is watching or --progress / config.progress asks for it
+  const prog = createProgress({ enabled: cfg._progress });
+  const modeName =
+    sw.rerank ? "--rerank" : sw.reformat ? "--reformat" : sw.recase ? "--recase" :
+    sw.refigure ? "--refigure" : sw.caseAudit ? "--case-audit" : sw.rename ? "--rename" :
+    sw.normalize ? "--normalize-cases" : "nightly index";
+  prog(
+    `sweep ${modeName} — ${dry ? "DRY RUN (no writes)" : "LIVE"}, ` +
+    `cap ${sw.maxDocsPerRun} doc(s)/run, PromptVersion ${sw.promptVersion}` +
+    (sw.smokeFile ? `, only "${sw.smokeFile}"` : "")
+  );
+
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "docindex-sweep-"));
+  const loadPhase = prog.phase("extractors");
   const mains = await loadScripts(
     cfg.scriptsDir || DEFAULT_SCRIPTS_DIR,
     ["ziptext", "media", "shapes", "regex", "workbookdump", "related", "sidecarpatch"],
     tmpDir
   );
+  loadPhase.done(`${Object.keys(mains).length} loaded from ${cfg.scriptsDir || DEFAULT_SCRIPTS_DIR}`);
   const op = (o) => runOp(mains, o);
 
   // PDF text extraction (improvement over the flow, which always
@@ -734,6 +769,10 @@ async function main() {
     );
   }
   const ocrTools = detectOcrTools(sw);
+  prog(
+    `tools — pdftotext ${pdfTool ? "found" : "MISSING (PDFs skip)"}, ` +
+    `OCR ${ocrTools && ocrTools.ppm ? "found" : "not configured"}`
+  );
 
   const graph = new GraphClient(cfg.graph);
   const spo = new SpoClient(cfg.spo);
@@ -757,8 +796,16 @@ async function main() {
     sw.probeDocLinks !== false,
     pageIndex
   );
-  const siteId = await graph.siteId(sp.hostname, sp.sitePath);
-  const srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
+  const signIn = prog.phase("sign-in + site lookup");
+  const stopSignIn = prog.heartbeat("waiting on Microsoft Graph sign-in");
+  let siteId, srcSiteId;
+  try {
+    siteId = await graph.siteId(sp.hostname, sp.sitePath);
+    srcSiteId = await graph.siteId(sp.hostname, sp.sourceSitePath);
+  } finally {
+    stopSignIn();
+  }
+  signIn.done(`${sp.sitePath} + ${sp.sourceSitePath}`);
 
   // remote-files mode (v1.39): no OneDrive anywhere — the sidecar
   // library mirrors down (eTag-deduped) and every file write/delete
@@ -772,8 +819,16 @@ async function main() {
       cfg.paths.sidecarLibrary,
       path.join(cfg.paths.workDir || tmpDir, "mirror-manifest.json")
     );
+    const mirror = prog.phase("remote mirror");
     await remote.init();
-    const m = await remote.mirrorMarkdown();
+    const stopMirror = prog.heartbeat("mirroring the sidecar library");
+    let m;
+    try {
+      m = await remote.mirrorMarkdown();
+    } finally {
+      stopMirror();
+    }
+    mirror.done(`${m.files} sidecar file(s), ${m.downloaded} downloaded`);
     process.stderr.write(`remote mirror: ${m.files} sidecar file(s), ${m.downloaded} downloaded\n`);
   }
   const writer = new Writer(graph, siteId, sp.lists, dry, spo, remote);
@@ -782,8 +837,16 @@ async function main() {
   // Raw items are kept alongside the normalized rows so every run can
   // export a restorable list backup (v1.32) at zero extra fetch cost.
   const rawSnapshots = {};
+  const snapshots = prog.phase("list snapshots");
   const fetch = async (listKey, kind, select) => {
-    const items = await graph.listItems(siteId, sp.lists[listKey], { select });
+    const stop = prog.heartbeat(`fetching the ${listKey} list`);
+    let items;
+    try {
+      items = await graph.listItems(siteId, sp.lists[listKey], { select });
+    } finally {
+      stop();
+    }
+    snapshots.step(`${listKey} — ${items.length} row(s)`);
     rawSnapshots[listKey] = items;
     return normalizeRows(items, kind);
   };
@@ -796,6 +859,10 @@ async function main() {
   const docIdRows = await fetch("docIds", "docIds", ["Title", "Repo", "IssueNumber", "Source", "IdKey", "DocumentLookupId"]);
   const docLinkRows = await fetch("docLinks", "docLinks", ["LinkType", "SharedValues", "Strength", "LinkKey", "DocALookupId", "DocBLookupId"]);
   const docKwRows = await fetch("docKeywords", "docKeywords", ["Title", "KWKey", "DocumentLookupId", "KeywordLookupId"]);
+  snapshots.done(
+    `${docIndexRows.length} documents, ${keywordRows.length} keywords, ` +
+    `${docIdRows.length} ids, ${docLinkRows.length} links, ${docKwRows.length} junctions`
+  );
 
   // ---- test-case index (Case_Index_Plan phase 2) -----------------
   // Individual test cases as Test Cases list rows, one replace-set
@@ -807,6 +874,7 @@ async function main() {
   const caseRowsByDoc = new Map(); // docRowId -> [{id, fields}]
   const missingCaseColumns = new Set(); // v1.56: columns the tenant list lacks (noted once per run)
   if (ciEnabled) {
+    const stopCases = prog.heartbeat("fetching the Test Cases list");
     const items = await graph.listItems(siteId, sp.lists.testCases, {
       select: ["Title", "DocumentLookupId", "CaseKey", "CaseNo", "SlideNo",
                "Classification", "Scenario", "CaseText", "IssueRefs", "Anchor",
@@ -815,7 +883,9 @@ async function main() {
                "ExpectedResult", "TraceText", "Tools", "Keywords", "FigureLinks",
                "FigureLink", "SweptOn"],
     });
+    stopCases();
     rawSnapshots.testCases = items; // rides the per-run list backup
+    prog(`Test Cases snapshot — ${items.length} case row(s)`);
     for (const it of items) {
       const f = it.fields || {};
       const docId = num(f.DocumentLookupId) ?? num(f.DocumentId);
@@ -845,13 +915,16 @@ async function main() {
   const figureRowsByDoc = new Map(); // docRowId -> [{id, fields}]
   const missingFigureColumns = new Set();
   if (fiEnabled) {
+    const stopFigs = prog.heartbeat("fetching the Figures list");
     const items = await graph.listItems(siteId, sp.lists.figures, {
       select: ["Title", "DocumentLookupId", "FigureKey", "FigureNo", "Kind",
                "FileName", "Format", "SlideNo", "Section", "CaseNo", "Anchor",
                "Caption", "Context", "Width", "Height", "Bytes", "Tools",
                "Keywords", "ImageUrl", "ImageLink", "SweptOn"],
     });
+    stopFigs();
     rawSnapshots.figures = items; // rides the per-run list backup
+    prog(`Figures snapshot — ${items.length} figure row(s)`);
     for (const it of items) {
       const f = it.fields || {};
       const docId = num(f.DocumentLookupId) ?? num(f.DocumentId);
@@ -1075,6 +1148,7 @@ async function main() {
   };
 
   const listBackup = exportListSnapshots(cfg, rawSnapshots);
+  if (listBackup) prog(`list backup — ${path.basename(listBackup)}`);
 
   const byDocKey = new Map(docIndexRows.map((r) => [lower(r.DocKey), r]));
   // error lane for the status page: seeded from the snapshot, docs
@@ -1116,6 +1190,8 @@ async function main() {
         "the owner switch for AI spend on sidecar bodies (dry runs list the candidates without it)"
       );
     }
+    const zPhase = prog.phase("normalize-cases");
+    zPhase.step(`scanning ${docIndexRows.length} Doc Index row(s) for caseless plans`);
     const plans = [];
     for (const r of docIndexRows) {
       if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
@@ -1139,15 +1215,29 @@ async function main() {
       zsum.candidates++;
       plans.push({ r, local, content, seam, body });
     }
+    zPhase.step(
+      `${zsum.candidates} candidate(s) of ${zsum.eligible} eligible plan(s), ` +
+      `cap ${nc.maxPerRun}/run${dry ? " — dry run, no model call" : ""}`
+    );
     const results = [];
+    const zTick = prog.counter(plans.length, "candidate plans");
     for (const p of plans) {
       if (zsum.normalized + zsum.refused + zsum.errors >= Number(nc.maxPerRun)) { zsum.skipped_cap++; continue; }
       const entry = { id: p.r.ID, title: p.r.Title || p.r.FileName, ok: false, failures: [], cases: 0 };
       results.push(entry);
+      zTick(entry.title, `doc ${p.r.ID}, ${p.body.length} chars`);
       if (dry) { entry.failures = ["dry run: not called"]; continue; }
       try {
         const inputs = { PlanTitle: p.r.Title || p.r.FileName || "", Body: p.body };
-        const raw = await generate(cfg.llm, "case_normalize", inputs, { maxTokens: Number(nc.maxTokens) });
+        const genT0 = Date.now();
+        const stopGen = prog.heartbeat(`waiting on the model for doc ${p.r.ID}`);
+        let raw;
+        try {
+          raw = await generate(cfg.llm, "case_normalize", inputs, { maxTokens: Number(nc.maxTokens) });
+        } finally {
+          stopGen();
+        }
+        prog(`doc ${p.r.ID} — model replied, ${raw.length} chars in ${secs(Date.now() - genT0)}`);
         const out = unwrapReply(raw);
         const v = verifyNormalized(p.body, out);
         entry.cases = v.cases;
@@ -1179,6 +1269,10 @@ async function main() {
       }
     }
     if (!dry && zsum.normalized) await flushFigureCatalog();
+    zPhase.done(
+      `${zsum.normalized} normalized, ${zsum.refused} refused, ${zsum.errors} error(s), ` +
+      `${zsum.skipped_cap} left for the next run`
+    );
     const zDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(zDir, { recursive: true });
     const zStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1199,6 +1293,7 @@ async function main() {
   // Test Cases rows keep their old anchor/figure URLs until the next
   // `--recase --live` — the run says so.
   if (sw.rename) {
+    const nPhase = prog.phase("rename");
     const abbr = { ...defaultAbbreviations(), ...(sw.slugAbbreviations || {}) };
     const idsOf = new Map();
     for (const d of docIdRows) {
@@ -1229,6 +1324,7 @@ async function main() {
       if (!byFolder.has(e.folder)) byFolder.set(e.folder, []);
       byFolder.get(e.folder).push(e);
     }
+    nPhase.step(`${entries.length} indexed sidecar(s) in ${byFolder.size} kind folder(s) — minting stems`);
     for (const [, es] of byFolder) {
       const minted = mintStems(es.map((e) => e.doc), abbr);
       for (const e of es) e.newStem = minted.get(e.row.ID) || e.oldStem;
@@ -1245,8 +1341,11 @@ async function main() {
       changed: e.newStem !== e.oldStem,
     }));
     const mdir = path.join(cfg.paths.sidecarLibrary, "media");
+    nPhase.step(`${fileMap.size} stem(s) change — rewriting bodies, media folders and links`);
+    const nTick = prog.counter(entries.length, "sidecars");
     for (const e of entries) {
       if (!e.content) continue;
+      nTick(`${e.folder}/${e.oldStem}.md`, e.newStem === e.oldStem ? "stem unchanged" : `-> ${e.newStem}.md`);
       try {
         let next = e.content;
         // this document's media: legacy flat files and the old stem
@@ -1286,10 +1385,17 @@ async function main() {
         }
       } catch (err) {
         nsum.errors++;
+        prog.fail(e.oldStem, err.message);
         process.stderr.write(`RENAME ERROR ${e.oldStem}: ${err.message}\n`);
       }
     }
+    nPhase.done(
+      `${nsum.renamed} renamed, ${nsum.unchanged} unchanged, ` +
+      `${nsum.media_moved} media file(s) moved, ${nsum.links_rewritten} link rewrite(s), ` +
+      `${nsum.errors} error(s)`
+    );
     if (!dry) {
+      prog("browse pages — _Index.md, _Manifest.json, catalogs");
       writeIndexPages(cfg, docIndexRows, sw.kindFolders);
       writeManifest(cfg, docIndexRows, issueByDoc(docIndexRows, docIdRows));
       if (ciEnabled) writeCaseCatalog(cfg, docIndexRows, caseRowsByDoc);
@@ -1323,8 +1429,10 @@ async function main() {
   // next to the catalog on a live run. No list writes, no extraction,
   // no AI calls; the Test Cases GUID is not required.
   if (sw.caseAudit) {
+    const aPhase = prog.phase("case audit");
     const entries = [];
     let noSidecar = 0, noSeam = 0;
+    const aTick = prog.counter(docIndexRows.filter((r) => r.ID && ciKinds.includes(r.DocKind)).length, "case-indexed kinds");
     for (const r of docIndexRows) {
       if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
       if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
@@ -1344,9 +1452,14 @@ async function main() {
         target: folder ? `${folder}/${file}` : file,
         shape: parsed.shape, cases: parsed.cases.length, signals: auditBody(body),
       });
+      aTick(r.Title || r.FileName || `doc ${r.ID}`, `shape ${parsed.shape}, ${parsed.cases.length} case(s)`);
     }
     const asum = { mode: "case-audit", dry_run: dry, no_sidecar: noSidecar, no_seam: noSeam,
                    ...summarizeAudit(entries) };
+    aPhase.done(
+      `${entries.length} plan(s) audited, ${asum.covered ?? 0} covered, ` +
+      `${noSidecar} without a sidecar, ${noSeam} without a metadata seam`
+    );
     if (!dry && cfg.sweep.indexPages !== false) {
       const pg = path.join(cfg.paths.sidecarLibrary, "_Case Audit.md");
       fs.writeFileSync(pg, renderAuditPage(entries, new Date().toISOString()));
@@ -1379,7 +1492,13 @@ async function main() {
       no_sidecar: 0, no_seam: 0, figures_upserted: 0, figures_removed: 0,
       figure_errors: 0,
     };
+    const fPhase = prog.phase("refigure");
     const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
+    const fTick = prog.counter(
+      docIndexRows.filter((r) => r.ID && (!fiKinds.length || fiKinds.includes(r.DocKind)) &&
+        r.IndexStatus === "Indexed" && r.TextFileUrl).length,
+      "documents with a sidecar"
+    );
     const done = new Set();
     for (const r of docIndexRows) {
       if (!r.ID || (fiKinds.length && !fiKinds.includes(r.DocKind))) continue;
@@ -1398,11 +1517,15 @@ async function main() {
         fsum.no_seam++;
         continue;
       }
+      const before = fsum.figures_upserted + fsum.figures_removed;
       await syncFigures(r.ID, r.DocKind, content.slice(seam), fsum, r.Title || "");
       done.add(r.ID);
       fsum.synced++;
+      fTick(r.Title || r.FileName || `doc ${r.ID}`,
+        `${fsum.figures_upserted + fsum.figures_removed - before} figure row write(s)`);
     }
     if (!sw.smokeFile) {
+      fPhase.step("sweeping figure rows whose document no longer qualifies");
       const byId = new Map(docIndexRows.map((r) => [r.ID, r]));
       for (const docId of [...figureRowsByDoc.keys()]) {
         if (done.has(docId)) continue;
@@ -1413,6 +1536,10 @@ async function main() {
       }
     }
     if (!dry) await flushFigureCatalog();
+    fPhase.done(
+      `${fsum.synced} of ${fsum.eligible} document(s) synced — ${fsum.figures_upserted} row(s) upserted, ` +
+      `${fsum.figures_removed} removed, ${fsum.figure_errors} error(s)`
+    );
     fsum.spo_throttled = (writer.spo && writer.spo.throttled) || 0;
     const fDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(fDir, { recursive: true });
@@ -1439,7 +1566,13 @@ async function main() {
       no_sidecar: 0, no_seam: 0, cases_upserted: 0, cases_removed: 0,
       case_errors: 0, plans_caseless: 0, cases_shape_mixed: 0,
     };
+    const cPhase = prog.phase("recase");
     const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
+    const cTick = prog.counter(
+      docIndexRows.filter((r) => r.ID && ciKinds.includes(r.DocKind) &&
+        r.IndexStatus === "Indexed" && r.TextFileUrl).length,
+      `documents of kind ${ciKinds.join(" / ")}`
+    );
     const done = new Set();
     for (const r of docIndexRows) {
       if (!r.ID || !ciKinds.includes(r.DocKind)) continue;
@@ -1458,15 +1591,19 @@ async function main() {
         csum.no_seam++;
         continue;
       }
+      const before = csum.cases_upserted + csum.cases_removed;
       await syncCases(r.ID, r.DocKind, content.slice(seam), csum, r.Title || "");
       done.add(r.ID);
       csum.synced++;
+      cTick(r.Title || r.FileName || `doc ${r.ID}`,
+        `${csum.cases_upserted + csum.cases_removed - before} case row write(s)`);
     }
     // rows whose document is gone, Archived, reclassified, or no
     // longer Indexed delete here (the replace-set with an empty fresh
     // side); rows for eligible docs the cap or a missing sidecar
     // deferred are left alone. Smoke runs stay surgical: no cleanup.
     if (!sw.smokeFile) {
+      cPhase.step("sweeping case rows whose document no longer qualifies");
       const byId = new Map(docIndexRows.map((r) => [r.ID, r]));
       for (const docId of [...caseRowsByDoc.keys()]) {
         if (done.has(docId)) continue;
@@ -1487,6 +1624,10 @@ async function main() {
           process.stderr.write(`remote flush of case catalog: ${e.message}\n`));
       }
     }
+    cPhase.done(
+      `${csum.synced} of ${csum.eligible} document(s) synced — ${csum.cases_upserted} row(s) upserted, ` +
+      `${csum.cases_removed} removed, ${csum.plans_caseless} caseless plan(s), ${csum.case_errors} error(s)`
+    );
     csum.spo_throttled = (writer.spo && writer.spo.throttled) || 0;
     const cDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(cDir, { recursive: true });
@@ -1524,6 +1665,11 @@ async function main() {
     const topicsOf = (docId) => kwOfKind(docId, "topic");
     const cap = sw._maxSet ? Number(sw.maxDocsPerRun) : Infinity;
     const rsum = { mode: "rerank", dry_run: dry, eligible: 0, reranked: 0, no_sidecar: 0, errors: 0, related_flags: "" };
+    const rPhase = prog.phase("rerank");
+    const rTick = prog.counter(
+      docIndexRows.filter((r) => r.IndexStatus === "Indexed" && r.TextFileUrl).length,
+      "indexed documents"
+    );
     for (const r of docIndexRows) {
       if (r.IndexStatus !== "Indexed" || !r.TextFileUrl) continue;
       if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
@@ -1536,6 +1682,7 @@ async function main() {
         rsum.no_sidecar++;
         continue;
       }
+      rTick(r.FileName || r.Title || `doc ${r.ID}`, "docs block + related ranking");
       try {
         // upsert the product-documentation block first, so existing
         // sidecars gain/refresh links in the same pass
@@ -1563,6 +1710,7 @@ async function main() {
         await rankRelated({
           cfg, sw, op, writer, summary: rsum, bodyIndex, caches, kwSnapshot,
           setStep: () => {},
+          progress: prog,
           rowId: r.ID,
           name: r.FileName || "",
           docKey: lower(r.DocKey),
@@ -1583,10 +1731,15 @@ async function main() {
         rsum.reranked++;
       } catch (e) {
         rsum.errors++;
+        prog.fail(r.FileName || `doc ${r.ID}`, e.message);
         process.stderr.write(`RERANK ERROR ${r.FileName}: ${e.message}\n`);
       }
     }
     rsum.related_flags = rsum.related_flags.trim();
+    rPhase.done(
+      `${rsum.reranked} of ${rsum.eligible} document(s) reranked — ` +
+      `${rsum.no_sidecar} without a sidecar, ${rsum.errors} error(s)`
+    );
     const rDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(rDir, { recursive: true });
     const rStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1601,9 +1754,17 @@ async function main() {
   }
 
   // ---- selection ----
-  const files = await graph.listItems(srcSiteId, sp.lists.sourceLibrary, {
-    select: ["FileLeafRef", "FileRef", "Modified", "File_x0020_Size", "FSObjType"],
-  });
+  const selPhase = prog.phase("source library");
+  const stopSel = prog.heartbeat("listing the source library");
+  let files;
+  try {
+    files = await graph.listItems(srcSiteId, sp.lists.sourceLibrary, {
+      select: ["FileLeafRef", "FileRef", "Modified", "File_x0020_Size", "FSObjType"],
+    });
+  } finally {
+    stopSel();
+  }
+  selPhase.done(`${files.length} item(s) listed, newest first`);
   files.sort((a, b) =>
     String(b.fields?.Modified || b.lastModifiedDateTime || "").localeCompare(
       String(a.fields?.Modified || a.lastModifiedDateTime || "")
@@ -1643,6 +1804,14 @@ async function main() {
     list_backup: listBackup ? path.basename(listBackup) : "",
   };
 
+  const indexPhase = prog.phase(sw.reformat ? "reformat" : "index");
+  indexPhase.step(
+    sw.reformat
+      ? "re-rendering sidecar bodies from the source (no model call)"
+      : `selecting stale documents (cap ${sw.maxDocsPerRun}) — new, edited, ` +
+        `re-stamped, or in the Error / rescue lanes`
+  );
+  const docTick = prog.counter(Number(sw.maxDocsPerRun) || 0, "", { every: 1 });
   for (const item of files) {
     const f = item.fields || {};
     const name = String(f.FileLeafRef || "");
@@ -1697,6 +1866,7 @@ async function main() {
         rfsum.no_sidecar++;
         continue;
       }
+      prog(`[${rfsum.rewritten + rfsum.unchanged + 1}] reformat ${name} — doc ${existing.ID}`);
       try {
         const cur = fs.readFileSync(scLocal, "utf8");
         const seam = bodySeamEnd(cur);
@@ -1791,6 +1961,7 @@ async function main() {
         await syncFigures(existing.ID, existing.DocKind || "", body, rfsum, existing.Title || "");
       } catch (e) {
         rfsum.errors++;
+        prog.fail(name, e.message);
         process.stderr.write(`REFORMAT ERROR ${name}: ${e.message}\n`);
       }
       continue;
@@ -1839,36 +2010,54 @@ async function main() {
       (existing.PromptVersion || "") !== sw.promptVersion;
     if (isFolder || !needsIndex || summary.processed >= sw.maxDocsPerRun) continue;
     summary.processed++; // incremented before Try_index, as in the flow
+    // the reason this document was picked, so a nightly log explains
+    // its own selection instead of only its result
+    const why =
+      !existing ? "new" :
+      existing.IndexStatus === "Error" ? "retry after Error" :
+      existing.IndexStatus === "Archived" ? "restored" :
+      pdfRescue ? "PDF rescue" : ocrRescue ? "OCR rescue" : msgRescue ? "msg rescue" :
+      scopeRescue ? "scope rescue" :
+      (existing.PromptVersion || "") !== sw.promptVersion ? `PromptVersion ${existing.PromptVersion || "(none)"} -> ${sw.promptVersion}` :
+      "source edited";
+    const docT0 = Date.now();
+    docTick(name, `${why}, ${fileTypeSafe}`);
 
     let step = "start";
+    const stepAt = (s2) => {
+      step = s2;
+      prog(`   ${name} — ${s2}`);
+    };
     try {
       // OneDrive-sync-lag fallback (v1.33, opt-in): the source is in
       // scope but not on disk yet — fetch its bytes through Graph into
       // a temp file and index from there, instead of an Error night.
       let effPath = localPath;
       if (sw.graphDownloadFallback && inScope && !fs.existsSync(localPath)) {
-        step = "graph-download";
+        stepAt("graph-download");
         const buf = await graph.getItemContentBuffer(srcSiteId, sp.lists.sourceLibrary, item.id);
         effPath = path.join(tmpDir, "dl", `${srcItemId}-${name}`);
         fs.mkdirSync(path.dirname(effPath), { recursive: true });
         fs.writeFileSync(effPath, buf);
         summary.graph_downloads++;
       }
-      step = "extract";
+      stepAt("extract");
       await indexDoc({
         cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
         existing, existingKeywords, kwSnapshot,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
-        setStep: (s) => (step = s),
+        setStep: stepAt,
+        progress: prog,
       });
       if (remote) {
         // an upload failure here IS a failed index (the sidecar never
         // reached SharePoint) — it lands in the Error lane like any step
-        step = "remote-upload";
+        stepAt("remote-upload");
         await remote.flush();
       }
       errorLane.delete(docKey);
+      prog(`   ${name} — indexed in ${secs(Date.now() - docT0)}`);
     } catch (e) {
       // Catch_index: Error row, LastError "{step}: {detail}", continue.
       // One failure class is NOT retryable (v1.28): the model REFUSING
@@ -1884,10 +2073,12 @@ async function main() {
       const filtered = step === "llm" && (e.type === "Refused" || /stop_reason: refusal/.test(errDetail));
       if (filtered) {
         errorLane.delete(docKey);
+        prog(`   ${name} — SKIPPED (content filter) after ${secs(Date.now() - docT0)}`);
         process.stderr.write(`SKIP (content-filtered) ${name}: ${errDetail}\n`);
       } else {
         summary.errors++;
         errorLane.set(docKey, { name, err: errDetail });
+        prog(`   ${name} — ERROR at step "${step}" after ${secs(Date.now() - docT0)}`);
         process.stderr.write(`ERROR ${name}: ${errDetail}\n`);
       }
       try {
@@ -1946,6 +2137,11 @@ async function main() {
   }
 
   if (sw.reformat) {
+    indexPhase.done(
+      `${rfsum.rewritten} sidecar(s) rewritten, ${rfsum.unchanged} unchanged of ` +
+      `${rfsum.eligible} eligible — ${rfsum.no_sidecar} without a sidecar, ` +
+      `${rfsum.no_text} without text, ${rfsum.errors} error(s)`
+    );
     const rDir = cfg.paths.workDir || tmpDir;
     fs.mkdirSync(rDir, { recursive: true });
     const rStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -1962,6 +2158,11 @@ async function main() {
   // library listing came back empty (a throttled/failed listing must
   // never archive the world). Capped per run as a second safety rail.
   if (!sw.smokeFile && files.length > 0) {
+    indexPhase.done(
+      `${summary.processed} document(s) processed, ${summary.errors} error(s), ` +
+      `${summary.graph_downloads} downloaded through Graph`
+    );
+    const ghostPhase = prog.phase("ghost reconciliation");
     const liveKeys = new Set();
     for (const it of files) {
       const f = it.fields || {};
@@ -1982,6 +2183,11 @@ async function main() {
     // one batch at a time. Halt loudly; a real mass deletion is rare
     // enough to be handled by raising sweep.maxArchivesPerRun on purpose.
     const halt = ghosts.length > cap && ghosts.length * 2 >= candidates.length;
+    ghostPhase.step(
+      `${ghosts.length} of ${candidates.length} live row(s) match no library file ` +
+      `(cap ${cap}/run)${halt ? " — HALTED, see the note below" : ""}`
+    );
+    const gTick = prog.counter(halt ? 0 : Math.min(ghosts.length, cap), "");
     if (halt) {
       summary.ghost_halted = ghosts.length;
       process.stderr.write(
@@ -2007,6 +2213,7 @@ async function main() {
       g.IndexStatus = "Archived";
       errorLane.delete(lower(g.DocKey));
       summary.archived++;
+      gTick(g.FileName || g.Title || `doc ${g.ID}`, "archived, sidecar and media deleted");
       const local = urlToLocal(g.TextFileUrl || "", sw, cfg);
       if (local && fs.existsSync(local)) writer.deleteFile(local);
       // the document's media folder is derived state like its sidecar
@@ -2029,6 +2236,12 @@ async function main() {
       await remote.flush().catch((e) =>
         process.stderr.write(`remote flush after ghosts: ${e.message}\n`));
     }
+    ghostPhase.done(`${summary.archived} row(s) archived`);
+  } else {
+    indexPhase.done(
+      `${summary.processed} document(s) processed, ${summary.errors} error(s), ` +
+      `${summary.graph_downloads} downloaded through Graph`
+    );
   }
 
   summary.related_flags = summary.related_flags.trim();
@@ -2064,6 +2277,7 @@ async function main() {
         fs.writeFileSync(streakFile, JSON.stringify(streaks, null, 1));
       } catch { /* best effort */ }
     }
+    const pagesPhase = prog.phase("status + browse pages");
     writeStatusPage(cfg, { summary, logFile, errorLane, streaks, runLogDir: logDir });
     // browse pages (v1.35): the catalog as humans see it — root +
     // per-kind _Index.md, rebuilt from the rows this run already holds
@@ -2092,6 +2306,7 @@ async function main() {
       await remote.flush().catch((e) =>
         process.stderr.write(`remote flush of status/index pages: ${e.message}\n`));
     }
+    pagesPhase.done("_Sweep Status.md, _Index.md, _Manifest.json, catalogs");
     if (!sw.smokeFile) {
       // dead-man stamp + chronic-error alert (v1.32): the run
       // completed, so stamp the heartbeat; docs stuck 3+ nights get a
@@ -2101,6 +2316,7 @@ async function main() {
         .filter(([k]) => (Number(streaks[k]) || 0) >= 3)
         .map(([, v]) => `${v.name}: ${String(v.err).slice(0, 120)}`);
       if (chronic.length) {
+        prog(`alert — ${chronic.length} document(s) stuck 3+ nights`);
         await sendAlert(
           cfg,
           `Doc Index sweep: ${chronic.length} doc(s) stuck 3+ nights`,
@@ -2111,6 +2327,7 @@ async function main() {
     }
   }
 
+  prog(`sweep finished in ${secs(prog.elapsed())} — ${line}`);
   process.stdout.write(JSON.stringify({ ...summary, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) {
@@ -2127,6 +2344,9 @@ async function main() {
 async function indexDoc(ctx) {
   const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
+  // the run's narrator, or a no-op for a caller that passes none
+  const prog = ctx.progress || noProgress;
+  const detail = (d) => prog(`   ${name} — ${d}`);
 
   // Out-of-scope lane: the source lives outside the synced library
   // root (paths.sourceLibrary maps libraryRootSegment only), so no
@@ -2169,6 +2389,11 @@ async function indexDoc(ctx) {
   // preview and the sidecar all see `fig-NN-slide-KK-<slug>.<ext>`
   const pretty = prettifyMedia(rawDocText);
   let docText = pretty.text;
+  detail(
+    `extracted ${docText.length} chars (lane ${lane || "none"})` +
+    (mediaFiles.length ? `, ${mediaFiles.length} media file(s)` : "") +
+    (drawings.length ? `, ${drawings.length} drawing(s)` : "")
+  );
 
   if (!docText || docText === "") {
     // Skip lane (ExtractionLane recorded on patches too, so a
@@ -2199,12 +2424,24 @@ async function indexDoc(ctx) {
   // (a) LLM classify (AI Builder replacement)
   setStep("llm");
   const capped = cut(docText, sw.textCap);
-  const ai = await classifyDoc(cfg.llm, {
-    fileName: name, docText: capped, existingKeywords,
-  });
+  detail(`classifying — ~${capped.length} chars in (a long wait here is the model, not a hang)`);
+  const llmT0 = Date.now();
+  const stopLlm = prog.heartbeat(`waiting on the classifier for ${name}`);
+  let ai;
+  try {
+    ai = await classifyDoc(cfg.llm, {
+      fileName: name, docText: capped, existingKeywords,
+    });
+  } finally {
+    stopLlm();
+  }
   const docKind = DOC_KINDS.includes(ai.docKind) ? ai.docKind : "Other";
   const surface = SURFACES.includes(ai.surface) ? ai.surface : "Other";
   const title = cut(ai.title && ai.title !== "" ? ai.title : name, 255);
+  detail(
+    `classified in ${secs(Date.now() - llmT0)} — ${docKind} / ${surface}, ` +
+    `${(ai.keywords || []).length} keyword(s)`
+  );
 
   // (b) regex/ids
   setStep("regex");
@@ -2414,6 +2651,7 @@ async function indexDoc(ctx) {
   // the identical path from persisted state (rows + on-disk sidecars)
   await rankRelated({
     cfg, sw, op, writer, summary, bodyIndex, caches, kwSnapshot, setStep,
+    progress: prog,
     rowId, name, docKey, title,
     meta: {
       kind: docKind, surface, release: ai.targetRelease || "",
@@ -2492,6 +2730,10 @@ async function rankRelated(ctx) {
   // non-"shortlist" mode as final.
   const rank = op({ ...relatedCommon, mode: "final", candsMetaJson: candsMeta, topN: sw.relatedTopN });
   const finalDocs = candRows.filter((r) => (rank.docIds || []).includes(r.ID));
+  (ctx.progress || noProgress)(
+    `   ${name} — related: ${shortlist.count || 0} shortlisted, ${candRows.length} candidate(s), ` +
+    `${finalDocs.length} kept`
+  );
 
   setStep("neighbors");
   const neighborFiles = [];
