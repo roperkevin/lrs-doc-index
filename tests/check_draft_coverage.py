@@ -7,7 +7,7 @@ Drafts/) — no tenant access, no fixtures. Complements smoke rows 1
 and 9: the tenant run proves the flow produced a draft; this proves
 the draft honors the coverage contract, and prints the counters used
 for before/after comparison when a prompt bump lands
-(`testplangen/Coverage_Runbook.md` step 5).
+(`docs/history/TestPlanGen_Coverage_Runbook.md` step 5).
 
 Asserts (v1.7 contract, amended v1.12 — the conditional-section citation in 5):
 
@@ -51,7 +51,7 @@ certainly under-covered).
 of a comparison: section 1's Coverage Map requirement and checks 5,
 7 and 8 are skipped, counters still print.
 
-This file is the AUTHORITY for the contract: local/lib/draftlint.mjs
+This file is the AUTHORITY for the contract: pipeline/lib/draftlint.mjs
 (the local generation job's pre-write verifier, TestPlanGen v2.16)
 mirrors these asserts and label strings VERBATIM, and
 tests/check_testplangen.py's agreement leg fails on any

@@ -12,13 +12,14 @@ their own path):
 
 ```
 cd tests
-pip install -r requirements.txt      # PyYAML, python-pptx, python-docx
-python3 check_local_sweep.py         # any single gate
+pip install -r requirements.txt anthropic   # PyYAML, python-pptx, python-docx + the SDK
+python3 check_local_sweep.py                # any single gate
 ```
 
 | Suite | CI job | What it gates | Needs |
 |---|---|---|---|
-| `check_local_sweep.py` | fixture-free | `pipeline/sweep.mjs` end to end against a mock Graph / SharePoint REST / LLM / sign-in stack: every extraction lane, the list writes, sidecars, relatedness, case and figure sync, ghost reconciliation, every standalone mode, `curate.mjs`, `gantt.mjs`, alerts, remote-files mode | Node 22+ |
+| `test_lrsdoc.py` | fixture-free | `lrsdoc/`: the prompt loader (every file in `prompts/` loads, renders, and its schema resolves), the request shape, calls against an SDK-faithful mock (streaming, truncation, refusal, contract errors, retries, dumps), the CLI | anthropic |
+| `check_local_sweep.py` | fixture-free | `pipeline/sweep.mjs` end to end against a mock Graph / SharePoint REST / Anthropic Messages / sign-in stack: every extraction lane, the list writes, sidecars, relatedness, case and figure sync, ghost reconciliation, every standalone mode, `curate.mjs`, `gantt.mjs`, alerts, remote-files mode | Node 22+ |
 | `check_testplangen.py` | fixture-free | `pipeline/testplangen.mjs`: story guard, lanes, caps, fail-closed slice, verifier (and its agreement with `check_draft_coverage.py`), lookup, auto mode, addenda, figures and deck passes, streaming | Node 22+ |
 | `check_caseindex.py` | fixture-free | `pipeline/lib/caseindex.mjs` + `casegrammar.mjs`: the six case detectors, per-case metadata, the replace-set planner | Node |
 | `check_figureindex.py` | fixture-free | `pipeline/lib/figureindex.mjs`: figure naming rule, parser, rows and planner | Node |
@@ -35,10 +36,14 @@ python3 check_local_sweep.py         # any single gate
 | `check_draft_coverage.py` | manual | the TestPlanGen draft contract lint over a downloaded draft `.md` — the authority `pipeline/lib/draftlint.mjs` mirrors | — |
 | `check_design_tokens.py` | manual | every design-token value in `designsystem.mjs` against the published npm packages (`--all` includes USWDS) | npm registry |
 
-Helpers: `wrap.py` / `wrap_workbook.py` wrap an extractor into a
+Helpers: `mock_anthropic.py` builds SDK-faithful Messages API replies
+(a complete non-streaming message, a complete SSE stream) and reads a
+request's prompt text, so every gate that mocks `/v1/messages` shares
+one shape; `wrap.py` / `wrap_workbook.py` wrap an extractor into a
 runnable Node module (the loader in `extract/runner/ops.mjs` does the
 same in-process); `HARNESS_SCRIPTS=<dir>` points the extractor suites
-at another copy of the extractors.
+at another copy of the extractors. `MANUAL_SMOKE.md` is the checklist
+for a real tenant after a prompt change.
 
 Generated artifacts (fixtures, wrapped runners, payloads) are listed
 in `.gitignore` here and never committed. The retired paste-round

@@ -3,7 +3,7 @@
  * run_job.mjs v2.0 — Power Automate Desktop batch runner for the
  * Doc Index Office Scripts.
  * --------------------------------------------------------------------
- * Executes the UNMODIFIED scripts in `scripts/` (single source of
+ * Executes the UNMODIFIED extractors in `extract/` (single source of
  * truth — nothing is forked) under Node, dispatching a batch job file
  * of one or more operations that mirror the flow v2.8 Run-script
  * action contracts 1:1. Replaces the Excel Online "Run script" action
@@ -38,9 +38,9 @@
  *
  * (The strip-types flag is required on Node 22; on Node >= 23.6
  * stripping is on by default and the flag is accepted/ignored.
- * Node 22+ required — same floor as review/harness.)
+ * Node 22+ required — same floor as the gates in tests/.)
  *
- * Job file shape (see pad/samples/):
+ * Job file shape (see job.sample.json beside this file):
  *   {
  *     "scriptsDir": "optional abs path; default = <repo>/scripts",
  *     "resultFile": "optional abs path; default = <job>.result.json",

@@ -2,7 +2,7 @@
  * figurespec.mjs v1.3 — generated figures for TestPlanGen drafts
  * (`prompts/testplan_figures.md` v0.4, testplangen.mjs `--figures`).
  *
- * v1.3 (figure variety — testplangen/CHANGES.md v2.43): five more
+ * v1.3 (figure variety — docs/changelog/testplangen.md v2.43): five more
  * figure KINDS beside route-measure / topology / sequence, each with
  * its own closed vocabulary, grounding check, and SlideFigures-palette
  * renderer — "timeline" (dates on an ordinal time axis with spans and
@@ -21,7 +21,7 @@
  * svg2pptx / deck2pptx need no change. Route-measure rendering is
  * byte-identical to v1.2.
  *
- * v1.2 (change made visible — testplangen/CHANGES.md v2.41): every
+ * v1.2 (change made visible — docs/changelog/testplangen.md v2.41): every
  * panel of a route-measure figure shares ONE measure scale, so an
  * extended route grows on the page instead of being rescaled to
  * fit; and each panel after the first is diffed against the panel
@@ -33,7 +33,7 @@
  * the model's (they carry meaning); the diff adds structure only.
  * No spec vocabulary change.
  *
- * v1.1 (route-measure legibility — testplangen/CHANGES.md v2.40):
+ * v1.1 (route-measure legibility — docs/changelog/testplangen.md v2.40):
  * a route may carry `"ticks": <interval>` — unlabelled intermediate
  * ticks between the labelled calibration points (labelled too when
  * they fit); every line event's ends and every point event carry

@@ -1,4 +1,4 @@
-"""Gate for the draft -> review deck converter (local/draft2pptx.mjs).
+"""Gate for the draft -> review deck converter (pipeline/render/draft2pptx.mjs).
 
 Converts a representative TestPlanGen draft (banner comment, WARNING
 alert, verifier IMPORTANT block, task lists, TC cases with Expected
@@ -53,7 +53,7 @@ def check(name, cond, detail=""):
     print(f"  {mark} {name}" + ("" if cond else f"  <- {detail}"))
 
 
-DRAFT = """<!-- machine-generated test-plan draft — TestPlanGen prompt v1.7 · local/testplangen.mjs v1.3 · provider anthropic -->
+DRAFT = """<!-- machine-generated test-plan draft — TestPlanGen prompt v1.7 · pipeline/testplangen.mjs v1.3 · provider anthropic -->
 > [!WARNING]
 > **DRAFT — machine-generated, unreviewed.** Generated 2026-09-04T00:00:00Z from user story doc 12 — "Route Merge". Source sidecar: <https://example/sc.md>
 > Review every case and resolve all [VERIFY] items before use.
@@ -115,7 +115,7 @@ covering the workflow the story enumerates.
 
 ## Issue Trace
 
-_Deterministic addendum — minted by local/testplangen.mjs from the Doc IDs and Issue Refs lists, not by the model. Cross-check against devtopia during the review pass._
+_Deterministic addendum — minted by pipeline/testplangen.mjs from the Doc IDs and Issue Refs lists, not by the model. Cross-check against devtopia during the review pass._
 
 | Issue | Title (Issue Refs) | Schedule status | Found via |
 | --- | --- | --- | --- |

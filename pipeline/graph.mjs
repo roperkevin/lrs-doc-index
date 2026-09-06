@@ -10,7 +10,7 @@
  *
  * Auth — two modes (config.graph.auth, default "device"):
  *   "device" — delegated sign-in as the user via the OAuth device
- *     code flow (local/auth.mjs) using Microsoft's pre-registered
+ *     code flow (pipeline/auth.mjs) using Microsoft's pre-registered
  *     Graph public client. NO app registration needed; the user's
  *     own SharePoint permissions apply (the cloud flow's connection
  *     identity model). Scope: Sites.ReadWrite.All + offline_access.
@@ -32,7 +32,7 @@
  *   maxRetries   default 4 (429 honors Retry-After; 5xx/network backoff)
  *
  * Unlike the cloud flow — whose Create_idrow/Create_link/Create_dockw
- * actions embed list GUIDs in hand-typed URIs (SP_Adaptation_Notes,
+ * actions embed list GUIDs in hand-typed URIs (docs/sharepoint-notes.md,
  * FX-6) — every call here builds its URL from config, so a list
  * re-creation is a one-line config change.
  */

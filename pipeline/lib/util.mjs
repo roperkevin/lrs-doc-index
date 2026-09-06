@@ -104,7 +104,7 @@ export function pruneRunLogs(logDir, keep = 30, prefix = "sweep-") {
 /**
  * Nightly list backup (v1.32): the six SharePoint lists are the only
  * copy of the graph, and the tenant has re-created them wholesale
- * once already (SP_Adaptation_Notes "Current tenant GUIDs"). The
+ * once already (docs/sharepoint-notes.md "Current tenant GUIDs"). The
  * sweep holds every row in memory at run start anyway, so each run
  * gzips that snapshot to workDir — a restore source that costs one
  * file write. Keeps the newest 14; sweep.exportLists: false disables.

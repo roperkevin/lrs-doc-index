@@ -1,10 +1,10 @@
-# Plan — indexing figures + standardized figure names (`local/lib/figureindex.mjs`)
+# Plan — indexing figures + standardized figure names (`pipeline/lib/figureindex.mjs`)
 
-Status: **BUILT** (2026-09-05 — `local/CHANGES.md` sweep v1.59,
+Status: **BUILT** (2026-09-05 — `docs/changelog/pipeline.md` sweep v1.59,
 figureindex v1.0, indexpages v1.3): the schema
 (`schemas/SPList_Figures.csv`), the pure module
-`local/lib/figureindex.mjs` (naming rule + parser + row shaping; own
-gate `local/harness/check_figureindex.py`, 46/46, CI), the sweep
+`pipeline/lib/figureindex.mjs` (naming rule + parser + row shaping; own
+gate `tests/check_figureindex.py`, 46/46, CI), the sweep
 wiring (`syncFigures` at index time, on `--reformat` and on
 `--normalize-cases`, ghost-pass pruning, the `--refigure` backfill,
 counters + status-page line, the missing-GUID fail-soft, the shared
@@ -14,7 +14,7 @@ index and reformat paths, and the consumer `_Figure Catalog.md`
 `--normalize-cases`). Gates: `check_local_sweep.py` (figure-index,
 media-rename, refigure, missing-column and missing-GUID legs),
 `check_figureindex.py` 46/46 — CI. What remains is TENANT work:
-create the Figures list (Local_Setup §14), paste its GUID, run
+create the Figures list (docs/setup.md §14), paste its GUID, run
 `--reformat --live` (renames the corpus's media) and `--refigure
 --live` once — all queued behind auth restore (STATUS action 12).
 This document is the design record, the `Case_Index_Plan.md` mold.
@@ -134,13 +134,13 @@ replace-set touches a few dozen rows a night at most.
 
 ## Module and integration points
 
-**`local/lib/figureindex.mjs`** (pure): `prettifyMedia(docText)` →
+**`pipeline/lib/figureindex.mjs`** (pure): `prettifyMedia(docText)` →
 `{ text, renames, figures }` (the naming half); `extractFigures(body,
 { mediaUrlBase, contextCap, vocab, docTitle, sizeOf })` → `{ figures }`;
 `toFigureRowFields`; `diffFigureRows`; `imageSize(buf)`;
 `figureName`, `isPrettyName`, `formatOf`.
 
-**`local/sweep.mjs`** (v1.59):
+**`pipeline/sweep.mjs`** (v1.59):
 
 - `indexDoc`: `prettifyMedia` runs on the extracted text before
   anything reads it (LLM input, preview, sidecar); `writeMedia`
@@ -196,7 +196,7 @@ time); perceptual-hash dedup across documents; a thumbnail column
 - **FigureIndexVersion** (`FIGURE_INDEX_VERSION` in the module)
   joins the component table and bumps like a parser: a change
   re-flows the corpus via `--refigure`. Never touches prompts.
-- Rollout (Local_Setup §14): create the list (classic lookup), add
+- Rollout (docs/setup.md §14): create the list (classic lookup), add
   the GUID, `--reformat --live` (renames the corpus's media and
   relinks the sidecars — the same pass the format-3.0 rollout already
   needs), `--refigure --live` once; the nightly sweep keeps it
@@ -227,7 +227,7 @@ time); perceptual-hash dedup across documents; a thumbnail column
 
 1,302 rows / 139 documents an hour after the rollout: every picture
 on a standardized name, every one sized, TC attribution working. Two
-findings changed the module (`local/CHANGES.md` v1.60): pictures no
+findings changed the module (`docs/changelog/pipeline.md` v1.60): pictures no
 larger than 48 px are Kind `icon` (90 of 687 were docx button
 glyphs), and untitled slides take their first text line as the slug
 (155 pictures were slug-less). One finding changed the sweep: a
@@ -242,7 +242,7 @@ work.
 Owner request after the first export: "we need to extract drawn shapes
 and text". D3's `diagram` rows carried only the collapsed labels; the
 drawing itself was lost since the v1.58 removal of the stylised
-renderer. `scripts/ShapeExtract.ts` now extracts the drawing layer
+renderer. `extract/ShapeExtract.ts` now extracts the drawing layer
 FAITHFULLY — the shapes at their true positions with their fills,
 outlines, arrows, rotations and text — as one SVG per qualifying
 slide, plus the glued connections as `A → B` words. The sweep links
@@ -253,4 +253,4 @@ Decisions: faithful, never restyled (the removed renderer redrew;
 this one draws what the slide draws); qualification by drawn
 primitives (≥ 3), never by text; pictures as placeholders that also
 reference their sibling file; SmartArt/charts undrawn; svg2pptx not
-retargeted. Details in `local/CHANGES.md` v1.61.
+retargeted. Details in `docs/changelog/pipeline.md` v1.61.

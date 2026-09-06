@@ -31,8 +31,8 @@ citations would split across the pair. The sidecar carries the original
 file's URL; originals are cited *through* it.
 
 The instruction text describes the sidecar format. It must track the
-sweep's header template (`local/sweep.mjs` `sidecarHead` +
-`local/lib/sidecarmeta.mjs`) — a sidecar format change that
+sweep's header template (`pipeline/sweep.mjs` `sidecarHead` +
+`pipeline/lib/sidecarmeta.mjs`) — a sidecar format change that
 adds/renames metadata rows needs a matching bump here.
 
 ---------------- INSTRUCTIONS TEXT BEGINS ----------------

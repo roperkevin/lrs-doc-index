@@ -1,10 +1,10 @@
-"""Gate for the local test-plan generation job (local/testplangen.mjs).
+"""Gate for the local test-plan generation job (pipeline/testplangen.mjs).
 
 Proves the local job reproduces TestPlanGenCore's G1-G13 semantics
 with the cloud replaced by mocks (stdlib http.server standing in for
 Graph and the Anthropic API), plus the phase-1
 verifier the cloud flow could not have
-(testplangen/Local_TestPlanGen_Plan.md):
+(docs/design/Local_TestPlanGen_Plan.md):
 
   leg 1 guard        non-story / non-indexed / missing rows refuse
                      with the flow's Terminate_not_story message;
@@ -1015,7 +1015,7 @@ def main():
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + job version (no transport stamp)",
           draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.13")
-          and " · local/testplangen.mjs v" in draft.splitlines()[0]
+          and " · pipeline/testplangen.mjs v" in draft.splitlines()[0]
           and "provider" not in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft

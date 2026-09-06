@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate for local/lib/slug.mjs — the sidecar stem rules
+"""Gate for pipeline/lib/slug.mjs — the sidecar stem rules
 (Sidecar_Format_Plan §4.6, phase 1b):
 
   1. kind words dropped when they match the kind ("Test Plan: X",

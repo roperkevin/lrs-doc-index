@@ -1,5 +1,5 @@
-"""Gate for the test-case parser (local/lib/caseindex.mjs, phases 0-1
-of local/Case_Index_Plan.md).
+"""Gate for the test-case parser (pipeline/lib/caseindex.mjs, phases 0-1
+of docs/design/Case_Index_Plan.md).
 
 Proves extractCases/diffCaseRows against BOTH case shapes — and pins
 the D1 coupling: the deck fixture's body is produced by the

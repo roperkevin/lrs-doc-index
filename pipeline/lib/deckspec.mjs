@@ -1,7 +1,7 @@
 /**
  * deckspec.mjs v1.1 — the model-laid-out review deck for TestPlanGen
  * drafts (`prompts/testplan_deck.md` v0.1, testplangen.mjs
- * `--deck`, local/deck2pptx.mjs). Pure module, no I/O, no AI: the
+ * `--deck`, pipeline/render/deck2pptx.mjs). Pure module, no I/O, no AI: the
  * deterministic halves around the one model call the pass makes.
  *
  *   parseDeckReply(raw)              the fail-closed sentinel slice +

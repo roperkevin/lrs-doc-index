@@ -9,7 +9,7 @@
  * walks a test-plan review with, styled on the Diagram Style Framework
  * palette so it sits next to svg2pptx figure slides without a seam.
  *
- *   node local/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx]
+ *   node pipeline/render/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx]
  *                             [--media <dir>]
  *
  * Each input converts to a sibling .pptx (same name); `-o` names the
@@ -56,7 +56,7 @@
  * tableFrame / slide / figureGroupXml / buildPptx and the palette +
  * geometry constants) are exported, and the CLI runs only when this
  * file is executed directly — the svg2pptx v1.4 precedent — so
- * local/deck2pptx.mjs (the model-laid-out review deck, TestPlanGen
+ * pipeline/render/deck2pptx.mjs (the model-laid-out review deck, TestPlanGen
  * v2.36) renders with the same emitter and the two decks read as one
  * design. CLI behavior and output are unchanged.
  *
@@ -964,7 +964,7 @@ function closingSlide(model, stats) {
   });
   if (model.provenance) {
     x += textbox("prov", MARGIN, SLIDE_H - 0.75 * IN, CONTENT_W, 0.3 * IN,
-      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.4", color: MUTED, sz: 10.5 }] }]);
+      [{ runs: [{ t: model.provenance + "  ·  deck: pipeline/render/draft2pptx.mjs v1.4", color: MUTED, sz: 10.5 }] }]);
   }
   return slide(x, INK);
 }
@@ -1294,7 +1294,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
 function main() {
 const { files, out, mediaDir } = collectInputs(process.argv.slice(2));
 if (files.length === 0 || (out && files.length > 1)) {
-  console.error('usage: node local/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx] [--media <dir>]');
+  console.error('usage: node pipeline/render/draft2pptx.mjs <draft.md> [more.md ...] [-o out.pptx] [--media <dir>]');
   console.error("       -o names the output for a SINGLE input;");
   console.error("       --media points at the synced sidecar library's media folder so cited **Figure:** links embed as native shapes");
   process.exit(2);

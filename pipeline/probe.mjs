@@ -15,7 +15,7 @@
  * 401 (where SharePoint reports the real reason). Ends with a
  * WINNERS line naming every shape that fully worked.
  *
- * Usage: node --experimental-strip-types local/probe.mjs --config local/config.json [--spo]
+ * Usage: node --experimental-strip-types pipeline/probe.mjs --config config.json [--spo]
  */
 
 import fs from "node:fs";

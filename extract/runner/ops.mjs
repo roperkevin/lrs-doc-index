@@ -1,13 +1,14 @@
 /**
- * ops.mjs v1.0 — shared op machinery for the Doc Index script runners.
+ * ops.mjs v1.1 — shared op machinery for the Doc Index script runners.
+ * (v1.1: maxCells guard tolerates a non-numeric value.)
  *
  * Extracted verbatim from run_job.mjs v2.0 so that both the PAD batch
  * runner (run_job.mjs) and the local sweep orchestrator
- * (local/sweep.mjs) drive the UNMODIFIED scripts/ files through one
- * gated code path. Behavior is covered by pad/harness/
+ * (pipeline/sweep.mjs) drive the UNMODIFIED extract/*.ts files through one
+ * gated code path. Behavior is covered by tests/
  * check_pad_runner.py (including the wrap.py parity leg).
  *
- * Script loading is the review/harness/wrap.py trick: the .ts source
+ * Script loading is the tests/wrap.py trick: the .ts source
  * runs as-is under Node type stripping (ExcelScript appears in type
  * position only), with an export appended so the wrap imports as an
  * ES module.

@@ -40,7 +40,7 @@ const PRODUCT_ACRONYM = {
 };
 
 let defaultAbbr = null;
-/** The shipped abbreviation map (local/slug_abbreviations.json). */
+/** The shipped abbreviation map (pipeline/data/slug_abbreviations.json). */
 export function defaultAbbreviations() {
   if (!defaultAbbr) {
     try {

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.16 — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.22 (JOB_VERSION below is the stamp) — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
- * `testplangen/Local_TestPlanGen_Plan.md` (component record:
- * `testplangen/CHANGES.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
+ * `docs/design/Local_TestPlanGen_Plan.md` (component record:
+ * `docs/changelog/testplangen.md` v2.16 / v2.17 / v2.18 / v2.19; pinned
  * lanes: v2.22; figures: v2.26; web references: v2.28; case-level
  * gap tracing: v2.29; case-aware generation: v2.30; first-run
  * review: v2.31; generated figures: v2.32; console streaming: v2.33;
@@ -24,7 +24,7 @@
  * content verbatim from the draft or pulled through `from`
  * references; a slide with any finding is dropped, never repaired),
  * lays the survivors out on lib/designsystem.mjs (Fluent 2 tokens,
- * MIT, on a 12-column grid), and local/deck2pptx.mjs renders native
+ * MIT, on a 12-column grid), and pipeline/render/deck2pptx.mjs renders native
  * editable PowerPoint objects — figures (story and generated, the
  * latter straight from this run's memory) as the same shape groups
  * svg2pptx emits. The deck (`<draft stem>--deck.pptx`) and its spec
@@ -34,19 +34,19 @@
  * Fail soft after the draft is verified (one stderr line, the draft
  * still lands, `deck=0/0`). Knobs: testplangen.deck
  * (default false; `--deck` forces on), deckMaxTokens (24000). v1.18
- * (testplangen/CHANGES.md v2.38): `figuresCap` — the figures pass's
+ * (docs/changelog/testplangen.md v2.38): `figuresCap` — the figures pass's
  * X6 budget as a config knob (default 6), substituted into the prompt
  * as its third input FiguresCap and enforced after the grounding
  * check; a non-positive or non-integer value refuses BEFORE the
  * generation spend. Manual
- * runs only, like --figures. v1.17 (testplangen/CHANGES.md v2.37):
+ * runs only, like --figures. v1.17 (docs/changelog/testplangen.md v2.37):
  * `deckDesign` picks the design system the deck is laid out on —
  * "fluent" (default), "carbon", "uswds" (lib/designsystem.mjs v1.1),
  * and `deckTheme` its light (default) or dark theme (v1.2 — embedded
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
  *
- * v1.22 (figure variety — testplangen/CHANGES.md v2.43): the figures
+ * v1.22 (figure variety — docs/changelog/testplangen.md v2.43): the figures
  * prompt is v0.4 — five more figure kinds (timeline, state, matrix,
  * wireframe, workflow) with their selection rules R6–R9, a
  * kind-choice table so the kind follows the case's ASSERTION rather
@@ -55,18 +55,18 @@
  * Figures addendum names each figure's kind beside its rule, and
  * Gen_summary gains `genKinds=<kind>:<n>,…` so a run shows its mix.
  *
- * v1.21 (change made visible — testplangen/CHANGES.md v2.41):
+ * v1.21 (change made visible — docs/changelog/testplangen.md v2.41):
  * lib/figurespec.mjs v1.2 shares one measure scale across a figure's
  * panels and draws each panel's changed prior extents as ghosts.
  * Stamp change only in this file.
  *
- * v1.20 (route-measure legibility — testplangen/CHANGES.md v2.40):
+ * v1.20 (route-measure legibility — docs/changelog/testplangen.md v2.40):
  * the figures prompt is v0.3 (an optional per-route `ticks` interval
  * in the vocabulary) and lib/figurespec.mjs v1.1 renders intermediate
  * ticks, measure labels at every event's ends, and collision-free
  * label placement. Stamp change only in this file.
  *
- * v1.19 (method names from the sources — testplangen/CHANGES.md
+ * v1.19 (method names from the sources — docs/changelog/testplangen.md
  * v2.39): prompt v1.13 lets a draft borrow the NAMES of a method
  * class the story states without naming ("all input methods") from
  * the exemplar / reference / related-cases lanes, declared once on a
@@ -75,7 +75,7 @@
  * declared name no source carries is flagged (draftlint v1.5).
  * promptVersion default → v1.13.
  *
- * v1.15 (doc 910 draft review — testplangen/CHANGES.md v2.35): the
+ * v1.15 (doc 910 draft review — docs/changelog/testplangen.md v2.35): the
  * figures pass names its own cap when the model's reply is cut
  * (testplangen.figuresMaxTokens, default raised 8000 → 24000: a
  * 22-case draft's six specs plus the mandatory per-case skipped list
@@ -90,7 +90,7 @@
  * Positive lane.
  *
  * v1.13–v1.14 (related cases — the retrieval lane, prompt v1.11's
- * SIXTH input, testplangen/CHANGES.md v2.34): with the Test Cases
+ * SIXTH input, docs/changelog/testplangen.md v2.34): with the Test Cases
  * list configured, the catalog's PLANS are ranked against the story
  * (plan-first — see relatedCasesLane: a tf·idf query from the
  * story's tools, keywords and title; a plan's terms are its title
@@ -113,7 +113,7 @@
  * slot while the referent-centric plans ranked 140th and lower;
  * plan-level ranking put those plans in the top six.
  *
- * v1.12 (console streaming — `--stream`, testplangen/CHANGES.md
+ * v1.12 (console streaming — `--stream`, docs/changelog/testplangen.md
  * v2.33): a manual run echoes the model's
  * output to STDERR as it streams — first the model's thinking
  * summary (the request asks for `display: "summarized"`; the raw
@@ -132,7 +132,7 @@
  * quiet for their task logs); `testplangen.stream: true` makes it
  * the default for a machine.
  *
- * v1.11 (generated figures — `--figures`, testplangen/CHANGES.md
+ * v1.11 (generated figures — `--figures`, docs/changelog/testplangen.md
  * v2.32): an OPTIONAL second model pass over the VERIFIED draft
  * (`prompts/testplan_figures.md` v0.1): the model selects the
  * cases a schematic would help (five rules, six exclusions, the X6
@@ -158,7 +158,7 @@
  * false; `--figures` forces on), figuresMaxTokens (24000 since v1.15).
  * Manual runs only, like the pins.
  *
- * v1.10 (first-run review — testplangen/CHANGES.md v2.31):
+ * v1.10 (first-run review — docs/changelog/testplangen.md v2.31):
  *   - `--preview`: a ZERO-SPEND single-story run — the guard, the
  *     lookup, the pins and every lane run exactly as for a
  *     generation, then the five prompt inputs are
@@ -172,7 +172,7 @@
  *   - `--help` / `-h` prints the usage and exits 0 (an unknown flag
  *     still refuses with exit 1).
  *   - remote-files mode: with `sweep.remoteFiles: true` (the sweep's
- *     v1.39 no-OneDrive mode, local/Hosted_Runner.md) the sidecar
+ *     v1.39 no-OneDrive mode, docs/hosted-runner.md) the sidecar
  *     library mirrors down into `paths.sidecarLibrary` at run start
  *     through the same RemoteLibrary the sweep uses (eTag manifest
  *     shared, so a run after the nightly sweep downloads nothing) —
@@ -350,7 +350,7 @@
  *     machine-minted content. Omitted when the story has no issue
  *     rows; testplangen.issueTrace: false disables it. (The other
  *     half of the queued "docx handoff" phase-4 item is the
- *     standalone local/draft2docx.mjs converter.)
+ *     standalone pipeline/render/draft2docx.mjs converter.)
  *   - `--gap-report`: the whole-catalog counterpart of the auto
  *     mode's lookback scan — every Indexed User Story with no
  *     covering Test Plan (no related-list plan, no Doc Links edge),
@@ -373,7 +373,7 @@
  * v1.1 (phase 2) adds:
  *   - the lookup front door — `--issue <n>` / `--title "<words>"`
  *     resolve to a Doc Index row id via StoryLookupFlow's
- *     deterministic queries, in-process (`testplangen/CHANGES.md`
+ *     deterministic queries, in-process (`docs/changelog/testplangen.md`
  *     v2.3): the issue lane filters the Doc IDs list on IssueNumber
  *     (dedup by document, kind-filtered to Indexed User Stories), the
  *     title lane contains-matches indexed User Story titles, both
@@ -398,7 +398,7 @@
  *     "grounding: "; testplangen.grounding: false disables just
  *     this layer.
  *
- * Faithful to `testplangen/TestPlanGen_Setup.md` §3 (G1–G13):
+ * Faithful to `docs/history/TestPlanGen_Setup.md` §3 (G1–G13):
  *   G1–G2  story row + hard guard (DocKind = User Story,
  *          IndexStatus = Indexed, sidecar URL present) — the flow's
  *          Terminate_not_story message verbatim.
@@ -504,7 +504,7 @@ const NO_DRAFT_MSG =
   "Model reply was missing the DRAFT BEGIN/END markers (or they were " +
   "misordered); nothing was written. Re-run once; if it repeats, test the " +
   "prompt in the AI Builder pane — a TestPlanGenPromptVersion concern, see " +
-  "testplangen/CHANGES.md.";
+  "docs/changelog/testplangen.md.";
 
 const VERIFY_MODES = ["annotate", "strict", "off"];
 
@@ -780,7 +780,7 @@ async function run(cfg) {
   const sw = cfg._sw;
   const dry = !!tp.dryRun;
 
-  // remote-files mode (sweep v1.39, local/Hosted_Runner.md): no
+  // remote-files mode (sweep v1.39, docs/hosted-runner.md): no
   // OneDrive anywhere — the sidecar library mirrors down into
   // paths.sidecarLibrary (eTag-deduped through the manifest the sweep
   // shares, so a run after the nightly sweep downloads nothing) and
@@ -824,7 +824,7 @@ async function run(cfg) {
 
   // ---- lookup front door (v1.1) — StoryLookupFlow's deterministic
   // queries, in-process; ambiguity and misses go back to the human,
-  // generation is NOT invoked (testplangen/CHANGES.md v2.3)
+  // generation is NOT invoked (docs/changelog/testplangen.md v2.3)
   const isStoryRow = (r) => r && r.DocKind === "User Story" && r.IndexStatus === "Indexed";
   const resolveOne = (candidates, refText, coaching) => {
     if (candidates.length === 1) {
@@ -1568,7 +1568,7 @@ function existingCasesSection(ctx, cc) {
     count: rows.length,
     section:
       "\n## Existing Test Cases\n\n" +
-      "_Deterministic addendum — minted by local/testplangen.mjs from the " +
+      "_Deterministic addendum — minted by pipeline/testplangen.mjs from the " +
       "sweep's Test Cases list, not by the model: indexed test cases across " +
       `the catalog that already cite this story's devtopia issues (${rows.length} ` +
       `case(s) in ${plans.size} plan(s)). Check the draft against them during ` +
@@ -1617,7 +1617,7 @@ async function issueTraceOf(ctx, story) {
       count: lines.length,
       section:
         "\n## Issue Trace\n\n" +
-        "_Deterministic addendum — minted by local/testplangen.mjs from the " +
+        "_Deterministic addendum — minted by pipeline/testplangen.mjs from the " +
         "Doc IDs and Issue Refs lists, not by the model. Cross-check against " +
         "devtopia during the review pass._\n\n" +
         "| Issue | Title (Issue Refs) | Schedule status | Found via |\n" +
@@ -1673,7 +1673,7 @@ async function generateOne(ctx, story) {
       `${storyLocal ?? "(outside the sidecar library mapping)"} — ` +
       "is the OneDrive sync current, and sweep.siteUrl/textsFolder correct? " +
       "(a machine with no OneDrive sync runs with sweep.remoteFiles: true — " +
-      "the sidecar library then mirrors down at run start, Local_Setup.md §11)"
+      "the sidecar library then mirrors down at run start, docs/setup.md §11)"
     );
   }
   const storyMd = fs.readFileSync(storyLocal, "utf8");
@@ -1919,7 +1919,7 @@ async function generateOne(ctx, story) {
     );
     const body =
       `# TestPlanGen preview — story ${story.ID} "${stripQuotes(story.Title)}"\n\n` +
-      `local/testplangen.mjs ${JOB_VERSION} · ${new Date().toISOString()} · ` +
+      `pipeline/testplangen.mjs ${JOB_VERSION} · ${new Date().toISOString()} · ` +
       `~${inChars} chars of prompt inputs · NO model call was made.\n` +
       "The five prompt inputs below are exactly what a generation would send " +
       "(prompts/testplan_draft.md's {StoryMeta} {StoryText} {RelatedDigest} " +
@@ -2096,7 +2096,7 @@ async function generateOne(ctx, story) {
       "\n## Generated Figures\n\n" +
       "_Deterministic addendum — figures PROPOSED by the TestPlanFigures prompt " +
       `${FIG_PROMPT_VERSION} from this draft's own test data, grounding-checked and ` +
-      "rendered by local/testplangen.mjs (the model never drew). Reading aids for " +
+      "rendered by pipeline/testplangen.mjs (the model never drew). Reading aids for " +
       "the §4 review only — they never ground a case. " +
       `${figs.rendered.length} rendered of ${figs.proposed} proposed` +
       (figs.dropped.length ? `, ${figs.dropped.length} dropped` : "") +
@@ -2132,7 +2132,7 @@ async function generateOne(ctx, story) {
   const caseStamp = routedIds.length ? ` · case-routed [${routedIds.join(",")}]` : "";
   const banner =
     `<!-- machine-generated test-plan draft — TestPlanGen prompt ${tp.promptVersion}` +
-    ` · local/testplangen.mjs ${JOB_VERSION}${pinStamp}${caseStamp} -->\n` +
+    ` · pipeline/testplangen.mjs ${JOB_VERSION}${pinStamp}${caseStamp} -->\n` +
     "> [!WARNING]\n" +
     `> **DRAFT — machine-generated, unreviewed.** Generated ${new Date().toISOString()} ` +
     `from user story doc ${story.ID} — "${stripQuotes(story.Title)}". ` +
@@ -2151,7 +2151,7 @@ async function generateOne(ctx, story) {
   const seenWebRefs = referenceRefs.filter((r) => r.web && r.injected);
   const webRefSection = seenWebRefs.length
     ? "\n## Reference Documentation\n\n" +
-      "_Deterministic addendum — minted by local/testplangen.mjs from the " +
+      "_Deterministic addendum — minted by pipeline/testplangen.mjs from the " +
       "run's pinned `--reference` URLs, not by the model: the web " +
       "documentation pages fed into the REFERENCE FUNCTIONALITY lane. " +
       "Reference-grounded Traces cite these pages by title._\n\n" +
@@ -2182,7 +2182,7 @@ async function generateOne(ctx, story) {
       "_Deterministic addendum — the review deck laid out by the TestPlanDeck prompt " +
       `${DECK_PROMPT_VERSION} over this draft (pattern and region decisions), grounded ` +
       "slide by slide and rendered as native editable PowerPoint objects by " +
-      `local/deck2pptx.mjs ${DECK_VERSION}` + (deck.design ? ` on the ${deck.design} design system` : "") + ". " +
+      `pipeline/render/deck2pptx.mjs ${DECK_VERSION}` + (deck.design ? ` on the ${deck.design} design system` : "") + ". " +
       (deck.error
         ? `Pass skipped: ${cellSafe(deck.error, 160)}._\n`
         : `${deck.slides} slides from ${deck.proposed} proposed` +
@@ -2235,7 +2235,7 @@ async function generateOne(ctx, story) {
   let localDraft;
   if (dry) {
     // the would-be draft, locally inspectable (and lintable with
-    // review/harness/check_draft_coverage.py) before any live run
+    // tests/check_draft_coverage.py) before any live run
     const logDir = cfg.paths?.workDir || ".";
     fs.mkdirSync(logDir, { recursive: true });
     localDraft = path.join(logDir, localDraftName);
@@ -2258,7 +2258,7 @@ async function generateOne(ctx, story) {
 /**
  * The review-deck pass (v1.16, --deck). ONE model call with the
  * finished draft; the reply's deck spec is grounded slide by slide
- * and rendered (local/deck2pptx.mjs) with this run's generated
+ * and rendered (pipeline/render/deck2pptx.mjs) with this run's generated
  * figures embedded from memory and the story figures from the synced
  * media folder (paths.sidecarLibrary/media). The .pptx and the spec
  * .json land beside the draft — uploaded (live) or written next to
@@ -2455,7 +2455,7 @@ async function runAuto(ctx) {
   if (!cfg.testplangen.autoDraft) {
     throw new Error(
       "--auto requires testplangen.autoDraft: true in config — the owner " +
-      "switch for unattended drafting (Local_Setup.md §11)"
+      "switch for unattended drafting (docs/setup.md §11)"
     );
   }
   const tp = { ...cfg.testplangen, verify: "strict", notify: true };
@@ -2705,7 +2705,7 @@ async function runGapReport(ctx) {
     : "";
   const head =
     `# Test plan gap report\n\n` +
-    `Run: ${new Date().toISOString()}  ·  local/testplangen.mjs ${JOB_VERSION}  ·  ` +
+    `Run: ${new Date().toISOString()}  ·  pipeline/testplangen.mjs ${JOB_VERSION}  ·  ` +
     `stories=${stories.length} covered=${covered} gaps=${gaps.length} ` +
     `unassessable=${unassessable.length}${caseStats}\n\n`;
   // a gap story whose issues SOME case already cites is a special

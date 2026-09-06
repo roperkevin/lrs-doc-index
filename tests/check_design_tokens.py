@@ -1,4 +1,4 @@
-"""Verification for the design-token blocks in local/lib/designsystem.mjs
+"""Verification for the design-token blocks in pipeline/lib/designsystem.mjs
 against the PUBLISHED packages — the check the Carbon MCP would give an
 approved user, from the same source of truth, with no approval needed.
 

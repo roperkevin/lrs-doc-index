@@ -2,9 +2,7 @@
  * doclinks.mjs v1.0 — the Esri-documentation link machinery, moved
  * verbatim out of sweep.mjs v1.30 (module split, no behavior change;
  * covered by check_local_sweep.py incl. the doc_crawl/probe legs).
- * Only the default esri_doc_links.json path changed shape: it now
- * resolves from this file's PARENT directory (local/), where the
- * file has always lived.
+ * The default esri_doc_links.json path resolves to pipeline/data/.
  */
 
 import fs from "node:fs";
@@ -13,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { lower } from "./util.mjs";
 
 /**
- * Product-documentation links (local/esri_doc_links.json, or
+ * Product-documentation links (pipeline/data/esri_doc_links.json, or
  * sweep.docLinksFile): official Esri doc pages per canonical product
  * name, rendered as a marked block in each sidecar. Missing or
  * unparseable file = empty map = blocks are removed on next write.

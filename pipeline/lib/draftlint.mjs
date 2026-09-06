@@ -1,9 +1,9 @@
 /**
  * draftlint.mjs v1.5 — in-process draft verification for
- * local/testplangen.mjs, two layers:
+ * pipeline/testplangen.mjs, two layers:
  *
  * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
- * coverage lint (review/harness/check_draft_coverage.py, v1.7
+ * coverage lint (tests/check_draft_coverage.py, v1.7
  * contract). The Python lint stays the harness AUTHORITY; this port
  * exists so the generation job can verify a draft BEFORE writing it
  * without a Python dependency at run time. check_testplangen.py's

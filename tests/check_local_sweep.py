@@ -1,4 +1,4 @@
-"""Gate for the local Doc Index sweep (local/sweep.mjs).
+"""Gate for the local Doc Index sweep (pipeline/sweep.mjs).
 
 Proves the local orchestrator reproduces the flow v2.8 pipeline
 end-to-end with the cloud replaced by mocks:

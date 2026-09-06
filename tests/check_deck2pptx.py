@@ -1,4 +1,4 @@
-"""Gate for the model-laid-out review deck renderer (local/deck2pptx.mjs
+"""Gate for the model-laid-out review deck renderer (pipeline/render/deck2pptx.mjs
 v1.2, over lib/deckspec.mjs + lib/designsystem.mjs + draft2pptx v1.3's
 exported emitter + svg2pptx v1.5's parseFigureSvg).
 
@@ -76,7 +76,7 @@ def check(name, cond, detail=""):
 FIG_URL = "https://mock.example/sites/lrsworkspace/LRS%20Doc%20Index/media/doc12_slide2_fig1.svg"
 FIG_ALT = "Routes R1 and R2 before the merge"
 
-DRAFT = f"""<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12 · local/testplangen.mjs v1.16 · provider anthropic -->
+DRAFT = f"""<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12 · pipeline/testplangen.mjs v1.16 · provider anthropic -->
 > [!WARNING]
 > **DRAFT — machine-generated, unreviewed.** Generated 2026-09-05T00:00:00Z from user story doc 12 — "Route Merge". Source sidecar: <https://example/sc.md>
 > Review every case and resolve all [VERIFY] items before use.

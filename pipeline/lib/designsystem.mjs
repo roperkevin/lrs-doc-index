@@ -2,7 +2,7 @@
  * designsystem.mjs v1.3 — the deck's design systems: open-source design
  * tokens on a 16:9 slide, plus the closed LAYOUT PATTERN catalog the
  * TestPlanDeck prompt chooses from (prompts/testplan_deck.md,
- * local/lib/deckspec.mjs, local/deck2pptx.mjs). Pure module, no I/O.
+ * pipeline/lib/deckspec.mjs, pipeline/render/deck2pptx.mjs). Pure module, no I/O.
  *
  * v1.1: THREE designs, selectable (`--design`, `testplangen.deckDesign`):
  *
@@ -21,7 +21,7 @@
  * v1.3: every value below was VERIFIED against the published packages
  * (@carbon/colors 11.57, @carbon/type 11.66, @carbon/layout 11.58,
  * @carbon/themes 11.80, @fluentui/tokens 1.0.0-alpha.24, @uswds/uswds
- * 3.14) by `local/harness/check_design_tokens.py`, which downloads them
+ * 3.14) by `tests/check_design_tokens.py`, which downloads them
  * from the npm registry and diffs — six transcription slips corrected
  * (Carbon border-subtle-01 on both themes and g100 text-helper, Fluent
  * subtitle1's line height, USWDS's line-height token 2, its largest

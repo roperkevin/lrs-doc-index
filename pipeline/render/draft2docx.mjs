@@ -7,11 +7,11 @@
  * reviewed test-plan draft from Shared Documents/Test Plan Drafts (or
  * a dry run's workDir copy) and builds a .docx the PE can finalize in
  * Word — closing the "docx handoff" follow-on queued in
- * `testplangen/TestPlanGen_Setup.md` WITHOUT the premium Word
+ * `docs/history/TestPlanGen_Setup.md` WITHOUT the premium Word
  * connector or a OneDrive convert-file step it deferred over
- * (component record: `testplangen/CHANGES.md` v2.19, plan phase 4).
+ * (component record: `docs/changelog/testplangen.md` v2.19, plan phase 4).
  *
- *   node local/draft2docx.mjs <draft.md> [more.md ...] [-o out.docx]
+ *   node pipeline/render/draft2docx.mjs <draft.md> [more.md ...] [-o out.docx]
  *
  * Each input converts to a sibling .docx (same name); `-o` names the
  * output for a SINGLE input. The conversion is shape-preserving for
@@ -382,7 +382,7 @@ function main(argv) {
     else inputs.push(argv[i]);
   }
   if (inputs.length === 0 || (out && inputs.length > 1)) {
-    console.error("usage: node local/draft2docx.mjs <draft.md> [more.md ...] [-o out.docx]");
+    console.error("usage: node pipeline/render/draft2docx.mjs <draft.md> [more.md ...] [-o out.docx]");
     process.exit(2);
   }
   for (const input of inputs) {

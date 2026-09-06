@@ -1,5 +1,5 @@
-"""Gate for the review-deck modules (local/lib/designsystem.mjs v1.2 +
-local/lib/deckspec.mjs v1.1) — fixture-free, no python-pptx: Node runs
+"""Gate for the review-deck modules (pipeline/lib/designsystem.mjs v1.2 +
+pipeline/lib/deckspec.mjs v1.1) — fixture-free, no python-pptx: Node runs
 the pure modules over an in-memory draft and the checks read the JSON
 back.
 
@@ -64,7 +64,7 @@ def check(name, cond, detail=""):
     print(f"  {'ok  ' if cond else 'FAIL'} {name}" + ("" if cond else f"  <- {str(detail)[:300]}"))
 
 
-DRAFT = """<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12 · local/testplangen.mjs v1.16 · provider anthropic -->
+DRAFT = """<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12 · pipeline/testplangen.mjs v1.16 · provider anthropic -->
 > [!WARNING]
 > **DRAFT — machine-generated, unreviewed.** Generated 2026-09-05T00:00:00Z from user story doc 12 — "Route Merge". Source sidecar: <https://example/sc.md>
 > Review every case and resolve all [VERIFY] items before use.
@@ -135,7 +135,7 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 
 ## Issue Trace
 
-_Deterministic addendum — minted by local/testplangen.mjs from the Doc IDs and Issue Refs lists._
+_Deterministic addendum — minted by pipeline/testplangen.mjs from the Doc IDs and Issue Refs lists._
 
 | Issue | Title (Issue Refs) | Schedule status | Found via |
 | --- | --- | --- | --- |

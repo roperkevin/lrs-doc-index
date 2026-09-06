@@ -4,7 +4,7 @@ rem (schedule AFTER the nightly sweep, e.g. daily 18:30, so fresh
 rem stories carry tonight's related: lines). Same shape as
 rem run_curate.cmd: self-updating, log-rotating, one unquoted path.
 rem INERT until testplangen.autoDraft: true is set in config.json
-rem (the owner switch — Local_Setup.md §11): without it the run exits
+rem (the owner switch — docs/setup.md §11): without it the run exits
 rem with a one-line refusal and drafts nothing.
 cd /d "%~dp0.."
 if not exist work mkdir work

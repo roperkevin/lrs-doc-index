@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Gate for the figure parser + naming rule (local/lib/figureindex.mjs,
-local/Figure_Index_Plan.md).
+"""Gate for the figure parser + naming rule (pipeline/lib/figureindex.mjs,
+docs/design/Figure_Index_Plan.md).
 
   1. naming legs (prettifyMedia): fig-NN-slide-KK-<slug>.<ext> from the
      extracted text alone — ordinal in document order, slide of first

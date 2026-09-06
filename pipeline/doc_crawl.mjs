@@ -22,7 +22,7 @@
  * work/esri_doc_pages.json).
  *
  * Usage:
- *   node --experimental-strip-types local/doc_crawl.mjs
+ *   node --experimental-strip-types pipeline/doc_crawl.mjs
  *   ... [--section <url-prefix>]... [--out <file>] [--cap N] [--ua <string>] [--verbose]
  */
 

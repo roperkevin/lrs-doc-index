@@ -1,11 +1,11 @@
-# Plan — indexing individual test cases (`local/lib/caseindex.mjs`)
+# Plan — indexing individual test cases (`pipeline/lib/caseindex.mjs`)
 
-Status: **ALL PHASES BUILT** (2026-09-05 — `local/CHANGES.md`
+Status: **ALL PHASES BUILT** (2026-09-05 — `docs/changelog/pipeline.md`
 caseindex v1.0, sweep v1.42, sweep v1.43 +
-`testplangen/CHANGES.md` v2.29): the schema
+`docs/changelog/testplangen.md` v2.29): the schema
 (`schemas/SPList_TestCases.csv`), the parser
-`local/lib/caseindex.mjs` (own gate
-`local/harness/check_caseindex.py`, 45/45, CI — parser legs in the
+`pipeline/lib/caseindex.mjs` (own gate
+`tests/check_caseindex.py`, 45/45, CI — parser legs in the
 per-component-gate mold rather than seats in the sweep suite), the
 sweep wiring (`syncCases` at index time and on `--reformat`,
 ghost-pass pruning, the `--recase` backfill, counters, the
@@ -21,7 +21,7 @@ list was CREATED on the tenant 2026-09-05 (GUID
 `ae9374ab-295a-4321-8afa-a83a08e17711`, in `config.sample.json`);
 what remains, queued behind auth restore (STATUS action 12), is the
 sweep machine's config line plus one `--recase --live`
-(Local_Setup §12). This document stays the design
+(docs/setup.md §12). This document stays the design
 record, the `Local_TestPlanGen_Plan.md` precedent; what remains
 below it is the record of the decisions, not backlog — except the
 "Queued, NOT in this plan's phases" list, which stays deliberately
@@ -54,7 +54,7 @@ case-level truth and fake it today:
 
 The raw material is already there — this plan is an *indexing* move,
 not an extraction one. Since sweep v1.25/v1.29 (TC-1..TC-3) the
-presentation layer (`local/lib/presentation.mjs` `caseHeadings`)
+presentation layer (`pipeline/lib/presentation.mjs` `caseHeadings`)
 deterministically segments test-plan deck sidecars into per-case
 sections:
 
@@ -178,7 +178,7 @@ backs the new list up with the others once its GUID is in config.
 
 ## Module and integration points
 
-**`local/lib/caseindex.mjs`** (new, pure — the bodyindex/draftlint
+**`pipeline/lib/caseindex.mjs`** (new, pure — the bodyindex/draftlint
 mold):
 
 - `extractCases(bodyText, { defaultRepo, caseTextCap }) →
@@ -189,7 +189,7 @@ mold):
 - `diffCaseRows(existingRows, fresh) → { create, update, delete }` —
   the replace-set planner, pure so the gate can table-test it.
 
-**`local/sweep.mjs`** grows a `syncCases(row, bodyText)` step called
+**`pipeline/sweep.mjs`** grows a `syncCases(row, bodyText)` step called
 from the two places that finish a sidecar body — `indexDoc` and the
 `--reformat` pass — for rows whose DocKind is in
 `sweep.caseIndex.kinds` (default `["Test Plan"]`), plus:
@@ -214,7 +214,7 @@ row's LastError.
 "sweep": {
   "caseIndex": { "kinds": ["Test Plan"], "caseTextCap": 4000 }
 },
-"sharePoint": { "lists": { "testCases": "<GUID — Local_Setup §N>" } }
+"sharePoint": { "lists": { "testCases": "<GUID — docs/setup.md §N>" } }
 ```
 
 Absent section = feature off (dry parity with today).
@@ -263,14 +263,14 @@ addendum — all computed on read from the list, no stored edges
   spend), and the nightly sweep keeps it converged.
 - **CaseIndexVersion** joins STATUS's component table and bumps like
   a script version: a parser change re-flows the corpus via
-  `--recase`, recorded in `local/CHANGES.md`. Never touches prompts.
+  `--recase`, recorded in `docs/changelog/pipeline.md`. Never touches prompts.
 - Rollback = ignore the list (remove the GUID); nothing else in the
   pipeline reads it in phases 0–2, and phase-3 consumers degrade to
   today's behavior when it is absent or empty.
 
 ## Gates
 
-Two homes: `local/harness/check_caseindex.py` (standalone, the
+Two homes: `tests/check_caseindex.py` (standalone, the
 per-component-gate mold — BUILT, 45 checks) owns the parser;
 `check_local_sweep.py` (the 211-check suite) gains the
 sweep-integration legs with phase 2. All CI:
@@ -299,12 +299,12 @@ sweep-integration legs with phase 2. All CI:
 ## Phases
 
 **Phase 0 — schema + plumbing** (BUILT).
-`schemas/SPList_TestCases.csv`, config keys + sample, Local_Setup
+`schemas/SPList_TestCases.csv`, config keys + sample, docs/setup.md
 §12 list-creation section (classic lookups). No behavior change
 with the section absent; the fail-soft missing-GUID wiring and its
 leg move to phase 2 with the code they guard.
 
-**Phase 1 — the parser** (BUILT). `local/lib/caseindex.mjs`
+**Phase 1 — the parser** (BUILT). `pipeline/lib/caseindex.mjs`
 (`extractCases`, `caseIssueRefs`, `toRowFields`, `diffCaseRows`),
 both shapes, issue refs, anchors. Gate: `check_caseindex.py` parser
 + module-level coupling + planner legs, 45/45, CI. Still no writes.
@@ -316,7 +316,7 @@ without the GUID refuses, naming the fix). Gate:
 `check_local_sweep.py` 230/230 — case-index / idempotency /
 reformat-no-churn / recase / missing-GUID legs. The first live
 `--recase` run is this phase's tenant exit check (list created per
-Local_Setup §12, counts recorded in CHANGES, the gantt-first-run
+docs/setup.md §12, counts recorded in CHANGES, the gantt-first-run
 mold) — queued behind auth restore, STATUS action 12.
 
 **Phase 3 — consumers** (BUILT — sweep v1.43 / TestPlanGen v2.29).
@@ -331,7 +331,7 @@ list); status-page counters (shipped with phase 2); smoke row 9 in
 in `check_local_sweep.py` (235/235), tracing + degrade legs in
 `check_testplangen.py` (141/141).
 
-Each phase: `local/CHANGES.md` entry + STATUS table row; phases 0–1
+Each phase: `docs/changelog/pipeline.md` entry + STATUS table row; phases 0–1
 are pure-repo work, safe while the pipeline is down (open action
 12); phase 2's live backfill waits on auth restore like everything
 else.
@@ -339,7 +339,7 @@ else.
 ## Addendum (2026-09-05) — one case grammar (Sidecar_Format_Plan phase 3)
 
 D3's "two shapes, one parser" is superseded. The sidecar body of a
-case-indexed kind is rendered by `local/lib/casegrammar.mjs` into the
+case-indexed kind is rendered by `pipeline/lib/casegrammar.mjs` into the
 `testplan/v1` profile (`## Overview` / `## Test Cases` / `## Other
 content`), and every detected case — from any of six source shapes —
 is one `### TC-P01 — <title> <!-- src: S3 · slide 4 · table · A-7 -->`

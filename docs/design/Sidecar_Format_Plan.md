@@ -66,15 +66,15 @@ Corpus (`LRSDocIndex/`):
 Every sidecar is at `prompt_version: v2.0.2`, extracted 2026-09-04 by the
 local sweep; there is no legacy-frame residue left in the corpus.
 
-Code: `local/sweep.mjs` (header template :491-557, assembly :1510-1544,
-`--reformat` :1060-1088, `--recase` :803-866), `local/lib/presentation.mjs`
-(`tidyBody` :123, `caseHeadings` :235), `local/lib/caseindex.mjs` (parser),
+Code: `pipeline/sweep.mjs` (header template :491-557, assembly :1510-1544,
+`--reformat` :1060-1088, `--recase` :803-866), `pipeline/lib/presentation.mjs`
+(`tidyBody` :123, `caseHeadings` :235), `pipeline/lib/caseindex.mjs` (parser),
 `scripts/ZipTextExtract.ts` (pptx/docx extraction), `scripts/SidecarPatch.ts`
-(metadata frames), `local/lib/doclinks.mjs` (`bodySeamEnd` :258, `yamlList`
-:292), `local/testplangen.mjs`, `local/lib/draftlint.mjs`,
-`prompts/TestPlanGen_Prompt.md`, `local/Case_Index_Plan.md`,
+(metadata frames), `pipeline/lib/doclinks.mjs` (`bodySeamEnd` :258, `yamlList`
+:292), `pipeline/testplangen.mjs`, `pipeline/lib/draftlint.mjs`,
+`prompts/testplan_draft.md`, `docs/design/Case_Index_Plan.md`,
 `agent/QA_Agent_Instructions_v1_3.md`, `flow/v2_3` and `flow/v2_8` CHANGES,
-`local/harness/check_caseindex.py`, `_Case Catalog.md`.
+`tests/check_caseindex.py`, `_Case Catalog.md`.
 
 ---
 
@@ -176,7 +176,7 @@ deck templates they come from (`User Story / Persona / Acceptance criteria /
 Testing / Automation / Documentation / Assignment`) title every slide. That
 is a hint: the good sidecars are the ones whose source had a template.
 
-### 3.3 Test-case extraction (`local/lib/caseindex.mjs`)
+### 3.3 Test-case extraction (`pipeline/lib/caseindex.mjs`)
 
 - `extractCases` (:394) runs `deckCases` (:286) and `draftCases` (:349),
   keeps whichever finds more, else `shape: "none"`. Deck shape requires
@@ -337,7 +337,7 @@ does not map to a section goes to the last section, so nothing is lost.
 Design points:
 
 - **One case grammar for legacy plans and drafts.** `### TC-P01 — title` is
-  already the TestPlanGen draft contract (`prompts/TestPlanGen_Prompt.md:233-372`,
+  already the TestPlanGen draft contract (`prompts/testplan_draft.md:233-372`,
   `draftlint.mjs:127`). Using it for legacy plans means `caseindex` needs
   one parser instead of two, `_Case Catalog.md` links look the same for every
   plan, and TestPlanGen can pin legacy cases as exemplars with no special
@@ -373,7 +373,7 @@ extractor output as today, plus the standard header. No structural claims.
 ### 4.4 Case extraction pipeline (deterministic first)
 
 Replace `caseHeadings` (one detector) with a **shape-detector chain** in a
-new `local/lib/casegrammar.mjs`, run at the same point in the pipeline
+new `pipeline/lib/casegrammar.mjs`, run at the same point in the pipeline
 (sidecar body only; LLM input, TextPreview and BM25 keep raw text):
 
 | # | Detector | Trigger | Emits | Confidence |
@@ -406,7 +406,7 @@ or Anthropic, per `llm.mjs`) with a prompt that must output the
 profile lint and a grounding check (every TC title must appear as a
 substring of the raw body, same idea as `groundDraft`). Fail closed to
 `shape: none`. Budget-capped and owner-switched like `--auto`. This respects
-the "deterministic by decision" stance in `local/CHANGES.md` v1.25: the
+the "deterministic by decision" stance in `docs/changelog/pipeline.md` v1.25: the
 no-AI `--reformat` path never calls it, and its output is marked
 `confidence: llm` so it never silently mixes with deterministic rows.
 
@@ -453,7 +453,7 @@ name, glossary abbreviations **on**. Goal: a name a person can read in a
 folder listing, that groups a feature's plan and story together, never
 repeats what the folder already says, and is stable once minted.
 
-**Template** (configurable, `sidecar.nameTemplate` in `local/config.json`):
+**Template** (configurable, `sidecar.nameTemplate` in `config.json`):
 
 ```
 <Kind folder>/<issue>-<slug>[-<qualifier>].md     Test Plans/4975-append-routes-line-order-check.md
@@ -577,21 +577,21 @@ Before/after, from the corpus:
 
 Files that must change for §4.1/4.2 (metadata) — one PR:
 
-- `local/sweep.mjs:491-557` `sidecarHeader` — new table, drop the yaml frame;
+- `pipeline/sweep.mjs:491-557` `sidecarHeader` — new table, drop the yaml frame;
   `:1510-1544` assembly unchanged
-- `local/lib/util.mjs:18,25,37` — replace `yamlEscape`/`stripQuotes`/
+- `pipeline/lib/util.mjs:18,25,37` — replace `yamlEscape`/`stripQuotes`/
   `quoteYamlItem` with one `cell()` escaper
 - `scripts/SidecarPatch.ts:167-262, 344-401` — drop `patchFrontmatter`;
   `renderFmLine` writes `s=` into the rel marker instead
-- `local/lib/doclinks.mjs:292` `yamlList` → `tableRow(content, "Keywords")`;
+- `pipeline/lib/doclinks.mjs:292` `yamlList` → `tableRow(content, "Keywords")`;
   `:258` `bodySeamEnd` unchanged
-- `local/testplangen.mjs:524` `parseRelated` → read rel markers; `:1113-1119`
+- `pipeline/testplangen.mjs:524` `parseRelated` → read rel markers; `:1113-1119`
   `storyMeta` → build from table rows
-- `local/svg2pptx.mjs:129-132,172` `yamlVal` → table reader
+- `pipeline/render/svg2pptx.mjs:129-132,172` `yamlVal` → table reader
 - `agent/QA_Agent_Instructions_v1_3.md:61-107` → v1.4 field dictionary
   (table rows instead of yaml keys); `agent/QA_Smoke_Questions.md`
-- `local/lib/indexpages.mjs` — reads nothing from the yaml today; verify
-- Harness fixtures: `local/harness/check_local_sweep.py:1193`,
+- `pipeline/lib/indexpages.mjs` — reads nothing from the yaml today; verify
+- Harness fixtures: `tests/check_local_sweep.py:1193`,
   `check_testplangen.py:357,409,663`, `check_svg2pptx.py:281-286`,
   `review/harness/render_sample.py`, `check_format.py`, `check_related.py`
 - `flow/v2_8/definition.json` `Sidecar_header` — if the cloud flow is ever
@@ -602,37 +602,37 @@ Files for §4.6 (filenames) — can ride with the metadata PR or follow it:
 
 - `scripts/RegexExtract.ts:136-221` `slugify` v2 + kind-word strip +
   glossary map + primary-issue pick; gated patch in `review/patches/`
-- `local/sweep.mjs:146-203` media → `media/<stem>/`; `:1505` name template
+- `pipeline/sweep.mjs:146-203` media → `media/<stem>/`; `:1505` name template
   (issue prefix, no id); stem minting with qualifier resolution over the
   folder's rows; new `_Manifest.json` writer; new `--rename` (rename map +
   corpus-wide link rewrite, sidecars and media folders together) and
   `--rename-plan` (dry run: old → new table, qualifier choices, collisions)
 - `schemas/SPList_DocIndex.csv` — `SidecarStem` column
-- `local/svg2pptx.mjs:144-158`, `local/testplangen.mjs:1306,1394`,
+- `pipeline/render/svg2pptx.mjs:144-158`, `pipeline/testplangen.mjs:1306,1394`,
   `--recase` mirror walk (`sweep.mjs:803-866`) — id → path via the manifest
   instead of the `__doc<id>` suffix
 - `scripts/SidecarPatch.ts` — `related` entries already store the filename;
   verify nothing parses `__doc` out of it
-- `local/lib/indexpages.mjs`, `local/lib/caseindex.mjs` `Anchor` /
+- `pipeline/lib/indexpages.mjs`, `pipeline/lib/caseindex.mjs` `Anchor` /
   `FigureLink` URLs
 - `agent/QA_Agent_Instructions` (filename pattern text + manifest),
-  `local/Local_Setup.md`, `data/shared/glossary.json` in this repo (shared
+  `local/docs/setup.md`, `data/shared/glossary.json` in this repo (shared
   abbreviation map)
 
 Files for §4.3/4.4 (body profiles and case grammar) — second PR:
 
-- new `local/lib/casegrammar.mjs` (detector chain) replacing
+- new `pipeline/lib/casegrammar.mjs` (detector chain) replacing
   `presentation.mjs:235` `caseHeadings`; `tidyBody` and `placeFigure` stay
-- `local/lib/caseindex.mjs:286-393` → single `TC-` parser + `src` comment
+- `pipeline/lib/caseindex.mjs:286-393` → single `TC-` parser + `src` comment
   reader; keep `<!-- slide N -->` as a read-side synonym for one backfill
-- `local/lib/draftlint.mjs` → profile lint (parameterised by profile)
+- `pipeline/lib/draftlint.mjs` → profile lint (parameterised by profile)
 - `schemas/SPList_TestCases.csv` → `Shape` choices, new `Confidence`,
   `Group`, `SourceRef` columns
-- `local/lib/indexpages.mjs` `_Case Catalog.md` → Group column, confidence
+- `pipeline/lib/indexpages.mjs` `_Case Catalog.md` → Group column, confidence
   filter, `plans_caseless` section with signals
-- `local/testplangen.mjs` → `## Source Case Sweep` and exemplar lanes read
+- `pipeline/testplangen.mjs` → `## Source Case Sweep` and exemplar lanes read
   `TC-` cases from legacy plans too
-- `local/harness/check_caseindex.py` → one fixture per detector S0–S6 cut
+- `tests/check_caseindex.py` → one fixture per detector S0–S6 cut
   from real sidecars; golden-file legs for ~10 representative plans
 
 ---
@@ -641,7 +641,7 @@ Files for §4.3/4.4 (body profiles and case grammar) — second PR:
 
 | Phase | Scope | Gate | Backfill |
 |---|---|---|---|
-| 0. Instrument (½ day) — **shipped** | `sweep.mjs --case-audit` (`local/lib/caseaudit.mjs`): per-plan parser shape + latent-shape signals, written to `_Case Audit.md` beside the catalog on a live run (a separate page rather than a catalog section: the catalog is rebuilt from list rows and never sees bodies) | `check_local_sweep` case-audit leg | none — read-only |
+| 0. Instrument (½ day) — **shipped** | `sweep.mjs --case-audit` (`pipeline/lib/caseaudit.mjs`): per-plan parser shape + latent-shape signals, written to `_Case Audit.md` beside the catalog on a live run (a separate page rather than a catalog section: the catalog is rebuilt from list rows and never sees bodies) | `check_local_sweep` case-audit leg | none — read-only |
 | 1. Metadata v3 — **shipped** (sweep v1.48, sidecarmeta v1.0, SidecarPatch v1.7, agent v1.4) | §4.1/4.2 option A; agent instructions v1.4; harness fixtures | all CI gates green; `check_local_sweep` idempotency leg proves a second `--reformat` is a no-op | `--reformat --live`, gated on `format` < 3.0 — no AI spend, whole corpus in one run |
 | 1b. Filenames — **shipped** (sweep v1.49, slug v1.0, `_Manifest.json`, `--rename`) | §4.6 slug v2, issue prefix, stem-named media folders, `_Manifest.json`, `--rename-plan` / `--rename` | dry-run table reviewed by hand once; uniqueness leg (no two rows in a folder resolve to one stem); link-rewrite leg in `check_local_sweep` (no dangling links after rename) | `--rename --live` once, same window as phase 1 |
 | 2. Extractor v2.5 — **shipped** (ZipTextExtract v2.5, sweep v1.50) | §4.5 fixes 1–4 (pdf unwrap optional) | byte-equivalence gates updated with new fixtures; diff report over the 62 collapsed-cell plans | same `--reformat` run (raw text is re-extracted from the synced source files) |
@@ -668,7 +668,7 @@ All decided 2026-09-05.
 | 5 | LLM normalisation lane | **Build in phase 4** as planned: opt-in `--normalize-cases`, grounding check, budget cap, never reachable from `--reformat` (§4.4) |
 | 6 | Filename template | `<issue>-<slug>[-<qualifier>].md`, no doc-id token, no zero padding, glossary abbreviations per §4.6 |
 
-Nothing remains open. All six phases are implemented (see `local/CHANGES.md`, entries dated 2026-09-05, for the per-phase notes and the one rollout sequence).
+Nothing remains open. All six phases are implemented (see `docs/changelog/pipeline.md`, entries dated 2026-09-05, for the per-phase notes and the one rollout sequence).
 
 ---
 

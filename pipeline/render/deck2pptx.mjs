@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * deck2pptx v1.1 — the model-laid-out review deck (TestPlanGen v2.36 / v2.37)
+ * deck2pptx v1.2 (DECK_VERSION below is the stamp) — the model-laid-out review deck (TestPlanGen v2.36 / v2.37)
  * --------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies). Takes a TestPlanGen draft
  * and a DECK SPEC — the layout decisions a model made over it with
@@ -17,9 +17,9 @@
  * against the draft and drops a slide that says anything the draft
  * does not).
  *
- *   node local/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx]
+ *   node pipeline/render/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx]
  *                            [--media <dir>] [--figures <dir>] [--design <name>]
- *   node local/deck2pptx.mjs <draft.md> --generate --config <config.json>
+ *   node pipeline/render/deck2pptx.mjs <draft.md> --generate --config <config.json>
  *                            [--stream]
  *                            [-o out.pptx] [--media <dir>] [--figures <dir>]
  *                            [--design <name>]
@@ -232,7 +232,7 @@ export function renderDeck(draft, spec, opts) {
         [{ algn: "r", runs: [{ t: String(p.page), color: C.muted, sz: TYPE.caption.sz }] }]);
     }
     if (p.pattern === "closing") {
-      const prov = [p.provenance, `deck: local/deck2pptx.mjs ${DECK_VERSION} · TestPlanDeck prompt ${DECK_PROMPT_VERSION} · design ${ds.name} · theme ${ds.theme}`, o.provenance]
+      const prov = [p.provenance, `deck: pipeline/render/deck2pptx.mjs ${DECK_VERSION} · TestPlanDeck prompt ${DECK_PROMPT_VERSION} · design ${ds.name} · theme ${ds.theme}`, o.provenance]
         .filter(Boolean).join("  ·  ");
       x += textbox("prov", GRID.x(0), SLIDE_H - GRID.margin - BANDS.footerH, GRID.span(12), BANDS.footerH,
         [{ runs: [{ t: prov, color: C.muted, sz: TYPE.caption2.sz }] }]);
@@ -302,8 +302,8 @@ function collectArgs(argv) {
 }
 
 const USAGE =
-  "usage: node local/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
-  "       node local/deck2pptx.mjs <draft.md> --generate --config <config.json> [--stream] [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
+  "usage: node pipeline/render/deck2pptx.mjs <draft.md> --spec <deck.json> [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
+  "       node pipeline/render/deck2pptx.mjs <draft.md> --generate --config <config.json> [--stream] [-o out.pptx] [--media <dir>] [--figures <dir>] [--design <name>] [--theme light|dark]\n" +
   "       --spec renders a deck spec (the JSON a --generate run writes beside the deck — edit and re-render);\n" +
   "       --generate makes the one model call with prompts/testplan_deck.md and writes <out>.deck.json;\n" +
   "       --media / --figures name the folders holding story / generated figure SVGs so figures embed as native shapes;\n" +

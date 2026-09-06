@@ -94,7 +94,7 @@ export function tidyBody(text) {
  *   2. Loop – Split measure : 20    →   ### Loop
  *   ...                                 **Loop – Split measure: 20**
  *
- * Deterministic by decision (recorded in local/CHANGES.md v1.25): the
+ * Deterministic by decision (recorded in docs/changelog/pipeline.md v1.25): the
  * slide's own case + classification lines ARE the header the user
  * wants, an LLM pass would put AI spend and nondeterminism into the
  * no-AI --reformat path, and a slide with no case text keeps its

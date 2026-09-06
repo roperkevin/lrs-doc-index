@@ -34,12 +34,12 @@
  *      the issue's cluster. Skipped when the matched doc already
  *      carries the issue id (the id edge outranks it anyway).
  *
- * Keyword-rule note (SP_Adaptation_Notes): gantt/titlematch are
+ * Keyword-rule note (docs/sharepoint-notes.md): gantt/titlematch are
  * SPARSE edge types — one row per schedule-doc or title-hit pair,
  * never a pair explosion.
  *
  * Usage:
- *   node --experimental-strip-types local/gantt.mjs --config local/config.json
+ *   node --experimental-strip-types pipeline/gantt.mjs --config config.json
  *        [--live | --dry-run]     override config.gantt.dryRun (default dry)
  *        [--only <filename>]      one schedule only
  *

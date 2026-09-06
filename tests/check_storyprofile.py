@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Gate for local/lib/storyprofile.mjs — the story/v1 body profile
+"""Gate for pipeline/lib/storyprofile.mjs — the story/v1 body profile
 (Sidecar_Format_Plan phase 5):
 
   1. a template deck maps onto Story / Acceptance Criteria / Testing /

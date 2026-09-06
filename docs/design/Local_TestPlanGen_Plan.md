@@ -1,10 +1,10 @@
-# Plan — TestPlanGen as a local job (`local/testplangen.mjs`)
+# Plan — TestPlanGen as a local job (`pipeline/testplangen.mjs`)
 
 Status: **ALL PHASES BUILT** (2026-09-04, TestPlanGen **v2.16** –
-**v2.19** — see `testplangen/CHANGES.md`): `local/testplangen.mjs`
+**v2.19** — see `docs/changelog/testplangen.md`): `pipeline/testplangen.mjs`
 v1.3 with both prompt transports (per-lane via
 `testplangen.provider`), the two-layer verifier
-(`local/lib/draftlint.mjs` — contract lint + grounding
+(`pipeline/lib/draftlint.mjs` — contract lint + grounding
 spot-checks), the `--issue`/`--title` lookup front door, webhook
 notification, the `--auto` nightly gap-drafting mode
 (`run_testplangen.cmd`), the deterministic `## Issue Trace`
@@ -27,8 +27,8 @@ click by click.
 
 Meanwhile the pipeline itself left Power Automate on 2026-08-14:
 the nightly sweep, weekly curation, and Flow #2 all run as local
-Node jobs (`local/sweep.mjs`, `local/curate.mjs`,
-`local/gantt.mjs`) over Graph + the same AI Builder prompts via
+Node jobs (`pipeline/sweep.mjs`, `pipeline/curate.mjs`,
+`pipeline/gantt.mjs`) over Graph + the same AI Builder prompts via
 Dataverse Predict. TestPlanGen is the LAST component still
 cloud-only — and unlike the sweep it is strictly on-demand, so it
 is the cheapest one to migrate.
@@ -58,7 +58,7 @@ so a PE cannot tell which one produced a given draft — by design.
 
 ## What is being reimplemented (and what is not)
 
-`local/testplangen.mjs` reimplements **TestPlanGenCore's G1–G13
+`pipeline/testplangen.mjs` reimplements **TestPlanGenCore's G1–G13
 semantics** (the single source: `TestPlanGen_Setup.md` §3) over the
 local stack:
 
@@ -88,10 +88,10 @@ is *check* the reply. The local job adds a post-generation,
 pre-write verification pass with two layers:
 
 1. **Contract lint** — the existing
-   `review/harness/check_draft_coverage.py` asserts (v1.7
+   `tests/check_draft_coverage.py` asserts (v1.7
    contract: section order, Trace on every case, Coverage Map
    integrity, granularity structure, sweep-table structure),
-   ported to a small JS module (`local/lib/draftlint.mjs`) so the
+   ported to a small JS module (`pipeline/lib/draftlint.mjs`) so the
    job has no Python dependency at run time. The Python lint stays
    the harness's authority; the port is gate-tested against it on
    shared fixtures (agreement leg — same verdict on every fixture).
@@ -146,7 +146,7 @@ does.
 
 ## Prompt transport
 
-`prompts/TestPlanGen_Prompt.md` stays the single prompt source.
+`prompts/testplan_draft.md` stays the single prompt source.
 Two providers, mirroring `llm.mjs` exactly:
 
 - **`aibuilder`** (default, consistency with the sweep): the
@@ -176,7 +176,7 @@ provenance per draft, not per config.
 
 ## Automatic mode (phase 3, opt-in)
 
-`testplangen.autoDraft: true` + `node local/testplangen.mjs --auto
+`testplangen.autoDraft: true` + `node pipeline/testplangen.mjs --auto
 [--live]`, schedulable after the nightly sweep (the heartbeat-task
 precedent):
 
@@ -224,7 +224,7 @@ plan — lanes, caps, the would-be filename — and write nothing).
 
 ## Harness
 
-`local/harness/check_testplangen.py`, the `check_local_sweep.py`
+`tests/check_testplangen.py`, the `check_local_sweep.py`
 mold (mock Graph + mock Predict/Anthropic endpoints), CI job
 alongside the others. Legs:
 
@@ -254,7 +254,7 @@ alongside the others. Legs:
    `testplangen.mjs` (guard, lanes, call, slice, banner, write,
    summary) + `lib/draftlint.mjs` + harness legs 1–5 (plus an early
    slice of leg 7: both providers against mocks) + config +
-   `Local_Setup.md` §11. Manual CLI only, `--story <docId>`.
+   `docs/setup.md` §11. Manual CLI only, `--story <docId>`.
 2. **Phase 2 — front door + telemetry** — ✅ SHIPPED (v2.17,
    2026-09-04): `--issue` / `--title` lookup (StoryLookupFlow
    queries in-process, same bare-number-is-a-doc-id rule), opt-in
@@ -262,10 +262,10 @@ alongside the others. Legs:
    change from the sketch above: the tools check carries NO
    cites-a-reference exception — the prompt's tools rule admits no
    tool names from reference documents at all, so the check is
-   strictly story-only (see `testplangen/CHANGES.md` v2.17).
+   strictly story-only (see `docs/changelog/testplangen.md` v2.17).
 3. **Phase 3 — automatic mode** — ✅ SHIPPED (v2.18, 2026-09-04):
    `--auto`, gap detection, idempotency, the auto harness leg, and
-   the scheduled-task wrapper (`local/run_testplangen.cmd`). Two
+   the scheduled-task wrapper (`ops/run_testplangen.cmd`). Two
    deliberate calls beyond the sketch above: an auto DRY run is
    selection-only (zero model calls — an unattended plan must be
    free; a single-story dry run still generates a local draft to
@@ -275,7 +275,7 @@ alongside the others. Legs:
    the generation transport from the sweep's `llm.provider`.
 4. **Phase 4 — the deferred pair** — ✅ SHIPPED (v2.19, 2026-09-04),
    unlocked by the owner-verified Issue Refs GUID: the docx handoff
-   as `local/draft2docx.mjs` (zero-dep OOXML, the svg2pptx
+   as `pipeline/render/draft2docx.mjs` (zero-dep OOXML, the svg2pptx
    precedent — no premium connector), and the IssueRefs-driven
    coverage piece as the deterministic `## Issue Trace` draft
    addendum plus `--gap-report` (the stories-without-plans digest

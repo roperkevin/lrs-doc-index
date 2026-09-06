@@ -1,7 +1,7 @@
 /**
  * xlsx_grid.mjs v1.0 — xlsx bytes -> per-sheet text grids for the
  * WorkbookDump.ts workbook mock (same shape as
- * review/harness/wrap_workbook.py: name + rectangular getTexts grid,
+ * tests/wrap_workbook.py: name + rectangular getTexts grid,
  * trimmed to the used range).
  *
  * Parity notes vs Excel's Range.getTexts():

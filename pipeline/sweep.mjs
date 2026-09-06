@@ -1,30 +1,30 @@
 #!/usr/bin/env node
 /**
  * sweep.mjs — the Doc Index sweep as a local Node orchestrator
- * (version history: local/CHANGES.md; the pure helpers live in
- * local/lib/ since the v1.31 module split — util, doclinks,
+ * (version history: docs/changelog/pipeline.md; the pure helpers live in
+ * pipeline/lib/ since the v1.31 module split — util, doclinks,
  * presentation, bodyindex, statuspage, config).
  * Replaces the DocIndexSweep Power Automate cloud flow (v2.8): same
  * pipeline, same list writes, same sidecar bytes — no Power Automate,
  * no Run-script quota, no AI Builder.
  *
  * Faithful to flow/v2_8/definition.json (see the orchestration spec
- * extracted 2026-08-14). The scripts/ files run UNMODIFIED via
- * pad/runner/ops.mjs (the gated PAD loader); the AI Builder call
+ * extracted 2026-08-14). The extract/*.ts files run UNMODIFIED via
+ * extract/runner/ops.mjs (the gated PAD loader); the AI Builder call
  * becomes a direct LLM API call using the same prompt file
- * (local/llm.mjs); list writes go through Microsoft Graph
- * (local/graph.mjs); document reads and all file writes (sidecars,
+ * (pipeline/llm.mjs); list writes go through Microsoft Graph
+ * (pipeline/graph.mjs); document reads and all file writes (sidecars,
  * media, patched neighbors) go through the OneDrive-synced libraries
  * as plain file I/O.
  *
  * Usage:
- *   node --experimental-strip-types local/sweep.mjs --config local/config.json
+ *   node --experimental-strip-types pipeline/sweep.mjs --config config.json
  *        [--live | --dry-run]   override config.sweep.dryRun
  *        [--max N]              override MaxDocsPerRun
  *        [--only <filename>]    SmokeFile equivalent (single-doc run)
  *
  * Deliberate deviations from the cloud flow (each equivalent, all
- * documented in Local_Setup.md §6):
+ * documented in docs/setup.md §6):
  *  - Per-doc Check_* GetItems queries are replaced by run-start list
  *    snapshots kept in memory. Loops were concurrency-1 in the cloud
  *    and this process is the only writer during a run, so
@@ -40,7 +40,7 @@
  * Dry-run mode executes all reads and all compute but records every
  * write (Graph create/patch, file write/delete) into a plan instead
  * of performing it, and reports the DocKey calibration check —
- * run it first on a fresh machine (Local_Setup.md §5).
+ * run it first on a fresh machine (docs/setup.md §5).
  */
 
 import fs from "node:fs";
@@ -826,12 +826,12 @@ async function main() {
   } else if (sw.recase) {
     throw new Error(
       "--recase needs sharePoint.lists.testCases — create the Test Cases " +
-      "list per Local_Setup §12 / schemas/SPList_TestCases.csv and add its GUID"
+      "list per docs/setup.md §12 / schemas/SPList_TestCases.csv and add its GUID"
     );
   } else {
     process.stderr.write(
       "note: sharePoint.lists.testCases is not configured — individual test " +
-      "cases are not indexed (Local_Setup §12: create the Test Cases list, " +
+      "cases are not indexed (docs/setup.md §12: create the Test Cases list, " +
       "paste its GUID, then backfill with --recase)\n"
     );
   }
@@ -862,12 +862,12 @@ async function main() {
   } else if (sw.refigure) {
     throw new Error(
       "--refigure needs sharePoint.lists.figures — create the Figures " +
-      "list per Local_Setup §14 / schemas/SPList_Figures.csv and add its GUID"
+      "list per docs/setup.md §14 / schemas/SPList_Figures.csv and add its GUID"
     );
   } else {
     process.stderr.write(
       "note: sharePoint.lists.figures is not configured — figures are not " +
-      "indexed (Local_Setup §14: create the Figures list, paste its GUID, " +
+      "indexed (docs/setup.md §14: create the Figures list, paste its GUID, " +
       "then backfill with --refigure)\n"
     );
   }
@@ -2287,7 +2287,7 @@ async function indexDoc(ctx) {
   // product/tool documentation links block (v1.14–v1.16), inserted
   // after the related region — products from RegexExtract, tools from
   // the LLM's tools list; per-tool links resolved curated → probed →
-  // search fallback (local/esri_doc_links.json)
+  // search fallback (pipeline/data/esri_doc_links.json)
   const toolLinks = new Map();
   for (const t of ai.tools || []) {
     toolLinks.set(t, await linkResolver.resolve(t, products));

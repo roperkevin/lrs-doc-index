@@ -14,7 +14,7 @@
  * Heartbeat: every successful live full sweep stamps
  * workDir/last-success.json. `sweep.mjs --check-heartbeat` (run it
  * from a SECOND scheduled task, offset from the nightly — see
- * Local_Setup §10) reads the stamp and alerts when it is stale or
+ * docs/setup.md §10) reads the stamp and alerts when it is stale or
  * missing — which catches the failures the sweep itself cannot
  * report: the task never firing, the machine being off, the process
  * dying before its fatal handler. Alerting is best-effort by design

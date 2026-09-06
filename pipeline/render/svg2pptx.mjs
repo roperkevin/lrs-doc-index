@@ -10,7 +10,7 @@
  * freeform paths, text boxes — so a figure can be pulled into a test
  * plan review deck and reworked there, not pasted as a dead picture.
  *
- *   node local/svg2pptx.mjs <file.svg | dir> [more...] [-o out.pptx]
+ *   node pipeline/render/svg2pptx.mjs <file.svg | dir> [more...] [-o out.pptx]
  *                           [--doc-title "..."]
  *
  * A directory argument takes every *.svg in it (natural sort, no
@@ -71,7 +71,7 @@
  *   rotate(a cx cy)           → native shape rotation
  *
  * Anything outside that vocabulary is reported per file and skipped,
- * never guessed at. Gate: local/harness/check_svg2pptx.py.
+ * never guessed at. Gate: tests/check_svg2pptx.py.
  *
  * v1.4: `parseFigure` / `emitFigure` (and EMU_PX) are exported and the
  * CLI runs only when this file is executed directly, so draft2pptx.mjs
@@ -110,7 +110,7 @@ function collectInputs(argv) {
     if (a === "--doc-title") { docTitle = argv[++i] || ""; continue; }
     if (a === "--no-tables") { noTables = true; continue; }
     if (a === "-h" || a === "--help") {
-      console.log("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
+      console.log("usage: node pipeline/render/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
       process.exit(0);
     }
     let st;
@@ -998,7 +998,7 @@ function zip(files) {
 function main() {
   const { files, out, docTitle, noTables } = collectInputs(process.argv.slice(2));
   if (files.length === 0) {
-    console.error("usage: node local/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
+    console.error("usage: node pipeline/render/svg2pptx.mjs <file.svg|dir> [more...] [-o out.pptx] [--doc-title \"...\"] [--no-tables]");
     process.exit(2);
   }
   const figures = [];
