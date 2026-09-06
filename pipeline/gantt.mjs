@@ -58,6 +58,7 @@ import { xlsxToGrids } from "../extract/runner/xlsx_grid.mjs";
 import { GraphClient } from "./graph.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 import { lower, num, pruneRunLogs } from "./lib/util.mjs";
+import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
 
 const GANTT_REQUIRED = [
   ...CURATE_REQUIRED,
@@ -77,10 +78,12 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--only") args.flags.only = argv[++i];
     else if (a === "--inspect") args.flags.inspect = true;
+    else if (a === "--progress") args.flags.progress = true;
+    else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: gantt.mjs --config <config.json> [--live|--dry-run] [--only <file>] [--inspect]");
+    throw new Error("usage: gantt.mjs --config <config.json> [--live|--dry-run] [--only <file>] [--inspect] [--progress|--no-progress]");
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -92,6 +95,9 @@ function loadConfig(argv) {
   cfg.gantt.inspect = !!args.flags.inspect;
   cfg.sharePoint.libraryRootSegment = cfg.sharePoint.libraryRootSegment || "Shared Documents";
   cfg.sweep = cfg.sweep || {};
+  cfg._progress = resolveProgress(cfg.progress, {
+    on: args.flags.progress, off: args.flags.noProgress,
+  });
   return cfg;
 }
 
@@ -222,11 +228,28 @@ async function main() {
   const g = cfg.gantt;
   const dry = !!g.dryRun;
   const defaultRepo = cfg.sweep.defaultRepo || "ArcGISPro/ps-location-referencing";
+  const prog = createProgress({ enabled: cfg._progress });
+  prog(
+    `gantt — ${g.inspect ? "INSPECT (no writes, no fetches beyond the Doc Index)" : dry ? "DRY RUN (no writes)" : "LIVE"}` +
+    (g.only ? `, only "${g.only}"` : "")
+  );
   const graph = new GraphClient(cfg.graph);
-  const siteId = await graph.siteId(sp.hostname, sp.sitePath);
+  const signIn = prog.phase("sign-in + site lookup");
+  const stopSignIn = prog.heartbeat("waiting on Microsoft Graph sign-in");
+  let siteId;
+  try {
+    siteId = await graph.siteId(sp.hostname, sp.sitePath);
+  } finally {
+    stopSignIn();
+  }
+  signIn.done(sp.sitePath);
 
-  const rows = async (listKey, select) =>
-    graph.listItems(siteId, sp.lists[listKey], { select });
+  const rows = async (listKey, select) => {
+    const stop = prog.heartbeat(`fetching the ${listKey} list`);
+    const items = await graph.listItems(siteId, sp.lists[listKey], { select }).finally(stop);
+    prog(`${listKey} snapshot — ${items.length} row(s)`);
+    return items;
+  };
 
   const docIndexRows = (await rows("docIndex",
     ["Title", "FileName", "DocKey", "DocKind", "IndexStatus"])).map((it) => ({
@@ -251,6 +274,7 @@ async function main() {
     r.IndexStatus === "Indexed" && r.DocKind === "Schedule" &&
     lower(r.DocKey).endsWith(".xlsx") &&
     (!g.only || lower(r.FileName.trim()) === lower(g.only.trim())));
+  prog(`${schedules.length} indexed Schedule workbook(s) selected`);
 
   // --inspect: no writes, no further fetches — dump each schedule's
   // sheet structure and what the header detector saw, so a zero-row
@@ -366,9 +390,13 @@ async function main() {
     return true;
   };
 
+  const schedPhase = prog.phase("schedules");
+  const schedTick = prog.counter(schedules.length, "");
   for (const sched of schedules) {
     const local = localOf(sched.DocKey);
+    schedTick(sched.FileName, `doc ${sched.ID}`);
     if (!fs.existsSync(local)) {
+      prog(`   ${sched.FileName} — SKIPPED, not in the synced library`);
       process.stderr.write(`GANTT skip ${sched.FileName}: not in the synced library (${local})\n`);
       continue;
     }
@@ -378,9 +406,11 @@ async function main() {
       parsed = ganttRows(xlsxToGrids(fs.readFileSync(local)), defaultRepo);
     } catch (e) {
       sum.errors++;
+      prog.fail(sched.FileName, e.message);
       process.stderr.write(`GANTT ERROR ${sched.FileName}: ${e.message}\n`);
       continue;
     }
+    prog(`   ${sched.FileName} — ${parsed.rows.length} issue row(s) from ${parsed.seen} sheet row(s)`);
     sum.sheets_rows += parsed.seen;
     for (const r of parsed.rows) {
       // 1) Issue Refs upsert by IssueKey
@@ -446,6 +476,11 @@ async function main() {
   const logFile = path.join(logDir, `gantt-${stamp}.json`);
   fs.writeFileSync(logFile, JSON.stringify({ summary: sum, line, plan: dry ? plan : undefined }, null, 1));
   pruneRunLogs(logDir, 10, "gantt-");
+  schedPhase.done(
+    `${sum.schedules} workbook(s) — ${sum.issues_created} issue row(s) created, ` +
+    `${sum.issues_updated || 0} updated, ${sum.errors} error(s)`
+  );
+  prog(`gantt finished in ${secs(prog.elapsed())} — ${line}`);
   process.stdout.write(JSON.stringify({ ...sum, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) process.stdout.write(`dry run: ${plan.length} planned writes recorded in ${logFile}\n`);

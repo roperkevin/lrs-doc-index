@@ -1,5 +1,81 @@
 # Local sweep — release notes
 
+## progress v1.0 — run narration across every job (2026-09-06)
+
+`pipeline/lib/progress.mjs`: the posture `testplangen.mjs` v1.5
+established after the 2026-09-04 run that sat silent for 10+ minutes —
+narrate on stderr, keep stdout's contract — is now one shared module
+and every job uses it.
+
+- **The module.** `createProgress({enabled})` returns a callable
+  reporter: `prog(msg)` writes `progress: <msg>` to stderr;
+  `prog.phase(name)` announces a phase and times it; `prog.counter(n)`
+  prints `[i/n] label — detail` and thins long loops out (every item
+  to 200, then ~50 lines, the last item always); `prog.heartbeat(what)`
+  beats every 30 s through a silent wait and is unref'd, so it never
+  holds a process open; `prog.note` / `prog.fail` for asides and
+  non-fatal failures. A disabled reporter writes nothing and every
+  helper still works. `resolveProgress(cfgValue, {on, off, defaultOn})`
+  fixes the precedence: `--no-progress` > `--progress` > `config.progress`
+  (`true` / `false` / `"auto"`) > the caller's default > "a person is
+  watching" (stderr is a TTY).
+- **Every job takes `--progress` / `--no-progress`**, and reads the new
+  top-level `progress` config key. Default: narrate at a console, stay
+  quiet when output is redirected, so the scheduled tasks' logs do not
+  grow until someone asks them to (`--progress` in an `ops\*.cmd` line
+  for a night that needs watching).
+- **`sweep.mjs`** narrates the whole run: the mode and its caps, the
+  extractor load, the tool detection, the sign-in, every list snapshot
+  with its row count, the list backup, the source-library listing, why
+  each document was selected (`new`, `source edited`, `PromptVersion
+  v2.0.2 -> v3.0.0`, the PDF / OCR / msg / scope rescues, `retry after
+  Error`), every step inside a document (the existing `setStep` names,
+  now spoken), its extraction size and lane, the classify call's input
+  size and latency, its related-ranking shortlist/candidates/kept, the
+  per-document elapsed time, the ghost pass, the status and browse
+  pages, the chronic-error alert, and a closing line with the run's
+  elapsed time. Each standalone mode (`--rerank`, `--reformat`,
+  `--recase`, `--refigure`, `--rename`, `--case-audit`,
+  `--normalize-cases`) narrates its own loop and result.
+- **`curate.mjs`** narrates the snapshot, the approved-row cleanup,
+  each vocabulary chunk's model call (size in, proposals out, elapsed)
+  with a heartbeat, every proposal the guard drops **and why**, the
+  digest write and the drain passes; `--repoint` narrates its junction
+  walk.
+- **`gantt.mjs`** narrates the snapshots, the selected workbooks and
+  each one's parsed row count; **`wiki.mjs`** narrates the read, the
+  page and media counts as the tree is written, each catalog, the
+  `mkdocs build --strict` and the push.
+- **`testplangen.mjs` v1.23** moves onto the shared module. Its v1.5
+  lines are byte-for-byte what they were and its default posture is
+  unchanged (manual single-story runs narrate; `--auto` and
+  `--gap-report` stay quiet) — but the posture is now a DEFAULT, so
+  `--progress` can narrate an `--auto` night (selection counts and a
+  per-story ticker) and `--no-progress` can silence a manual run.
+- **The model layer narrates too.** A narrating job sets
+  `LRSDOC_PROGRESS` for `python -m lrsdoc` (`pipeline/llm.mjs`,
+  `llm.cfg.progress`); `lrsdoc/llm.py` then reports the request shape
+  going out (prompt + version, model, chars, max_tokens, retries,
+  timeout), **the latency to the model's first streamed chunk** — the
+  measurement that separates a stuck request from a thinking model —
+  and the stop reason, elapsed time and token usage coming back.
+- **`doc_crawl.mjs`** prints one line per 25 fetched pages, in its own
+  voice: the crawl went silent after its sixth page.
+- **The hosted runner asks for narration by name.**
+  `.github/workflows/hosted-sweep.yml` runs the sweep with
+  `--progress`: an Actions log is that run's only view and has no TTY.
+  `ops/run_sweep.cmd` keeps its quiet default and says in a comment how
+  to turn narration on for a night that needs watching.
+- **stdout is untouched everywhere** — the summary JSON, the
+  `Sweep_summary` / `Cur_summary` / `Gen_summary` / `Wiki_summary`
+  lines and the dry-run plan notes are byte-for-byte what they were.
+- Gates: new `tests/check_progress.py` (24 checks, CI) for the module;
+  `tests/check_local_sweep.py` gains a progress leg (13 checks) that
+  pins the default silence, the narrated phases and per-document lines,
+  the Python layer's lines arriving through the bridge, the config key
+  and flag precedence, and stdout being identical with and without
+  narration. Suites: sweep 341, testplangen 238, lrsdoc 35.
+
 ## wiki v1.0 (2026-09-06)
 
 `pipeline/wiki.mjs` — the catalog as a wiki: every sidecar rendered

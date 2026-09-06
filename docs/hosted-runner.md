@@ -94,6 +94,13 @@ repository variable `HOSTED_SWEEP_ENABLED` is `"true"`.
   webhook alerts, or keep `run_heartbeat.cmd` on any machine with
   the same webhook config and a synced `workDir`… simplest is the
   webhook alerts alone).
+- The workflow runs the sweep with `--progress`
+  (`pipeline/lib/progress.mjs`): the Actions log is the only view of a
+  hosted run and has no TTY, so the narration is asked for by name —
+  every phase, every document with the reason it was selected and each
+  step inside it, each model call's size and latency (the Python layer
+  adds the time to the model's first streamed chunk), the ghost pass
+  and a closing summary. Drop the flag to shrink the log.
 - AI spend is identical to the desktop sweep (same model calls).
 - Rollback: set `HOSTED_SWEEP_ENABLED` to `false`, re-enable the
   desktop task.

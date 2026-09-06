@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * testplangen.mjs v1.22 (JOB_VERSION below is the stamp) — the TestPlanGenCore cloud flow (v2.3) as a
+ * testplangen.mjs v1.23 (JOB_VERSION below is the stamp) — the TestPlanGenCore cloud flow (v2.3) as a
  * local on-demand job: draft a test plan from one indexed User Story
  * row, grounded strictly in that story with the catalog's related
  * documentation as reference. Phases 1–4 of
@@ -45,6 +45,19 @@
  * and `deckTheme` its light (default) or dark theme (v1.2 — embedded
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
+ *
+ * v1.23 (shared run narration — docs/changelog/pipeline.md
+ * "progress v1.0") moves the v1.5 progress lines onto
+ * `pipeline/lib/progress.mjs`, the module every job now narrates
+ * through. The lines are byte-for-byte what they were and the posture
+ * is unchanged — manual single-story runs narrate on stderr, `--auto`
+ * and `--gap-report` stay quiet for their task logs — but it is now a
+ * DEFAULT rather than a rule: `--progress` / `--no-progress` and the
+ * config's `progress` key override it, so an `--auto` night can be
+ * watched (selection counts, a per-story ticker) and a manual run can
+ * be silenced. A narrating run also sets `LRSDOC_PROGRESS`, so the
+ * Python layer reports the request shape, the latency to the model's
+ * first streamed chunk and the stop reason with token usage.
  *
  * v1.22 (figure variety — docs/changelog/testplangen.md v2.43): the figures
  * prompt is v0.4 — five more figure kinds (timeline, state, matrix,
@@ -483,10 +496,11 @@ import {
   KINDS as FIGURE_KINDS,
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
+import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./render/deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.22";
+const JOB_VERSION = "v1.23";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIG_PROMPT_VERSION = "v0.4"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
 
@@ -512,7 +526,10 @@ const USAGE =
   "usage: testplangen.mjs --config <config.json> " +
   "(--story <docId> | --issue <n> | --title \"<words>\" | --auto [--force] | --gap-report) " +
   "[--exemplar <docId>]... [--reference <docId>|<https-url>]... " +
-  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--deck] [--stream] | --help\n" +
+  "[--live|--dry-run|--preview] [--verify annotate|strict|off] [--notify] [--figures] [--deck] [--stream] [--progress|--no-progress] | --help\n" +
+  "--progress / --no-progress override the default narration posture: a " +
+  "manual single-story run narrates on stderr, --auto and --gap-report " +
+  "stay quiet for their task logs (pipeline/lib/progress.mjs). " +
   "--stream echoes the model's thinking summary and reply to stderr as they " +
   "arrive. " +
   "--figures adds a second model pass over the verified draft that selects the " +
@@ -551,6 +568,8 @@ function loadConfig(argv) {
     else if (a === "--auto") args.flags.auto = true;
     else if (a === "--force") args.flags.force = true;
     else if (a === "--gap-report") args.flags.gapReport = true;
+    else if (a === "--progress") args.flags.progress = true;
+    else if (a === "--no-progress") args.flags.noProgress = true;
     else if (a === "--verify") args.verify = argv[++i];
     else if (a === "--exemplar") (args.exemplar ??= []).push(argv[++i]);
     else if (a === "--reference") (args.reference ??= []).push(argv[++i]);
@@ -722,6 +741,16 @@ function loadConfig(argv) {
   cfg._pinEx = pinEx;
   cfg._pinRef = pinRef;
   cfg._gapReport = !!args.flags.gapReport;
+  // v1.23: the v1.5 posture (manual single-story runs narrate, the
+  // unattended modes stay quiet) is now the DEFAULT, not the rule —
+  // --progress / --no-progress and config.progress override it, so an
+  // --auto run can be watched when a night needs watching.
+  cfg._progress = resolveProgress(cfg.progress, {
+    on: args.flags.progress, off: args.flags.noProgress,
+    defaultOn: !args.flags.auto && !args.flags.gapReport,
+  });
+  // a narrated run narrates its model calls too (llm.mjs → LRSDOC_PROGRESS)
+  cfg.llm.progress = cfg._progress;
   if (!cfg._auto && !cfg._gapReport) {
     if (args.story !== undefined) {
       cfg._storyId = num(args.story);
@@ -812,14 +841,17 @@ async function run(cfg) {
   const byId = new Map(rows.map((r) => [r.ID, r]));
   const ctx = { cfg, graph, siteId, rows, byId, sw, tp, dry, plan: [], preview: !!cfg._preview };
 
-  if (cfg._auto) return runAuto(ctx);
-  if (!cfg._gapReport) {
-    // progress lines (v1.5) — manual single-story runs only, stderr
-    // only (stdout keeps its JSON + Gen_summary contract; the auto
-    // and gap-report modes stay quiet for their task logs)
-    ctx.progress = (m) => process.stderr.write(`progress: ${m}\n`);
+  // progress lines (v1.5, shared since v1.23): stderr only — stdout
+  // keeps its JSON + Gen_summary contract. On for a manual run, off
+  // for --auto / --gap-report unless the flags or config say otherwise
+  // (lib/progress.mjs). `ctx.progress` stays UNSET when quiet: the
+  // stream echo and the model heartbeat gate on its presence.
+  const prog = createProgress({ enabled: cfg._progress });
+  if (prog.enabled) {
+    ctx.progress = prog;
     ctx.progress(`Doc Index snapshot — ${rows.length} rows`);
   }
+  if (cfg._auto) return runAuto(ctx);
   if (cfg._gapReport) return runGapReport(ctx);
 
   // ---- lookup front door (v1.1) — StoryLookupFlow's deterministic
@@ -1948,13 +1980,7 @@ async function generateOne(ctx, story) {
   );
   const genT0 = Date.now();
   const echo = streamEcho(ctx, "draft");
-  const beat = ctx.progress && !echo
-    ? setInterval(
-        () => prog(`still waiting on the model — ${Math.round((Date.now() - genT0) / 1000)}s elapsed`),
-        30000
-      )
-    : null;
-  beat?.unref?.();
+  const beat = ctx.progress && !echo ? ctx.progress.heartbeat("waiting on the model") : null;
   let genRaw;
   try {
     // prompts/testplan_draft.md, rendered and sent by the Python layer
@@ -1972,9 +1998,9 @@ async function generateOne(ctx, story) {
     }
     throw e;
   } finally {
-    if (beat) clearInterval(beat);
+    if (beat) beat();
   }
-  prog(`model replied — ${genRaw.length} chars in ${Math.round((Date.now() - genT0) / 1000)}s`);
+  prog(`model replied — ${genRaw.length} chars in ${secs(Date.now() - genT0)}`);
 
   // G9 — marker slice, fail closed (lastIndexOf so an echoed marker
   // inside the body cannot truncate it; strict > begin+17)
@@ -2538,9 +2564,17 @@ async function runAuto(ctx) {
   const selected = gapStories.slice(0, maxPerRun);
   sum.selected = selected.length;
   sum.deferred = gapStories.length - selected.length;
+  const aprog = ctx.progress || (() => {});
+  aprog(
+    `auto selection — ${sum.candidates} fresh story(ies): ${sum.covered} covered, ` +
+    `${sum.skipped_existing} already drafted, ${sum.no_sidecar} without a sidecar, ` +
+    `${sum.gaps} gap(s), ${sum.selected} selected (cap ${maxPerRun}), ${sum.deferred} deferred`
+  );
+  const aTick = ctx.progress ? ctx.progress.counter(selected.length, "") : () => {};
 
   for (const story of selected) {
     const label = `story ${story.ID} "${story.Title}"`;
+    aTick(label, dry ? "dry run — no model call" : "drafting");
     if (dry) {
       detail.push({ story: story.ID, title: story.Title, action: "would-draft" });
       process.stdout.write(`auto: ${label} — would draft (dry run, no model call)\n`);

@@ -40,7 +40,13 @@
  * maxProposals,vocabChunk,promptVersion,autoApprove,dryRun}.
  *
  * Usage:
- *   node --experimental-strip-types pipeline/curate.mjs --config config.json [--live|--dry-run|--drain|--repoint]
+ *   node --experimental-strip-types pipeline/curate.mjs --config config.json [--live|--dry-run|--drain|--repoint] [--progress|--no-progress]
+ *
+ * Progress (pipeline/lib/progress.mjs): each phase — the snapshot, the
+ * cleanup, every vocabulary chunk's model call with a heartbeat, the
+ * guard, the digest — writes one `progress: ...` line to STDERR when
+ * progress is on (a console by default; `--progress` / `config.progress`
+ * for the Saturday task). stdout keeps the Cur_summary contract.
  */
 
 import fs from "node:fs";
@@ -48,6 +54,7 @@ import path from "node:path";
 import { GraphClient } from "./graph.mjs";
 import { curateChunk } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
+import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
 
 const num = (v) => {
   const n = Number(v);
@@ -64,10 +71,12 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--drain") args.flags.drain = true;
     else if (a === "--repoint") args.flags.repoint = true;
+    else if (a === "--progress") args.flags.progress = true;
+    else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--drain|--repoint]");
+    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--drain|--repoint] [--progress|--no-progress]");
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -106,25 +115,46 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.curation.dryRun = true;
   cfg._drain = !!args.flags.drain;
   cfg._repoint = !!args.flags.repoint;
+  cfg._progress = resolveProgress(cfg.progress, {
+    on: args.flags.progress, off: args.flags.noProgress,
+  });
+  cfg.llm.progress = cfg._progress;
   return cfg;
 }
 
 async function main() {
   const cfg = loadConfig(process.argv.slice(2));
+  const prog = createProgress({ enabled: cfg._progress });
+  cfg._prog = prog;
+  const graph = new GraphClient(cfg.graph);
+  const signIn = prog.phase("sign-in + site lookup");
+  const stopSignIn = prog.heartbeat("waiting on Microsoft Graph sign-in");
+  let siteId;
+  try {
+    siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
+  } finally {
+    stopSignIn();
+  }
+  signIn.done(cfg.sharePoint.sitePath);
   if (cfg._repoint) {
-    const graph = new GraphClient(cfg.graph);
-    const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
+    prog(`curate --repoint — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}`);
     return runRepoint(cfg, graph, siteId);
   }
-  const graph = new GraphClient(cfg.graph);
-  const siteId = await graph.siteId(cfg.sharePoint.hostname, cfg.sharePoint.sitePath);
+  prog(
+    `curate — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}, ` +
+    `${cfg.curation.autoApprove ? "autoApprove (merges apply)" : "propose-then-approve"}, ` +
+    `chunk ${cfg.curation.vocabChunk}, cap ${cfg.curation.maxProposals}/chunk`
+  );
   // --drain: repeat full passes (each re-fetches the shrunken
   // vocabulary) until a pass writes nothing. Terminates structurally:
   // every written proposal removes its alias from future eligibility
   // (merged in autoApprove mode; CurationStatus-blocked in manual).
   const maxPasses = cfg._drain && !cfg.curation.dryRun ? 20 : 1;
   for (let pass = 1; pass <= maxPasses; pass++) {
-    if (cfg._drain) process.stdout.write(`--- drain pass ${pass}\n`);
+    if (cfg._drain) {
+      prog(`drain pass ${pass} of at most ${maxPasses}`);
+      process.stdout.write(`--- drain pass ${pass}\n`);
+    }
     const r = await runCuration(cfg, graph, siteId);
     if (r.written === 0) break;
   }
@@ -147,6 +177,7 @@ async function main() {
  */
 async function runRepoint(cfg, graph, siteId) {
   const sp = cfg.sharePoint;
+  const prog = cfg._prog || createProgress({ enabled: false });
   const dry = !!cfg.curation.dryRun;
   const kwListId = sp.lists.keywords;
   const dkListId = sp.lists.docKeywords;
@@ -181,6 +212,15 @@ async function runRepoint(cfg, graph, siteId) {
   }));
   const kwKeys = new Set(dkRows.map((r) => r.KWKey));
 
+  prog(`snapshots — ${kwRows.length} keyword row(s), ${dkRows.length} junction row(s)`);
+  const rpPhase = prog.phase("repoint");
+  const rpTick = prog.counter(
+    dkRows.filter((r) => {
+      const kw = kwById.get(r.KeywordId);
+      return kw && kw.CanonicalRefId && r.DocumentId;
+    }).length,
+    "junction rows pointing at an alias"
+  );
   let repointed = 0, deleted = 0, aliasRows = 0, errors = 0;
   for (const r of dkRows) {
     const kw = kwById.get(r.KeywordId);
@@ -189,6 +229,7 @@ async function runRepoint(cfg, graph, siteId) {
     if (!canon || canon.ID === r.KeywordId) continue;
     aliasRows++;
     const targetKey = `${r.DocumentId}|${canon.ID}`;
+    rpTick(`junction ${r.ID}`, `'${kw.Title}' → '${canon.Title}'`);
     try {
       if (kwKeys.has(targetKey)) {
         // the doc already carries the canonical — the alias row is
@@ -214,9 +255,14 @@ async function runRepoint(cfg, graph, siteId) {
       }
     } catch (e) {
       errors++;
+      prog.fail(`junction ${r.ID}`, e.message);
       process.stderr.write(`repoint failed for junction ${r.ID}: ${e.message}\n`);
     }
   }
+  rpPhase.done(
+    `${aliasRows} alias junction(s) — ${repointed} repointed, ${deleted} duplicate(s) deleted, ` +
+    `${errors} error(s)`
+  );
 
   const line =
     `mode=repoint junctions=${dkRows.length} alias_rows=${aliasRows} ` +
@@ -226,6 +272,7 @@ async function runRepoint(cfg, graph, siteId) {
   const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
   const logFile = path.join(logDir, `curate-${stamp}.json`);
   fs.writeFileSync(logFile, JSON.stringify({ line, dry_run: dry, plan: dry ? plan : undefined }, null, 1));
+  prog(`curation finished in ${secs(prog.elapsed())} — ${line}`);
   process.stdout.write(JSON.stringify({ line, dry_run: dry, logFile }) + "\n");
   process.stdout.write(line + "\n");
   if (dry) process.stdout.write(`dry run: ${plan.length} planned writes recorded in ${logFile}\n`);
@@ -240,6 +287,7 @@ async function runRepoint(cfg, graph, siteId) {
 async function runCuration(cfg, graph, siteId) {
   const sp = cfg.sharePoint;
   const cur = cfg.curation;
+  const prog = cfg._prog || createProgress({ enabled: false });
   const dry = !!cur.dryRun;
   const listId = sp.lists.keywords;
   const plan = [];
@@ -248,10 +296,11 @@ async function runCuration(cfg, graph, siteId) {
     if (!dry) await graph.updateItemFields(siteId, listId, id, fields);
   };
 
+  const stopFetch = prog.heartbeat("fetching the Keywords list");
   const rows = (
     await graph.listItems(siteId, listId, {
       select: ["Title", "Kind", "CanonicalRefLookupId", "CurationStatus", "ProposedCanonical"],
-    })
+    }).finally(stopFetch)
   ).map((it) => {
     const f = it.fields || {};
     return {
@@ -264,14 +313,19 @@ async function runCuration(cfg, graph, siteId) {
     };
   });
 
+  prog(`Keywords snapshot — ${rows.length} row(s)`);
+
   // 1) approved-row cleanup
+  const cleanup = prog.phase("cleanup");
   let cleared = 0;
   for (const r of rows) {
     if (r.CanonicalRefId && (r.CurationStatus || r.ProposedCanonical)) {
       await patch(r.ID, { CurationStatus: null, ProposedCanonical: null }, "clear-state");
       cleared++;
+      cleanup.step(`'${r.Title}' — approved, curation columns cleared`);
     }
   }
+  cleanup.done(`${cleared} approved row(s) cleared`);
 
   // 2) vocabulary + blocked lines (from the run-start snapshot, as
   // the flow reads Get_keywords_all's body throughout)
@@ -289,20 +343,39 @@ async function runCuration(cfg, graph, siteId) {
   const chunkSize = Math.max(1, Number(cur.vocabChunk) || 700);
   const cap = Number(cur.maxProposals) || 20;
   const proposals = [];
+  const chunks = Math.ceil(canonSorted.length / chunkSize) || 0;
+  const callPhase = prog.phase("model calls");
+  callPhase.step(
+    `${canonSorted.length} canonical keyword(s) in ${chunks} chunk(s) of ${chunkSize}, ` +
+    `${blockedRows.length} blocked from proposal`
+  );
+  const chunkTick = prog.counter(chunks, "");
   for (let i = 0; i < canonSorted.length; i += chunkSize) {
     const chunk = canonSorted.slice(i, i + chunkSize);
     const vocabulary = chunk.map((r) => `${r.Title} [${r.Kind}]`).join("\n");
-    const parsed = await curateChunk(cfg.llm, { vocabulary, doNotPropose: blockedLines });
-    proposals.push(
-      ...(Array.isArray(parsed?.proposals) ? parsed.proposals : []).slice(0, cap)
-    );
+    chunkTick(`"${chunk[0].Title}" … "${chunk[chunk.length - 1].Title}"`,
+      `${chunk.length} term(s), ~${vocabulary.length} chars in`);
+    const t0 = Date.now();
+    const stopCall = prog.heartbeat("waiting on the curation model");
+    let parsed;
+    try {
+      parsed = await curateChunk(cfg.llm, { vocabulary, doNotPropose: blockedLines });
+    } finally {
+      stopCall();
+    }
+    const got = Array.isArray(parsed?.proposals) ? parsed.proposals : [];
+    prog(`   chunk ${chunkTick.count} — ${got.length} proposal(s) in ${secs(Date.now() - t0)}` +
+      (got.length > cap ? `, capped at ${cap}` : ""));
+    proposals.push(...got.slice(0, cap));
   }
+  callPhase.done(`${proposals.length} proposal(s) from ${chunks} chunk(s)`);
 
   // 4) digest lines — pending rows first. In autoApprove mode a
   // pending proposal from manual-mode weeks is APPLIED now (canonical
   // resolved from the ProposedCanonical "<title> — <why>" prefix);
   // unresolvable ones stay listed as pending.
   const byLower = new Map(rows.map((r) => [lower(r.Title), r]));
+  const pendingPhase = prog.phase("pending queue");
   let lines = "";
   let merged = 0;
   for (const r of rows) {
@@ -326,9 +399,11 @@ async function runCuration(cfg, graph, siteId) {
       lines += `- (pending) '${r.Title}' → ${r.ProposedCanonical}\n`;
     }
   }
+  pendingPhase.done(`${merged} pending proposal(s) applied`);
 
   // 5) hallucination guard + proposal writes (snapshot semantics, as
   // in the flow — Find_alias/Find_canon read the run-start body)
+  const guard = prog.phase("guard + writes");
   let written = 0;
   let dropped = 0;
   for (const p of proposals) {
@@ -344,6 +419,15 @@ async function runCuration(cfg, graph, siteId) {
       !canonRow.CanonicalRefId;
     if (!valid) {
       dropped++;
+      guard.step(
+        `dropped '${String(p?.alias ?? "")}' → '${String(p?.canonical ?? "")}' — ` +
+        (!aliasRow ? "the alias is not a real row"
+          : !canonRow ? "the canonical is not a real row"
+          : aliasLower === canonLower ? "alias and canonical are the same row"
+          : aliasRow.CanonicalRefId ? "the alias is already merged"
+          : aliasRow.CurationStatus ? `the alias is ${aliasRow.CurationStatus}`
+          : "the canonical is itself an alias")
+      );
       continue;
     }
     const why = String(p.why ?? "").replaceAll('"', "").replaceAll("\n", " ").slice(0, 160);
@@ -360,8 +444,12 @@ async function runCuration(cfg, graph, siteId) {
       );
       lines += `- '${aliasRow.Title}' → '${canonRow.Title}' — ${why}\n`;
     }
+    guard.step(
+      `${cur.autoApprove ? "merged" : "proposed"} '${aliasRow.Title}' → '${canonRow.Title}'`
+    );
     written++;
   }
+  guard.done(`${written} written, ${dropped} dropped by the guard`);
 
   // 6) digest — overwritten at a fixed name every run (DX-11: an
   // emptied queue writes an explicit empty state)
@@ -384,6 +472,7 @@ async function runCuration(cfg, graph, siteId) {
         "propose new ones.";
   const digestPath = `${cur.digestDrivePath}/${cur.digestName}`;
   plan.push({ action: "putFile", path: digestPath, bytes: digest.length });
+  prog(`digest — ${digest.length} chars ${dry ? "planned for" : "uploaded to"} ${digestPath}`);
   if (!dry) await graph.putFile(siteId, digestPath, digest);
 
   // 7) summary + run log

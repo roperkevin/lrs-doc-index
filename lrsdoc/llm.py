@@ -28,6 +28,12 @@ the partial text), ``refusal`` raises :class:`Refused`; a
 Sentinel-JSON replies are parsed when the sentinels are present and
 returned raw otherwise — the Node consumers keep their own fail-closed
 slice and their own findings.
+
+With ``LRSDOC_PROGRESS`` set (``pipeline/llm.mjs`` sets it whenever the
+calling job is narrating its run), each call writes ``progress:`` lines
+to STDERR in the pipeline's shared voice — the request shape going out,
+the latency to the first streamed chunk, and the stop reason, elapsed
+time and token usage coming back. stdout keeps the JSON-lines protocol.
 """
 
 from __future__ import annotations
@@ -35,6 +41,8 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
+import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -47,6 +55,26 @@ DEFAULT_MAX_RETRIES = 4
 DEFAULT_TIMEOUT_S = 600.0
 
 OnDelta = Callable[[str, str], None]
+
+
+def _progress_on() -> bool:
+    """``LRSDOC_PROGRESS`` — set by the Node bridge (pipeline/llm.mjs)
+    when the calling job is narrating its run, so the model call is not
+    the one silent stretch in an otherwise-narrated pipeline."""
+    return os.environ.get("LRSDOC_PROGRESS", "") not in ("", "0", "false", "no")
+
+
+def _note(message: str) -> None:
+    """One ``progress:`` line on stderr, in the pipeline's shared voice
+    (pipeline/lib/progress.mjs). stdout carries the JSON-lines protocol
+    and is never touched. Best effort: a closed pipe never fails a call."""
+    if not _progress_on():
+        return
+    try:
+        sys.stderr.write(f"progress: {message}\n")
+        sys.stderr.flush()
+    except Exception:  # pragma: no cover - a closed stderr
+        pass
 
 
 class LLMError(Exception):
@@ -166,22 +194,48 @@ def call(prompt: Prompt, values: dict, *, model: str | None = None, max_tokens: 
     req = build_request(prompt, values, model=model, max_tokens=max_tokens, effort=effort,
                         show_thinking=show_thinking)
     _dump(dump_dir or os.environ.get("LRSDOC_DUMP_DIR"), prompt, values, req)
-    client = make_client(max_retries=max_retries,
-                         timeout_s=timeout_s if timeout_s is not None else prompt.timeout_s)
+    effective_timeout = timeout_s if timeout_s is not None else prompt.timeout_s
+    client = make_client(max_retries=max_retries, timeout_s=effective_timeout)
     use_stream = (prompt.output != "json_schema") if stream is None else bool(stream)
 
+    system_chars = sum(len(b.get("text", "")) for b in req["system"])
+    user_chars = len(req["messages"][0]["content"])
+    _note(
+        f"lrsdoc {prompt.name} v{prompt.version} -> {req['model']} — "
+        f"{system_chars} + {user_chars} chars in, max_tokens {req['max_tokens']}, "
+        f"{'streaming' if use_stream else 'one reply'}, "
+        f"up to {max_retries} SDK retr{'y' if max_retries == 1 else 'ies'}, "
+        f"timeout {int(effective_timeout if effective_timeout is not None else DEFAULT_TIMEOUT_S)}s"
+    )
+    t0 = time.monotonic()
+
     if use_stream:
+        first = None
         with client.messages.stream(**req) as s:
             for event in s:
-                if on_delta is not None and event.type == "content_block_delta":
-                    d = event.delta
-                    if d.type == "text_delta":
-                        on_delta("text", d.text)
-                    elif d.type == "thinking_delta":
-                        on_delta("thinking", d.thinking)
+                if event.type == "content_block_delta":
+                    if first is None:
+                        first = time.monotonic() - t0
+                        # the one measurement that separates "the request
+                        # is stuck (auth, a retry loop, a dead socket)"
+                        # from "the model is thinking"
+                        _note(f"lrsdoc {prompt.name} — first chunk after {first:.1f}s")
+                    if on_delta is not None:
+                        d = event.delta
+                        if d.type == "text_delta":
+                            on_delta("text", d.text)
+                        elif d.type == "thinking_delta":
+                            on_delta("thinking", d.thinking)
             msg = s.get_final_message()
     else:
         msg = client.messages.create(**req)
+
+    usage = _usage(msg)
+    _note(
+        f"lrsdoc {prompt.name} — {msg.stop_reason or 'end'} in {time.monotonic() - t0:.1f}s, "
+        f"{usage.get('input_tokens', '?')} in / {usage.get('output_tokens', '?')} out token(s)"
+        + (f", {usage['cache_read_input_tokens']} cached" if usage.get("cache_read_input_tokens") else "")
+    )
 
     text = "".join(b.text for b in (msg.content or []) if getattr(b, "type", None) == "text")
     stop = str(msg.stop_reason or "")
@@ -209,6 +263,6 @@ def call(prompt: Prompt, values: dict, *, model: str | None = None, max_tokens: 
             except json.JSONDecodeError:
                 data = None
     return Result(text=text, data=data, stop_reason=stop, model=str(getattr(msg, "model", "") or req["model"]),
-                  prompt=prompt.name, prompt_version=prompt.version, usage=_usage(msg),
+                  prompt=prompt.name, prompt_version=prompt.version, usage=usage,
                   request_id=getattr(msg, "_request_id", None))
 

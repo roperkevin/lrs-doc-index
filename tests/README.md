@@ -24,6 +24,7 @@ python3 check_local_sweep.py                # any single gate
 | `check_caseindex.py` | fixture-free | `pipeline/lib/caseindex.mjs` + `casegrammar.mjs`: the six case detectors, per-case metadata, the replace-set planner | Node |
 | `check_figureindex.py` | fixture-free | `pipeline/lib/figureindex.mjs`: figure naming rule, parser, rows and planner | Node |
 | `check_slug.py` | fixture-free | `pipeline/lib/slug.mjs`: sidecar stem rules | Node |
+| `check_progress.py` | fixture-free | `pipeline/lib/progress.mjs`: the shared run narration — flag/config precedence, the `progress: ...` line shapes, counter thinning, heartbeats, stdout left alone | Node |
 | `check_storyprofile.py` | fixture-free | `pipeline/lib/storyprofile.mjs`: the User Story body profile | Node |
 | `check_deckspec.py` | fixture-free | `pipeline/lib/designsystem.mjs` + `deckspec.mjs`: tokens, grid, grounding, layout | Node |
 | `check_wiki.py` | fixture-free | `pipeline/wiki.mjs`: the site tree from a small sidecar library, every link resolving, the keyword canonical map, MkDocs-identical section anchors, comment/yaml hygiene, the push flow against a bare repository | Node, mkdocs-material (the strict-build legs) |

@@ -1062,6 +1062,89 @@ def main():
     check("dry run recorded a write plan", len(log.get("plan") or []) > 10,
           str(len(log.get("plan") or [])))
 
+    # ---- progress leg (pipeline/lib/progress.mjs) -----------------
+    print("== progress leg")
+    # default posture: captured output is not a TTY, so a run narrates
+    # nothing and every stdout contract stays byte-for-byte
+    quiet = run_sweep(cfg_path, ["--dry-run"])
+    check("no narration by default when output is redirected",
+          quiet.returncode == 0
+          and "progress:" not in quiet.stderr and "progress:" not in quiet.stdout,
+          quiet.stderr[-400:])
+    loud = run_sweep(cfg_path, ["--dry-run", "--progress"])
+    check("--progress narrates the run on stderr", loud.returncode == 0
+          and "progress: sweep nightly index — DRY RUN" in loud.stderr,
+          loud.stderr[:400])
+    check("phases announce themselves and report what they found",
+          "progress: list snapshots — start" in loud.stderr
+          and "progress: list snapshots — docIndex — " in loud.stderr
+          and "progress: source library — " in loud.stderr
+          and "progress: ghost reconciliation — start" in loud.stderr,
+          loud.stderr[:1500])
+    check("each selected document is counted, named and explained",
+          re.search(r"progress: \[1/\d+\] [^\n]+ — (new|source edited|retry after Error|"
+                    r"PDF rescue|scope rescue|restored|PromptVersion )", loud.stderr) is not None,
+          loud.stderr[:2000])
+    check("the steps inside a document are narrated",
+          "— extract\n" in loud.stderr and "— llm\n" in loud.stderr
+          and "— upsert-row\n" in loud.stderr and "— sidecar\n" in loud.stderr
+          and "— related\n" in loud.stderr and "— keywords\n" in loud.stderr,
+          loud.stderr[-2500:])
+    check("the model call reports its size, its lane and its latency",
+          "chars in (a long wait here is the model, not a hang)" in loud.stderr
+          and re.search(r"classified in \d+s — ", loud.stderr) is not None,
+          loud.stderr[-2500:])
+    check("the Python model layer narrates too (LRSDOC_PROGRESS)",
+          "progress: lrsdoc docindex_classify v" in loud.stderr
+          and re.search(r"progress: lrsdoc docindex_classify — \w+ in \d", loud.stderr) is not None,
+          loud.stderr[-2500:])
+    check("the run closes with its elapsed time and its summary line",
+          re.search(r"progress: sweep finished in \d+s — library_items_seen=", loud.stderr) is not None,
+          loud.stderr[-600:])
+    # the stdout contract is untouched: same summary, no progress lines
+    q_out = json.loads(quiet.stdout.splitlines()[0])
+    l_out = json.loads(loud.stdout.splitlines()[0])
+    check("narration never reaches stdout",
+          "progress:" not in loud.stdout
+          and q_out.get("processed") == l_out.get("processed")
+          and quiet.stdout.splitlines()[1:] == loud.stdout.splitlines()[1:],
+          loud.stdout[:400])
+    # config.progress carries the same three states, and the flags win
+    prog_cfg = os.path.join(tmp, "progress-config.json")
+    with open(prog_cfg, "w") as f:
+        json.dump(dict(cfg, progress=True), f)
+    from_cfg = run_sweep(prog_cfg, ["--dry-run"])
+    check("config progress:true narrates without the flag",
+          from_cfg.returncode == 0 and "progress: sweep nightly index" in from_cfg.stderr,
+          from_cfg.stderr[:300])
+    off = run_sweep(prog_cfg, ["--dry-run", "--no-progress"])
+    check("--no-progress beats config progress:true",
+          off.returncode == 0 and "progress:" not in off.stderr, off.stderr[-300:])
+    # curation narrates its chunks and its guard
+    cur_loud = run_curate(cfg_path, ["--dry-run", "--progress"])
+    check("curate narrates the chunk calls and the guard",
+          cur_loud.returncode == 0
+          and "progress: curate — DRY RUN" in cur_loud.stderr
+          and "progress: model calls — start" in cur_loud.stderr
+          and re.search(r"progress:\s+chunk 1 — \d+ proposal\(s\) in \d+s", cur_loud.stderr)
+          and "progress: guard + writes — " in cur_loud.stderr
+          and "progress:" not in cur_loud.stdout,
+          cur_loud.stderr[:1200])
+    # a standalone mode narrates its own loop
+    rerank_loud = run_sweep(cfg_path, ["--dry-run", "--rerank", "--progress"])
+    check("a standalone mode narrates its loop and its result",
+          rerank_loud.returncode == 0
+          and "progress: sweep --rerank — DRY RUN" in rerank_loud.stderr
+          and "progress: rerank — start" in rerank_loud.stderr
+          and re.search(r"progress: rerank — \d+ of \d+ document\(s\) reranked", rerank_loud.stderr),
+          rerank_loud.stderr[:800])
+
+
+    # the content-filter assertion below counts this document's AI
+    # calls from here: every dry run before this point (leg 1 and the
+    # narration leg) legitimately classified it once
+    filtered_calls_before_live = state.llm_files.count("filtered.txt")
+
     # ---- leg 2: live run against mocks ----------------------------
     print("== live leg")
     proc = run_sweep(cfg_path, ["--live"])
@@ -1537,9 +1620,9 @@ def main():
     for i in floor_ids:
         state.lists[LISTS["docIndex"]].pop(str(i), None)
         os.remove(os.path.join(sidecar_dir, "Other", f"Floor Doc {int(i) - int(floor_ids[0])}.md"))
-    check("content-filtered doc never re-burns an AI call (dry + live only)",
-          state.llm_files.count("filtered.txt") == 2,
-          str(state.llm_files.count("filtered.txt")))
+    check("content-filtered doc never re-burns an AI call (the live leg's is its last)",
+          state.llm_files.count("filtered.txt") == filtered_calls_before_live + 1,
+          f"{state.llm_files.count('filtered.txt')} vs {filtered_calls_before_live} + 1")
     check("case rows idempotent (unchanged corpus writes none)",
           int(out.get("cases_upserted", 0)) == 0
           and int(out.get("cases_removed", 0)) == 0
