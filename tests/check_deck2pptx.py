@@ -54,6 +54,9 @@ import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mock_anthropic as mock  # noqa: E402
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -214,18 +217,7 @@ def make_handler(state):
             body = json.loads(self.rfile.read(n) if n else b"{}")
             state.calls += 1
             state.last_body = body
-            text = state.text
-            half = len(text) // 2
-            events = [
-                {"type": "message_start", "message": {"id": "msg_mock"}},
-                {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
-                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text[:half]}},
-                {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text[half:]}},
-                {"type": "content_block_stop", "index": 0},
-                {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 1}},
-                {"type": "message_stop"},
-            ]
-            payload = "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+            payload = mock.sse_bytes(state.text)
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")
             self.send_header("content-length", str(len(payload)))
@@ -500,7 +492,7 @@ def main():
                    "testplangen": {"deckMaxTokens": 12345, "deckDesign": "carbon"}}, f)
     out4 = os.path.join(tmp, "generated.pptx")
     r = run([md, "--generate", "--config", cfg, "-o", out4, "--media", media])
-    prompt = (state.last_body.get("messages") or [{}])[0].get("content", "")
+    prompt = mock.prompt_text(state.last_body)
     check("one streamed model call; the repo prompt verbatim with the inputs substituted",
           r.returncode == 0 and state.calls == 1 and state.last_body.get("stream") is True
           and "DECK SPECIFICATION VOCABULARY" in prompt and "<<<DRAFT BEGIN>>>" in prompt

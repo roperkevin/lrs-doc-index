@@ -213,6 +213,9 @@ import os
 import re
 import subprocess
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mock_anthropic as mock  # noqa: E402
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -530,64 +533,29 @@ def make_handler(state):
                 body = json.loads(self._read())
                 state.ant_calls += 1
                 state.ant_last_body = body
-                prompt_text = (body.get("messages") or [{}])[0].get("content", "")
-                is_fig = "FIGURE SPECIFICATION VOCABULARY" in str(prompt_text)
-                is_deck = "DECK SPECIFICATION VOCABULARY" in str(prompt_text)
+                prompt_text = mock.prompt_text(body)   # system blocks + the user turn
+                is_fig = "FIGURE SPECIFICATION VOCABULARY" in prompt_text
+                is_deck = "DECK SPECIFICATION VOCABULARY" in prompt_text
                 if is_fig:
                     state.fig_calls += 1
                 if is_deck:
                     state.deck_calls += 1
                 if body.get("stream"):
-                    # llm.mjs v1.6: generateText streams — serve SSE.
-                    # Text goes out in two deltas so the client's
-                    # accumulation across chunks is actually exercised.
+                    # the generate task streams — serve a real SSE stream;
+                    # a request carrying thinking.display "summarized" gets
+                    # a thinking block first, as the API streams it
                     text = ((state.deck_text_fn() if getattr(state, "deck_text_fn", None) else state.deck_text)
                             if is_deck else state.fig_text if is_fig else state.gen_text)
-                    half = len(text) // 2
-                    # v1.7: a request carrying thinking.display
-                    # "summarized" gets a thinking block first, as the
-                    # API streams it (thinking_delta chunks)
-                    thinking = []
-                    if (body.get("thinking") or {}).get("display") == "summarized":
-                        thinking = [
-                            {"type": "content_block_start", "index": 0,
-                             "content_block": {"type": "thinking", "thinking": ""}},
-                            {"type": "content_block_delta", "index": 0,
-                             "delta": {"type": "thinking_delta",
-                                       "thinking": "Reading the story; "}},
-                            {"type": "content_block_delta", "index": 0,
-                             "delta": {"type": "thinking_delta",
-                                       "thinking": "two positive cases fit."}},
-                            {"type": "content_block_stop", "index": 0},
-                        ]
-                    events = [
-                        {"type": "message_start", "message": {"id": "msg_mock"}},
-                        *thinking,
-                        {"type": "content_block_start", "index": 0,
-                         "content_block": {"type": "text", "text": ""}},
-                        {"type": "content_block_delta", "index": 0,
-                         "delta": {"type": "text_delta", "text": text[:half]}},
-                        {"type": "content_block_delta", "index": 0,
-                         "delta": {"type": "text_delta", "text": text[half:]}},
-                        {"type": "content_block_stop", "index": 0},
-                        {"type": "message_delta",
-                         "delta": {"stop_reason": state.fig_stop_reason if is_fig else "end_turn"},
-                         "usage": {"output_tokens": 1}},
-                        {"type": "message_stop"},
-                    ]
-                    payload = "".join(
-                        f"event: {e['type']}\ndata: {json.dumps(e)}\n\n"
-                        for e in events).encode()
+                    thinking = (["Reading the story; ", "two positive cases fit."]
+                                if (body.get("thinking") or {}).get("display") == "summarized" else None)
+                    payload = mock.sse_bytes(text, state.fig_stop_reason if is_fig else "end_turn", thinking)
                     self.send_response(200)
                     self.send_header("content-type", "text/event-stream")
                     self.send_header("content-length", str(len(payload)))
                     self.end_headers()
                     self.wfile.write(payload)
                     return
-                return self._json({
-                    "stop_reason": "end_turn",
-                    "content": [{"type": "text", "text": state.gen_text}],
-                })
+                return self._json(mock.message_json(state.gen_text))
             m = re.match(
                 r"^/api/data/v9\.2/msdyn_aimodels\(([0-9a-f-]+)\)"
                 r"/Microsoft\.Dynamics\.CRM\.Predict$", p)
@@ -1112,7 +1080,7 @@ def main():
     r = run_job(cfg_ant, ["--story", "12", "--live"])
     check("anthropic run succeeds", r.returncode == 0, r.stdout + r.stderr)
     check("one /v1/messages call", state.ant_calls == 1, str(state.ant_calls))
-    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    prompt = mock.prompt_text(state.ant_last_body)
     check("prompt: the repo prompt text, inputs substituted",
           "GROUNDING RULES" in prompt
           and "<<<STORY TEXT BEGIN>>>" in prompt
@@ -2362,7 +2330,7 @@ def main():
     ant_before, fig_before = state.ant_calls, state.fig_calls
     r = run_job(cfg_fig_ant, ["--story", "12", "--dry-run"])
     summ = summary_of(r.stdout)
-    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    prompt = mock.prompt_text(state.ant_last_body)
     check("anthropic figures pass (testplangen.figures: true): prompt verbatim, inputs substituted",
           r.returncode == 0 and state.ant_calls == ant_before + 2 and state.fig_calls == fig_before + 1
           and "SELECTION RULES" in prompt and "<<<DRAFT BEGIN>>>" in prompt
@@ -2387,7 +2355,7 @@ def main():
                             llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                             testplangen={"neighborCap": 8, "figures": True, "figuresCap": 1})
     r = run_job(cfg_fig_cap, ["--story", "12", "--dry-run"])
-    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    prompt = mock.prompt_text(state.ant_last_body)
     summ = summary_of(r.stdout)
     log = json.load(open(json.loads(r.stdout.splitlines()[0])["logFile"], encoding="utf-8"))
     check("figuresCap 1: the prompt asks for at most 1, the pass keeps the first grounded spec and drops the second with X6",
@@ -2497,7 +2465,7 @@ def main():
           r.returncode == 0 and state.gen_last_inputs.get("RelatedCases") == "(none)"
           and summary_of(r.stdout).get("relatedCases") == "0", r.stdout)
     r = run_job(cfg_ant, ["--story", "12", "--dry-run"])
-    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    prompt = mock.prompt_text(state.ant_last_body)
     check("anthropic prompt: the RELATED CASES block, the VARIATION clause, no leftover placeholder",
           r.returncode == 0 and "<<<RELATED CASES BEGIN>>>\n--- RELATED PLAN: Plan F" in prompt
           and "**VARIATION**" in prompt and "{RelatedCases}" not in prompt
@@ -2527,7 +2495,7 @@ def main():
     # first pass: learn the stem from the Figures input echoed in the prompt
     ant_before, fig_before, deck_before = state.ant_calls, state.fig_calls, state.deck_calls
     r = run_job(cfg_deck, ["--story", "12", "--dry-run", "--figures", "--deck"])
-    prompt = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+    prompt = mock.prompt_text(state.ant_last_body)
     summ = summary_of(r.stdout)
     check("deck dry run: draft + figures + deck = three model calls, the deck call last, with its own cap",
           r.returncode == 0 and state.ant_calls == ant_before + 3 and state.fig_calls == fig_before + 1
@@ -2544,7 +2512,7 @@ def main():
     # the stem changes per run (seconds stamp): the mock builds the
     # reply from the Figures line of the prompt it just received
     def patched_text():
-        p = (state.ant_last_body.get("messages") or [{}])[0].get("content", "")
+        p = mock.prompt_text(state.ant_last_body)
         mm = re.search(r"- (\S+--fig-tc-p1\.svg) — generated figure", p)
         return DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", mm.group(1) if mm else "none.svg")
     state.deck_text_fn = patched_text

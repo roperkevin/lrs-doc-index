@@ -69,14 +69,12 @@ import {
   parseDeckReply, deckCorpus, verifyDeckSpec, layoutDeck, DECK_BEGIN, DECK_END,
 } from "../lib/deckspec.mjs";
 import { designOf, DESIGN_NAMES, DEFAULT_DESIGN, DEFAULT_THEME, describeDesigns, restyleFigureSvg } from "../lib/designsystem.mjs";
-import { aiBuilderPredict, generateText, loadPromptTemplate } from "../llm.mjs";
+import { aiBuilderPredict, generate } from "../llm.mjs";
 
 export const DECK_VERSION = "v1.2";
 export const DECK_PROMPT_VERSION = "v0.1"; // TestPlanDeckPromptVersion
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-export const DECK_PROMPT_FILE = path.resolve(HERE, "..", "..", "prompts", "testplan_deck.md");
-const DECK_INPUT_KEYS = ["PlanTitle", "Draft", "Figures"];
-const DECK_INPUTS_RE = new RegExp(`\\{(${DECK_INPUT_KEYS.join("|")})\\}`, "g");
+export const DECK_PROMPT = "testplan_deck"; // prompts/testplan_deck.md
 
 
 // ------------------------------------------------------------ figures
@@ -274,11 +272,11 @@ export async function generateDeckSpec(args) {
     const response = await aiBuilderPredict(cfg.llm, inputs, args.modelId);
     raw = response?.responsev2?.predictionOutput?.text ?? "";
   } else {
-    const template = loadPromptTemplate(DECK_PROMPT_FILE);
-    const prompt = template.replace(DECK_INPUTS_RE, (m, key) => inputs[key]);
     try {
-      raw = await generateText({ ...cfg.llm, maxTokens: Number(maxTokens) || 24000 }, prompt,
-        args.onDelta ? { onDelta: args.onDelta, showThinking: !!args.showThinking } : {});
+      raw = await generate(cfg.llm, DECK_PROMPT, inputs, {
+        maxTokens: Number(maxTokens) || 24000,
+        ...(args.onDelta ? { onDelta: args.onDelta, showThinking: !!args.showThinking } : {}),
+      });
     } catch (e) {
       if (/max_tokens/.test(String(e.message))) {
         throw new Error(`${e.message} — for the deck pass the knob is testplangen.deckMaxTokens (currently ${maxTokens}; the model allows up to 128000, and with --stream the thinking summary spends the same budget)`);

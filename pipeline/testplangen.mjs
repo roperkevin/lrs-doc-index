@@ -491,7 +491,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { GraphClient } from "./graph.mjs";
 import { RemoteLibrary } from "./lib/remotefs.mjs";
-import { aiBuilderPredict, dataverseToken, generateText, loadPromptTemplate } from "./llm.mjs";
+import { aiBuilderPredict, dataverseToken, generate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft, contentStems, stemMatches } from "./lib/draftlint.mjs";
@@ -509,17 +509,12 @@ import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs"
 
 const JOB_VERSION = "v1.22";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "testplan_draft.md");
-const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "testplan_figures.md");
 const FIG_PROMPT_VERSION = "v0.4"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
-const FIG_INPUT_KEYS = ["PlanTitle", "Draft", "FiguresCap"];
-const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 
 const DRAFT_BEGIN = "[[[DRAFT BEGIN]]]";
 const DRAFT_END = "[[[DRAFT END]]]";
 // the five item/requestv2 input keys, exact names (prompt header)
 const INPUT_KEYS = ["StoryMeta", "StoryText", "RelatedDigest", "ExemplarText", "ReferenceText", "RelatedCases"];
-const INPUTS_RE = new RegExp(`\\{(${INPUT_KEYS.join("|")})\\}`, "g");
 
 // Terminate_not_story / Terminate_no_draft, verbatim from the flow
 const GUARD_MSG =
@@ -2072,17 +2067,10 @@ async function generateOne(ctx, story) {
     const response = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.testPlanModelId);
     genRaw = response?.responsev2?.predictionOutput?.text ?? "";
   } else if (provider === "anthropic") {
-    const template = loadPromptTemplate(GEN_PROMPT_FILE);
-    // single-pass substitution: a placeholder-shaped string inside
-    // document content stays literal — it can never trigger a second
-    // substitution
-    const prompt = template.replace(INPUTS_RE, (m, key) => inputs[key]);
     try {
-      genRaw = await generateText(
-        { ...cfg.llm, maxTokens: Number(tp.maxTokens) },
-        prompt,
-        echo ? { onDelta: echo, showThinking: true } : {}
-      );
+      // prompts/testplan_draft.md, rendered and sent by the Python layer
+      genRaw = await generate(cfg.llm, "testplan_draft", inputs,
+        { maxTokens: Number(tp.maxTokens), ...(echo ? { onDelta: echo, showThinking: true } : {}) });
       echo?.done();
     } catch (e) {
       if (/max_tokens/.test(String(e.message))) {
@@ -2487,15 +2475,10 @@ async function generateFigures(ctx, story, draftBody, provider, prog, names) {
       const response = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.figuresModelId);
       raw = response?.responsev2?.predictionOutput?.text ?? "";
     } else {
-      const template = loadPromptTemplate(FIG_PROMPT_FILE);
-      const prompt = template.replace(FIG_INPUTS_RE, (m, key) => inputs[key]);
       const echo = streamEcho(ctx, provider, "figures");
       try {
-        raw = await generateText(
-          { ...cfg.llm, maxTokens: Number(tp.figuresMaxTokens) },
-          prompt,
-          echo ? { onDelta: echo, showThinking: true } : {}
-        );
+        raw = await generate(cfg.llm, "testplan_figures", inputs,
+          { maxTokens: Number(tp.figuresMaxTokens), ...(echo ? { onDelta: echo, showThinking: true } : {}) });
       } catch (e) {
         // v1.15: name THIS pass's knob — the generic "raise the
         // caller's maxTokens knob" sent the first --figures run to

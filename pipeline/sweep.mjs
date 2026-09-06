@@ -50,7 +50,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { loadScripts, runOp, DEFAULT_SCRIPTS_DIR } from "../extract/runner/ops.mjs";
 import { GraphClient, SpoClient } from "./graph.mjs";
-import { classifyDoc, generateText, aiBuilderPredict, loadPromptTemplate } from "./llm.mjs";
+import { classifyDoc, generate, aiBuilderPredict } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, SWEEP_REQUIRED } from "./lib/config.mjs";
 import {
   lower, cut, folderOf, yamlEscape, stripQuotes, pipeToSlash, fmtDate,
@@ -61,7 +61,7 @@ import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
 import { prettifyMedia, placeDrawings, extractFigures, toFigureRowFields, diffFigureRows, imageSize } from "./lib/figureindex.mjs";
 import { auditBody, summarizeAudit, renderAuditPage, hasSignal } from "./lib/caseaudit.mjs";
-import { buildNormalizePrompt, unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
+import { unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
 import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
 import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
 import { writeIndexPages, writeCaseCatalog, writeFigureCatalog, writeManifest } from "./lib/indexpages.mjs";
@@ -1110,9 +1110,6 @@ async function main() {
         "the owner switch for AI spend on sidecar bodies (dry runs list the candidates without it)"
       );
     }
-    const template = provider === "anthropic"
-      ? loadPromptTemplate(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "prompts", "case_normalize.md"))
-      : "";
     if (!dry && provider === "aibuilder" && !cfg.llm.normalizeModelId) {
       throw new Error("llm.normalizeModelId is not set — paste prompts/case_normalize.md as a tenant prompt (inputs PlanTitle, Body) or use provider \"anthropic\"");
     }
@@ -1152,8 +1149,7 @@ async function main() {
           const res = await aiBuilderPredict(cfg.llm, inputs, cfg.llm.normalizeModelId);
           raw = res?.responsev2?.predictionOutput?.text ?? "";
         } else {
-          raw = await generateText({ ...cfg.llm, maxTokens: Number(nc.maxTokens) },
-                                   buildNormalizePrompt(template, { planTitle: inputs.PlanTitle, body: p.body }));
+          raw = await generate(cfg.llm, "case_normalize", inputs, { maxTokens: Number(nc.maxTokens) });
         }
         const out = unwrapReply(raw);
         const v = verifyNormalized(p.body, out);

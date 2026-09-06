@@ -51,7 +51,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { GraphClient } from "./graph.mjs";
-import { aiBuilderPredict, braceSlice, dataverseToken } from "./llm.mjs";
+import { aiBuilderPredict, braceSlice, curateChunk, dataverseToken, providerOf } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 
 const num = (v) => {
@@ -334,20 +334,21 @@ async function runCuration(cfg, graph, siteId) {
   const proposals = [];
   for (let i = 0; i < canonSorted.length; i += chunkSize) {
     const chunk = canonSorted.slice(i, i + chunkSize);
-    const response = await aiBuilderPredict(
-      cfg.llm,
-      {
-        Vocabulary: chunk.map((r) => `${r.Title} [${r.Kind}]`).join("\n"),
-        DoNotPropose: blockedLines,
-      },
-      cfg.llm.curationModelId
-    );
-    const text = response?.responsev2?.predictionOutput?.text ?? "{}";
+    const vocabulary = chunk.map((r) => `${r.Title} [${r.Kind}]`).join("\n");
     let parsed = {};
-    try {
-      parsed = JSON.parse(braceSlice(text));
-    } catch {
-      process.stderr.write("curate: unparseable model output for one chunk — skipping it\n");
+    if (providerOf(cfg.llm) === "aibuilder") {
+      const response = await aiBuilderPredict(
+        cfg.llm, { Vocabulary: vocabulary, DoNotPropose: blockedLines }, cfg.llm.curationModelId
+      );
+      const text = response?.responsev2?.predictionOutput?.text ?? "{}";
+      try {
+        parsed = JSON.parse(braceSlice(text));
+      } catch {
+        process.stderr.write("curate: unparseable model output for one chunk — skipping it\n");
+      }
+    } else {
+      // prompts/keyword_curation.md through the Python layer (schema-pinned)
+      parsed = await curateChunk(cfg.llm, { vocabulary, doNotPropose: blockedLines });
     }
     proposals.push(
       ...(Array.isArray(parsed?.proposals) ? parsed.proposals : []).slice(0, cap)

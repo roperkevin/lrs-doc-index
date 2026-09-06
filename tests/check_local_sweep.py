@@ -32,6 +32,9 @@ import struct
 import subprocess
 import urllib.parse
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mock_anthropic as mock  # noqa: E402
 import tempfile
 import threading
 import zipfile
@@ -407,39 +410,20 @@ def make_handler(state, lib_guid, src_files):
                     "x-api-key": self.headers.get("x-api-key"),
                     "anthropic-beta": self.headers.get("anthropic-beta"),
                 }
-                prompt = body["messages"][0]["content"]
+                prompt = mock.prompt_text(body)   # system blocks + the user turn
                 if body.get("stream"):
-                    # generateText (llm.mjs v1.6) streams — the
-                    # --normalize-cases lane; serve the leg's gen_text as SSE
+                    # the generate task streams (the --normalize-cases
+                    # lane): serve the leg's gen_text as a real SSE stream
                     state.gen_prompts.append(prompt)
-                    text = state.gen_text
-                    half = len(text) // 2
-                    events = [
-                        {"type": "message_start", "message": {"id": "msg_mock"}},
-                        {"type": "content_block_start", "index": 0,
-                         "content_block": {"type": "text", "text": ""}},
-                        {"type": "content_block_delta", "index": 0,
-                         "delta": {"type": "text_delta", "text": text[:half]}},
-                        {"type": "content_block_delta", "index": 0,
-                         "delta": {"type": "text_delta", "text": text[half:]}},
-                        {"type": "content_block_stop", "index": 0},
-                        {"type": "message_delta", "delta": {"stop_reason": "end_turn"},
-                         "usage": {"output_tokens": 1}},
-                        {"type": "message_stop"},
-                    ]
-                    payload = "".join(
-                        f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events).encode()
+                    payload = mock.sse_bytes(state.gen_text)
                     self.send_response(200)
                     self.send_header("content-type", "text/event-stream")
                     self.send_header("content-length", str(len(payload)))
                     self.end_headers()
                     self.wfile.write(payload)
                     return
-                out = self._classify(lambda fname: fname in prompt)
-                return self._json({
-                    "stop_reason": "end_turn",
-                    "content": [{"type": "text", "text": json.dumps(out)}],
-                })
+                out = self._classify(lambda fname: fname in mock.user_text(body))
+                return self._json(mock.message_json(json.dumps(out)))
             # Dataverse Predict — the AI Builder custom prompt endpoint
             mp = re.match(r"^/api/data/v9\.2/msdyn_aimodels\(([0-9a-f-]+)\)/Microsoft\.Dynamics\.CRM\.Predict$", p)
             if mp:
@@ -2968,30 +2952,24 @@ def main():
           and not state.llm_last_headers.get("authorization"),
           str(state.llm_last_headers))
 
-    # ---- leg 5: anthropic provider, OAuth (stub `ant` mints token) --
-    print("== anthropic oauth leg")
-    bin_dir = os.path.join(tmp, "bin")
-    os.makedirs(bin_dir, exist_ok=True)
-    stub = os.path.join(bin_dir, "ant")
-    with open(stub, "w") as f:
-        f.write("#!/bin/sh\necho stub-oauth-token\n")
-    os.chmod(stub, 0o755)
-    cfg["llm"] = {"provider": "anthropic", "auth": "oauth",
-                  "baseUrl": base, "maxRetries": 0}
+    # ---- leg 5: anthropic provider, a bearer token from the environment --
+    # (ANTHROPIC_AUTH_TOKEN — what `ant auth login` provides on a machine;
+    # the SDK resolves it, nothing in the pipeline shells out any more)
+    print("== anthropic bearer-token leg")
+    cfg["llm"] = {"provider": "anthropic", "baseUrl": base, "maxRetries": 0}
     cfg["sweep"]["promptVersion"] = "v2.0-oauth-leg"
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
-    env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ.get("PATH", ""))
-    env.pop("ANTHROPIC_AUTH_TOKEN", None)
+    env = dict(os.environ, ANTHROPIC_AUTH_TOKEN="stub-oauth-token")
+    env.pop("ANTHROPIC_API_KEY", None)
     proc = subprocess.run(
         ["node", "--experimental-strip-types", SWEEP, "--config", cfg_path,
          "--live", "--only", "notes.txt"],
         capture_output=True, text=True, cwd=REPO, env=env,
     )
-    check("oauth run exit 0", proc.returncode == 0, proc.stderr[-600:])
-    check("oauth bearer + beta header sent",
+    check("bearer-token run exit 0", proc.returncode == 0, proc.stderr[-600:])
+    check("bearer token sent as Authorization, no api key",
           state.llm_last_headers.get("authorization") == "Bearer stub-oauth-token"
-          and state.llm_last_headers.get("anthropic-beta") == "oauth-2025-04-20"
           and not state.llm_last_headers.get("x-api-key"),
           str(state.llm_last_headers))
 
