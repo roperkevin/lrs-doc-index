@@ -35,7 +35,12 @@
  * still lands, `deck=0/0`); the aibuilder lane refuses BEFORE the
  * generation spend without llm.deckModelId. Knobs: testplangen.deck
  * (default false; `--deck` forces on), deckMaxTokens (24000). Manual
- * runs only, like --figures.
+ * runs only, like --figures. v1.17 (testplangen/CHANGES.md v2.37):
+ * `deckDesign` picks the design system the deck is laid out on —
+ * "fluent" (default), "carbon", "uswds" (lib/designsystem.mjs v1.1),
+ * and `deckTheme` its light (default) or dark theme (v1.2 — embedded
+ * figures are re-coloured to match); an unknown name refuses BEFORE
+ * the generation spend.
  *
  * v1.15 (doc 910 draft review — testplangen/CHANGES.md v2.35): the
  * figures pass names its own cap when the model's reply is cut
@@ -464,8 +469,9 @@ import {
 } from "./lib/figurespec.mjs";
 import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
+import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.16";
+const JOB_VERSION = "v1.17";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
@@ -676,6 +682,8 @@ function loadConfig(argv) {
     figuresMaxTokens: 24000,
     deck: false, // v1.16: the model-laid-out review deck pass (--deck forces on for a run)
     deckMaxTokens: 24000,
+    deckDesign: DEFAULT_DESIGN, // v1.17: fluent | carbon | uswds
+    deckTheme: DEFAULT_THEME, // v1.17: light | dark
     issueTrace: true,
     caseIndex: true, // v1.9: the Test Cases lane (routing, trimming, addendum) — needs sharePoint.lists.testCases
     relatedCases: true, // v1.13/v1.14: the RELATED CASES retrieval lane (needs the same list)
@@ -927,6 +935,9 @@ async function run(cfg) {
       "Draft + Figures) — none exists yet; set testplangen.provider to " +
       "\"anthropic\" for the deck pass, which executes the repo prompt verbatim"
     );
+  }
+  if (tp.deck && !cfg._preview) {
+    try { designOf(tp.deckDesign, tp.deckTheme); } catch (e) { throw new Error(`testplangen.deckDesign / deckTheme: ${e.message}`); }
   }
   // web reference pins (v1.7) fetch now, under the same hard-guard
   // posture — any failure refuses the run with zero model spend
@@ -2218,7 +2229,7 @@ async function generateOne(ctx, story) {
   // ---- the review deck (v1.16, --deck): one more model pass over the
   // FINISHED draft — layout decisions from the model, grounding +
   // layout + rendering here; fail soft, the draft never depends on it
-  let deck = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "" };
+  let deck = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "", design: "" };
   if (tp.deck) {
     deck = await generateDeck(ctx, story, draft, provider, prog, {
       draftStem: draftName.replace(/\.md$/, ""),
@@ -2230,7 +2241,7 @@ async function generateOne(ctx, story) {
       "_Deterministic addendum — the review deck laid out by the TestPlanDeck prompt " +
       `${DECK_PROMPT_VERSION} over this draft (pattern and region decisions), grounded ` +
       "slide by slide and rendered as native editable PowerPoint objects by " +
-      `local/deck2pptx.mjs ${DECK_VERSION}. ` +
+      `local/deck2pptx.mjs ${DECK_VERSION}` + (deck.design ? ` on the ${deck.design} design system` : "") + ". " +
       (deck.error
         ? `Pass skipped: ${cellSafe(deck.error, 160)}._\n`
         : `${deck.slides} slides from ${deck.proposed} proposed` +
@@ -2298,7 +2309,7 @@ async function generateOne(ctx, story) {
     : undefined;
   const deckOut = tp.deck
     ? { proposed: deck.proposed, slides: deck.slides, error: deck.error || undefined, file: deck.url || undefined,
-        spec: deck.specUrl || undefined, dropped: deck.dropped }
+        spec: deck.specUrl || undefined, dropped: deck.dropped, design: deck.design || undefined }
     : undefined;
   return { line, draftPath, draftName, localDraft, verify, findings, figures, deck: deckOut };
 }
@@ -2315,7 +2326,7 @@ async function generateOne(ctx, story) {
  */
 async function generateDeck(ctx, story, draft, provider, prog, names) {
   const { cfg, graph, siteId, tp, sw, dry, plan } = ctx;
-  const out = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "" };
+  const out = { proposed: 0, slides: 0, dropped: [], error: "", url: "", specUrl: "", design: "" };
   try {
     prog(`deck — calling the model (provider ${provider}, ~${draft.length} chars of draft)`);
     const echo = streamEcho(ctx, provider, "deck");
@@ -2331,7 +2342,10 @@ async function generateDeck(ctx, story, draft, provider, prog, names) {
       mediaDir: mediaDir && fs.existsSync(mediaDir) ? mediaDir : null,
       svgs: names.svgs,
       provenance: `provider ${provider}`,
+      design: tp.deckDesign,
+      theme: tp.deckTheme,
     });
+    out.design = r.designName;
     out.slides = r.slides;
     out.dropped = r.dropped;
     for (const w of r.warnings) prog(`deck — note: ${w}`);

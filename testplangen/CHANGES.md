@@ -1,3 +1,76 @@
+# TestPlanGen v2.37 — the review deck on three design systems, light or dark (designsystem v1.2, deck2pptx v1.2, deckspec v1.1, draft2pptx v1.3, testplangen.mjs v1.17)
+
+Owner-requested (2026-09-06), following v2.36: "any other design
+systems you'd suggest?" → add two; then "wire them into the figure
+generation too, and a light / dark switch for each".
+
+- **Three designs (`local/lib/designsystem.mjs` v1.1).** `fluent`
+  (the v2.36 default — Microsoft Fluent 2, MIT, Segoe UI), `carbon`
+  (IBM Carbon v11, Apache 2.0 — the productive type ramp heading-01 …
+  heading-07 / body-01 / body-02 / label-01 / caption-01, the
+  spacing-01 … spacing-13 scale, the 2x Grid's 32 px gutter, square
+  surfaces, the White theme; IBM Plex Sans) and `uswds` (U.S. Web
+  Design System v3, public domain — the size-N / line-height-N tokens,
+  8 px spacing units, the desktop column gap, the default theme's
+  base / primary / status colours; Public Sans). Every design supplies
+  the same shape through `makeDesign`: the deck addresses type by
+  DECK ROLE (display, hero, title, title2, subtitle, subtitle2, body2,
+  body, bodyStrong, label, caption, caption2) and colour by DECK ROLE
+  (textPrimary … dangerTint), and each design's `roles` / `colors`
+  tables name the system token behind every number. `deckspec.mjs`
+  v1.1 lays out on whichever design it is handed and never knows
+  which; `deck2pptx.mjs` v1.1 `--design`, `testplangen.deckDesign`
+  (an unknown name refuses BEFORE the generation spend), the
+  provenance line names the design. The spec is design-independent:
+  one JSON renders on any of them. Two legibility substitutions are
+  named inline (a system's yellow "warning" is an icon tint; the text
+  role takes its darker warm value). The face caveat is real: Plex
+  and Public Sans are not on a typical Windows machine — install or
+  embed them, or PowerPoint substitutes.
+- **Light and dark themes (`designsystem.mjs` v1.2).** `designOf(name,
+  theme)`; `--theme light|dark`, `testplangen.deckTheme`. Light = the
+  system's published light values. Dark = the system's own dark
+  surfaces where it publishes them (Fluent: the Diagram Style
+  Framework's ink surfaces the rule-built deck already uses; Carbon:
+  the Gray 100 theme verbatim; USWDS publishes no dark theme — its
+  darkest base steps as surfaces, its "-light" ramp steps as
+  text-on-dark status colours), with the status TINTS derived by
+  blending each status colour 25 % over the dark layer (`mix`) and
+  named as derived in `COLOR_SOURCE`. On dark, paper slides sit on
+  the dark surface and dividers on the deep brand surface (Carbon:
+  Blue 80). draft2pptx v1.3's `tableFrame` and `checkbox` take a
+  colours option so the native table and the boxes follow the theme
+  (the CLI passes none; its output is unchanged, 37/37).
+- **Figures follow the deck (`restyleFigureSvg`).** Story and generated
+  figures are drawn in ONE closed palette (figurespec FIG_STYLE, the
+  sweep's SlideFigures). Before a figure becomes a shape group,
+  deck2pptx v1.2 maps every palette hex — ink, secondary, muted, the
+  plate, the node tints, the tone strokes, the lighter event strokes,
+  the marker fills — onto the design + theme's roles, and the font
+  family onto the design's face; the 24-entry map goes through
+  placeholders so a mapped value is never re-mapped. Fluent / light
+  is the identity (the figures are already in that palette; the group
+  is byte-identical to v2.36). The SVG files on disk, the sidecars and
+  the sweep are untouched — this is embed-time only, which is why
+  nothing in figurespec, SlideFigures or the figure index changed.
+- Gates: `check_deckspec.py` **99/99** (per-design shape, Carbon /
+  USWDS tokens verbatim, same 16 pages inside the canvas on every
+  design and theme, derived tints named, Carbon dark = Gray 100,
+  restyle identity / mapping / no double-map, unknown design and
+  theme refused); `check_deck2pptx.py` **56/56** (carbon in Plex with
+  a regular-weight 36 pt heading-05 title and square cards, uswds in
+  Public Sans at 40.5 pt bold, carbon dark: Gray 100 paper / Blue 80
+  dividers / table header / the figure group re-coloured with no
+  palette value left, fluent light's group unchanged, `--generate`
+  honouring `deckDesign`, both refusals, `--help`);
+  `check_testplangen.py` **221/221** (deckDesign / deckTheme refusals
+  before spend, carbon + dark rendered, the run log and addendum
+  naming the design). Every standing suite green.
+
+Rollout: nothing on the tenant. `testplangen.deckDesign` /
+`deckTheme` in config, or per file:
+`node local\deck2pptx.mjs <draft>.md --spec <draft>--deck.json --design carbon --theme dark --media "<synced library>\media"`.
+
 # TestPlanGen v2.36 — the review deck laid out by the model on a design system (TestPlanDeck prompt v0.1, testplangen.mjs v1.16, deck2pptx v1.0, deckspec v1.0, designsystem v1.0, draft2pptx v1.2, svg2pptx v1.5)
 
 Owner-requested (2026-09-05): an LLM-based slide-deck generator whose

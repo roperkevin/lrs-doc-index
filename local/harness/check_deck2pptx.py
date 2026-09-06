@@ -1,5 +1,5 @@
 """Gate for the model-laid-out review deck renderer (local/deck2pptx.mjs
-v1.0, over lib/deckspec.mjs + lib/designsystem.mjs + draft2pptx v1.2's
+v1.2, over lib/deckspec.mjs + lib/designsystem.mjs + draft2pptx v1.3's
 exported emitter + svg2pptx v1.5's parseFigureSvg).
 
 Renders a deck spec over a representative TestPlanGen draft and reads
@@ -33,6 +33,18 @@ the .pptx back with python-pptx, asserting the deck contract:
      substituted, testplangen.deckMaxTokens as max_tokens), the spec
      written beside the deck as <out>.deck.json and re-renderable with
      --spec; a sentinel-less reply exits nonzero and writes nothing
+  9. --design (v1.1): the same spec on carbon renders in IBM Plex Sans
+     with Carbon's heading-05 title (36 pt, regular weight), the Gray
+     100 inverse and square cards; on uswds in Public Sans with the
+     size-13 title (40.5 pt bold) and the primary-darker inverse; the
+     provenance line names the design; an unknown design is refused
+     up front; --generate takes the design from testplangen.deckDesign
+ 10. --theme (v1.2): carbon dark puts paper slides on Gray 100 with
+     Gray 10 text, the native table's header on the divider surface,
+     and the embedded figure group re-coloured (no Diagram Style
+     Framework ink left in it; Carbon's Blue 50 in its place) — on
+     fluent light the group is byte-identical to the unstyled one;
+     an unknown theme is refused; the provenance names the theme
 
 Needs python-pptx (review/harness/requirements.txt — the CI
 full-format job installs it). Usage: python3 check_deck2pptx.py
@@ -277,7 +289,7 @@ def main():
     out = md[:-3] + "--deck.pptx"
     check("renders to the sibling <stem>--deck.pptx", r.returncode == 0 and os.path.exists(out), r.stdout + r.stderr)
     check("stdout reports slides, title, proposed, dropped",
-          "12 slides" in r.stdout and "Route Merge" in r.stdout and "(13 proposed, 1 dropped)" in r.stdout, r.stdout)
+          "12 slides" in r.stdout and "Route Merge" in r.stdout and "(13 proposed, 1 dropped; design fluent, theme light)" in r.stdout, r.stdout)
     check("the invented card drops ITS slide, named on stderr with the finding",
           "dropped slide 10 (cards)" in r.stderr and "is not in the draft" in r.stderr, r.stderr)
     d = pptx.Presentation(out)
@@ -389,6 +401,70 @@ def main():
              if r.font.color and r.font.color.type is not None and str(r.font.color.rgb) == "C2701A" and "[VERIFY:" in r.text]
     check("[VERIFY: …] spans inside copied text surface as amber runs",
           amber == ["[VERIFY: minimum network configuration]"], amber)
+    check("closing provenance names the design", "design Fluent 2" in texts[11], texts[11][-200:])
+
+    # ---- 9. designs ----------------------------------------------------
+    print("== designs")
+    def deck_on(design):
+        outp = os.path.join(tmp, f"{design}.pptx")
+        rr = run([md, "--spec", spec_path, "-o", outp, "--media", media, "--design", design])
+        dd = pptx.Presentation(outp)
+        ss = list(dd.slides)
+        return rr, ss, [slide_text(x) for x in ss]
+    rr, cs, ct = deck_on("carbon")
+    cfonts = {r.font.name for s in cs for r in runs_of(s) if r.font.name}
+    ctitle = [r for r in runs_of(cs[1]) if r.text == "At a glance"]
+    ccard = [sh for sh in cs[4].shapes if sh.name == "Expected result"][0]
+    cadj = ccard._element.spPr.prstGeom.find("{http://schemas.openxmlformats.org/drawingml/2006/main}avLst/{http://schemas.openxmlformats.org/drawingml/2006/main}gd").get("fmla")
+    check("carbon: 12 slides, IBM Plex Sans on every run, heading-05 title = 36 pt regular, Gray 100 inverse",
+          rr.returncode == 0 and len(cs) == 12 and cfonts == {"IBM Plex Sans"} and ctitle and ctitle[0].font.size.pt == 36
+          and not ctitle[0].font.bold and bg_rgb(cs[0]) == "161616", (cfonts, [(r.font.size, r.font.bold) for r in ctitle], bg_rgb(cs[0])))
+    check("carbon: square cards (roundRect adj 0), provenance names IBM Carbon, the figure group still embeds",
+          cadj == "val 0" and "design IBM Carbon" in ct[11] and len(groups(cs[5])) == 1, (cadj, ct[11][-120:]))
+    check("carbon: every shape inside the canvas",
+          all(sh.left >= 0 and sh.top >= 0 and sh.left + sh.width <= W + 1 and sh.top + sh.height <= H + 1 for s in cs for sh in s.shapes if sh.width is not None), "")
+    rr, us, ut = deck_on("uswds")
+    ufonts = {r.font.name for s in us for r in runs_of(s) if r.font.name}
+    utitle = [r for r in runs_of(us[1]) if r.text == "At a glance"]
+    check("uswds: Public Sans on every run, size-13 title = 40.5 pt bold, primary-darker inverse, provenance names the system",
+          rr.returncode == 0 and len(us) == 12 and ufonts == {"Public Sans"} and utitle and utitle[0].font.size.pt == 40.5
+          and utitle[0].font.bold and bg_rgb(us[0]) == "162E51" and "design U.S. Web Design System" in ut[11],
+          (ufonts, [(r.font.size, r.font.bold) for r in utitle], bg_rgb(us[0])))
+    check("uswds: every shape inside the canvas",
+          all(sh.left >= 0 and sh.top >= 0 and sh.left + sh.width <= W + 1 and sh.top + sh.height <= H + 1 for s in us for sh in s.shapes if sh.width is not None), "")
+    rr = run([md, "--spec", spec_path, "-o", os.path.join(tmp, "bogus.pptx"), "--design", "bogus"])
+    check("--design bogus refused up front, nothing written",
+          rr.returncode == 2 and 'unknown design "bogus"' in rr.stderr and not os.path.exists(os.path.join(tmp, "bogus.pptx")), rr.stderr)
+    rr = run([md, "--help"])
+    check("--help lists the designs with licence and font, and the themes",
+          rr.returncode == 0 and "carbon: IBM Carbon (Apache-2.0)" in rr.stdout and "Public Sans" in rr.stdout and "themes: light | dark" in rr.stdout, rr.stdout[-300:])
+
+    # ---- 10. themes ----------------------------------------------------
+    print("== themes")
+    A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+    def group_colours(g):
+        return sorted({el.get("val") for el in g._element.iter(A + "srgbClr")})
+    light_fig = group_colours(g5[0])
+    outd = os.path.join(tmp, "carbon-dark.pptx")
+    rr = run([md, "--spec", spec_path, "-o", outd, "--media", media, "--design", "carbon", "--theme", "dark"])
+    dd = pptx.Presentation(outd)
+    ds_ = list(dd.slides)
+    dt = [slide_text(x) for x in ds_]
+    title_dark = [r for r in runs_of(ds_[1]) if r.text == "At a glance"]
+    check("carbon dark: paper slides on Gray 100, title text Gray 10, dividers on Blue 80, provenance names the theme",
+          rr.returncode == 0 and bg_rgb(ds_[1]) == "161616" and str(title_dark[0].font.color.rgb) == "F4F4F4" and bg_rgb(ds_[3]) == "002D9C"
+          and "design IBM Carbon (dark) · theme dark" in dt[11], (bg_rgb(ds_[1]), bg_rgb(ds_[3]), dt[11][-120:]))
+    tbl = [sh for sh in ds_[9].shapes if getattr(sh, "has_table", False) and sh.has_table][0]
+    head_fill = tbl._element.find(".//" + A + "tcPr/" + A + "solidFill/" + A + "srgbClr").get("val")
+    check("carbon dark: the native table's header sits on the divider surface (Blue 80), not the light palette's ink",
+          head_fill == "002D9C", head_fill)
+    dark_fig = group_colours(groups(ds_[5])[0])
+    check("carbon dark: the embedded figure is re-coloured — Blue 50 for teal, Gray 10 for ink, no Diagram Style Framework value left",
+          "4589FF" in dark_fig and "F4F4F4" in dark_fig and not set(light_fig) & set(dark_fig), (light_fig, dark_fig))
+    check("fluent light: the figure group keeps the palette it was drawn in (ink, teal, muted)",
+          light_fig == ["16302F", "1B6E8C", "6E8285"], light_fig)
+    rr = run([md, "--spec", spec_path, "-o", os.path.join(tmp, "dusk.pptx"), "--theme", "dusk"])
+    check("--theme dusk refused up front", rr.returncode == 2 and 'unknown theme "dusk"' in rr.stderr and not os.path.exists(os.path.join(tmp, "dusk.pptx")), rr.stderr)
 
     # ---- 7. CLI --------------------------------------------------------
     print("== CLI")
@@ -421,7 +497,7 @@ def main():
     cfg = os.path.join(tmp, "config.json")
     with open(cfg, "w", encoding="utf-8") as f:
         json.dump({"llm": {"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
-                   "testplangen": {"deckMaxTokens": 12345}}, f)
+                   "testplangen": {"deckMaxTokens": 12345, "deckDesign": "carbon"}}, f)
     out4 = os.path.join(tmp, "generated.pptx")
     r = run([md, "--generate", "--config", cfg, "-o", out4, "--media", media])
     prompt = (state.last_body.get("messages") or [{}])[0].get("content", "")
@@ -435,9 +511,12 @@ def main():
           and "- draft--fig-tc-n1.svg — generated figure for TC-N1" in prompt, prompt[prompt.find("The figures"):][:300])
     check("max_tokens = testplangen.deckMaxTokens", state.last_body.get("max_tokens") == 12345, state.last_body.get("max_tokens"))
     spec_out = out4[:-5] + ".deck.json"
+    gen_deck = pptx.Presentation(out4)
     check("the spec lands beside the deck as <out>.deck.json; the deck has the reply's 6 slides",
           os.path.exists(spec_out) and json.load(open(spec_out))["slides"][0]["pattern"] == "title"
-          and len(list(pptx.Presentation(out4).slides)) == 6, r.stderr)
+          and len(list(gen_deck.slides)) == 6, r.stderr)
+    check("--generate takes the design from testplangen.deckDesign (carbon → IBM Plex Sans)",
+          {r.font.name for s in gen_deck.slides for r in runs_of(s) if r.font.name} == {"IBM Plex Sans"}, "")
     r = run([md, "--spec", spec_out, "-o", os.path.join(tmp, "rerender.pptx"), "--media", media])
     check("the written spec re-renders with --spec", r.returncode == 0 and "6 slides" in r.stdout, r.stdout + r.stderr)
     state.text = "no sentinels here"
