@@ -28,7 +28,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install PyYAML
+      - run: pip install PyYAML anthropic
+      - run: python3 test_lrsdoc.py
       - run: python3 check_related.py
       - run: python3 check_regex.py
       - run: python3 check_shapes.py

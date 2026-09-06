@@ -27,3 +27,8 @@ work/
 # a local export of the sidecar library for analysis (never committed;
 # the 2026-09-05 snapshot is in git history under LRSDocIndex/)
 corpus/
+
+# Python packaging artifacts
+*.egg-info/
+build/
+dist/
