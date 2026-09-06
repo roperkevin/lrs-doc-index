@@ -1,5 +1,5 @@
 /**
- * RegexExtract v1.4 — deterministic ID + doc revision extraction,
+ * RegexExtract v1.5 (v1.4 + the bare-UN prose guard) — deterministic ID + doc revision extraction,
  * sidecar filename slug, and product-line detection
  * ------------------------------------------------------------------
  * r6 batch (flow v2.8 sidecar format) — gated by check_batch_r6.py.
@@ -105,6 +105,24 @@ function acronymHit(scan: string, acro: string, dateGuard: boolean): boolean {
   return false;
 }
 
+// v1.5: a bare "UN" token counts only when it is not ordinary prose —
+// "the UN Secretary" is not the Utility Network; "the UN dataset",
+// "UN and APR events", "UN/APR" are. A token preceded by an article or
+// preposition needs an LRS word right after it.
+function bareUnHit(scan: string): boolean {
+  const re = /\bUN\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(scan)) !== null) {
+    const before = scan.slice(Math.max(0, m.index - 12), m.index);
+    const after = scan.slice(m.index + 2, m.index + 40);
+    const prose = /(?:^|\s)(?:the|a|an|of|at|by|to|in|for|from|with)\s+$/i.test(before);
+    const lrs = /^\s*(?:\/|and\b|or\b|dataset|datasets|network|networks|lrs|apr|pipeline|feature|features|layer|layers|data\b|route|routes|event|events|editing|version|versions|devices?|junctions?)/i.test(after);
+    if (prose && !lrs) continue;
+    return true;
+  }
+  return false;
+}
+
 function detectProducts(raw: string): string[] {
   const RH = "Roads & Highways";
   const APR = "Pipeline Referencing";
@@ -125,7 +143,7 @@ function detectProducts(raw: string): string[] {
   if (acronymHit(scan, "ADMRH", false)) found[RH] = true;
   if (acronymHit(scan, "RH", false)) found[RH] = true;
   if (acronymHit(scan, "APR", true)) found[APR] = true;
-  if (acronymHit(scan, "UN", false)) found[UN] = true;
+  if (bareUnHit(scan)) found[UN] = true;
   const out: string[] = [];
   for (const p of [RH, APR, UN]) {
     if (found[p]) out.push(p);
