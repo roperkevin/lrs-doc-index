@@ -15,6 +15,14 @@ Legs:
      Truncated / Refused / ContractError outcomes, the dump dir.
   4. the CLI: JSON lines out, delta lines with --stream, exit codes,
      --output, the prompts listing.
+  5. the tenant model (LRSDOC_TENANT=foundry, a second mock server):
+     it serves the call and is named in the result; LRSDOC_TENANT_MODEL
+     renames the deployment; the Claude API takes over when the tenant
+     backend will not authenticate, is missing or 5xxs, with the switch
+     narrated; a 400 and a refusal are answers, not fallbacks; a
+     streamed reply that dies mid-flight is never re-sent; the
+     LRSDOC_TENANT_FALLBACK=0 and unknown-provider guards; and the
+     config -> environment mapping pipeline/llm.mjs does.
 Run: python3 test_lrsdoc.py (from tests/ or anywhere).
 """
 
@@ -33,6 +41,7 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO)
 sys.path.insert(0, HERE)
 
+import anthropic  # noqa: E402
 import mock_anthropic as mock  # noqa: E402
 
 passed = failed = 0
@@ -57,6 +66,7 @@ class State:
         self.thinking = ["Reading; ", "done."]
         self.status = 200
         self.fail_first = 0        # answer this many requests with 529 first
+        self.cut_stream = False    # close the socket half way through an SSE reply
         self.calls = 0
         self.last_body = {}
         self.last_headers = {}
@@ -86,6 +96,20 @@ def make_handler(state: State):
                 payload = mock.sse_bytes(state.text, state.stop_reason,
                                          state.thinking if (body.get("thinking") or {}).get("display") == "summarized" else None)
                 ctype = "text/event-stream"
+                if state.cut_stream:
+                    # promise the whole reply, send the opening events
+                    # (two text deltas reach the caller), then drop the
+                    # connection under the client
+                    part = mock.sse_bytes(state.text, state.stop_reason, None, keep=4)
+                    self.send_response(200)
+                    self.send_header("content-type", ctype)
+                    self.send_header("content-length", str(len(payload)))
+                    self.end_headers()
+                    self.wfile.write(part)
+                    self.wfile.flush()
+                    self.close_connection = True
+                    self.connection.close()
+                    return
             else:
                 payload = json.dumps(mock.message_json(state.text, state.stop_reason)).encode()
                 ctype = "application/json"
@@ -268,6 +292,164 @@ def main():
               r.returncode == 0 and json.load(open(outp))["text"] == state.text and json.loads(r.stdout)["result"]["written"] == outp, r.stdout)
     r = subprocess.run([sys.executable, "-m", "lrsdoc", "prompts"], capture_output=True, text=True, env=env, cwd=REPO)
     check("cli prompts lists the six files with versions", r.returncode == 0 and r.stdout.count("\n") == 6 and "testplan_draft" in r.stdout, r.stdout)
+
+    # ---- 5. the tenant model ---------------------------------------
+    # A second mock server stands in for the company's own deployment;
+    # the Foundry client is the SDK's, so `api-key` on the wire (the
+    # Claude API client sends only `x-api-key`) proves which backend
+    # answered.
+    print("== tenant model")
+    tenant = State()
+    tsrv = HTTPServer(("127.0.0.1", 0), make_handler(tenant))
+    threading.Thread(target=tsrv.serve_forever, daemon=True).start()
+    tenant_base = f"http://127.0.0.1:{tsrv.server_port}"
+    classified = json.dumps({"title": "T", "docKind": "Other", "surface": "Pro", "summary": "s", "pe": "",
+                             "dev": "", "targetRelease": "", "tools": [], "keywords": []})
+    state.text = tenant.text = classified
+    tenant_env = {"LRSDOC_TENANT": "foundry", "ANTHROPIC_FOUNDRY_BASE_URL": tenant_base,
+                  "ANTHROPIC_FOUNDRY_API_KEY": "mock-foundry-key"}
+    os.environ.update(tenant_env)
+    inputs = {"FileName": "f", "ExistingKeywords": "", "DocText": "d"}
+
+    calls = (tenant.calls, state.calls)
+    res = t_classify(inputs, {"max_retries": 0})
+    check("the tenant model serves the call, and the result names it",
+          tenant.calls == calls[0] + 1 and state.calls == calls[1] and res.backend == "foundry"
+          and res.data["docKind"] == "Other" and tenant.last_headers.get("api-key") == "mock-foundry-key",
+          (tenant.calls - calls[0], state.calls - calls[1], res.backend))
+    check("the prompt's own model is what the tenant is asked for",
+          tenant.last_body["model"] == prompts.load("docindex_classify").model, tenant.last_body.get("model"))
+
+    os.environ["LRSDOC_TENANT_MODEL"] = "corp-opus-deployment"
+    t_classify(inputs, {"max_retries": 0})
+    check("LRSDOC_TENANT_MODEL renames the model on the tenant backend only",
+          tenant.last_body["model"] == "corp-opus-deployment", tenant.last_body.get("model"))
+    del os.environ["LRSDOC_TENANT_MODEL"]
+
+    for status, why in ((401, "will not authenticate"), (404, "has no such deployment"), (503, "is down")):
+        tenant.status = status
+        calls = (tenant.calls, state.calls)
+        res = t_classify(inputs, {"max_retries": 0})
+        check(f"a tenant that {why} ({status}) falls back to the Claude API",
+              res.backend == "anthropic" and res.data["docKind"] == "Other"
+              and tenant.calls == calls[0] + 1 and state.calls == calls[1] + 1
+              and state.last_headers.get("x-api-key") == "mock-key", (res.backend, status))
+    tenant.status = 200
+
+    tenant.status = 400
+    calls = state.calls
+    try:
+        t_classify(inputs, {"max_retries": 0})
+        check("a 400 from the tenant is an answer about the request, not a fallback", False)
+    except anthropic.APIStatusError as e:
+        check("a 400 from the tenant is an answer about the request, not a fallback",
+              e.status_code == 400 and state.calls == calls, (e.status_code, state.calls - calls))
+    tenant.status = 200
+
+    tenant.stop_reason = "refusal"
+    calls = state.calls
+    try:
+        t_classify(inputs, {"max_retries": 0})
+        check("a refusal from the tenant is not re-asked of the Claude API", False)
+    except llm.Refused:
+        check("a refusal from the tenant is not re-asked of the Claude API", state.calls == calls, state.calls - calls)
+    tenant.stop_reason = "end_turn"
+
+    # a streamed reply that dies after the first chunk: the caller has
+    # already seen text, so re-sending it anywhere would repeat it
+    tenant.cut_stream = True
+    calls = state.calls
+    deltas = []
+    try:
+        # an explicit short timeout: a runner that does not surface the
+        # closed socket must fail this leg, not sit on the prompt's
+        # 600 s default
+        t_generate("testplan_draft", {k: "" for k in draft.inputs},
+                   {"max_retries": 0, "timeout_s": 10},
+                   on_delta=lambda kind, text: deltas.append(text))
+        check("a stream that dies mid-flight is not re-sent to the fallback", False)
+    except Exception:
+        check("a stream that dies mid-flight is not re-sent to the fallback",
+              state.calls == calls and deltas, (state.calls - calls, deltas))
+    tenant.cut_stream = False
+
+    os.environ["LRSDOC_TENANT_FALLBACK"] = "0"
+    tenant.status = 503
+    calls = state.calls
+    try:
+        t_classify(inputs, {"max_retries": 0})
+        check("LRSDOC_TENANT_FALLBACK=0 makes the tenant model the only backend", False)
+    except anthropic.APIStatusError as e:
+        check("LRSDOC_TENANT_FALLBACK=0 makes the tenant model the only backend",
+              e.status_code == 503 and state.calls == calls, (e.status_code, state.calls - calls))
+    del os.environ["LRSDOC_TENANT_FALLBACK"]
+    tenant.status = 200
+
+    os.environ["LRSDOC_TENANT"] = "bedrock"
+    try:
+        llm.backends()
+        check("an unknown provider names itself and the known ones", False)
+    except llm.LLMError as e:
+        check("an unknown provider names itself and the known ones",
+              "bedrock" in str(e) and "foundry" in str(e), e)
+    os.environ["LRSDOC_TENANT"] = "foundry"
+
+    # the CLI, with the run narrated: the switch is one progress line
+    tenant.status = 401
+    env_t = {**os.environ, "PYTHONPATH": REPO, "LRSDOC_PROGRESS": "1"}
+    r = subprocess.run([sys.executable, "-m", "lrsdoc", "classify", "--input", "-"],
+                       input=json.dumps({"inputs": inputs, "options": {"max_retries": 0}}),
+                       capture_output=True, text=True, env=env_t, cwd=REPO)
+    out = [json.loads(l) for l in r.stdout.splitlines() if l.strip()]
+    check("cli: the fallback is one progress line and a result served by the Claude API",
+          r.returncode == 0 and out[-1]["result"]["backend"] == "anthropic"
+          and "the tenant model (foundry) could not serve this call" in r.stderr
+          and "falling back to the Claude API" in r.stderr
+          and "-> the tenant model (foundry)" in r.stderr, r.stderr[-400:])
+    tenant.status = 200
+
+    for k in tenant_env:
+        del os.environ[k]
+    check("with no tenant configured the Claude API is the only backend",
+          [b.provider for b in llm.backends()] == ["anthropic"], llm.backends())
+    tsrv.shutdown()
+
+    # the Node side: config.llm.tenant -> the environment the layer reads
+    def tenant_env_of(block, env=None):
+        r = subprocess.run(
+            ["node", "--input-type=module", "-e",
+             "import {tenantEnv} from './pipeline/llm.mjs';\n"
+             f"const e = {json.dumps(env or {})};\n"
+             f"try {{ tenantEnv(e, {json.dumps(block)}); }} catch (err) {{ e.__error = err.message; }}\n"
+             "console.log(JSON.stringify(e));"],
+            capture_output=True, text=True, cwd=REPO)
+        return json.loads(r.stdout or "{}")
+
+    e = tenant_env_of({"provider": "foundry", "resource": "my-company-ai",
+                       "apiKey": "corp-key", "model": "corp-opus-deployment"})
+    check("llm.tenant -> LRSDOC_TENANT + the SDK's own ANTHROPIC_FOUNDRY_* credentials",
+          e == {"LRSDOC_TENANT": "foundry", "ANTHROPIC_FOUNDRY_RESOURCE": "my-company-ai",
+                "ANTHROPIC_FOUNDRY_API_KEY": "corp-key", "LRSDOC_TENANT_MODEL": "corp-opus-deployment"}, e)
+    e = tenant_env_of({"baseUrl": "https://corp.example/anthropic", "apiKey": "k", "fallback": False})
+    check("llm.tenant: baseUrl stands in for resource, provider defaults to foundry, fallback:false carries",
+          e.get("ANTHROPIC_FOUNDRY_BASE_URL") == "https://corp.example/anthropic"
+          and e.get("LRSDOC_TENANT") == "foundry" and e.get("LRSDOC_TENANT_FALLBACK") == "0", e)
+    e = tenant_env_of({"provider": "bedrock", "resource": "r", "apiKey": "k"})
+    check("llm.tenant: an unknown provider fails with the known ones named",
+          "bedrock" in e.get("__error", "") and "foundry" in e.get("__error", ""), e)
+    e = tenant_env_of({"apiKey": "k"})
+    check("llm.tenant: neither resource nor baseUrl fails with the fix named",
+          "resource" in e.get("__error", "") and "baseUrl" in e.get("__error", ""), e)
+    e = tenant_env_of({"resource": "r"})
+    check("llm.tenant: a missing key fails naming llm.tenant.apiKey",
+          "llm.tenant.apiKey" in e.get("__error", ""), e)
+    e = tenant_env_of({"resource": "my-company-ai", "apiKey": "k"},
+                      env={"ANTHROPIC_FOUNDRY_BASE_URL": "https://stale.example",
+                           "LRSDOC_TENANT_MODEL": "stale-deployment",
+                           "LRSDOC_TENANT_FALLBACK": "0"})
+    check("llm.tenant: the block outranks a stale endpoint/model/fallback in the environment",
+          "ANTHROPIC_FOUNDRY_BASE_URL" not in e and "LRSDOC_TENANT_MODEL" not in e
+          and "LRSDOC_TENANT_FALLBACK" not in e and e.get("ANTHROPIC_FOUNDRY_RESOURCE") == "my-company-ai", e)
 
     srv.shutdown()
     print(f"\n{passed} passed, {failed} failed")

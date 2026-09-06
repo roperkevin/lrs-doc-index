@@ -1,5 +1,5 @@
 /**
- * llm.mjs v2.0 — the pipeline's model client.
+ * llm.mjs v2.1 — the pipeline's model client.
  *
  * Every Anthropic call goes through the Python layer (`lrsdoc/`,
  * `python -m lrsdoc <task>`): this module only spawns it, feeds it
@@ -13,6 +13,19 @@
  *              absent the child process uses whatever the SDK finds
  *              (ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN in the
  *              environment, or an `ant auth login` profile)
+ *   tenant     the company's own model, tried before the Claude API
+ *              (which stays behind it as the fallback):
+ *                provider  "foundry" — Claude on Microsoft Foundry
+ *                resource  the Foundry resource name, e.g.
+ *                          "my-company-ai" for
+ *                          https://my-company-ai.services.ai.azure.com/anthropic/
+ *                baseUrl   the endpoint instead of resource
+ *                apiKey    its key, ideally {"$env": "..."}
+ *                model     the deployment's model id, when it is not
+ *                          named after the public model
+ *                fallback  false to make the tenant model the only
+ *                          backend (default: fall back on auth,
+ *                          connection, capacity and 5xx failures)
  *   baseUrl    override the API endpoint (the gates' mock server)
  *   model      override the prompt file's default model
  *   effort     override the prompt file's effort
@@ -46,6 +59,46 @@ function resolveSecret(v, what) {
   throw new Error(`${what}: missing (set it in config, ideally as {"$env": "..."})`);
 }
 
+// ---- the tenant model ---------------------------------------------------
+
+const TENANT_PROVIDERS = new Set(["foundry"]);
+
+/**
+ * `llm.tenant` -> the environment the Python layer reads: LRSDOC_TENANT
+ * names the provider, the credentials go in the SDK's own
+ * ANTHROPIC_FOUNDRY_* variables. Config wins over anything exported on
+ * the machine; with no `llm.tenant` block the child inherits whatever
+ * the environment already sets, so a machine-wide tenant model needs no
+ * config at all.
+ */
+export function tenantEnv(env, tenant) {
+  const provider = String(tenant.provider || "foundry").toLowerCase();
+  if (!TENANT_PROVIDERS.has(provider)) {
+    throw new Error(
+      `llm.tenant.provider: unknown provider "${tenant.provider}" ` +
+      `(known: ${[...TENANT_PROVIDERS].join(", ")})`
+    );
+  }
+  if (!tenant.resource && !tenant.baseUrl) {
+    throw new Error(
+      'llm.tenant: set resource (the Foundry resource name, e.g. "my-company-ai") ' +
+      "or baseUrl (the endpoint) so the SDK knows where the tenant model lives"
+    );
+  }
+  env.LRSDOC_TENANT = provider;
+  env.ANTHROPIC_FOUNDRY_API_KEY = resolveSecret(tenant.apiKey, "llm.tenant.apiKey");
+  // the block is the whole answer: a stale endpoint, deployment name or
+  // fallback switch exported on the machine must not outrank it
+  delete env.ANTHROPIC_FOUNDRY_RESOURCE;
+  delete env.ANTHROPIC_FOUNDRY_BASE_URL;
+  delete env.LRSDOC_TENANT_MODEL;
+  delete env.LRSDOC_TENANT_FALLBACK;
+  if (tenant.resource) env.ANTHROPIC_FOUNDRY_RESOURCE = String(tenant.resource);
+  if (tenant.baseUrl) env.ANTHROPIC_FOUNDRY_BASE_URL = String(tenant.baseUrl);
+  if (tenant.model) env.LRSDOC_TENANT_MODEL = String(tenant.model);
+  if (tenant.fallback === false) env.LRSDOC_TENANT_FALLBACK = "0";
+}
+
 // ---- the bridge to lrsdoc -----------------------------------------------
 
 function bridgeEnv(cfg) {
@@ -60,6 +113,7 @@ function bridgeEnv(cfg) {
     env.ANTHROPIC_API_KEY = resolveSecret(cfg.apiKey, "llm.apiKey");
     delete env.ANTHROPIC_AUTH_TOKEN;
   }
+  if (cfg.tenant) tenantEnv(env, cfg.tenant);
   return env;
 }
 
