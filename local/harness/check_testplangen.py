@@ -190,7 +190,10 @@ Usage: python3 check_testplangen.py
                      draft still lands; --auto refuses; aibuilder
                      without llm.deckModelId refuses BEFORE the
                      generation spend, with it the Predict call is
-                     routed by GUID with the three inputs by name
+                     routed by GUID with the three inputs by name;
+                     v1.17 deckDesign / deckTheme — an unknown name
+                     refuses before spend, "carbon" + "dark" renders
+                     in IBM Plex Sans on the Gray 100 theme
 """
 import datetime
 import json
@@ -2313,6 +2316,36 @@ def main():
     r = run_job(cfg_main, ["--story", "12", "--dry-run", "--deck"])
     check("aibuilder without llm.deckModelId refuses before the generation call",
           r.returncode != 0 and "needs llm.deckModelId" in r.stderr and state.gen_calls == gen_before, r.stderr[:300])
+    # v1.17: the design knob — an unknown name refuses before spend, carbon renders in Plex
+    cfg_deck_bad = write_cfg("config-deck-bad.json",
+                             llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                             testplangen={"neighborCap": 8, "deckDesign": "bogus"})
+    ant_before = state.ant_calls
+    r = run_job(cfg_deck_bad, ["--story", "12", "--dry-run", "--deck"])
+    check("testplangen.deckDesign unknown: refused before the generation call",
+          r.returncode != 0 and 'testplangen.deckDesign / deckTheme: unknown design "bogus"' in r.stderr and state.ant_calls == ant_before, r.stderr[:300])
+    cfg_deck_bad2 = write_cfg("config-deck-bad2.json",
+                              llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                              testplangen={"neighborCap": 8, "deckTheme": "dusk"})
+    r = run_job(cfg_deck_bad2, ["--story", "12", "--dry-run", "--deck"])
+    check("testplangen.deckTheme unknown: refused before the generation call",
+          r.returncode != 0 and 'unknown theme "dusk"' in r.stderr and state.ant_calls == ant_before, r.stderr[:300])
+    cfg_deck_cb = write_cfg("config-deck-carbon.json",
+                            llm={"provider": "anthropic", "apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
+                            testplangen={"neighborCap": 8, "deckDesign": "carbon", "deckTheme": "dark"})
+    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
+    r = run_job(cfg_deck_cb, ["--story", "12", "--dry-run", "--deck"])
+    latest_cb = sorted((f for f in os.listdir(work_dir) if f.startswith("testplangen-draft-") and f.endswith("--deck.pptx")),
+                       key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))[-1]
+    with zipfile.ZipFile(os.path.join(work_dir, latest_cb)) as z:
+        cb1 = z.read("ppt/slides/slide1.xml").decode("utf-8")
+        cbt = z.read("ppt/theme/theme1.xml").decode("utf-8")
+    log_cb = json.load(open(json.loads(r.stdout.splitlines()[0])["logFile"], encoding="utf-8"))
+    latest_md_cb = open(os.path.join(work_dir, latest_cb.replace("--deck.pptx", ".md")), encoding="utf-8").read()
+    check("deckDesign carbon + deckTheme dark: the deck renders in IBM Plex Sans on Blue 80 dividers / Gray 100 paper, the run log + addendum name the design",
+          r.returncode == 0 and 'typeface="IBM Plex Sans"' in cb1 and 'val="002D9C"' in cb1 and 'typeface="IBM Plex Sans"' in cbt
+          and log_cb.get("deck", {}).get("design") == "IBM Carbon (dark)" and "on the IBM Carbon (dark) design system" in latest_md_cb,
+          (r.stderr[-300:], json.dumps(log_cb.get("deck"))[:200]))
     # aibuilder lane with a deck model: routed by GUID, inputs by name
     state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
     cfg_deck_ab = write_cfg("config-deck-ab.json",

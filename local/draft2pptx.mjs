@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * draft2pptx v1.2 — TestPlanGen draft markdown → a designed review deck
+ * draft2pptx v1.3 — TestPlanGen draft markdown → a designed review deck
  * ---------------------------------------------------------------------
  * Standalone (Node ≥ 18, zero dependencies — the svg2pptx precedent:
  * OOXML is a zip of XML parts, and Node's zlib does the rest). Takes a
@@ -59,6 +59,11 @@
  * local/deck2pptx.mjs (the model-laid-out review deck, TestPlanGen
  * v2.36) renders with the same emitter and the two decks read as one
  * design. CLI behavior and output are unchanged.
+ *
+ * v1.3: `setDefaultFont` (the face runs fall back to) and a `font`
+ * option on buildPptx (the theme's face) — deck2pptx renders a Carbon
+ * or USWDS deck in the design's own typeface. The CLI never sets
+ * either; its output is unchanged.
  */
 
 import fs from "node:fs";
@@ -262,6 +267,10 @@ export const AMBER_TINT = "F7EDDF";
 export const TEAL = "1B6E8C";      // coverage / trace / links
 export const TEAL_TINT = "E4EEF2";
 export const FONT = "Segoe UI";
+// v1.3: the face runs and notes fall back to when a run names none —
+// deck2pptx sets it to the chosen design's font; the CLI never does
+let DEFAULT_FONT = FONT;
+export const setDefaultFont = (f) => { DEFAULT_FONT = f || FONT; };
 export const PALETTE = {
   INK, INK_SOFT, MUTED, PAPER, TINT, BORDER, ICE, GREEN, GREEN_TINT, RED, RED_TINT,
   AMBER, AMBER_TINT, TEAL, TEAL_TINT, FONT,
@@ -315,7 +324,7 @@ export function runXml(r) {
   return `<a:r><a:rPr lang="en-US" sz="${Math.round(r.sz * 100)}" b="${r.b ? 1 : 0}"` +
     `${r.i ? ' i="1"' : ""} spc="${r.spc || 0}" dirty="0">` +
     solidFill(r.color || INK) +
-    `<a:latin typeface="${r.font || FONT}"/></a:rPr>` +
+    `<a:latin typeface="${r.font || DEFAULT_FONT}"/></a:rPr>` +
     `<a:t>${xesc(r.t)}</a:t></a:r>`;
 }
 
@@ -354,15 +363,18 @@ export function pill(text, x, y, w, h, fill, color, sz, bold) {
 export const pillW = (text, sz) => Math.round(text.length * (sz * 0.72 + 0.62) * PT + 0.3 * IN);
 
 // drawn checkbox: rounded square, filled green + tick when checked
-export function checkbox(x, y, size, checked) {
+export function checkbox(x, y, size, checked, colors) {
+  // v1.3: colors {paper, line, on, tick} let deck2pptx draw the box in
+  // the chosen design's palette; the CLI passes none (unchanged)
+  const c = { paper: PAPER, line: MUTED, on: GREEN, tick: PAPER, ...(colors || {}) };
   const geom = '<a:prstGeom prst="roundRect"><a:avLst><a:gd name="adj" fmla="val 22000"/></a:avLst></a:prstGeom>';
   if (!checked) {
-    return sp("checkbox", xfrm(x, y, size, size) + geom + solidFill(PAPER) +
-      `<a:ln w="15875">${solidFill(MUTED)}</a:ln>`);
+    return sp("checkbox", xfrm(x, y, size, size) + geom + solidFill(c.paper) +
+      `<a:ln w="15875">${solidFill(c.line)}</a:ln>`);
   }
   const body = '<p:txBody><a:bodyPr wrap="none" lIns="0" tIns="0" rIns="0" bIns="0" anchor="ctr"/><a:lstStyle/>' +
-    paraXml({ algn: "ctr", runs: [{ t: "✓", color: PAPER, sz: size / PT * 0.62, b: true }] }) + "</p:txBody>";
-  return sp("checkbox", xfrm(x, y, size, size) + geom + solidFill(GREEN) + "<a:ln><a:noFill/></a:ln>", body);
+    paraXml({ algn: "ctr", runs: [{ t: "✓", color: c.tick, sz: size / PT * 0.62, b: true }] }) + "</p:txBody>";
+  return sp("checkbox", xfrm(x, y, size, size) + geom + solidFill(c.on) + "<a:ln><a:noFill/></a:ln>", body);
 }
 
 // inline runs: **bold** spans (unbalanced ** stays literal, the
@@ -410,7 +422,11 @@ export function slide(shapesXml, bgHex) {
 
 // ------------------------------------------------- native table emit
 const TBL_ROW_H = 300000;
-export function tableFrame(x, y, rows, maxW, accentCol) {
+export function tableFrame(x, y, rows, maxW, accentCol, colors) {
+  // v1.3: colors {headFill, headText, text, accent, rowA, rowB, border}
+  // let deck2pptx draw the table in the chosen design + theme; the
+  // CLI passes none (unchanged)
+  const tc = { headFill: INK, headText: PAPER, text: INK, accent: TEAL, rowA: PAPER, rowB: TINT, border: BORDER, ...(colors || {}) };
   const nCols = Math.max(...rows.map((r) => r.length));
   const widths = [];
   for (let c = 0; c < nCols; c++) {
@@ -434,18 +450,18 @@ export function tableFrame(x, y, rows, maxW, accentCol) {
     return Math.max(TBL_ROW_H, lines * lineH(12.5) + 0.14 * IN);
   });
   const totalH = rowH.reduce((a, b) => a + b, 0);
-  const border = (side) => `<a:${side} w="9525">${solidFill(BORDER)}</a:${side}>`;
+  const border = (side) => `<a:${side} w="9525">${solidFill(tc.border)}</a:${side}>`;
   const trs = rows.map((r, ri) => {
     const tcs = [];
     for (let c = 0; c < nCols; c++) {
       const accent = ri > 0 && c === accentCol;
       const runs = inlineRuns(r[c] || "",
-        { color: ri === 0 ? PAPER : accent ? TEAL : INK, sz: 12.5, b: ri === 0 || accent });
+        { color: ri === 0 ? tc.headText : accent ? tc.accent : tc.text, sz: 12.5, b: ri === 0 || accent });
       tcs.push("<a:tc><a:txBody><a:bodyPr/><a:lstStyle/>" +
         paraXml({ runs }) + "</a:txBody>" +
         '<a:tcPr marL="91440" marR="91440" marT="36576" marB="36576" anchor="ctr">' +
         border("lnL") + border("lnR") + border("lnT") + border("lnB") +
-        (ri === 0 ? solidFill(INK) : solidFill(ri % 2 ? PAPER : TINT)) +
+        (ri === 0 ? solidFill(tc.headFill) : solidFill(ri % 2 ? tc.rowA : tc.rowB)) +
         "</a:tcPr></a:tc>");
     }
     return `<a:tr h="${rowH[ri]}">${tcs.join("")}</a:tr>`;
@@ -893,7 +909,7 @@ function closingSlide(model, stats) {
   });
   if (model.provenance) {
     x += textbox("prov", MARGIN, SLIDE_H - 0.75 * IN, CONTENT_W, 0.3 * IN,
-      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.2", color: MUTED, sz: 10.5 }] }]);
+      [{ runs: [{ t: model.provenance + "  ·  deck: local/draft2pptx.mjs v1.3", color: MUTED, sz: 10.5 }] }]);
   }
   return slide(x, INK);
 }
@@ -905,7 +921,8 @@ const NS_R = 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/rel
 const NS_P = 'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"';
 const RT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-function themeXml() {
+function themeXml(font) {
+  const face = font || FONT;
   const fills = "<a:fillStyleLst>" +
     '<a:solidFill><a:schemeClr val="phClr"/></a:solidFill>'.repeat(3) + "</a:fillStyleLst>";
   const lns = "<a:lnStyleLst>" +
@@ -923,8 +940,8 @@ function themeXml() {
     `<a:accent3><a:srgbClr val="${GREEN}"/></a:accent3><a:accent4><a:srgbClr val="7A5AA6"/></a:accent4>` +
     `<a:accent5><a:srgbClr val="${RED}"/></a:accent5><a:accent6><a:srgbClr val="${MUTED}"/></a:accent6>` +
     `<a:hlink><a:srgbClr val="${TEAL}"/></a:hlink><a:folHlink><a:srgbClr val="7A5AA6"/></a:folHlink></a:clrScheme>` +
-    `<a:fontScheme name="TestPlan"><a:majorFont><a:latin typeface="${FONT}"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>` +
-    `<a:minorFont><a:latin typeface="${FONT}"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme>` +
+    `<a:fontScheme name="TestPlan"><a:majorFont><a:latin typeface="${face}"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont>` +
+    `<a:minorFont><a:latin typeface="${face}"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme>` +
     `<a:fmtScheme name="TestPlan">${fills}${lns}${effs}${bgs}</a:fmtScheme>` +
     "</a:themeElements></a:theme>";
 }
@@ -951,7 +968,8 @@ function relsXml(rels) {
     "</Relationships>";
 }
 
-export function buildPptx(slidesIn, deckTitle, creator) {
+export function buildPptx(slidesIn, deckTitle, creator, opts) {
+  const font = (opts && opts.font) || undefined; // v1.3: the theme's face
   // v1.2: a slide may be {xml, notes} — notes become a native notes
   // page (notes master + one notes slide per noted slide); plain
   // strings are the v1.1 package, byte-for-byte
@@ -1022,9 +1040,9 @@ export function buildPptx(slidesIn, deckTitle, creator) {
   put("ppt/slideLayouts/_rels/slideLayout1.xml.rels", relsXml([
     { id: "rId1", type: `${RT}/slideMaster`, target: "../slideMasters/slideMaster1.xml" },
   ]));
-  put("ppt/theme/theme1.xml", themeXml());
+  put("ppt/theme/theme1.xml", themeXml(font));
   if (anyNotes) {
-    put("ppt/theme/theme2.xml", themeXml());
+    put("ppt/theme/theme2.xml", themeXml(font));
     put("ppt/notesMasters/notesMaster1.xml", notesMasterXml());
     put("ppt/notesMasters/_rels/notesMaster1.xml.rels", relsXml([
       { id: "rId1", type: `${RT}/theme`, target: "../theme/theme2.xml" },
@@ -1066,7 +1084,7 @@ function notesMasterXml() {
 
 function notesSlideXml(notesText) {
   const paras = String(notesText).split(/\r?\n/).map((ln) =>
-    `<a:p><a:r><a:rPr lang="en-US" sz="1200" dirty="0"><a:latin typeface="${FONT}"/></a:rPr><a:t>${xesc(ln)}</a:t></a:r></a:p>`
+    `<a:p><a:r><a:rPr lang="en-US" sz="1200" dirty="0"><a:latin typeface="${DEFAULT_FONT}"/></a:rPr><a:t>${xesc(ln)}</a:t></a:r></a:p>`
   ).join("");
   return XML_HDR + `<p:notes ${NS_A} ${NS_R} ${NS_P}>` +
     '<p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>' +

@@ -1,5 +1,5 @@
-"""Gate for the review-deck modules (local/lib/designsystem.mjs v1.0 +
-local/lib/deckspec.mjs v1.0) — fixture-free, no python-pptx: Node runs
+"""Gate for the review-deck modules (local/lib/designsystem.mjs v1.2 +
+local/lib/deckspec.mjs v1.1) — fixture-free, no python-pptx: Node runs
 the pure modules over an in-memory draft and the checks read the JSON
 back.
 
@@ -24,6 +24,23 @@ back.
   6. layoutDeck: every element inside the canvas on every pattern,
      header x on grid column 0, region spans on grid columns,
      pagination (checklist, two-column, table), page numbers, grounds
+  7. designs (v1.1): fluent / carbon / uswds each expose the same shape
+     (twelve type roles, eight spacing roles in order, grid summing to
+     the content width, ordered bands, hex colour roles with a named
+     source token); Carbon's tokens verbatim (spacing-01 … 13, the
+     productive ramp, square corners, IBM Plex Sans), USWDS's (8 px
+     units, the size / line-height tokens, Public Sans); the same spec
+     lays out inside the canvas with the same page count on every
+     design; designOf refuses an unknown name
+  8. themes + figures (v1.2): every design has a dark theme with the
+     same colour roles (dark surface, light text, the divider on the
+     deep brand surface, status tints derived 25 % over the layer and
+     named as derived); Carbon dark = the Gray 100 theme verbatim; a
+     dark layout stays inside the canvas; restyleFigureSvg is the
+     identity on fluent / light and maps every palette hex (ink, teal,
+     the tints, the event strokes, the marker fills) and the font on
+     any other design + theme, never re-mapping a mapped value;
+     unknown theme refused
 
 Usage: python3 check_deckspec.py
 """
@@ -136,6 +153,12 @@ _User A locks R1; User B's merge is denied_ (rule R5)
 """
 
 
+# a minimal figure in the Diagram Style Framework palette (leg 8)
+FIG_MINI = ("<svg><style>.route{stroke:#16302F}.f-cool{fill:#1B6E8C}.t-cool{fill:#E5F0F5}"
+            ".event.s-cool{stroke:#4FA7D5}text{font-family:'Segoe UI',Arial}</style>"
+            '<defs><path fill="#16302f"/></defs><rect fill="#FFFFFF"/></svg>')
+
+
 def node(script):
     res = subprocess.run(["node", "--input-type=module", "-e", script],
                          capture_output=True, text=True, cwd=REPO)
@@ -168,9 +191,10 @@ console.log(JSON.stringify(o));
           [sp[k] for k in ("xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl")] == [2, 4, 8, 12, 16, 20, 24, 32], sp)
     check("radii + strokes verbatim", d["fluent"]["borderRadius"]["large"] == 6
           and d["fluent"]["borderRadius"]["circular"] == 10000 and d["fluent"]["strokeWidth"]["thick"] == 2, "")
-    check("presentation scale 1.5 applied once: title1 = 36 pt / 45 pt line, body1 = 15.75 pt",
-          d["scale"] == 1.5 and d["type"]["title1"]["sz"] == 36 and d["type"]["title1"]["line"] == 45
-          and d["type"]["body1"]["sz"] == 15.75 and d["type"]["title1"]["bold"] and not d["type"]["body1"]["bold"], d["type"]["title1"])
+    check("presentation scale 1.5 applied once: title (title1) = 36 pt / 45 pt line, body (body1) = 15.75 pt",
+          d["scale"] == 1.5 and d["type"]["title"]["sz"] == 36 and d["type"]["title"]["line"] == 45
+          and d["type"]["body"]["sz"] == 15.75 and d["type"]["title"]["bold"] and not d["type"]["body"]["bold"]
+          and d["type"]["title"]["token"] == "title1" and d["type"]["label"]["token"] == "caption1Strong", d["type"]["title"])
     check("spacing tokens in EMU (l = 16 px × 1.5 × 9525)", d["space"]["l"] == round(16 * 1.5 * 9525), d["space"]["l"])
     g = d["grid"]
     check("12-column grid: margin = xxxl, gutter = xxl, span(12) = content width, x(0) = margin",
@@ -390,6 +414,117 @@ console.log(JSON.stringify(out));
     check("pagination: 23 table rows → 3 slides of ≤ 10 body rows + header",
           len(tables) == 3 and [t[4] for t in tables] == [11, 11, 4], tables)
     check("pagination is reported as a warning", any("paginate" in w for w in lg["warnings"]), lg["warnings"])
+
+    # ---- 7. designs ----------------------------------------------------
+    print("== designs")
+    r = node(f"""
+import * as S from {json.dumps("file://" + SPEC)};
+import * as D from {json.dumps("file://" + DS)};
+const draft = {json.dumps(DRAFT)};
+const corpus = S.deckCorpus(draft);
+const good = S.verifyDeckSpec({json.dumps(good_spec)}, corpus);
+const out = {{ names: D.DESIGN_NAMES, def: D.DEFAULT_DESIGN, designs: {{}}, describe: D.describeDesigns() }};
+for (const k of D.DESIGN_NAMES) {{
+  const d = D.DESIGNS[k];
+  const L = S.layoutDeck(good.slides, corpus, d);
+  out.designs[k] = {{
+    name: d.name, license: d.license, font: d.font, type: d.TYPE, space: d.SPACE, radius: d.RADIUS, color: d.COLOR, src: d.COLOR_SOURCE,
+    grid: {{ cols: d.GRID.cols, margin: d.GRID.margin, gutter: d.GRID.gutter, contentW: d.GRID.contentW, span12: d.GRID.span(12), mt: d.GRID.marginToken, gt: d.GRID.gutterToken }},
+    bands: d.BANDS, tones: Object.keys(d.TONE_COLOR), tokens: {{ spacing: d.tokens.spacing, type: d.tokens.type }},
+    pages: L.slides.length, inside: L.slides.every(S.withinCanvas), layoutDesign: L.design,
+  }};
+}}
+try {{ D.designOf("bogus"); out.bogus = "no throw"; }} catch (e) {{ out.bogus = e.message; }}
+try {{ D.designOf("carbon", "dusk"); out.badTheme = "no throw"; }} catch (e) {{ out.badTheme = e.message; }}
+out.byName = S.layoutDeck(good.slides, corpus, "carbon").design;
+// themes + figure restyle
+out.dark = {{}};
+for (const k of D.DESIGN_NAMES) {{
+  const d = D.designOf(k, "dark");
+  const L = S.layoutDeck(good.slides, corpus, d);
+  out.dark[k] = {{ name: d.name, theme: d.theme, color: d.COLOR, src: d.COLOR_SOURCE, pages: L.slides.length, inside: L.slides.every(S.withinCanvas),
+    sameType: JSON.stringify(d.TYPE) === JSON.stringify(D.designOf(k, "light").TYPE) }};
+}}
+const fig = {json.dumps(FIG_MINI)};
+out.restyle = {{
+  identity: D.restyleFigureSvg(fig, D.designOf("fluent", "light")) === fig,
+  carbonDark: D.restyleFigureSvg(fig, D.designOf("carbon", "dark")),
+  carbonLight: D.restyleFigureSvg(fig, "carbon"),
+  mapLen: D.designOf("carbon").figureMap.length, fluentMapLen: D.designOf("fluent").figureMap.length,
+  mix: D.mix("000000", "FFFFFF", 0.5),
+}};
+console.log(JSON.stringify(out));
+""")
+    check("three designs, fluent the default", r["names"] == ["fluent", "carbon", "uswds"] and r["def"] == "fluent", r["names"])
+    roles = ["display", "hero", "title", "title2", "subtitle", "subtitle2", "body2", "body", "bodyStrong", "label", "caption", "caption2"]
+    spaces = ["xxs", "xs", "s", "m", "l", "xl", "xxl", "xxxl"]
+    for k, dd in r["designs"].items():
+        ty = dd["type"]
+        check(f"{k}: twelve type roles, each a named token with line ≥ size, hierarchy display ≥ hero ≥ title ≥ body ≥ caption",
+              all(ro in ty and ty[ro]["token"] and ty[ro]["line"] >= ty[ro]["sz"] for ro in roles)
+              and ty["display"]["sz"] >= ty["hero"]["sz"] >= ty["title"]["sz"] >= ty["body"]["sz"] >= ty["caption"]["sz"], ty)
+        sp = dd["space"]
+        check(f"{k}: eight spacing roles, non-decreasing", all(ro in sp for ro in spaces)
+              and all(sp[a] <= sp[b] for a, b in zip(spaces, spaces[1:])), sp)
+        g = dd["grid"]
+        check(f"{k}: 12-column grid from named spacing tokens, spans summing to the content width",
+              g["cols"] == 12 and abs(g["span12"] - g["contentW"]) <= 1 and g["mt"] in dd["tokens"]["spacing"] and g["gt"] in dd["tokens"]["spacing"], g)
+        b = dd["bands"]
+        check(f"{k}: bands ordered inside the canvas", b["top"] < b["bodyTop"] < b["bodyBottom"] < b["footerTop"] < 6858000, b)
+        check(f"{k}: nineteen colour roles as hex with a named source token",
+              len(dd["color"]) == 19 and all(re.fullmatch(r"[0-9A-F]{6}", v) for v in dd["color"].values())
+              and all(dd["src"][ro] for ro in dd["color"]) and dd["tones"] == ["neutral", "brand", "success", "warning", "danger"], dd["color"])
+        check(f"{k}: the same spec lays out to the same 16 pages, every element inside the canvas, design recorded",
+              dd["pages"] == 16 and dd["inside"] and dd["layoutDesign"] == k, (dd["pages"], dd["inside"], dd["layoutDesign"]))
+    cb = r["designs"]["carbon"]
+    check("carbon: spacing scale verbatim (spacing-01 2 … spacing-07 32 … spacing-13 160), gutter = spacing-07 (the 2x Grid's 32 px)",
+          [cb["tokens"]["spacing"][f"spacing-{i:02d}"] for i in range(1, 14)] == [2, 4, 8, 12, 16, 24, 32, 40, 48, 64, 80, 96, 160]
+          and cb["grid"]["gt"] == "spacing-07" and cb["grid"]["gutter"] == round(32 * 1.5 * 9525), cb["grid"])
+    check("carbon: productive ramp verbatim (body-01 14/20, heading-03 20/28, heading-05 32/40 regular, heading-07 54/64 light) → title 36 pt not bold",
+          cb["tokens"]["type"]["body-01"] == [14, 20, 400] and cb["tokens"]["type"]["heading-03"] == [20, 28, 400]
+          and cb["tokens"]["type"]["heading-05"] == [32, 40, 400] and cb["tokens"]["type"]["heading-07"] == [54, 64, 300]
+          and cb["type"]["title"]["sz"] == 36 and not cb["type"]["title"]["bold"] and cb["type"]["title"]["token"] == "heading-05", cb["type"]["title"])
+    check("carbon: square surfaces (radius large = 0), round tags only; IBM Plex Sans; Gray 100 inverse; Blue 60 brand",
+          cb["radius"]["large"] == 0 and cb["radius"]["circular"] > 0 and cb["font"] == "IBM Plex Sans"
+          and cb["color"]["backgroundInverse"] == "161616" and cb["color"]["brand"] == "0F62FE" and cb["color"]["textPrimary"] == "161616", cb["color"])
+    us = r["designs"]["uswds"]
+    check("uswds: 8 px units (units-1 8, units-2 16, units-4 32, units-10 80), gutter = units-4 (column-gap-desktop)",
+          us["tokens"]["spacing"]["units-1"] == 8 and us["tokens"]["spacing"]["units-2"] == 16 and us["tokens"]["spacing"]["units-4"] == 32
+          and us["tokens"]["spacing"]["units-10"] == 80 and us["grid"]["gt"] == "units-4", us["grid"])
+    check("uswds: size-13 (36 px) at line-height 2 for the title → 40.5 pt bold; size-3 (14 px) at line-height 4 for body; Public Sans; primary-darker inverse",
+          us["type"]["title"]["sz"] == 40.5 and us["type"]["title"]["bold"] and us["type"]["body"]["px"] == 14 and us["type"]["body"]["line"] == 23.63
+          and us["font"] == "Public Sans" and us["color"]["backgroundInverse"] == "162E51" and us["color"]["brand"] == "005EA2", us["type"])
+    check("designOf refuses an unknown name; layoutDeck accepts a design by name",
+          "unknown design" in r["bogus"] and "fluent, carbon, uswds" in r["bogus"] and r["byName"] == "carbon", (r["bogus"], r["byName"]))
+    check("describeDesigns names all three with licence and font, and the themes",
+          all(x in r["describe"] for x in ("fluent: Fluent 2 (MIT)", "carbon: IBM Carbon (Apache-2.0)", "uswds: U.S. Web Design System", "Public Sans", "themes: light | dark")), r["describe"])
+
+    # ---- 8. themes + figures --------------------------------------------
+    print("== themes + figures")
+    check("unknown theme refused", "unknown theme" in r["badTheme"] and "light, dark" in r["badTheme"], r["badTheme"])
+    for k, dd in r["dark"].items():
+        c = dd["color"]
+        def lum(h):
+            return 0.299 * int(h[0:2], 16) + 0.587 * int(h[2:4], 16) + 0.114 * int(h[4:6], 16)
+        check(f"{k} dark: same type ramp, dark surface under light text, divider on the deep brand surface, 16 pages inside the canvas",
+              dd["theme"] == "dark" and dd["name"].endswith("(dark)") and dd["sameType"] and lum(c["background"]) < 80 and lum(c["textPrimary"]) > 200
+              and lum(c["backgroundInverse"]) < 110 and c["backgroundInverse"] != c["background"] and dd["pages"] == 16 and dd["inside"], (dd["name"], c["background"], c["textPrimary"], c["backgroundInverse"]))
+        check(f"{k} dark: status tints derived 25 % over the layer and named as derived",
+              all(dd["src"][t].endswith("25 % over layer (derived)") for t in ("brandTint", "successTint", "warningTint", "dangerTint"))
+              and all(lum(c[t]) < 120 for t in ("brandTint", "successTint", "warningTint", "dangerTint")), {t: (c[t], dd["src"][t]) for t in ("successTint",)})
+    cd = r["dark"]["carbon"]["color"]
+    check("carbon dark = the Gray 100 theme (background Gray 100, layer Gray 90, text Gray 10, interactive Blue 50, support-error Red 50)",
+          cd["background"] == "161616" and cd["layer"] == "262626" and cd["textPrimary"] == "F4F4F4" and cd["brand"] == "4589FF" and cd["danger"] == "FA4D56", cd)
+    rs = r["restyle"]
+    check("restyleFigureSvg: identity on fluent / light (empty map); 24-entry map elsewhere; mix() blends",
+          rs["identity"] and rs["fluentMapLen"] == 0 and rs["mapLen"] == 24 and rs["mix"] == "808080", (rs["identity"], rs["mapLen"], rs["mix"]))
+    check("restyleFigureSvg on carbon dark: ink → Gray 10, teal → Blue 50, node tint + event stroke derived, marker fill (lower-case hex) + plate fill mapped, font → IBM Plex Sans",
+          ".route{stroke:#F4F4F4}" in rs["carbonDark"] and ".f-cool{fill:#4589FF}" in rs["carbonDark"] and '<path fill="#F4F4F4"/>' in rs["carbonDark"]
+          and '<rect fill="#161616"/>' in rs["carbonDark"] and "font-family:'IBM Plex Sans'" in rs["carbonDark"]
+          and "#16302F" not in rs["carbonDark"].upper() and "#E5F0F5" not in rs["carbonDark"] and "#4FA7D5" not in rs["carbonDark"], rs["carbonDark"])
+    check("restyleFigureSvg on carbon light: ink → Gray 100, teal → Blue 60, paper stays white, no value re-mapped twice",
+          ".route{stroke:#161616}" in rs["carbonLight"] and ".f-cool{fill:#0F62FE}" in rs["carbonLight"] and '<rect fill="#FFFFFF"/>' in rs["carbonLight"]
+          and '<path fill="#161616"/>' in rs["carbonLight"], rs["carbonLight"])
 
     print(f"\n{len(PASS)}/{len(PASS) + len(FAIL)} checks passed")
     sys.exit(1 if FAIL else 0)

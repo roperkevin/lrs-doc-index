@@ -7,8 +7,10 @@ what earns a section divider, a statement slide or a flow, what the
 speaker notes say. The model chooses STRUCTURE; it never chooses a
 size, a gap, a colour or a coordinate — those are the design
 system's (`local/lib/designsystem.mjs`: Microsoft's Fluent 2 design
-tokens, published open source under MIT as `@fluentui/tokens`, on a
-12-column grid), and it never writes body content — every item,
+tokens, published open source under MIT as `@fluentui/tokens`, by
+default; IBM Carbon (Apache 2.0) or the U.S. Web Design System
+(public domain) by configuration — all on a 12-column grid; the spec
+is design-independent), and it never writes body content — every item,
 card, cell, statement and value must be COPIED VERBATIM from the
 draft or pulled from it through a `from` reference. A deterministic
 renderer (`local/deck2pptx.mjs`) grounds every slide
@@ -55,7 +57,7 @@ The plan (markdown; cases are "### TC-P1 — title" / "### TC-N1 — title" sect
 <<<DRAFT END>>>
 
 THE DESIGN SYSTEM (what you do NOT decide)
-Slides are 16:9 on a 12-column grid with fixed margins and gutters; every size, line height, gap, corner, stroke and colour comes from the Fluent 2 token set (type ramp Caption 1 … Display, spacing XXS … XXXL, the neutral / brand / success / warning / danger roles). Each pattern below has fixed regions with fixed CAPACITIES; content that fits the capacity never overflows the slide. You choose the pattern and fill its regions; the renderer positions everything. Never ask for a size, a position, a font or a colour — the only colour-like choice you make is a TONE with a meaning: "success" = the positive lane / the correct result, "danger" = the negative lane / a denial or rejection, "warning" = an open [VERIFY] item or a draft caution, "brand" = coverage, trace, links, process, "neutral" = everything else.
+Slides are 16:9 on a 12-column grid with fixed margins and gutters; every size, line height, gap, corner, stroke and colour comes from the deck's design-system token set (Fluent 2 by default; IBM Carbon or the U.S. Web Design System by configuration — a type ramp from caption to display, a spacing ramp, and the neutral / brand / success / warning / danger colour roles). Your specification is design-independent: the same deck renders on any of them. Each pattern below has fixed regions with fixed CAPACITIES; content that fits the capacity never overflows the slide. You choose the pattern and fill its regions; the renderer positions everything. Never ask for a size, a position, a font or a colour — the only colour-like choice you make is a TONE with a meaning: "success" = the positive lane / the correct result, "danger" = the negative lane / a denial or rejection, "warning" = an open [VERIFY] item or a draft caution, "brand" = coverage, trace, links, process, "neutral" = everything else.
 
 LAYOUT RULES (your decisions)
 

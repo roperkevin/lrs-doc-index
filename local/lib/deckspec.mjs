@@ -1,5 +1,5 @@
 /**
- * deckspec.mjs v1.0 — the model-laid-out review deck for TestPlanGen
+ * deckspec.mjs v1.1 — the model-laid-out review deck for TestPlanGen
  * drafts (`prompts/TestPlanDeck_Prompt.md` v0.1, testplangen.mjs
  * `--deck`, local/deck2pptx.mjs). Pure module, no I/O, no AI: the
  * deterministic halves around the one model call the pass makes.
@@ -21,10 +21,13 @@
  *                                    a slide with ANY finding is dropped,
  *                                    never repaired; the survivors come
  *                                    back resolved (every text literal)
- *   layoutDeck(slides, corpus)       the layout engine: each resolved
+ *   layoutDeck(slides, corpus, ds)   the layout engine: each resolved
  *                                    slide → positioned elements in EMU
- *                                    on the design system's grid and
- *                                    type ramp (lib/designsystem.mjs);
+ *                                    on the chosen design's grid and
+ *                                    type ramp (lib/designsystem.mjs —
+ *                                    v1.1: fluent / carbon / uswds, the
+ *                                    layout addresses type and colour by
+ *                                    DECK ROLE and never knows which);
  *                                    long lists paginate onto "(n of m)"
  *                                    continuation slides; nothing is
  *                                    ever placed past the footer
@@ -43,7 +46,7 @@
 
 import { parseDraft, countVerify, TEST_SECTIONS } from "../draft2pptx.mjs";
 import {
-  PATTERNS, PATTERN_NAMES, TONES, LIMITS, TYPE, SPACE, GRID, BANDS, SLIDE_W, SLIDE_H, EMU_PER_PT,
+  PATTERNS, PATTERN_NAMES, TONES, LIMITS, SLIDE_W, SLIDE_H, EMU_PER_PT, DESIGNS, DEFAULT_DESIGN, designOf,
 } from "./designsystem.mjs";
 
 export const DECK_BEGIN = "[[[DECK BEGIN]]]";
@@ -491,8 +494,8 @@ export function linesOf(text, szPt, wEmu, factor) {
   }
   return n;
 }
-const lineEmu = (role) => Math.round(TYPE[role].line * EMU_PER_PT);
-const textH = (text, role, w, factor) => linesOf(text, TYPE[role].sz, w, factor) * lineEmu(role);
+const lineEmu = (role) => Math.round(D.TYPE[role].line * EMU_PER_PT);
+const textH = (text, role, w, factor) => linesOf(text, D.TYPE[role].sz, w, factor) * lineEmu(role);
 
 const IN = 914400;
 const ell = (s, n) => (String(s).length > n ? String(s).slice(0, Math.max(0, n - 1)).replace(/\s+\S*$/, "") + "…" : String(s));
@@ -507,8 +510,9 @@ const ell = (s, n) => (String(s).length > n ? String(s).slice(0, Math.max(0, n -
  * circle {text, x,y,size, fill, color} · bar {x,y,w,h, fill}
  * Returns {slides, warnings}.
  */
-export function layoutDeck(slides, corpus) {
-  const out = { slides: [], warnings: [] };
+export function layoutDeck(slides, corpus, design) {
+  useDesign(design && design.TYPE ? design : designOf(design));
+  const out = { slides: [], warnings: [], design: D.id };
   const warn = (m) => out.warnings.push(m);
   let page = 1;
   for (const sl of slides) {
@@ -537,36 +541,39 @@ function layoutSlide(sl, corpus, warn) {
   }
 }
 
-const C = {
-  ink: "16302F", inkSoft: "23423F", muted: "6E8285", paper: "FFFFFF", tint: "EFF2F2", border: "D7DFDF", ice: "CFDCDC",
-  green: "2E7D5B", greenTint: "E4EFE9", red: "B2442F", redTint: "F4E7E3", amber: "C2701A", amberTint: "F7EDDF",
-  teal: "1B6E8C", tealTint: "E4EEF2",
-};
-const toneFg = { neutral: C.muted, brand: C.teal, success: C.green, warning: C.amber, danger: C.red };
-const toneBg = { neutral: C.tint, brand: C.tealTint, success: C.greenTint, warning: C.amberTint, danger: C.redTint };
+// the design in use while a layout runs (layoutDeck sets it; the
+// layout is synchronous, so one module-level binding is enough)
+let D, C, toneFg, toneBg;
+function useDesign(ds) {
+  D = ds;
+  C = ds.C;
+  toneFg = Object.fromEntries(TONES.map((t) => [t, ds.TONE_COLOR[t].fg]));
+  toneBg = Object.fromEntries(TONES.map((t) => [t, ds.TONE_COLOR[t].bg]));
+}
+useDesign(DESIGNS[DEFAULT_DESIGN]);
 
 const el = (kind, props) => ({ kind, ...props });
 const text = (role, t, x, y, w, h, extra) =>
-  el("text", { role, text: t, x, y, w, h, color: C.ink, sz: TYPE[role].sz, line: TYPE[role].line, bold: TYPE[role].bold, ...(extra || {}) });
+  el("text", { role, text: t, x, y, w, h, color: C.ink, sz: D.TYPE[role].sz, line: D.TYPE[role].line, bold: D.TYPE[role].bold, ...(extra || {}) });
 
 // header band on a paper slide: eyebrow (caption1Strong, letter-spaced) + title
 function header(sl, cont) {
   const els = [];
   const eyebrow = sl.eyebrow || sl.source || "";
   if (eyebrow) {
-    els.push(text("caption1Strong", eyebrow.toUpperCase(), GRID.x(0), BANDS.top, GRID.span(12), lineEmu("caption1Strong"),
+    els.push(text("label", eyebrow.toUpperCase(), D.GRID.x(0), D.BANDS.top, D.GRID.span(12), lineEmu("label"),
       { color: toneFg[sl.tone] || C.muted, spc: 250 }));
   }
   const t = (sl.title || "") + (cont || "");
-  const role = t.length > 56 ? "title2" : "title1";
-  els.push(text(role, t, GRID.x(0), BANDS.top + lineEmu("caption1"), GRID.span(12), BANDS.titleLine, { color: C.ink }));
+  const role = t.length > 56 ? "title2" : "title";
+  els.push(text(role, t, D.GRID.x(0), D.BANDS.top + lineEmu("caption"), D.GRID.span(12), D.BANDS.titleLine, { color: C.ink }));
   return els;
 }
 
 function footerEls(planTitle) {
   return [
-    text("caption1", planTitle, GRID.x(0), BANDS.footerTop, GRID.span(9), BANDS.footerH, { color: C.muted }),
-    el("pageno", { x: GRID.x(9), y: BANDS.footerTop, w: GRID.span(3), h: BANDS.footerH, role: "caption1", color: C.muted }),
+    text("caption", planTitle, D.GRID.x(0), D.BANDS.footerTop, D.GRID.span(9), D.BANDS.footerH, { color: C.muted }),
+    el("pageno", { x: D.GRID.x(9), y: D.BANDS.footerTop, w: D.GRID.span(3), h: D.BANDS.footerH, role: "caption", color: C.muted }),
   ];
 }
 
@@ -579,17 +586,17 @@ const basePage = (sl, cont) => ({
 // {els, h} measured for width w at (x, y)
 function cardEls(card, x, y, w, name, opts) {
   const o = opts || {};
-  const pad = SPACE.l;
+  const pad = D.SPACE.l;
   const innerW = w - 2 * pad;
   const fg = toneFg[card.tone] || C.muted;
   const bg = o.onInk ? C.inkSoft : toneBg[card.tone] || C.tint;
-  const bodyRole = o.bodyRole || "body1";
+  const bodyRole = o.bodyRole || "body";
   let h = pad;
   const els = [];
   if (card.label) {
-    els.push(text("caption1Strong", card.label.toUpperCase(), x + pad, y + h, innerW, lineEmu("caption1Strong"),
+    els.push(text("label", card.label.toUpperCase(), x + pad, y + h, innerW, lineEmu("label"),
       { color: o.onInk ? C.ice : fg, spc: 250 }));
-    h += lineEmu("caption1Strong") + SPACE.s;
+    h += lineEmu("label") + D.SPACE.s;
   }
   if (card.body) {
     const bh = textH(card.body, bodyRole, innerW);
@@ -598,10 +605,10 @@ function cardEls(card, x, y, w, name, opts) {
   }
   if (card.items && card.items.length) {
     for (const it of card.items) {
-      const ih = textH(it.text, "body1", innerW - SPACE.l);
-      els.push(el("dot", { x: x + pad + SPACE.xxs, y: y + h + SPACE.s, size: SPACE.s, color: fg }));
-      els.push(text("body1", it.text, x + pad + SPACE.l, y + h, innerW - SPACE.l, ih, { color: C.ink }));
-      h += ih + SPACE.xs;
+      const ih = textH(it.text, "body", innerW - D.SPACE.l);
+      els.push(el("dot", { x: x + pad + D.SPACE.xxs, y: y + h + D.SPACE.s, size: D.SPACE.s, color: fg }));
+      els.push(text("body", it.text, x + pad + D.SPACE.l, y + h, innerW - D.SPACE.l, ih, { color: C.ink }));
+      h += ih + D.SPACE.xs;
     }
   }
   h += pad;
@@ -613,34 +620,34 @@ function cardEls(card, x, y, w, name, opts) {
 function layoutTitle(sl, corpus) {
   const p = basePage(sl);
   const R = sl.regions;
-  let y = BANDS.top + SPACE.xxxl;
-  p.elements.push(text("caption1Strong", (R.eyebrow || sl.eyebrow || "TEST PLAN REVIEW").toUpperCase(),
-    GRID.x(0), y, GRID.span(12), lineEmu("caption1Strong"), { color: C.ice, spc: 300 }));
-  y += lineEmu("caption1Strong") + SPACE.l;
+  let y = D.BANDS.top + D.SPACE.xxxl;
+  p.elements.push(text("label", (R.eyebrow || sl.eyebrow || "TEST PLAN REVIEW").toUpperCase(),
+    D.GRID.x(0), y, D.GRID.span(12), lineEmu("label"), { color: C.ice, spc: 300 }));
+  y += lineEmu("label") + D.SPACE.l;
   const head = R.headline || sl.title;
-  const role = linesOf(head, TYPE.largeTitle.sz, GRID.span(11), 0.62) <= 2 ? "largeTitle" : "title1";
-  const hh = textH(head, role, GRID.span(11), 0.62);
-  p.elements.push(text(role, head, GRID.x(0), y, GRID.span(11), hh, { color: C.paper }));
-  y += hh + SPACE.l;
+  const role = linesOf(head, D.TYPE.hero.sz, D.GRID.span(11), 0.62) <= 2 ? "hero" : "title";
+  const hh = textH(head, role, D.GRID.span(11), 0.62);
+  p.elements.push(text(role, head, D.GRID.x(0), y, D.GRID.span(11), hh, { color: C.onInk }));
+  y += hh + D.SPACE.l;
   if (corpus.isDraft) {
     const t = "DRAFT — MACHINE-GENERATED, UNREVIEWED";
-    p.elements.push(el("pill", { text: t, x: GRID.x(0), y, h: SPACE.xxl + SPACE.s, fill: C.amber, color: C.paper, role: "caption1Strong" }));
-    y += SPACE.xxl + SPACE.s + SPACE.m;
+    p.elements.push(el("pill", { text: t, x: D.GRID.x(0), y, h: D.SPACE.xxl + D.SPACE.s, fill: C.amber, color: C.onInk, role: "label" }));
+    y += D.SPACE.xxl + D.SPACE.s + D.SPACE.m;
   }
   const sub = R.subtitle || [corpus.model.generated && "Generated " + corpus.model.generated.replace("T", " ").replace("Z", " UTC"),
     corpus.model.story].filter(Boolean).join("  ·  from ");
   if (sub) {
-    const sh = textH(sub, "body2", GRID.span(10));
-    p.elements.push(text("body2", sub, GRID.x(0), y, GRID.span(10), sh, { color: C.ice }));
+    const sh = textH(sub, "body2", D.GRID.span(10));
+    p.elements.push(text("body2", sub, D.GRID.x(0), y, D.GRID.span(10), sh, { color: C.ice }));
   }
   const facts = R.facts || [];
   if (facts.length) {
-    const fy = SLIDE_H - GRID.margin - lineEmu("caption1Strong") - lineEmu("subtitle1") - SPACE.xs;
+    const fy = SLIDE_H - D.GRID.margin - lineEmu("label") - lineEmu("subtitle") - D.SPACE.xs;
     const span = Math.max(2, Math.floor(12 / facts.length));
     facts.forEach((f, i) => {
-      const fx = GRID.x(i * span), fw = GRID.span(span) - SPACE.l;
-      p.elements.push(text("caption1Strong", f.label.toUpperCase(), fx, fy, fw, lineEmu("caption1Strong"), { color: C.muted, spc: 200 }));
-      p.elements.push(text("subtitle1", ell(f.value, 40), fx, fy + lineEmu("caption1Strong") + SPACE.xs, fw, lineEmu("subtitle1"), { color: C.paper }));
+      const fx = D.GRID.x(i * span), fw = D.GRID.span(span) - D.SPACE.l;
+      p.elements.push(text("label", f.label.toUpperCase(), fx, fy, fw, lineEmu("label"), { color: C.muted, spc: 200 }));
+      p.elements.push(text("subtitle", ell(f.value, 40), fx, fy + lineEmu("label") + D.SPACE.xs, fw, lineEmu("subtitle"), { color: C.onInk }));
     });
   }
   return p;
@@ -651,20 +658,20 @@ function layoutSection(sl) {
   const p = basePage(sl);
   const R = sl.regions;
   const fg = toneFg[sl.tone] && sl.tone !== "neutral" ? toneFg[sl.tone] : C.ice;
-  let y = BANDS.bodyTop;
+  let y = D.BANDS.bodyTop;
   if (R.number) {
-    p.elements.push(text("display", R.number, GRID.x(0), y, GRID.span(12), lineEmu("display"), { color: fg }));
-    y += lineEmu("display") + SPACE.s;
+    p.elements.push(text("display", R.number, D.GRID.x(0), y, D.GRID.span(12), lineEmu("display"), { color: fg }));
+    y += lineEmu("display") + D.SPACE.s;
   }
   const head = R.headline || sl.title;
-  const hh = textH(head, "largeTitle", GRID.span(12), 0.62);
-  p.elements.push(text("largeTitle", head, GRID.x(0), y, GRID.span(12), hh, { color: C.paper }));
-  y += hh + SPACE.s;
-  if (R.strap) p.elements.push(text("body2", R.strap, GRID.x(0), y, GRID.span(8), lineEmu("body2") * 2, { color: C.ice }));
+  const hh = textH(head, "hero", D.GRID.span(12), 0.62);
+  p.elements.push(text("hero", head, D.GRID.x(0), y, D.GRID.span(12), hh, { color: C.onInk }));
+  y += hh + D.SPACE.s;
+  if (R.strap) p.elements.push(text("body2", R.strap, D.GRID.x(0), y, D.GRID.span(8), lineEmu("body2") * 2, { color: C.ice }));
   if (R.callout) {
-    const w = GRID.span(7), x = GRID.x(5);
+    const w = D.GRID.span(7), x = D.GRID.x(5);
     const m = cardEls(R.callout, x, 0, w, "callout", { onInk: true });
-    const cy = SLIDE_H - GRID.margin - m.h;
+    const cy = SLIDE_H - D.GRID.margin - m.h;
     for (const e of m.els) e.y += cy;
     p.elements.push(...m.els);
   }
@@ -679,30 +686,30 @@ function layoutStats(sl, warn) {
   const tiles = R.tiles || [];
   const n = tiles.length;
   const span = Math.floor(12 / n);
-  const tileH = lineEmu("largeTitle") + lineEmu("caption1Strong") + 3 * SPACE.l;
-  let y = BANDS.bodyTop;
+  const tileH = lineEmu("hero") + lineEmu("label") + 3 * D.SPACE.l;
+  let y = D.BANDS.bodyTop;
   tiles.forEach((t, i) => {
-    const x = GRID.x(i * span), w = GRID.span(span);
+    const x = D.GRID.x(i * span), w = D.GRID.span(span);
     const fg = t.tone === "neutral" ? C.ink : toneFg[t.tone];
     p.elements.push(el("card", { x, y, w, h: tileH, fill: C.paper, line: C.border, radius: "xLarge", name: "tile" }));
-    p.elements.push(text("largeTitle", t.value, x + SPACE.l, y + SPACE.l, w - 2 * SPACE.l, lineEmu("largeTitle"), { color: fg }));
-    p.elements.push(text("caption1Strong", t.label, x + SPACE.l, y + SPACE.l + lineEmu("largeTitle") + SPACE.s, w - 2 * SPACE.l,
-      lineEmu("caption1Strong"), { color: C.muted }));
+    p.elements.push(text("hero", t.value, x + D.SPACE.l, y + D.SPACE.l, w - 2 * D.SPACE.l, lineEmu("hero"), { color: fg }));
+    p.elements.push(text("label", t.label, x + D.SPACE.l, y + D.SPACE.l + lineEmu("hero") + D.SPACE.s, w - 2 * D.SPACE.l,
+      lineEmu("label"), { color: C.muted }));
   });
-  y += tileH + SPACE.xxl;
+  y += tileH + D.SPACE.xxl;
   const hasCallout = !!R.callout;
   if (R.lede) {
-    const w = GRID.span(hasCallout ? 7 : 12);
-    const avail = BANDS.bodyBottom - y;
+    const w = D.GRID.span(hasCallout ? 7 : 12);
+    const avail = D.BANDS.bodyBottom - y;
     let lede = R.lede;
     let h = textH(lede, "body2", w);
     if (h > avail) { lede = ell(lede, Math.floor(lede.length * avail / h)); h = avail; warn(`slide "${sl.title}": lede truncated to fit`); }
-    p.elements.push(text("caption1Strong", "SCOPE", GRID.x(0), y, w, lineEmu("caption1Strong"), { color: C.muted, spc: 250 }));
-    p.elements.push(text("body2", lede, GRID.x(0), y + lineEmu("caption1Strong") + SPACE.xs, w, h, { color: C.ink }));
+    p.elements.push(text("label", "SCOPE", D.GRID.x(0), y, w, lineEmu("label"), { color: C.muted, spc: 250 }));
+    p.elements.push(text("body2", lede, D.GRID.x(0), y + lineEmu("label") + D.SPACE.xs, w, h, { color: C.ink }));
   }
   if (hasCallout) {
-    const m = cardEls(R.callout, GRID.x(7), y, GRID.span(5), "callout");
-    if (y + m.h > BANDS.bodyBottom) warn(`slide "${sl.title}": callout runs past the body band`);
+    const m = cardEls(R.callout, D.GRID.x(7), y, D.GRID.span(5), "callout");
+    if (y + m.h > D.BANDS.bodyBottom) warn(`slide "${sl.title}": callout runs past the body band`);
     p.elements.push(...m.els);
   }
   return p;
@@ -712,19 +719,19 @@ function layoutStats(sl, warn) {
 function layoutList(sl, items, mode, warn) {
   const pages = [];
   const R = sl.regions;
-  const role = items.length > 6 ? "body1" : "body2";
+  const role = items.length > 6 ? "body" : "body2";
   const label = items.label || "";
-  const listW = GRID.span(12) - SPACE.xxl - SPACE.m;
-  const rows = items.map((it) => ({ it, h: Math.max(SPACE.xxl, textH(it.text, role, listW)) }));
+  const listW = D.GRID.span(12) - D.SPACE.xxl - D.SPACE.m;
+  const rows = items.map((it) => ({ it, h: Math.max(D.SPACE.xxl, textH(it.text, role, listW)) }));
   // first page carries the lede
   let ledeH = 0;
-  if (R.lede) ledeH = textH(R.lede, "body2", GRID.span(12)) + SPACE.l;
+  if (R.lede) ledeH = textH(R.lede, "body2", D.GRID.span(12)) + D.SPACE.l;
   const chunks = [];
-  let cur = [], curH = ledeH + (label ? lineEmu("caption1Strong") + SPACE.s : 0);
-  const avail = BANDS.bodyBottom - BANDS.bodyTop;
+  let cur = [], curH = ledeH + (label ? lineEmu("label") + D.SPACE.s : 0);
+  const avail = D.BANDS.bodyBottom - D.BANDS.bodyTop;
   for (const r of rows) {
-    if (curH + r.h + SPACE.m > avail && cur.length) { chunks.push(cur); cur = []; curH = 0; }
-    cur.push(r); curH += r.h + SPACE.m;
+    if (curH + r.h + D.SPACE.m > avail && cur.length) { chunks.push(cur); cur = []; curH = 0; }
+    cur.push(r); curH += r.h + D.SPACE.m;
   }
   if (cur.length || !chunks.length) chunks.push(cur);
   if (chunks.length > 1) warn(`slide "${sl.title}": ${items.length} items paginate over ${chunks.length} slides`);
@@ -732,24 +739,24 @@ function layoutList(sl, items, mode, warn) {
     const cont = chunks.length > 1 ? `  (${ci + 1} of ${chunks.length})` : "";
     const p = basePage(sl, cont);
     p.elements.push(...header(sl, cont));
-    let y = BANDS.bodyTop;
+    let y = D.BANDS.bodyTop;
     if (ci === 0 && R.lede) {
-      p.elements.push(text("body2", R.lede, GRID.x(0), y, GRID.span(12), ledeH - SPACE.l, { color: C.muted }));
+      p.elements.push(text("body2", R.lede, D.GRID.x(0), y, D.GRID.span(12), ledeH - D.SPACE.l, { color: C.muted }));
       y += ledeH;
     }
     if (ci === 0 && label) {
-      p.elements.push(text("caption1Strong", label.toUpperCase(), GRID.x(0), y, GRID.span(12), lineEmu("caption1Strong"), { color: C.muted, spc: 250 }));
-      y += lineEmu("caption1Strong") + SPACE.s;
+      p.elements.push(text("label", label.toUpperCase(), D.GRID.x(0), y, D.GRID.span(12), lineEmu("label"), { color: C.muted, spc: 250 }));
+      y += lineEmu("label") + D.SPACE.s;
     }
     chunk.forEach((r, k) => {
       const checked = r.it.checked;
       if (mode === "checklist" || checked !== undefined) {
-        p.elements.push(el("checkbox", { x: GRID.x(0), y: y + SPACE.xxs, size: SPACE.xxl, checked: !!checked }));
+        p.elements.push(el("checkbox", { x: D.GRID.x(0), y: y + D.SPACE.xxs, size: D.SPACE.xxl, checked: !!checked }));
       } else {
-        p.elements.push(el("dot", { x: GRID.x(0) + SPACE.s, y: y + SPACE.m, size: SPACE.s + SPACE.xxs, color: toneFg[r.it.tone || sl.tone] || C.teal }));
+        p.elements.push(el("dot", { x: D.GRID.x(0) + D.SPACE.s, y: y + D.SPACE.m, size: D.SPACE.s + D.SPACE.xxs, color: toneFg[r.it.tone || sl.tone] || C.teal }));
       }
-      p.elements.push(text(role, r.it.text, GRID.x(0) + SPACE.xxl + SPACE.m, y, listW, r.h, { color: C.ink, tone: r.it.tone }));
-      y += r.h + SPACE.m;
+      p.elements.push(text(role, r.it.text, D.GRID.x(0) + D.SPACE.xxl + D.SPACE.m, y, listW, r.h, { color: C.ink, tone: r.it.tone }));
+      y += r.h + D.SPACE.m;
     });
     pages.push(p);
   });
@@ -761,17 +768,17 @@ function layoutTwoColumn(sl, warn) {
   const R = sl.regions;
   const leftSpan = PATTERNS["two-column"].regions.left.span;
   const items = R.left || [];
-  const role = items.length > 6 ? "body1" : "body2";
-  const leftW = GRID.span(leftSpan), rightX = GRID.x(leftSpan), rightW = GRID.span(12 - leftSpan);
-  const listW = leftW - SPACE.xxl - SPACE.m;
-  const rows = items.map((it) => ({ it, h: Math.max(SPACE.xxl, textH(it.text, role, listW)) }));
-  const labelH = lineEmu("caption1Strong") + SPACE.s;
-  const avail = BANDS.bodyBottom - BANDS.bodyTop - labelH;
+  const role = items.length > 6 ? "body" : "body2";
+  const leftW = D.GRID.span(leftSpan), rightX = D.GRID.x(leftSpan), rightW = D.GRID.span(12 - leftSpan);
+  const listW = leftW - D.SPACE.xxl - D.SPACE.m;
+  const rows = items.map((it) => ({ it, h: Math.max(D.SPACE.xxl, textH(it.text, role, listW)) }));
+  const labelH = lineEmu("label") + D.SPACE.s;
+  const avail = D.BANDS.bodyBottom - D.BANDS.bodyTop - labelH;
   const chunks = [];
   let cur = [], curH = 0;
   for (const r of rows) {
-    if (curH + r.h + SPACE.m > avail && cur.length) { chunks.push(cur); cur = []; curH = 0; }
-    cur.push(r); curH += r.h + SPACE.m;
+    if (curH + r.h + D.SPACE.m > avail && cur.length) { chunks.push(cur); cur = []; curH = 0; }
+    cur.push(r); curH += r.h + D.SPACE.m;
   }
   if (cur.length || !chunks.length) chunks.push(cur);
   if (chunks.length > 1) warn(`slide "${sl.title}": ${items.length} steps paginate over ${chunks.length} slides`);
@@ -780,27 +787,27 @@ function layoutTwoColumn(sl, warn) {
     const cont = chunks.length > 1 ? `  (${ci + 1} of ${chunks.length})` : "";
     const p = basePage(sl, cont);
     p.elements.push(...header(sl, cont));
-    let y = BANDS.bodyTop;
-    p.elements.push(text("caption1Strong", (items.label || "Steps").toUpperCase(), GRID.x(0), y, leftW, lineEmu("caption1Strong"), { color: C.muted, spc: 250 }));
+    let y = D.BANDS.bodyTop;
+    p.elements.push(text("label", (items.label || "Steps").toUpperCase(), D.GRID.x(0), y, leftW, lineEmu("label"), { color: C.muted, spc: 250 }));
     y += labelH;
     chunk.forEach((r) => {
-      if (r.it.checked !== undefined) p.elements.push(el("checkbox", { x: GRID.x(0), y: y + SPACE.xxs, size: SPACE.xxl, checked: !!r.it.checked }));
-      else p.elements.push(el("dot", { x: GRID.x(0) + SPACE.s, y: y + SPACE.m, size: SPACE.s + SPACE.xxs, color: toneFg[sl.tone] || C.teal }));
-      p.elements.push(text(role, r.it.text, GRID.x(0) + SPACE.xxl + SPACE.m, y, listW, r.h, { color: C.ink }));
-      y += r.h + SPACE.m;
+      if (r.it.checked !== undefined) p.elements.push(el("checkbox", { x: D.GRID.x(0), y: y + D.SPACE.xxs, size: D.SPACE.xxl, checked: !!r.it.checked }));
+      else p.elements.push(el("dot", { x: D.GRID.x(0) + D.SPACE.s, y: y + D.SPACE.m, size: D.SPACE.s + D.SPACE.xxs, color: toneFg[sl.tone] || C.teal }));
+      p.elements.push(text(role, r.it.text, D.GRID.x(0) + D.SPACE.xxl + D.SPACE.m, y, listW, r.h, { color: C.ink }));
+      y += r.h + D.SPACE.m;
     });
     if (ci === 0) {
-      let ry = BANDS.bodyTop;
+      let ry = D.BANDS.bodyTop;
       for (const card of R.right || []) {
         const m = cardEls(card, rightX, ry, rightW, card.label || "card");
-        if (ry + m.h > BANDS.bodyBottom) {
+        if (ry + m.h > D.BANDS.bodyBottom) {
           // shrink the body to caption size before giving up
-          const m2 = cardEls(card, rightX, ry, rightW, card.label || "card", { bodyRole: "caption1" });
-          if (ry + m2.h > BANDS.bodyBottom) { warn(`slide "${sl.title}": card "${card.label}" does not fit and was dropped`); break; }
-          p.elements.push(...m2.els); ry += m2.h + SPACE.l; continue;
+          const m2 = cardEls(card, rightX, ry, rightW, card.label || "card", { bodyRole: "caption" });
+          if (ry + m2.h > D.BANDS.bodyBottom) { warn(`slide "${sl.title}": card "${card.label}" does not fit and was dropped`); break; }
+          p.elements.push(...m2.els); ry += m2.h + D.SPACE.l; continue;
         }
         p.elements.push(...m.els);
-        ry += m.h + SPACE.l;
+        ry += m.h + D.SPACE.l;
       }
     }
     pages.push(p);
@@ -813,20 +820,20 @@ function layoutCards(sl, warn) {
   const p = basePage(sl);
   const R = sl.regions;
   p.elements.push(...header(sl));
-  let y = BANDS.bodyTop;
+  let y = D.BANDS.bodyTop;
   if (R.lede) {
-    const h = textH(R.lede, "body2", GRID.span(12));
-    p.elements.push(text("body2", R.lede, GRID.x(0), y, GRID.span(12), h, { color: C.muted }));
-    y += h + SPACE.l;
+    const h = textH(R.lede, "body2", D.GRID.span(12));
+    p.elements.push(text("body2", R.lede, D.GRID.x(0), y, D.GRID.span(12), h, { color: C.muted }));
+    y += h + D.SPACE.l;
   }
   const cards = R.cards || [];
   const span = Math.floor(12 / cards.length);
-  const measured = cards.map((c, i) => cardEls(c, GRID.x(i * span), y, GRID.span(span), c.label || "card"));
+  const measured = cards.map((c, i) => cardEls(c, D.GRID.x(i * span), y, D.GRID.span(span), c.label || "card"));
   let h = Math.max(...measured.map((m) => m.h));
-  if (y + h > BANDS.bodyBottom) {
+  if (y + h > D.BANDS.bodyBottom) {
     warn(`slide "${sl.title}": cards overflow the body band at body size — caption size used`);
-    const m2 = cards.map((c, i) => cardEls(c, GRID.x(i * span), y, GRID.span(span), c.label || "card", { bodyRole: "caption1" }));
-    h = Math.min(BANDS.bodyBottom - y, Math.max(...m2.map((m) => m.h)));
+    const m2 = cards.map((c, i) => cardEls(c, D.GRID.x(i * span), y, D.GRID.span(span), c.label || "card", { bodyRole: "caption" }));
+    h = Math.min(D.BANDS.bodyBottom - y, Math.max(...m2.map((m) => m.h)));
     for (const m of m2) { m.els[0].h = h; p.elements.push(...m.els); }
     return p;
   }
@@ -839,18 +846,18 @@ function layoutComparison(sl, warn) {
   const p = basePage(sl);
   const R = sl.regions;
   p.elements.push(...header(sl));
-  const y = BANDS.bodyTop;
-  const panels = [[R.left, GRID.x(0)], [R.right, GRID.x(6)]];
-  const w = GRID.span(6);
+  const y = D.BANDS.bodyTop;
+  const panels = [[R.left, D.GRID.x(0)], [R.right, D.GRID.x(6)]];
+  const w = D.GRID.span(6);
   const measured = panels.map(([pn, x]) => {
     const card = { label: "", body: "", tone: pn.tone, items: pn.items };
-    const m = cardEls(card, x, y + lineEmu("subtitle2") + SPACE.s, w, pn.label);
+    const m = cardEls(card, x, y + lineEmu("subtitle2") + D.SPACE.s, w, pn.label);
     return { pn, x, m };
   });
-  const h = Math.min(BANDS.bodyBottom - y - lineEmu("subtitle2") - SPACE.s, Math.max(...measured.map((q) => q.m.h)));
+  const h = Math.min(D.BANDS.bodyBottom - y - lineEmu("subtitle2") - D.SPACE.s, Math.max(...measured.map((q) => q.m.h)));
   for (const q of measured) {
     if (q.m.h > h) warn(`slide "${sl.title}": panel "${q.pn.label}" clipped to the body band`);
-    p.elements.push(el("pill", { text: q.pn.label.toUpperCase(), x: q.x, y, h: lineEmu("subtitle2"), fill: toneBg[q.pn.tone] || C.tint, color: toneFg[q.pn.tone] || C.ink, role: "caption1Strong" }));
+    p.elements.push(el("pill", { text: q.pn.label.toUpperCase(), x: q.x, y, h: lineEmu("subtitle2"), fill: toneBg[q.pn.tone] || C.tint, color: toneFg[q.pn.tone] || C.ink, role: "label" }));
     q.m.els[0].h = h;
     p.elements.push(...q.m.els);
   }
@@ -871,12 +878,12 @@ function layoutTable(sl, warn) {
     const cont = nPages > 1 ? `  (${i + 1} of ${nPages})` : "";
     const p = basePage(sl, cont);
     p.elements.push(...header(sl, cont));
-    let y = BANDS.bodyTop;
-    p.elements.push(el("table", { rows: [header0, ...body.slice(i * per, (i + 1) * per)], x: GRID.x(0), y, maxW: GRID.span(12), accentCol: sl.tone === "neutral" ? -1 : 0, maxH: BANDS.bodyBottom - y }));
+    let y = D.BANDS.bodyTop;
+    p.elements.push(el("table", { rows: [header0, ...body.slice(i * per, (i + 1) * per)], x: D.GRID.x(0), y, maxW: D.GRID.span(12), accentCol: sl.tone === "neutral" ? -1 : 0, maxH: D.BANDS.bodyBottom - y }));
     if (i === 0 && R.note) {
       // y/h are placeholders: the renderer measures the native table and
       // sets the note directly under it (the layout cannot know row heights)
-      p.elements.push(el("tablenote", { text: R.note, x: GRID.x(0), y, w: GRID.span(12), h: lineEmu("caption1"), role: "caption1", color: C.muted, italic: true }));
+      p.elements.push(el("tablenote", { text: R.note, x: D.GRID.x(0), y, w: D.GRID.span(12), h: lineEmu("caption"), role: "caption", color: C.muted, italic: true }));
     }
     pages.push(p);
   }
@@ -891,22 +898,22 @@ function layoutFlow(sl, warn) {
   const steps = R.steps || [];
   const hasOut = !!R.outcome;
   const span = hasOut ? 8 : 12;
-  const totalW = GRID.span(span);
-  const gap = SPACE.s;
+  const totalW = D.GRID.span(span);
+  const gap = D.SPACE.s;
   const w = (totalW - gap * (steps.length - 1)) / steps.length;
-  const y = BANDS.bodyTop + SPACE.xxl;
-  const role = steps.length > 4 ? "caption1" : "body1";
+  const y = D.BANDS.bodyTop + D.SPACE.xxl;
+  const role = steps.length > 4 ? "caption" : "body";
   let h = 0;
-  for (const s of steps) h = Math.max(h, textH(s.text, role, w - SPACE.xxl * 1.6) + 2 * SPACE.l);
-  h = Math.max(h, SPACE.xxxl * 2);
-  if (y + h > BANDS.bodyBottom) warn(`slide "${sl.title}": flow steps run past the body band`);
+  for (const s of steps) h = Math.max(h, textH(s.text, role, w - D.SPACE.xxl * 1.6) + 2 * D.SPACE.l);
+  h = Math.max(h, D.SPACE.xxxl * 2);
+  if (y + h > D.BANDS.bodyBottom) warn(`slide "${sl.title}": flow steps run past the body band`);
   steps.forEach((s, i) => {
-    const x = GRID.x(0) + i * (w + gap);
-    p.elements.push(el("circle", { text: String(i + 1), x, y: y - SPACE.xxl - SPACE.s, size: SPACE.xxl, fill: toneFg[sl.tone === "neutral" ? "brand" : sl.tone], color: C.paper }));
+    const x = D.GRID.x(0) + i * (w + gap);
+    p.elements.push(el("circle", { text: String(i + 1), x, y: y - D.SPACE.xxl - D.SPACE.s, size: D.SPACE.xxl, fill: toneFg[sl.tone === "neutral" ? "brand" : sl.tone], color: C.onInk }));
     p.elements.push(el("chevron", { text: s.text, x, y, w, h, first: i === 0, fill: toneBg[sl.tone === "neutral" ? "brand" : sl.tone], color: C.ink, role }));
   });
   if (hasOut) {
-    const m = cardEls(R.outcome, GRID.x(8), y - SPACE.xxl - SPACE.s, GRID.span(4), R.outcome.label || "outcome");
+    const m = cardEls(R.outcome, D.GRID.x(8), y - D.SPACE.xxl - D.SPACE.s, D.GRID.span(4), R.outcome.label || "outcome");
     p.elements.push(...m.els);
   }
   return p;
@@ -919,17 +926,17 @@ function layoutFigure(sl) {
   p.elements.push(...header(sl));
   const aside = (R.aside || []).filter(Boolean);
   const span = aside.length ? PATTERNS.figure.regions.figure.span : 12;
-  p.elements.push(el("figure", { ref: R.figure, x: GRID.x(0), y: BANDS.bodyTop, w: GRID.span(span), h: BANDS.bodyBottom - BANDS.bodyTop }));
+  p.elements.push(el("figure", { ref: R.figure, x: D.GRID.x(0), y: D.BANDS.bodyTop, w: D.GRID.span(span), h: D.BANDS.bodyBottom - D.BANDS.bodyTop }));
   if (aside.length) {
-    let y = BANDS.bodyTop;
-    const x = GRID.x(span), w = GRID.span(12 - span);
-    p.elements.push(text("caption1Strong", "READING NOTES", x, y, w, lineEmu("caption1Strong"), { color: C.muted, spc: 250 }));
-    y += lineEmu("caption1Strong") + SPACE.s;
+    let y = D.BANDS.bodyTop;
+    const x = D.GRID.x(span), w = D.GRID.span(12 - span);
+    p.elements.push(text("label", "READING NOTES", x, y, w, lineEmu("label"), { color: C.muted, spc: 250 }));
+    y += lineEmu("label") + D.SPACE.s;
     aside.forEach((n, i) => {
-      const h = textH(n, "body1", w - SPACE.l);
-      p.elements.push(el("circle", { text: String(i + 1), x, y: y + SPACE.xxs, size: SPACE.xl, fill: C.inkSoft, color: C.paper }));
-      p.elements.push(text("body1", n, x + SPACE.xl + SPACE.s, y, w - SPACE.xl - SPACE.s, h, { color: C.ink }));
-      y += h + SPACE.m;
+      const h = textH(n, "body", w - D.SPACE.l);
+      p.elements.push(el("circle", { text: String(i + 1), x, y: y + D.SPACE.xxs, size: D.SPACE.xl, fill: C.inkSoft, color: C.onInk }));
+      p.elements.push(text("body", n, x + D.SPACE.xl + D.SPACE.s, y, w - D.SPACE.xl - D.SPACE.s, h, { color: C.ink }));
+      y += h + D.SPACE.m;
     });
   }
   return p;
@@ -940,18 +947,18 @@ function layoutStatement(sl, warn) {
   const p = basePage(sl);
   const R = sl.regions;
   if (sl.title) p.elements.push(...header(sl));
-  const x = GRID.x(1), w = GRID.span(10);
+  const x = D.GRID.x(1), w = D.GRID.span(10);
   const stmt = R.statement || "";
   let role = "title2";
   let h = textH(stmt, role, w, 0.58);
-  const avail = BANDS.bodyBottom - BANDS.bodyTop - lineEmu("caption1") - SPACE.l;
-  if (h > avail) { role = "subtitle1"; h = textH(stmt, role, w, 0.58); }
+  const avail = D.BANDS.bodyBottom - D.BANDS.bodyTop - lineEmu("caption") - D.SPACE.l;
+  if (h > avail) { role = "subtitle"; h = textH(stmt, role, w, 0.58); }
   if (h > avail) { warn(`slide "${sl.title || "statement"}": statement clipped`); h = avail; }
-  const y = BANDS.bodyTop + Math.max(0, (avail - h) / 2);
-  p.elements.push(el("bar", { x: x - SPACE.xl, y, w: SPACE.xs, h, fill: toneFg[sl.tone === "neutral" ? "brand" : sl.tone] }));
+  const y = D.BANDS.bodyTop + Math.max(0, (avail - h) / 2);
+  p.elements.push(el("bar", { x: x - D.SPACE.xl, y, w: D.SPACE.xs, h, fill: toneFg[sl.tone === "neutral" ? "brand" : sl.tone] }));
   p.elements.push(text(role, stmt, x, y, w, h, { color: C.ink }));
   if (R.attribution) {
-    p.elements.push(text("caption1", "— " + R.attribution, x, y + h + SPACE.m, w, lineEmu("caption1"), { color: C.muted }));
+    p.elements.push(text("caption", "— " + R.attribution, x, y + h + D.SPACE.m, w, lineEmu("caption"), { color: C.muted }));
   }
   return p;
 }
@@ -960,16 +967,16 @@ function layoutStatement(sl, warn) {
 function layoutClosing(sl, corpus) {
   const p = basePage(sl);
   const R = sl.regions;
-  let y = BANDS.bodyTop;
+  let y = D.BANDS.bodyTop;
   const head = R.headline || sl.title;
-  const hh = textH(head, "title1", GRID.span(12), 0.62);
-  p.elements.push(text("title1", head, GRID.x(0), y, GRID.span(12), hh, { color: C.paper }));
-  y += hh + SPACE.xxl;
+  const hh = textH(head, "title", D.GRID.span(12), 0.62);
+  p.elements.push(text("title", head, D.GRID.x(0), y, D.GRID.span(12), hh, { color: C.onInk }));
+  y += hh + D.SPACE.xxl;
   for (const [i, a] of (R.asks || []).entries()) {
-    const h = Math.max(SPACE.xxl + SPACE.s, textH(a.text, "body2", GRID.span(11)));
-    p.elements.push(el("circle", { text: String(i + 1), x: GRID.x(0), y, size: SPACE.xxl + SPACE.s, fill: C.inkSoft, color: C.paper }));
-    p.elements.push(text("body2", a.text, GRID.x(0) + SPACE.xxxl + SPACE.m, y + SPACE.xxs, GRID.span(11), h, { color: C.ice }));
-    y += h + SPACE.l;
+    const h = Math.max(D.SPACE.xxl + D.SPACE.s, textH(a.text, "body2", D.GRID.span(11)));
+    p.elements.push(el("circle", { text: String(i + 1), x: D.GRID.x(0), y, size: D.SPACE.xxl + D.SPACE.s, fill: C.inkSoft, color: C.onInk }));
+    p.elements.push(text("body2", a.text, D.GRID.x(0) + D.SPACE.xxxl + D.SPACE.m, y + D.SPACE.xxs, D.GRID.span(11), h, { color: C.ice }));
+    y += h + D.SPACE.l;
   }
   p.provenance = corpus.model.provenance || "";
   return p;

@@ -1,5 +1,30 @@
 # Local sweep — release notes
 
+## designsystem v1.2 / deck2pptx v1.2 / deckspec v1.1 / draft2pptx v1.3 (2026-09-06, with TestPlanGen v2.37)
+
+Three design systems and a light / dark theme for the review deck —
+component record `testplangen/CHANGES.md` v2.37. For the local tooling:
+
+- `local/lib/designsystem.mjs` v1.1 → v1.2 — Fluent 2 (default), IBM
+  Carbon v11 and USWDS v3 token blocks; `makeDesign` derives one shape
+  (deck type roles, colour roles, grid, bands, tones) from any of
+  them; `designOf(name, theme)` with light / dark per design (dark
+  tints derived 25 % over the layer, named as derived); `mix`;
+  `restyleFigureSvg` maps the figure palette onto a design + theme
+  (identity on fluent / light); `describeDesigns`.
+- `local/lib/deckspec.mjs` v1.1 — type and colour by deck role; the
+  layout takes a design (object or name).
+- `local/deck2pptx.mjs` v1.2 — `--design`, `--theme`; every embedded
+  figure re-coloured to match; the native table and checkboxes in the
+  theme's colours; provenance names design + theme.
+- `local/draft2pptx.mjs` v1.3 — `setDefaultFont`, a `font` option on
+  buildPptx, colours options on `tableFrame` / `checkbox`; the CLI
+  passes none, output unchanged (37/37).
+- `local/testplangen.mjs` v1.17 — `deckDesign`, `deckTheme`
+  (validated before spend).
+- Gates: `check_deckspec.py` 99/99, `check_deck2pptx.py` 56/56,
+  `check_testplangen.py` 221/221.
+
 ## deck2pptx v1.0 / designsystem v1.0 / deckspec v1.0 / draft2pptx v1.2 / svg2pptx v1.5 (2026-09-05, with TestPlanGen v2.36)
 
 The model-laid-out review deck — component record in
