@@ -864,7 +864,10 @@ def main():
     make_messy_pptx(os.path.join(src_dir, "Beta Story.pptx"),
                     "Beta user story about locks and issue #123")
     with open(os.path.join(src_dir, "notes.txt"), "w") as f:
-        f.write("Plain text notes about calibration points.")
+        # the body carries a horizontal rule after the vocabulary spec.pdf
+        # shares: the body index must read the WHOLE body (the seam is
+        # the one after the related region, not the last `---` in the file)
+        f.write("Plain text notes about calibration points.\n\n---\n\nAppendix: unrelated closing remark.")
     with open(os.path.join(src_dir, "spec.pdf"), "wb") as f:
         f.write(b"%PDF-1.4 text-bearing (stub pdftotext returns text for this one)")
     with open(os.path.join(src_dir, "scan.pdf"), "wb") as f:
@@ -2230,6 +2233,17 @@ def main():
     ln_rows = [state.lists[LISTS["docIndex"]][ln_id]] if ln_id else []
     ln_kw = [r for r in state.lists[LISTS["docKeywords"]].values()
              if ln_id and str(r.get("DocumentLookupId")) == str(ln_id)]
+    # the long doc's relatedness was computed with notes.txt's body read
+    # from DISK: the body index must see the words BEFORE notes' `---`
+    # rule (the seam is the one after the related region), so the two
+    # relate by body similarity
+    notes_id_ln = next((k for k, v in state.lists[LISTS["docIndex"]].items() if v.get("FileName") == "notes.txt"), None)
+    ln_url = str(ln_rows[0].get("TextFileUrl", {}).get("Url", "")) if ln_rows else ""
+    ln_local = os.path.join(sidecar_dir, *[urllib.parse.unquote(x) for x in ln_url.split("/LRS Doc Index/")[-1].split("/")]) if ln_url else ""
+    ln_sc = open(ln_local).read() if ln_local and os.path.exists(ln_local) else ""
+    check("body index reads a neighbour's whole body from disk (a `---` rule inside the body is body)",
+          f"<!-- rel:{notes_id_ln} " in ln_sc and "similar text" in ln_sc.split(f"<!-- rel:{notes_id_ln} ")[0].rsplit("\n", 1)[-1],
+          ln_sc[-700:])
     check("long file name: junction titles are capped at 255 and the doc indexes",
           proc.returncode == 0 and ln_rows and ln_rows[0].get("IndexStatus") == "Indexed"
           and len(ln_kw) == 2 and all(len(str(r.get("Title", ""))) <= 255 for r in ln_kw),

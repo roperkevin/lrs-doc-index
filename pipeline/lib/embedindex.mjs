@@ -41,6 +41,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { urlToLocal } from "./util.mjs";
+import { bodySeamEnd } from "./doclinks.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -75,8 +76,8 @@ export class EmbedIndex {
   }
 
   _bodyOf(txt) {
-    const seam = txt.lastIndexOf("\n---\n");
-    return (seam >= 0 ? txt.slice(seam + 5) : txt).slice(0, this.inputCap);
+    const seam = bodySeamEnd(txt); // the seam after the related region, not a `---` rule inside the body
+    return (seam >= 0 ? txt.slice(seam) : txt).slice(0, this.inputCap);
   }
 
   /** Collect every indexed sidecar's body (from disk) as pending

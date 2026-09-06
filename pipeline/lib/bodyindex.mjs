@@ -5,6 +5,7 @@
  */
 
 import fs from "node:fs";
+import { bodySeamEnd } from "./doclinks.mjs";
 import { urlToLocal } from "./util.mjs";
 
 /**
@@ -65,8 +66,8 @@ export class BodyIndex {
       } catch {
         continue; // sidecar not synced/deleted — doc just lacks the signal
       }
-      const seam = txt.lastIndexOf("\n---\n");
-      this.upsert(r.ID, seam >= 0 ? txt.slice(seam + 5) : txt);
+      const seam = bodySeamEnd(txt); // the seam AFTER the related region — a `---` rule inside the body is body
+      this.upsert(r.ID, seam >= 0 ? txt.slice(seam) : txt);
     }
   }
 
