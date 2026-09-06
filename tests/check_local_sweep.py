@@ -2213,6 +2213,27 @@ def main():
           proc.stderr.count("SharePoint throttled the hyperlink-column route") == 1 and "spo.paceMs" in proc.stderr,
           proc.stderr[-400:])
     state.spo_throttle = 0
+    # a file name near SharePoint's 255-character single-line cap: the
+    # DocKeywords junction Title (`<file> | <keyword>`) must be capped
+    print("== long-name leg")
+    long_name = "L" * 240 + ".txt"
+    ln_dir = os.path.join(cfg["paths"]["sourceLibrary"], "General") \
+        if os.path.isdir(os.path.join(cfg["paths"]["sourceLibrary"], "General")) else src_dir
+    with open(os.path.join(ln_dir, long_name), "w") as f:
+        f.write("Long-named notes about calibration points and locks.\n")
+    src_files.append(src_item(22, long_name, "2026-08-02T11:00:00Z"))
+    state.llm_by_file[long_name] = {
+        "title": "Long name notes", "docKind": "Other", "surface": "Pro", "summary": "x", "pe": "", "dev": "",
+        "targetRelease": "", "tools": [], "keywords": ["calibration points", "locks"]}
+    proc = run_sweep(cfg_path, ["--live", "--only", long_name])
+    ln_id = next((k for k, v in state.lists[LISTS["docIndex"]].items() if v.get("FileName") == long_name), None)
+    ln_rows = [state.lists[LISTS["docIndex"]][ln_id]] if ln_id else []
+    ln_kw = [r for r in state.lists[LISTS["docKeywords"]].values()
+             if ln_id and str(r.get("DocumentLookupId")) == str(ln_id)]
+    check("long file name: junction titles are capped at 255 and the doc indexes",
+          proc.returncode == 0 and ln_rows and ln_rows[0].get("IndexStatus") == "Indexed"
+          and len(ln_kw) == 2 and all(len(str(r.get("Title", ""))) <= 255 for r in ln_kw),
+          f"{len(ln_kw)} junctions, titles {[len(str(r.get('Title',''))) for r in ln_kw]} row={str(ln_rows)[:400]} rc={proc.returncode} err={proc.stderr[-600:]}")
     # a hyperlink write that FAILS after the Graph create (here: one 429
     # with the gate's maxRetries 0) must not leave the run with two Doc
     # Index rows for one DocKey — the created row is adopted and stamped

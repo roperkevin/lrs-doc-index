@@ -2401,7 +2401,7 @@ async function indexDoc(ctx) {
     const kwKey = `${rowId}|${kwId}`;
     if (!caches.kwKeys.has(kwKey)) {
       await writer.createRow("docKeywords", {
-        Title: `${name} | ${kw.val}`, DocumentLookupId: rowId,
+        Title: cut(`${name} | ${kw.val}`, 255), DocumentLookupId: rowId,
         KeywordLookupId: kwId, KWKey: kwKey,
       });
       caches.kwKeys.add(kwKey);
