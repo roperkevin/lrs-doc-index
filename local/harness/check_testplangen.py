@@ -365,7 +365,8 @@ FIG_REPLY = json.dumps({
          "caption": "R1 (0–100) and R2 (0–60) before the merge; after it R1 spans 0–160 with E1 at 10–40 and E2 at 105–130.",
          "panels": [
              {"label": "Before",
-              "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "tone": "ink", "arrow": True},
+              # v1.20 (figurespec v1.1): R1 asks for intermediate ticks every 10
+              "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "ticks": 10, "tone": "ink", "arrow": True},
                          {"id": "R2", "from": 0, "to": 60, "calibration": [0, 60], "tone": "ink", "arrow": True}],
               "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40, "tone": "cool"},
                          {"id": "E2", "route": "R2", "from": 5, "to": 30, "tone": "warm"}],
@@ -388,7 +389,8 @@ FIG_REPLY = json.dumps({
         {"case": "TC-P2", "rule": "R1", "kind": "route-measure",
          "title": "TC-P2 — Merge produces one route",
          "caption": "One route remains.",
-         "panels": [{"label": "", "routes": [{"id": "R1", "from": 0, "to": 100}],
+         # …and a tick interval that would draw 1000 ticks (figurespec v1.1 caps at 60)
+         "panels": [{"label": "", "routes": [{"id": "R1", "from": 0, "to": 100, "ticks": 0.1}],
                      "events": [{"id": "E1", "route": "R1", "at": 999, "tone": "cool"}], "marks": []}]},
         # an unknown case id — must be dropped
         {"case": "TC-P9", "rule": "R1", "kind": "topology", "title": "TC-P9 — ghost", "caption": "x",
@@ -2073,7 +2075,8 @@ def main():
           and f"](<{stem}--fig-tc-p1.svg>)" in latest and f"](<{stem}--fig-tc-n1.svg>)" in latest
           and "(rule R2)" in latest and "(rule R5)" in latest
           and "2 rendered of 4 proposed, 2 dropped" in latest
-          and "- TC-P2 — TC-P2: panel 1 event E1 at 999 is not a value" in latest
+          and "- TC-P2 — TC-P2: panel 1 route R1 ticks 0.1 would draw 1000 ticks — at most 60; "
+              "TC-P2: panel 1 event E1 at 999 is not a value" in latest
           and "- TC-P9 — TC-P9: not a TC case in the plan" in latest
           and "Not illustrated: TC-P2 (X2 — geometry equals TC-P1)" in latest,
           latest[latest.find("## Generated Figures"):][:1200])
@@ -2093,6 +2096,26 @@ def main():
           and ">extended<" in s_p1 and ">160<" in s_p1
           and 'class="ln swatch flat s-green"' in s_p1 and ">E2 105 → 130<" in s_p1,
           s_p1[:400])
+    # v1.20 (figurespec v1.1): R1's ticks every 10 draw eight intermediate
+    # ticks (0/50/100 are calibration), labelled since they fit; every
+    # line event's ends carry their measure (105 and 130 are E2's ends
+    # and nothing else in the figure); no two text boxes overlap
+    check("route-measure SVG: intermediate ticks drawn and labelled where they fit",
+          s_p1.count('class="ln tick"') == 8 and ">10<" in s_p1 and ">90<" in s_p1,
+          str(s_p1.count('class="ln tick"')))
+    check("route-measure SVG: measure labels at both ends of every line event",
+          ">105<" in s_p1 and ">130<" in s_p1 and ">40<" in s_p1 and ">5<" in s_p1, s_p1[-1200:])
+    texts = re.findall(r'<text class="([^"]+)" x="([-\d.]+)" y="([-\d.]+)" text-anchor="(\w+)"[^>]*>([^<]*)</text>', s_p1)
+    def box(cls, x, y, anchor, s):
+        base = cls.split(" ")[0]
+        w = len(s) * {"measure": 6.3, "id": 7.4, "note": 6.8, "legend": 6, "nlabel": 6.9}.get(base, 6.6) + 3
+        h = {"measure": 11, "id": 13, "note": 12.5, "legend": 11, "nlabel": 12.5}.get(base, 12.5) + 1
+        x0 = float(x) - (w / 2 if anchor == "middle" else w if anchor == "end" else 0)
+        return (x0, x0 + w, float(y) - h / 2, float(y) + h / 2)
+    boxes = [box(c, x, y, a, t) for c, x, y, a, t in texts if c != "legend"]
+    overlaps = [(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1:]
+                if a[0] < b[1] and b[0] < a[1] and a[2] < b[3] and b[2] < a[3]]
+    check("route-measure SVG: no two labels overlap (estimated boxes)", overlaps == [], str(overlaps[:3]))
     check("sequence SVG: actors, lifelines, the denied step in red",
           ">User A<" in s_n1 and ">User B<" in s_n1
           and s_n1.count('class="ln leader dashed"') == 2

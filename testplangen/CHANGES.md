@@ -1,3 +1,56 @@
+# TestPlanGen v2.40 — route-measure figures made legible (figurespec v1.1, TestPlanFigures prompt v0.3, testplangen.mjs v1.20)
+
+Owner-requested (2026-09-06): "enhance the svg diagrams — allow
+intermediate tics, improve label positioning while preventing
+overlap, measure labels at the beginning and ends of events."
+Rendering only — the model's job (select, specify) is unchanged
+except for one optional key; grounding is unchanged.
+
+- **Intermediate ticks (`"ticks"`, prompt v0.3).** A route in a
+  route-measure spec may carry `"ticks": <interval>` — unlabelled
+  minor ticks at every multiple of the interval between from and to,
+  skipping the calibration points, drawn shorter than the labelled
+  major ticks in the SlideFigures `.tick` class. When the interval's
+  pixel spacing fits a label, the ticks are labelled too (all or
+  none, so a scale never reads 0, 10, 30). A rendering choice, not
+  test data: the verifier never grounds it, but rejects a
+  non-positive value and an interval that would draw more than 60
+  ticks (a figure is a schematic, not a ruler). The prompt tells the
+  model to use it only when a case names measures that fall between
+  calibration points.
+- **Measure labels at event ends.** Every line event's bar now
+  carries its from and to measures under its ends; a point event
+  carries its measure above the dot unless the axis already labels
+  that value. A bar too short for two labels takes one `from–to`
+  label instead. The line-event pitch grows from 14 to 26 to make
+  room; a figure is correspondingly taller.
+- **Collision-free labels.** Every text in a route-measure panel —
+  route id, calibration and tick labels, mark labels, event ids, the
+  new measures — goes through a placer: estimated text boxes
+  (per-class average glyph widths of Segoe UI at the palette's
+  sizes), the geometry reserved first (route line, bars, dots), each
+  label tried at an ordered list of candidate positions (below the
+  bar → beside it; above the route → below → higher), then nudged
+  vertically a bounded number of times. A required label (an id)
+  lands on its first candidate when nothing is free; an optional one
+  (a measure that the geometry already implies) is dropped instead.
+  Panel heights follow the lowest placed label. Fixes the v1.0
+  overlap of a point event's id with the first line-event bar.
+- **Unchanged:** topology and sequence rendering, the `<style>`
+  block and classes (svg2pptx / deck2pptx consume the output as
+  before), the addendum, the Gen_summary counters. testplangen.mjs
+  v1.20 is the two stamps (`FIG_PROMPT_VERSION` v0.3, job version).
+
+Gates: `check_testplangen.py` **229/229** (leg 18 — R1's `ticks: 10`
+draws eight labelled intermediate ticks; 105 / 130 / 40 / 5 appear
+as event-end measures; an estimated-box overlap scan over every
+non-legend text finds none; a `ticks: 0.1` spec is dropped with the
+cap finding ahead of its invented measure); `check_deck2pptx.py`
+green (an inline figurespec still embeds as a native group).
+Rendered output eyeballed in Chromium: the harness fixture and a
+deliberately crowded panel (six events incl. two 2-unit bars and two
+point events 3 units apart, a split and a gap mark).
+
 # TestPlanGen v2.39 — method names from the sources (prompt v1.13, testplangen.mjs v1.19, draftlint v1.5)
 
 Owner-requested (2026-09-06): a draft run's reasoning showed the

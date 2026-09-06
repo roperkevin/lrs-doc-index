@@ -47,6 +47,12 @@
  * figures are re-coloured to match); an unknown name refuses BEFORE
  * the generation spend.
  *
+ * v1.20 (route-measure legibility — testplangen/CHANGES.md v2.40):
+ * the figures prompt is v0.3 (an optional per-route `ticks` interval
+ * in the vocabulary) and lib/figurespec.mjs v1.1 renders intermediate
+ * ticks, measure labels at every event's ends, and collision-free
+ * label placement. Stamp change only in this file.
+ *
  * v1.19 (method names from the sources — testplangen/CHANGES.md
  * v2.39): prompt v1.13 lets a draft borrow the NAMES of a method
  * class the story states without naming ("all input methods") from
@@ -486,11 +492,11 @@ import { sendAlert } from "./lib/alerts.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.19";
+const JOB_VERSION = "v1.20";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const GEN_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanGen_Prompt.md");
 const FIG_PROMPT_FILE = path.resolve(HERE, "..", "prompts", "TestPlanFigures_Prompt.md");
-const FIG_PROMPT_VERSION = "v0.2"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
+const FIG_PROMPT_VERSION = "v0.3"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
 const FIG_INPUT_KEYS = ["PlanTitle", "Draft", "FiguresCap"];
 const FIG_INPUTS_RE = new RegExp(`\\{(${FIG_INPUT_KEYS.join("|")})\\}`, "g");
 
