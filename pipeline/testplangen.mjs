@@ -2151,12 +2151,19 @@ async function generateOne(ctx, story) {
   // model-free, the banner/Issue Trace precedent. draftChars keeps
   // counting the model's own body, so the flow-parity counter holds.
   const mediaBase = encodeURI(`${sw.siteUrl}${sw.textsFolder}/media/`);
+  // per path segment (media/<stem>/<file> since phase 1b keeps its "/"),
+  // and a segment the sidecar already percent-encoded is not encoded twice
+  const encodeSegment = (seg) => {
+    let raw = seg;
+    try { raw = decodeURIComponent(seg); } catch { /* not an encoded segment */ }
+    return encodeURIComponent(raw);
+  };
   let figureCount = 0;
   const draftOut = draftBody.replace(
     /(!\[[^\]\n]*\]\()\.\.\/media\/([^()\s]+)(\))/g,
     (m, pre, name, post) => {
       figureCount++;
-      return pre + mediaBase + encodeURIComponent(name) + post;
+      return pre + mediaBase + name.split("/").map(encodeSegment).join("/") + post;
     }
   );
   if (figureCount) prog(`figures — ${figureCount} story figure link(s) absolutized`);

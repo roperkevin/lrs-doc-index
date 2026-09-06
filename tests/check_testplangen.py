@@ -819,8 +819,12 @@ def main():
     # the link shape the sweep's placeFigure writes into sidecars)
     story_fig = ("![Routes R1 and R2 before the merge]"
                  "(../media/doc12_slide2_fig1.svg)")
+    # a phase-1b figure: media/<stem>/<file>, the file name already
+    # percent-encoded by the sidecar writer
+    story_fig2 = ("![Merge result]"
+                  "(../media/12-route-merge/fig-02-slide-03-merge%20result.svg)")
     url_story = sidecar(sidecar_dir, "User Stories", "route-merge__doc12.md",
-                        story_body + "\n\n" + story_fig, related,
+                        story_body + "\n\n" + story_fig + "\n\n" + story_fig2, related,
                         tools="Merge Routes", keywords="measures · locking")
     # Plan F (doc 27, leg 15): a testplan/v1-grammar plan whose six
     # cases each run ~500 chars, so a small ExemplarCap forces the
@@ -1728,6 +1732,17 @@ def main():
     check("figures progress line on the manual run",
           "progress: figures — 1 story figure link(s) absolutized" in r.stderr,
           r.stderr[-400:])
+    # a media/<stem>/<file> link keeps its "/" and an already-encoded
+    # file name is not encoded twice
+    state.drafts.clear()
+    state.gen_text = wrap(fig_draft.replace("**Figure:** " + story_fig,
+                                            "**Figure:** " + story_fig + "\n\n**Figure:** " + story_fig2))
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    abs_link2 = SITE_URL + "/LRS%20Doc%20Index/media/12-route-merge/fig-02-slide-03-merge%20result.svg"
+    check("a media/<stem>/ figure link absolutizes per segment without double-encoding",
+          r.returncode == 0 and "(" + abs_link2 + ")" in draft and "%2F" not in draft and "%2520" not in draft
+          and summary_of(r.stdout).get("figures") == "2", draft[:1500] + r.stderr[-300:])
     state.drafts.clear()
     invented_fig = fig_draft.replace(
         "doc12_slide2_fig1.svg", "doc12_slide9_fig9.svg")
