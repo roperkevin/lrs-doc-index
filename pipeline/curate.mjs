@@ -375,6 +375,7 @@ async function runCuration(cfg, graph, siteId) {
         "auto-approve-pending"
       );
       merged++;
+      r.CanonicalRefId = canonRow.ID; // in-memory: never a canonical for a later merge this run
       lines += `- MERGED (pending) '${r.Title}' → '${canonRow.Title}'\n`;
     } else {
       lines += `- (pending) '${r.Title}' → ${r.ProposedCanonical}\n`;
@@ -404,6 +405,7 @@ async function runCuration(cfg, graph, siteId) {
     if (cur.autoApprove) {
       await patch(aliasRow.ID, { CanonicalRefLookupId: canonRow.ID }, "auto-approve");
       merged++;
+      aliasRow.CanonicalRefId = canonRow.ID; // in-memory: a later proposal cannot chain onto it
       lines += `- MERGED '${aliasRow.Title}' → '${canonRow.Title}' — ${why}\n`;
     } else {
       await patch(

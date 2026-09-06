@@ -1791,6 +1791,23 @@ def main():
           "MERGED 'gantt charts' → 'gantt chart'" in (state.digest or "")
           and "MERGED (pending) 'wp' → 'work package'" in (state.digest or "")
           and "AUTOMATICALLY" in (state.digest or ""), (state.digest or "")[:400])
+    # a reply that merges B→C and then A→B in one pass: after B becomes
+    # an alias it may not serve as A's canonical in the same run (a chain
+    # A→B→C); the second proposal is dropped, not applied
+    CUR["ca"] = state.seed(LISTS["keywords"], {"Title": "chain alpha", "Kind": "topic"})
+    CUR["cb"] = state.seed(LISTS["keywords"], {"Title": "chain beta", "Kind": "topic"})
+    CUR["cc"] = state.seed(LISTS["keywords"], {"Title": "chain gamma", "Kind": "topic"})
+    state.cur_response = {"proposals": [
+        {"alias": "chain beta", "canonical": "chain gamma", "why": "same"},
+        {"alias": "chain alpha", "canonical": "chain beta", "why": "same"},
+    ]}
+    proc = run_curate(cfg_path, ["--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("autoApprove never chains onto a row merged earlier in the same run",
+          proc.returncode == 0 and "merged=1" in out.get("line", "") and "dropped=1" in out.get("line", "")
+          and kwrows[CUR["cb"]].get("CanonicalRefLookupId") == int(CUR["cc"])
+          and not kwrows[CUR["ca"]].get("CanonicalRefLookupId"),
+          str(out) + " " + str(kwrows[CUR["ca"]]) + str(kwrows[CUR["cb"]]))
     # --drain: passes repeat until one writes nothing. The mock returns
     # the SAME proposals every pass — pass 1 merges wbs, pass 2 finds
     # the alias already merged (guard drops it), writes 0, stops.
