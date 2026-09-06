@@ -293,6 +293,7 @@ class MockState:
         self.embed_last_auth = None
         # remote-files mode: the sidecar drive, rel path -> {content, etag}
         self.remote_files = {}
+        self.drive_put_fail = 0       # answer this many sidecar-drive PUTs with 503 first
         self.drive_downloads = []
         self.next_etag = 1
 
@@ -533,6 +534,10 @@ def make_handler(state, lib_guid, src_files):
             # sidecar drive write-through (remote-files mode)
             m = re.match(r"^/v1\.0/drives/drive-sidecar/root:/(.+):/content$", p)
             if m:
+                if state.drive_put_fail > 0:
+                    state.drive_put_fail -= 1
+                    self._read()
+                    return self._json({"error": {"code": "serviceNotAvailable"}}, 503)
                 etag = f"et{state.next_etag}"
                 state.next_etag += 1
                 state.remote_files[m.group(1)] = {"content": self._read(), "etag": etag}
@@ -2837,6 +2842,19 @@ def main():
                   (os.path.join(dp, fn) for dp, _, fns in os.walk(remote_mirror) for fn in fns))
           and "prune skipped" in proc.stderr, proc.stderr[-400:] + str(os.listdir(remote_mirror)))
     state.remote_files = saved_remote
+    # a failed upload must not drop the rest of the queue: the flush after
+    # the error re-sends everything, so the sidecar still reaches the drive
+    # in the same run (the row is Error for the night and heals next run)
+    rcfg["sweep"]["promptVersion"] = "v2.0-remote-leg2"
+    with open(rcfg_path, "w") as f:
+        json.dump(rcfg, f)
+    state.drive_put_fail = 1
+    proc = run_sweep(rcfg_path, ["--live", "--only", "notes.txt"])
+    rec = next((v for k, v in state.remote_files.items() if k.endswith("/" + notes_file)), None)
+    check("a failed drive upload re-queues the tail: the rewritten sidecar reaches the drive on the retry flush",
+          proc.returncode == 0 and rec is not None and b"v2.0-remote-leg2" in rec["content"],
+          proc.stderr[-400:] + (rec["content"][:200].decode() if rec else " no upload"))
+    state.drive_put_fail = 0
 
     # ---- leg 4: anthropic provider, apiKey auth --------------------
     print("== anthropic apiKey leg")

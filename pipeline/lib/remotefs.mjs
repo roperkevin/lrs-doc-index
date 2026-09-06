@@ -149,10 +149,21 @@ export class RemoteLibrary {
     const tags = {};
     const dropped = [];
     try {
-      for (const w of work) {
+      for (let i = 0; i < work.length; i++) {
+        const w = work[i];
         if (w.op === "put") {
           const local = path.join(this.localRoot, ...w.rel.split("/"));
-          const res = await this.graph.putDriveFile(this.driveId, w.rel, fs.readFileSync(local));
+          let res;
+          try {
+            res = await this.graph.putDriveFile(this.driveId, w.rel, fs.readFileSync(local));
+          } catch (e) {
+            // keep this write and everything queued after it for the next
+            // flush (the caller's error path flushes again; the next run
+            // does too) — a dropped tail would leave rows pointing at files
+            // that never reached the drive
+            this.pending = work.slice(i).concat(this.pending);
+            throw e;
+          }
           if (res?.eTag) tags[w.rel] = String(res.eTag);
         } else {
           try {
