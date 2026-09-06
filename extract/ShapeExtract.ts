@@ -1,5 +1,5 @@
 /**
- * ShapeExtract v1.0 — a pptx slide's DRAWN shapes and their text, faithfully
+ * ShapeExtract v1.1 (v1.0 + flips on shapes, rotation on freeforms, own error prefix) — a pptx slide's DRAWN shapes and their text, faithfully
  * ------------------------------------------------------------------------
  * Companion to ZipTextExtract / MediaExtract, same input (the file's bytes
  * as base64). Where ZipTextExtract folds a diagram's short labels into one
@@ -737,8 +737,17 @@ function emitShape(el: Elem): string {
     }
   }
   parts.push(emitText(el, w, h));
-  const body = parts.join("");
-  if (el.rot !== 0 && el.kind !== "path") {
+  let body = parts.join("");
+  // v1.1: flips apply to every shape (they were only honored on
+  // connectors), and rotation applies to freeforms too — a path's
+  // points are un-rotated shape-local coordinates like a preset's
+  if (el.flipH || el.flipV) {
+    const t = (el.flipH ? "translate(" + fnum(2 * (x + w / 2)) + " 0) scale(-1 1)" : "") +
+      (el.flipH && el.flipV ? " " : "") +
+      (el.flipV ? "translate(0 " + fnum(2 * (y + h / 2)) + ") scale(1 -1)" : "");
+    body = "<g transform=\"" + t + "\">" + body + "</g>";
+  }
+  if (el.rot !== 0) {
     return "<g transform=\"rotate(" + fnum(el.rot) + " " + fnum(x + w / 2) + " " + fnum(y + h / 2) + ")\">" + body + "</g>";
   }
   return body;
@@ -989,12 +998,12 @@ function readCentralDirectory(b: Uint8Array): ZipEntry[] {
       eocd = p; break;
     }
   }
-  if (eocd < 0) throw new Error("ZipTextExtract: EOCD not found (not a zip?)");
+  if (eocd < 0) throw new Error("ShapeExtract: EOCD not found (not a zip?)");
   const count = u16(b, eocd + 10);
   let p = u32(b, eocd + 16); // central directory offset
   const entries: ZipEntry[] = [];
   for (let i = 0; i < count; i++) {
-    if (u32(b, p) !== 0x02014b50) throw new Error("ZipTextExtract: bad central header at " + p);
+    if (u32(b, p) !== 0x02014b50) throw new Error("ShapeExtract: bad central header at " + p);
     const flags = u16(b, p + 8);
     const method = u16(b, p + 10);
     const compSize = u32(b, p + 20);
@@ -1015,16 +1024,16 @@ function extractEntry(b: Uint8Array, e: ZipEntry): Uint8Array {
   // v1.9 (SC-14): an encrypted stored entry would otherwise return
   // ciphertext as "text" silently — the one silent-wrong-output path
   // in the zip layer.
-  if ((e.flags & 0x1) !== 0) throw new Error("ZipTextExtract: encrypted entry " + e.name);
+  if ((e.flags & 0x1) !== 0) throw new Error("ShapeExtract: encrypted entry " + e.name);
   const p = e.localOffset;
-  if (u32(b, p) !== 0x04034b50) throw new Error("ZipTextExtract: bad local header for " + e.name);
+  if (u32(b, p) !== 0x04034b50) throw new Error("ShapeExtract: bad local header for " + e.name);
   const nameLen = u16(b, p + 26);
   const extraLen = u16(b, p + 28); // local extra can differ from central
   const dataStart = p + 30 + nameLen + extraLen;
   const data = b.subarray(dataStart, dataStart + e.compSize); // v1.6: view, no copy
   if (e.method === 0) return data;                    // stored
   if (e.method === 8) return inflateRaw(data, e.uncompSize); // deflate
-  throw new Error("ZipTextExtract: unsupported compression method " + e.method + " for " + e.name);
+  throw new Error("ShapeExtract: unsupported compression method " + e.method + " for " + e.name);
 }
 
 // ------------------------------------------------------------ inflate (RFC 1951)

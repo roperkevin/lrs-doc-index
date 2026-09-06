@@ -53,7 +53,7 @@ NS = ('xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
 IN = 914400
 
 
-def sp(id_, name, x, y, w, h, prst="rect", fill=None, ln=None, text="", style=False, rot=None, adj=None, geom=None):
+def sp(id_, name, x, y, w, h, prst="rect", fill=None, ln=None, text="", style=False, rot=None, adj=None, geom=None, flipH=False):
     fillx = ""
     if fill == "none":
         fillx = "<a:noFill/>"
@@ -68,7 +68,7 @@ def sp(id_, name, x, y, w, h, prst="rect", fill=None, ln=None, text="", style=Fa
     elif ln:
         lnx = (f'<a:ln w="19050"><a:solidFill><a:srgbClr val="{ln}"/></a:solidFill>'
                f'<a:prstDash val="dash"/></a:ln>')
-    rotx = f' rot="{rot}"' if rot is not None else ""
+    rotx = (f' rot="{rot}"' if rot is not None else "") + (' flipH="1"' if flipH else "")
     adjx = f'<a:avLst><a:gd name="adj" fmla="val {adj}"/></a:avLst>' if adj is not None else "<a:avLst/>"
     geomx = geom if geom else f'<a:prstGeom prst="{prst}">{adjx}</a:prstGeom>'
     stylex = ('<p:style><a:lnRef idx="2"><a:schemeClr val="accent1"><a:shade val="50000"/></a:schemeClr></a:lnRef>'
@@ -123,7 +123,7 @@ FLOW = slide(
     f'<a:chOff x="0" y="0"/><a:chExt cx="{2 * IN}" cy="{2 * IN}"/></a:xfrm></p:grpSpPr>'
     + sp(10, "Diamond 10", 0, 0, 2 * IN, 2 * IN, prst="diamond", fill="FFC000", ln="none", text="?", rot=2700000)
     + "</p:grpSp>"
-    + sp(11, "Freeform 11", 5 * IN, 2 * IN, IN, int(0.5 * IN), ln="008000", geom=FREEFORM)
+    + sp(11, "Freeform 11", 5 * IN, 2 * IN, IN, int(0.5 * IN), ln="008000", geom=FREEFORM, rot=900000, flipH=True)
     + '<p:pic><p:nvPicPr><p:cNvPr id="12" name="Picture 12"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
       '<p:blipFill><a:blip r:embed="rId2"/></p:blipFill>'
     f'<p:spPr><a:xfrm><a:off x="{IN}" y="{3 * IN}"/><a:ext cx="{2 * IN}" cy="{IN}"/></a:xfrm>'
@@ -190,6 +190,17 @@ def main():
         print("RESULT: FAIL — node run errored")
         sys.exit(1)
     r = json.loads(proc.stdout)
+    # errors from the zip layer name THIS script (the block was copied
+    # from ZipTextExtract with its prefix)
+    garbage = os.path.join(tmp, "garbage.pptx")
+    with open(garbage, "wb") as f:
+        f.write(b"not a zip at all")
+    gp = subprocess.run(
+        ["node", "--experimental-strip-types", "--input-type=module", "-e", NODE % {"ops": OPS}],
+        capture_output=True, text=True, timeout=120,
+        env={**os.environ, "SHAPES_SCRIPTS": os.path.abspath(SCRIPTS), "SHAPES_TMP": tmp, "SHAPES_DECK": garbage})
+    check("ShapeExtract: EOCD" in (gp.stdout + gp.stderr) and "ZipTextExtract:" not in (gp.stdout + gp.stderr),
+          "a non-zip input errors with ShapeExtract's own prefix (v1.1)", (gp.stdout + gp.stderr)[-300:])
 
     print("-- qualification + order --")
     check(r["count"] == 1 and len(r["drawings"]) == 1, "one drawing: the prose slide and the two-box slide yield nothing", json.dumps(r)[:300])
@@ -209,6 +220,9 @@ def main():
     check('<ellipse cx="552" cy="124.8" rx="72" ry="28.8" fill="#2E75B6"' in svg, "ellipse from the style fillRef (accent1)", svg)
     check('<g transform="rotate(45 336 240)"><path d="M 336 192 L 384 240 L 336 288 L 288 240 Z" fill="#FFC000" data-prst="diamond"/>' in svg,
           "grouped diamond: child-space transform (2in child box -> the group's 1in) and 45 deg rotation about its centre", svg)
+    check('<g transform="rotate(15 528 216)"><g transform="translate(1056 0) scale(-1 1)">'
+          '<path d="M 480 240 L 528 192 L 576 240" fill="none" stroke="#008000"' in svg,
+          "a flipped, rotated freeform carries both transforms (v1.1)", svg)
     check('<path d="M 480 240 L 528 192 L 576 240" fill="none" stroke="#008000"' in svg,
           "freeform custGeom path scaled into its box, outlined, open", svg)
     check('href="image1.png"' in svg and 'stroke-dasharray="4 3"' in svg and ">picture<" in svg,
