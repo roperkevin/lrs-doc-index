@@ -597,6 +597,15 @@ s_v3.shapes.add_textbox(Inches(0.5), Inches(2.0), Inches(8), Inches(0.6)).text_f
     'Reassign all the routes in a line to another line on right, transferring routes.')
 s_v3.shapes.add_textbox(Inches(0.5), Inches(2.8), Inches(8), Inches(0.6)).text_frame.text = (
     '2: Transfer to an existing line – spanning Events – Stayput and Retire Behavior.')
+# v2.7: a slide whose FIRST title placeholder is empty (a layout's centred
+# title left blank) and whose real title sits in a second title
+# placeholder lower on the slide (below the top-fifth label zone) must
+# take the second one as its heading
+s_v4 = prs_v.slides.add_slide(prs_v.slide_layouts[0])            # title slide: empty ctrTitle + subTitle
+_tb4 = s_v4.shapes.add_textbox(Inches(0.5), Inches(3.0), Inches(8), Inches(0.6))
+_tb4.text_frame.text = 'Real Title After Blank'
+_ph4 = _et.SubElement(_tb4._element.find(_qn('p:nvSpPr')).find(_qn('p:nvPr')), _qn('p:ph'))
+_ph4.set('type', 'title')
 s_v2 = prs_v.slides.add_slide(prs_v.slide_layouts[1])            # title + content
 s_v2.shapes.title.text = 'Acceptance Criteria'
 _body = s_v2.placeholders[1].text_frame

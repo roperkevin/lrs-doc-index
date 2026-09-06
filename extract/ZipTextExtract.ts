@@ -1,5 +1,5 @@
 /**
- * ZipTextExtract v2.6 — OOXML file (pptx/docx) → markdown text + rels
+ * ZipTextExtract v2.7 (v2.6 + an empty first title placeholder no longer ends the title search) — OOXML file (pptx/docx) → markdown text + rels
  * ------------------------------------------------------------
  * v2.6 (2026-09-05, TP-2 — a diagram label is never a slide title):
  *   the v2.5 top-label rule (TP-1) took a title-less slide's topmost
@@ -626,7 +626,9 @@ function findTitleShape(xml: string): TitleHit | null {
       const cut = title.lastIndexOf(" ");
       if (cut > 80) title = title.slice(0, cut);
     }
-    if (title === "") return null;
+    // v2.7: an EMPTY title placeholder is skipped, not the end of the
+    // search — a slide can carry a blank layout title before its real one
+    if (title === "") continue;
     return { text: title, start: m.index, end: m.index + block.length };
   }
   return null;

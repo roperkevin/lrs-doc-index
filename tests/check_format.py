@@ -433,7 +433,9 @@ check('- Correct line order of 100, 200, 300, 400 on a normal line' in vlines an
 check('| A-1 | Toggle is present | Toggle shown<br>Default OFF |' in vlines,
       'cells_deck: multi-column cell paragraphs join on <br>')
 check('| # | Test | Expected result |' in vlines, 'cells_deck: multi-column table keeps its header row')
-s2v = vt[vt.index('## Slide 3'):]
+check('## Slide 3 — Real Title After Blank' in vlines,
+      'cells_deck: an empty first title placeholder is skipped, the second title placeholder is the heading (v2.7)')
+s2v = vt[vt.index('## Slide 4'):]
 check('- Shows only for an UN-APR dataset' in s2v and '- Allow turning these layers ON and OFF' in s2v,
       'cells_deck: body-placeholder paragraphs render with the master\'s inherited bullet (IB-1)')
 check('Plain note with the bullet turned off' in s2v and '- Plain note with the bullet turned off' not in s2v,
