@@ -2212,7 +2212,16 @@ async function indexDoc(ctx) {
   // renames a linked file
   const kindFolder = sw.kindFolders[docKind] || "Other";
   const sidecarFolder = `${sw.textsFolder}/${kindFolder}`;
-  const frozen = existing?.TextFileUrl ? stemOf(existing.TextFileUrl) : "";
+  let frozen = existing?.TextFileUrl ? stemOf(existing.TextFileUrl) : "";
+  if (frozen) {
+    const parts = String(existing.TextFileUrl).split("/");
+    const oldFolder = decodeURIComponent(parts[parts.length - 2] || "");
+    if (oldFolder !== kindFolder && takenStems(cfg, sw, caches.docIndexRows, kindFolder, rowId).has(frozen)) {
+      // reclassified into a folder where ANOTHER document already owns
+      // this stem: mint fresh rather than overwrite a neighbour's sidecar
+      frozen = "";
+    }
+  }
   const stem = frozen || mintStem(
     { rowId, title, fileName: name, kind: docKind, ids, products,
       docRevision: rx.docRevision || "", lastEdited: srcEdited || "" },

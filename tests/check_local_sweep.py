@@ -2198,6 +2198,37 @@ def main():
     check("the next run repairs that row in place (Indexed, SourceLink written, still one row)",
           proc.returncode == 0 and len(lf_rows) == 1 and lf_rows[0].get("IndexStatus") == "Indexed"
           and isinstance(lf_rows[0].get("SourceLink"), dict), f"rows={len(lf_rows)} {str(lf_rows)[:300]}")
+    # a document reclassified into a kind folder where ANOTHER document
+    # already owns its frozen stem must mint a fresh stem, never overwrite
+    # the neighbour's sidecar
+    print("== stem-collision leg")
+    lf_url = str(lf_rows[0].get("TextFileUrl", {}).get("Url", ""))
+    lf_stem = lf_url.rsplit("/", 1)[-1][:-3]
+    decoy_sc = os.path.join(sidecar_dir, "Test Plans", f"{lf_stem}.md")
+    with open(decoy_sc, "w") as f:
+        f.write("# Decoy plan\nowned by another document\n")
+    decoy_row = state.seed(LISTS["docIndex"], {
+        "Title": "Decoy plan", "FileName": "decoy.pptx", "DocKind": "Test Plan",
+        "DocKey": "shared documents/general/decoy.pptx", "IndexStatus": "Indexed",
+        "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
+        "TextFileUrl": {"Url": f"https://mock.example/sites/lrsworkspace/LRS Doc Index/Test Plans/{lf_stem}.md",
+                        "Description": f"{lf_stem}.md"},
+    })
+    state.llm_by_file["linkfail.txt"] = {
+        "title": "Linkfail notes", "docKind": "Test Plan", "surface": "Pro",
+        "summary": "Reclassified into the plans folder.", "pe": "", "dev": "",
+        "targetRelease": "", "tools": [], "keywords": ["calibration"]}
+    src_files[-1]["fields"]["Modified"] = "2026-08-30T10:00:00Z"
+    src_files[-1]["lastModifiedDateTime"] = "2026-08-30T10:00:00Z"
+    proc = run_sweep(cfg_path, ["--live", "--only", "linkfail.txt"])
+    lf_rows = [r for r in state.lists[LISTS["docIndex"]].values() if r.get("FileName") == "linkfail.txt"]
+    new_url = str(lf_rows[0].get("TextFileUrl", {}).get("Url", "")) if lf_rows else ""
+    check("reclassified doc whose frozen stem is taken in the new folder gets a fresh stem; the neighbour's file is untouched",
+          proc.returncode == 0 and "/Test%20Plans/" in new_url.replace("/Test Plans/", "/Test%20Plans/")
+          and not new_url.endswith(f"/{lf_stem}.md")
+          and open(decoy_sc).read().startswith("# Decoy plan"), new_url + " " + proc.stderr[-300:])
+    state.lists[LISTS["docIndex"]].pop(str(decoy_row), None)
+    os.remove(decoy_sc)
     # the shared column-dropper covers the Figures list too
     state.lists[LISTS["figures"]] = {}
     state.reject_fields = {"Bytes"}
