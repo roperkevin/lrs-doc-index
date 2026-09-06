@@ -182,7 +182,7 @@ that fails on the previous version.**
 
 ```
 cd tests
-pip install -r requirements.txt anthropic    # PyYAML, python-pptx, python-docx
+pip install -r requirements.txt              # PyYAML, python-pptx, python-docx, anthropic
 python3 check_local_sweep.py                 # the sweep, curate, gantt end to end against mocks
 python3 check_testplangen.py                 # testplangen end to end
 python3 test_lrsdoc.py                       # the Python model layer against an SDK-faithful mock

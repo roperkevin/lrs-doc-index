@@ -12,7 +12,7 @@ their own path):
 
 ```
 cd tests
-pip install -r requirements.txt anthropic   # PyYAML, python-pptx, python-docx + the SDK
+pip install -r requirements.txt             # PyYAML, python-pptx, python-docx, anthropic
 python3 check_local_sweep.py                # any single gate
 ```
 
