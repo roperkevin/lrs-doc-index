@@ -292,7 +292,7 @@ export class DelegatedAuth {
         // The body MUST be consumed — an undrained response keeps undici's
         // socket (and the event loop) alive, which looks exactly like the
         // sign-in hanging.
-        await fetch(url, { redirect: "follow" })
+        await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(15000) })
           .then((r) => r.arrayBuffer())
           .catch(() => {});
       } else {
@@ -407,7 +407,7 @@ export async function redeemRefreshToken({ clientId, refreshToken, tenantId, res
   };
   if (resource) params.resource = resource;
   else params.scope = scopes.join(" ");
-  const res = await fetch(url, { method: "POST", body: new URLSearchParams(params) });
+  const res = await fetch(url, { method: "POST", body: new URLSearchParams(params), signal: AbortSignal.timeout(60000) });
   let json = {};
   try {
     json = await res.json();

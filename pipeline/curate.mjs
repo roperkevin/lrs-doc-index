@@ -137,6 +137,7 @@ async function listModels(cfg) {
       accept: "application/json",
       authorization: "Bearer " + (await dataverseToken(cfg.llm)),
     },
+    signal: AbortSignal.timeout(60000),
   });
   if (!res.ok) {
     throw new Error(`model list failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
