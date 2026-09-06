@@ -5,7 +5,7 @@ sheets.json file (see make_fixtures.py fixture 4) — worksheets exposing
 getName/getUsedRange/getRowCount/getColumnCount/getTexts — and prints
 {out: main(mock, 60000)}.
 
-Usage: python3 wrap_workbook.py ../../extract/WorkbookDump.ts wbd_v11.ts
+Usage: python3 wrap_workbook.py ../extract/WorkbookDump.ts wbd_v11.ts
        node --experimental-strip-types wbd_v11.ts sheets.json
 """
 import sys

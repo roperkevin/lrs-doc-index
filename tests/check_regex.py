@@ -33,7 +33,7 @@ import os
 import subprocess
 import sys
 
-SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../../extract')
+SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../extract')
 DEFAULT_REPO = 'ArcGISPro/ps-location-referencing'
 EXB_REPO = 'Beijing-R-D-Center/ExperienceBuilder-Web-Extensions'
 

@@ -17,7 +17,7 @@ group, node labels, legend, escaped text):
   5. node labels live INSIDE their shape's text body (editable in place),
      never as loose text boxes;
   6. the figure's <title>/<desc> ride the group as name + alt text;
-  7. python-pptx (already in review/harness/requirements.txt) can open
+  7. python-pptx (already in tests/requirements.txt) can open
      the package — the closest scriptable stand-in for PowerPoint itself;
   8. v1.2 slide dress: the SVG's plate (white card + border) is DROPPED —
      the slide is the background — and every slide carries a title band:
@@ -43,7 +43,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, '..', 'render', 'svg2pptx.mjs')
+SCRIPT = os.path.join(HERE, '..', 'pipeline', 'render', 'svg2pptx.mjs')
 failures = []
 
 

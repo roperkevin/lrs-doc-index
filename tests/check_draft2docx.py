@@ -22,7 +22,7 @@ python-docx, asserting the conversion contract:
   8. CLI contract: sibling-name default, -o for a single input,
      multi-input conversion, usage errors exit nonzero
 
-Needs python-docx (review/harness/requirements.txt — the CI
+Needs python-docx (tests/requirements.txt — the CI
 full-format job installs it). Usage: python3 check_draft2docx.py
 """
 import os
@@ -31,7 +31,7 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(HERE)
 JOB = os.path.join(REPO, "pipeline", "render", "draft2docx.mjs")
 
 PASS = []

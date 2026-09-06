@@ -26,7 +26,7 @@ Reports every mismatch as FAIL with both values; exits 1 on any. Not a
 CI job (a registry hiccup must never redden main) — run it by hand
 after editing a token block:
 
-  python3 local/harness/check_design_tokens.py [--all] [--cache DIR]
+  python3 tests/check_design_tokens.py [--all] [--cache DIR]
 """
 import io
 import json
@@ -39,7 +39,7 @@ import tempfile
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+REPO = os.path.abspath(os.path.join(HERE, ".."))
 DS = os.path.join(REPO, "pipeline", "lib", "designsystem.mjs")
 REGISTRY = "https://registry.npmjs.org"
 

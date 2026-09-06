@@ -1,4 +1,4 @@
-"""Gate for the PAD Node runner (pad/runner/run_job.mjs).
+"""Gate for the PAD Node runner (extract/runner/run_job.mjs).
 
 Proves the runner drives the UNMODIFIED scripts/ versions correctly:
 
@@ -14,7 +14,7 @@ Proves the runner drives the UNMODIFIED scripts/ versions correctly:
      file= alias, args-file parsing, and results JSON-identical to
      the same ops run through a batch job
   4. parity leg: the runner's ziptext output is JSON-identical to a
-     direct review/harness/wrap.py run of scripts/ZipTextExtract.ts
+     direct tests/wrap.py run of scripts/ZipTextExtract.ts
      on the same fixture — the runner adds no behavior of its own
 
 Pure stdlib + Node 22+ (--experimental-strip-types), no fixtures on
@@ -32,9 +32,9 @@ import tempfile
 import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(HERE)
 RUNNER = os.path.join(REPO, "extract", "runner", "run_job.mjs")
-WRAP = os.path.join(REPO, "review", "harness", "wrap.py")
+WRAP = os.path.join(HERE, "wrap.py")
 SCRIPTS = os.path.join(REPO, "extract")
 
 PASS = []
@@ -306,7 +306,7 @@ def main():
           json.dumps(cli_zt["results"][0]["result"], sort_keys=True)
           == json.dumps(zt, sort_keys=True))
 
-    print("== parity leg (runner vs review/harness wrap.py, ZipTextExtract)")
+    print("== parity leg (runner vs tests/wrap.py, ZipTextExtract)")
     wrap_out = os.path.join(tmp, "zt_wrap.ts")
     subprocess.run([sys.executable, WRAP,
                     os.path.join(SCRIPTS, "ZipTextExtract.ts"), wrap_out],

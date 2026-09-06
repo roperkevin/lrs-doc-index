@@ -8,7 +8,7 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# harness-generated artifacts have their own review/harness/.gitignore
+# harness-generated artifacts have their own tests/.gitignore
 # check_svg2pptx.py fixtures when the gate is run from the repo root
 fix_*.pptx
 fix_slide*.svg

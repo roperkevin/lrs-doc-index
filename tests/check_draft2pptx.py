@@ -32,7 +32,7 @@ reads the .pptx back with python-pptx, asserting the deck contract:
      "Figure: … (not embedded)" note, and stderr names the fix; a
      --media path that is not a directory is refused up front
 
-Needs python-pptx (review/harness/requirements.txt — the CI
+Needs python-pptx (tests/requirements.txt — the CI
 full-format job installs it). Usage: python3 check_draft2pptx.py
 """
 import os
@@ -41,8 +41,8 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-JOB = os.path.join(HERE, "..", "render", "draft2pptx.mjs")
-REPO = os.path.join(HERE, "..", "..")
+JOB = os.path.join(HERE, "..", "pipeline", "render", "draft2pptx.mjs")
+REPO = os.path.join(HERE, "..")
 
 PASS, FAIL = [], []
 

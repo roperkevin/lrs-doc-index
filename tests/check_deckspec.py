@@ -51,7 +51,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+REPO = os.path.abspath(os.path.join(HERE, ".."))
 DS = os.path.join(REPO, "pipeline", "lib", "designsystem.mjs")
 SPEC = os.path.join(REPO, "pipeline", "lib", "deckspec.mjs")
 PROMPT = os.path.join(REPO, "prompts", "TestPlanDeck_Prompt.md")

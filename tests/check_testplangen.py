@@ -29,7 +29,7 @@ verifier the cloud flow could not have
                      NOTHING
   leg 5 verifier     lib/draftlint.mjs agrees verdict-for-verdict and
                      label-for-label with the Python authority
-                     (review/harness/check_draft_coverage.py) on
+                     (tests/check_draft_coverage.py) on
                      shared fixtures; strict refuses a bad draft;
                      annotate writes it with the [!IMPORTANT]
                      findings block; off stamps verify=off
@@ -219,10 +219,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(HERE)
 JOB = os.path.join(REPO, "pipeline", "testplangen.mjs")
 DRAFTLINT = os.path.join(REPO, "pipeline", "lib", "draftlint.mjs")
-PY_LINT = os.path.join(REPO, "review", "harness", "check_draft_coverage.py")
+PY_LINT = os.path.join(HERE, "check_draft_coverage.py")
 GEN_MODEL = "feedf00d-0000-4000-8000-000000000001"
 FIG_MODEL = "feedf00d-0000-4000-8000-000000000002"
 DECK_MODEL = "feedf00d-0000-4000-8000-000000000003"

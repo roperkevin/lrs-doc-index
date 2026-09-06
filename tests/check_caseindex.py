@@ -32,7 +32,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(HERE)
 LIB = os.path.join(REPO, "pipeline", "lib").replace(os.sep, "/")
 
 PASS = []

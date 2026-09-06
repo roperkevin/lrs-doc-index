@@ -46,7 +46,7 @@ the .pptx back with python-pptx, asserting the deck contract:
      fluent light the group is byte-identical to the unstyled one;
      an unknown theme is refused; the provenance names the theme
 
-Needs python-pptx (review/harness/requirements.txt — the CI
+Needs python-pptx (tests/requirements.txt — the CI
 full-format job installs it). Usage: python3 check_deck2pptx.py
 """
 import json
@@ -59,8 +59,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-JOB = os.path.join(HERE, "..", "render", "deck2pptx.mjs")
-REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
+JOB = os.path.join(HERE, "..", "pipeline", "render", "deck2pptx.mjs")
+REPO = os.path.abspath(os.path.join(HERE, ".."))
 
 PASS, FAIL = [], []
 

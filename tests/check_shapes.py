@@ -34,8 +34,8 @@ import sys
 import tempfile
 import zipfile
 
-SCRIPTS = os.environ.get("HARNESS_SCRIPTS", "../../extract")
-REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+SCRIPTS = os.environ.get("HARNESS_SCRIPTS", "../extract")
+REPO = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 OPS = os.path.join(REPO, "extract", "runner", "ops.mjs").replace(os.sep, "/")
 
 failures = []

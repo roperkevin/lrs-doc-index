@@ -1,7 +1,7 @@
 """Formatting assertions for the current scripts/ generation.
 
 Runners are (re)generated as version-neutral *_cur.ts files from
-whatever HARNESS_SCRIPTS points at (default ../../scripts), so these
+whatever HARNESS_SCRIPTS points at (default ../extract), so these
 labels never go stale when a batch is promoted. Unlike run_diff.py
 (the historical byte-equivalence gate, which stays as-is), this
 validates the *intentional* format contract:
@@ -48,7 +48,7 @@ import sys
 RECALL_BAR = 0.97
 # check_batch.py points this at a staged patch set to gate a script
 # batch with the full suite before pasting; default is the shipped set.
-SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../../extract')
+SCRIPTS = os.environ.get('HARNESS_SCRIPTS', '../extract')
 
 failures = []
 

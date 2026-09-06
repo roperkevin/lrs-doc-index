@@ -39,7 +39,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(os.path.dirname(HERE))
+REPO = os.path.dirname(HERE)
 SWEEP = os.path.join(REPO, "pipeline", "sweep.mjs")
 CURATE = os.path.join(REPO, "pipeline", "curate.mjs")
 DOC_CRAWL = os.path.join(REPO, "pipeline", "doc_crawl.mjs")
