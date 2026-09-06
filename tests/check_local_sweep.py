@@ -1545,6 +1545,36 @@ def main():
           and out.get("archived") == 0, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
+    # ghost sanity floor: when more than the per-run cap AND at least half
+    # of the live rows match no library file, the keys disagree with the
+    # listing (a docKeyStrip mismatch) — the pass must halt, archive
+    # nothing and delete no sidecar, and say why
+    print("== ghost-floor leg")
+    floor_ids = []
+    for i in range(30):
+        sc = os.path.join(sidecar_dir, "Other", f"Floor Doc {i}.md")
+        os.makedirs(os.path.dirname(sc), exist_ok=True)
+        with open(sc, "w") as f:
+            f.write(f"# Floor Doc {i}\nstale\n")
+        floor_ids.append(state.seed(LISTS["docIndex"], {
+            "Title": f"Floor Doc {i}", "FileName": f"Floor Doc {i}.pptx",
+            "DocKey": f"shared documents/floor doc {i}.pptx", "IndexStatus": "Indexed",
+            "SourceModified": "2026-08-01T10:00:00Z", "PromptVersion": "v2.0",
+            "TextFileUrl": {"Url": f"https://mock.example/sites/lrsworkspace/LRS Doc Index/Other/Floor Doc {i}.md",
+                            "Description": f"Floor Doc {i}.md"},
+        }))
+    proc = run_sweep(cfg_path, ["--dry-run"])
+    out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
+    floor_rows = [state.lists[LISTS["docIndex"]][str(i)] for i in floor_ids]
+    check("ghost floor: a majority of ghosts halts the pass — nothing archived (planned or real), reason on stderr",
+          proc.returncode == 0 and out.get("archived") == 0 and out.get("ghost_halted") == 30
+          and all(r.get("IndexStatus") == "Indexed" for r in floor_rows)
+          and os.path.exists(os.path.join(sidecar_dir, "Other", "Floor Doc 0.md"))
+          and "ghost reconciliation halted" in proc.stderr and "docKeyStrip" in proc.stderr,
+          str(out)[:300] + proc.stderr[-300:])
+    for i in floor_ids:
+        state.lists[LISTS["docIndex"]].pop(str(i), None)
+        os.remove(os.path.join(sidecar_dir, "Other", f"Floor Doc {int(i) - int(floor_ids[0])}.md"))
     check("content-filtered doc never re-burns an AI call (dry + live only)",
           state.llm_files.count("filtered.txt") == 2,
           str(state.llm_files.count("filtered.txt")))

@@ -1944,11 +1944,25 @@ async function main() {
         : fileRef.replace(/^\//, "");
       liveKeys.add(lower(siteRel));
     }
-    const ghosts = docIndexRows.filter(
-      (r) => r.DocKey && r.IndexStatus !== "Archived" && !liveKeys.has(lower(r.DocKey))
-    );
+    const candidates = docIndexRows.filter((r) => r.DocKey && r.IndexStatus !== "Archived");
+    const ghosts = candidates.filter((r) => !liveKeys.has(lower(r.DocKey)));
     const cap = sw.maxArchivesPerRun === undefined ? 20 : Number(sw.maxArchivesPerRun);
-    for (const g of ghosts.slice(0, cap)) {
+    // Sanity floor: when MORE than the per-run cap AND at least half of
+    // the live rows read as ghosts, the listing and the rows disagree on
+    // how keys are formed (a docKeyStrip / FileRef mismatch, a partial
+    // listing) — archiving 20 a night would delete the corpus's sidecars
+    // one batch at a time. Halt loudly; a real mass deletion is rare
+    // enough to be handled by raising sweep.maxArchivesPerRun on purpose.
+    const halt = ghosts.length > cap && ghosts.length * 2 >= candidates.length;
+    if (halt) {
+      summary.ghost_halted = ghosts.length;
+      process.stderr.write(
+        `ghost reconciliation halted: ${ghosts.length} of ${candidates.length} live rows match no ` +
+        "library file — that is a DocKey/listing mismatch, not deletions (check sharePoint.docKeyStrip " +
+        "and the library listing; raise sweep.maxArchivesPerRun to archive on purpose)\n"
+      );
+    }
+    for (const g of halt ? [] : ghosts.slice(0, cap)) {
       try {
         await writer.patchRow("docIndex", g.ID, {
           IndexStatus: "Archived", IndexedOn: new Date().toISOString(),
