@@ -1,3 +1,29 @@
+# TestPlanGen v2.38 — the figures budget as a knob (TestPlanFigures prompt v0.2, testplangen.mjs v1.18)
+
+Owner-requested (2026-09-06): doc 910 has 22 cases and the figures
+pass's X6 rule fixed the budget at six figures per plan in the prompt
+text. The cap is a per-machine choice, not a prompt concern.
+
+- **`testplangen.figuresCap`** (default 6) is substituted into the
+  prompt as its THIRD input, **FiguresCap** (`X6 BUDGET: at most
+  {FiguresCap} figures per plan`); prompt v0.1 → v0.2, selection
+  rules, exclusions, vocabulary and output unchanged. The anthropic
+  lane picks it up on the next run; the aibuilder lane's tenant
+  prompt (none exists) would need the third parameter created.
+- **Enforced in code too:** after the grounding check, a reply past
+  the cap keeps its first `figuresCap` grounded specs in case order
+  and drops the rest with reason X6 (the model ranked; this only
+  guards). A non-integer or out-of-range value (1–60) refuses BEFORE
+  the generation spend.
+- Raise `figuresMaxTokens` with it — roughly 1.5k tokens of JSON per
+  spec; a 12-figure plan wants ~36000.
+- Gate: `check_testplangen.py` 223/223 (the default 6 in the prompt
+  and the Predict inputs, a cap of 1 keeping one spec and dropping
+  the next with X6, 0 refused before spend).
+
+Rollout: nothing on the tenant. `"figuresCap": 12` under
+`testplangen` in `local/config.json` (with `"figuresMaxTokens": 36000`).
+
 # TestPlanGen v2.37 — the review deck on three design systems, light or dark (designsystem v1.2, deck2pptx v1.2, deckspec v1.1, draft2pptx v1.3, testplangen.mjs v1.17)
 
 Owner-requested (2026-09-06), following v2.36: "any other design

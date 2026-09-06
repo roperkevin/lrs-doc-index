@@ -1,4 +1,14 @@
-# Test Plan Figures Prompt — v0.1 (authored, not wired, not pasted)
+# Test Plan Figures Prompt — v0.2 (authored; wired as `testplangen.mjs --figures`, anthropic lane verbatim; no tenant paste)
+
+v0.2 (TestPlanGen v2.38): the X6 figure budget is an INPUT,
+**FiguresCap**, substituted from `testplangen.figuresCap` (default 6)
+instead of a number fixed in the prompt text — a 22-case plan needs
+more than six schematics and the cap is a per-machine choice, not a
+prompt concern. Selection rules, exclusions, vocabulary and output are
+unchanged; `local/testplangen.mjs` also enforces the cap after the
+grounding check as a guard rail (survivors past it are dropped with
+reason X6, in case order).
+
 
 A second, OPTIONAL model pass over a finished TestPlanGen draft: read
 the plan's test cases, decide which ones a schematic would genuinely
@@ -46,13 +56,14 @@ the draft when the pass is off, refused, or returns no figures.
 Provider "anthropic" executes this file verbatim between the
 delimiters (`generateText`, the TestPlanGen precedent); provider
 "aibuilder" would need the same text pasted as a tenant custom prompt
-with the two inputs below and its GUID in `llm.figuresModelId`. No
+with the three inputs below and its GUID in `llm.figuresModelId`. No
 tenant prompt exists yet.
 
 Inputs, exact names: **PlanTitle**, **Draft** (the verified draft
-body between the DRAFT markers — banner and machine addenda excluded).
+body between the DRAFT markers — banner and machine addenda excluded),
+**FiguresCap** (a positive integer — `testplangen.figuresCap`, default 6).
 
-Versioning: `TestPlanFiguresPromptVersion: v0.1`
+Versioning: `TestPlanFiguresPromptVersion: v0.2`
 (`testplangen/CHANGES.md`); bumping it never touches
 `TestPlanGenPromptVersion` or `Config.PromptVersion`.
 
@@ -88,7 +99,7 @@ EXCLUSIONS (a candidate is DROPPED when any applies; record the exclusion)
 - X3 STORY FIGURE ALREADY SHOWS IT: the case closes with a **Figure:** line whose alt text depicts the same state or topology. Skip — unless the case ALSO changes records (R2); then emit ONLY the "After" panel and say so in the caption.
 - X4 UNGROUNDED: a value the diagram needs (a measure, a route id, a date, an actor) is missing, abstract ("a measure inside its extent"), or marked [VERIFY. No figure — never guess a value.
 - X5 NEGATIVE MIRROR: a Negative case whose only outcome is a refusal and whose geometry equals a Positive case already selected. Skip; point to the positive figure in "skipped".
-- X6 BUDGET: at most 6 figures per plan. Rank candidates R2 > R3 > R1 > R4 > R5, ties in case order (Positive lane first); drop the rest with reason X6.
+- X6 BUDGET: at most {FiguresCap} figures per plan. Rank candidates R2 > R3 > R1 > R4 > R5, ties in case order (Positive lane first); drop the rest with reason X6.
 
 One figure per selected case; a before/after pair is ONE figure with two panels, never two figures.
 
