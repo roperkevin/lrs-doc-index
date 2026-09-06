@@ -20,7 +20,7 @@ chunk as it arrives, then always one ``{"result": {...}}`` line (see
 ``lrsdoc.llm.Result.to_dict``). On failure one ``{"error": {"type",
 "message", "partial"?}}`` line and a non-zero exit: 2 truncated
 (max_tokens), 3 refused, 4 output contract, 5 bad input, 1 anything
-else (transport, auth). ``--output`` writes the result object to a file
+else (transport, auth, a backend with no credentials). ``--output`` writes the result object to a file
 instead of the final stdout line.
 """
 
@@ -87,6 +87,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     except anthropic.APIConnectionError as e:
         _emit({"error": {"type": type(e).__name__, "message": f"connection: {e}"}})
+        return 1
+    except anthropic.AnthropicError as e:
+        # a client that would not construct: missing credentials for the
+        # backend in play (LRSDOC_TENANT / ANTHROPIC_FOUNDRY_*), an SDK
+        # too old for the tenant client
+        _emit({"error": {"type": type(e).__name__, "message": str(e)}})
         return 1
 
     out = res.to_dict()

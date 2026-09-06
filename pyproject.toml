@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lrsdoc"
-version = "1.0.0"
+version = "1.1.0"
 description = "The LRS Doc Index model layer: every Claude call the pipeline makes, from versioned prompt files, through the official Anthropic SDK."
 requires-python = ">=3.10"
 dependencies = [

@@ -12,6 +12,12 @@ Credentials are the SDK's own: ``ANTHROPIC_API_KEY``,
 ``ANTHROPIC_AUTH_TOKEN`` or an ``ant auth login`` profile;
 ``ANTHROPIC_BASE_URL`` points a run at a different endpoint (the test
 gates use it for their mock server).
+
+With ``LRSDOC_TENANT=foundry`` set (from ``llm.tenant`` in config) the
+call goes to the tenant's own Claude deployment on Microsoft Foundry
+first — the SDK's ``AnthropicFoundry`` client on its
+``ANTHROPIC_FOUNDRY_*`` credentials — and falls back to the Claude API
+above when that backend cannot serve it (:mod:`lrsdoc.llm`).
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

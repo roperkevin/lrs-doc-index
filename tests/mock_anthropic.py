@@ -61,9 +61,12 @@ def sse_events(text: str, stop_reason: str = "end_turn", thinking: list[str] | N
 
 
 def sse_bytes(text: str, stop_reason: str = "end_turn", thinking: list[str] | None = None,
-              model: str = MODEL) -> bytes:
+              model: str = MODEL, keep: int | None = None) -> bytes:
+    """The bytes of the stream; ``keep`` stops after that many events,
+    for a mock that cuts a reply off mid-flight."""
+    events = sse_events(text, stop_reason, thinking, model)
     return "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n"
-                   for e in sse_events(text, stop_reason, thinking, model)).encode()
+                   for e in (events if keep is None else events[:keep])).encode()
 
 
 def prompt_text(body: dict) -> str:
