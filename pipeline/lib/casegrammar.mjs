@@ -11,10 +11,11 @@
  * re-organised into ONE case grammar shared with TestPlanGen drafts:
  *
  *   ## Overview                      (units before the first case unit)
- *   ### Slide 1 — Scope <!-- slide 1 -->
+ *   #### Slide 1 — Scope <!-- slide 1 -->
  *   …
  *   ## Test Cases
- *   ### TC-P01 — <title> <!-- src: S4 · slide 1 · Positive Tests: Normal Routes · 1 -->
+ *   ### TC-P01 — <title> { #tc-p01 }
+ *   <!-- lrs:case det=S4 conf=high src="slide 1 · Positive Tests: Normal Routes · 1" -->
  *   - **Group:** Normal Routes
  *   - **Case:** <full case line when the title was shortened>
  *   - **Expected Result:** …          (when the source had one)
@@ -52,12 +53,33 @@
  *    Positive/Negative line inherits the lane of the page before it.
  *  - S1 / S2 accept the colon and dashed forms of a case line
  *    (`2: Transfer …`, `3-1: …`, a slide titled `11-2 : …`).
+ *
+ * v1.3 (Markdown_Layout_Plan phase 3 — one case block, everywhere):
+ *  - EXPLICIT ANCHORS. A case heading ends `{ #tc-p01 }`, so its link
+ *    target is the case id and survives a retitle; `_Case Catalog.md`,
+ *    the Test Cases list's `Anchor` and the wiki all name the same
+ *    fragment. `sweep.caseIndex.anchors: false` turns them off (the
+ *    SharePoint preview has no attr_list and shows the attribute as
+ *    text — the one cost of the decision).
+ *  - PROVENANCE MOVES to its own line under the heading, in the one
+ *    machine-comment grammar: `<!-- lrs:case det=… conf=… src=… -->`.
+ *    Off the heading, the src text no longer leaks into the case's
+ *    keyword tags; and `conf` — computed here since v1.0 — now rides
+ *    in the file instead of only on the list row. The trailing
+ *    `<!-- src: … -->` stays readable (caseindex v2.1) for the
+ *    backfill window.
+ *  - UNIT HEADINGS DROP TO H4, so H3 in a plan body means "a test
+ *    case" and nothing else, and the wiki's table of contents reads
+ *    section → case. Their `<!-- slide N -->` provenance is unchanged
+ *    (figureindex and the pre-3 deck parser read it).
  */
 
+import { mark, readMark, splitAnchor } from "./mdlayout.mjs";
+
 export const PROFILE = "testplan/v1";
-export const CASEGRAMMAR_VERSION = "1.2";
+export const CASEGRAMMAR_VERSION = "1.3";
 export const DETECTORS = ["S0", "S1", "S2", "S3", "S4", "S5", "S6"];
-export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: "high", S5: "medium", S6: "medium", draft: "high", deck: "high" };
+export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: "high", S5: "medium", S6: "medium", draft: "high", deck: "high", LLM: "llm" };
 
 const TITLE_MAX = 80;
 const STOPLIST = /^(notes?|test notes|general notes|environments?|test environments?( & data)?|data|test data|scope|in scope|out of scope|objectives?|background|summary|assumptions?|pre-?requisites?|setup|references?|resources|automation( notes)?|documentation( impacts)?|assignment|schedule|open questions?|coverage map|tools?|story points?|dev|pe)$/i;
@@ -352,13 +374,15 @@ function detectLabels(unit, ctxLane) {
       if (STOPLIST.test(lbl) || STOPLIST_ANY.test(lbl) || items.length < 2) return false;
       const steps = [];
       items.forEach((it, n) => {
-        steps.push(`${n + 1}. ${clean(it.text)}`);
-        for (const s of it.nested) steps.push("   " + s.trim());
+        // v1.3: steps nest under the `- **Steps:**` label, the one
+        // case block's shape (the draft contract writes the same)
+        steps.push(`  ${n + 1}. ${clean(it.text)}`);
+        for (const s of it.nested) steps.push("     " + s.trim());
       });
       cases.push({
         det: "S5", lane: ctxLane, title: shortTitle(label.replace(/:$/, "")), group: "",
         src: [`slide ${unit.slideNo}`, `label ${label.replace(/:$/, "")}`].filter((x) => x !== "slide 0"),
-        body: ["**Steps:**", ...steps], order: unit.start + k,
+        body: ["- **Steps:**", ...steps], order: unit.start + k,
       });
     }
     if (k >= 0) consumed.add(k);
@@ -564,11 +588,16 @@ function trimBlank(lines) {
  *  - cases: [{ id, lane, det, title, group, src }] in document order
  */
 export function renderTestPlanBody(tidied, opts = {}) {
+  const anchors = opts.anchors !== false;
   const text = String(tidied || "").replace(/\r\n?/g, "\n");
   if (/^### TC-[PNU]\d+\b/m.test(text)) {
+    // v1.3: S0 is no longer a pass-through — a body already in the
+    // grammar (a re-indexed draft, an LLM-normalized plan) converges
+    // on the same case block as every detected one
+    const body = canonicalizeCaseBlocks(text, { anchors });
     const cases = [];
-    for (const m of text.matchAll(/^### (TC-([PNU])\d+)\b[^\n]*$/gm)) cases.push({ id: m[1], lane: m[2] });
-    return { body: text, cases, shape: "S0", profile: PROFILE };
+    for (const m of body.matchAll(/^### (TC-([PNU])\d+)\b[^\n]*$/gm)) cases.push({ id: m[1], lane: m[2] });
+    return { body, cases, shape: "S0", profile: PROFILE };
   }
   const lines = text.split("\n");
   const units = splitUnits(lines);
@@ -635,11 +664,12 @@ export function renderTestPlanBody(tidied, opts = {}) {
   }
   const firstCaseUnit = found.findIndex((f) => f.cases.length > 0);
   const overview = [], other = [], tcs = [];
+  // v1.3: H4 — H3 in a plan body means "a test case" and nothing else
   const unitHeading = (unit) => {
     if (!unit.headingLine) return null;
     const label = unit.isSlide ? `Slide ${unit.slideNo}${unit.title ? " — " + unit.title : ""}` : unit.text;
     const prov = unit.isSlide ? ` <!-- slide ${unit.slideNo} -->` : "";
-    return `### ${label}${prov}`;
+    return `#### ${label}${prov}`;
   };
   for (const f of found) {
     const unit = units[f.unitIdx];
@@ -651,8 +681,11 @@ export function renderTestPlanBody(tidied, opts = {}) {
       if (res.length) target.push(...res);
     }
     for (const c of f.cases) {
-      const src = [c.det, ...c.src.map(srcSafe)].join(" · ");
-      tcs.push("", `### ${c.id} — ${headSafe(c.title)} <!-- src: ${src} -->`, "");
+      // v1.3: the heading carries the case's own anchor; the
+      // provenance sits under it in the one machine-comment grammar
+      const anchor = anchors ? ` { #${c.id.toLowerCase()} }` : "";
+      tcs.push("", `### ${c.id} — ${headSafe(c.title)}${anchor}`);
+      tcs.push(mark("case", { det: c.det, conf: CONFIDENCE[c.det] || "medium", src: c.src.map(srcSafe).join(" · ") }), "");
       const body = trimBlank(c.body);
       if (body.length) tcs.push(...body);
     }
@@ -670,23 +703,76 @@ export function renderTestPlanBody(tidied, opts = {}) {
   };
 }
 
-/** Lint for the profile: every TC heading carries a src comment,
- *  ids are sequential per lane, `## Test Cases` exists when any TC does. */
+/**
+ * canonicalizeCaseBlocks(text) — a body ALREADY in the TC grammar,
+ * rewritten into the v1.3 case block: the heading takes its own
+ * `{ #tc-p01 }` anchor and a trailing `<!-- src: … -->` moves onto an
+ * `lrs:case` mark beneath it. Idempotent, and the only thing that
+ * touches a body it did not itself detect cases in — so a TestPlanGen
+ * draft re-indexed as a sidecar, and a body the LLM lane normalized,
+ * converge on the same shape as every deterministic plan.
+ */
+export function canonicalizeCaseBlocks(text, opts = {}) {
+  const anchors = opts.anchors !== false;
+  const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const head = splitAnchor(lines[i]);
+    const m = /^### (TC-([PNU])\d+)\b(.*)$/.exec(head.text);
+    if (!m) { out.push(lines[i]); continue; }
+    const sm = /\s*<!-- src: (.*?) -->\s*$/.exec(m[3]);
+    const id = m[1];
+    const rest = sm ? m[3].slice(0, sm.index) : m[3];
+    out.push(`### ${id}${rest.replace(/\s+$/, "")}${anchors ? ` { #${id.toLowerCase()} }` : ""}`);
+    // the next non-blank line already carrying a mark wins over a
+    // trailing src comment, so a second pass changes nothing
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "") j++;
+    if (sm && !readMark(lines[j] ?? "", "case")) {
+      const parts = sm[1].split(/\s*·\s*/);
+      const det = /^(S[0-6]|LLM)$/.test(parts[0]) ? parts[0] : "";
+      out.push(mark("case", {
+        det, conf: det ? CONFIDENCE[det] || "medium" : "",
+        src: (det ? parts.slice(1) : parts).join(" · "),
+      }));
+    }
+  }
+  return out.join("\n");
+}
+
+/** Lint for the profile: every TC heading carries its provenance and,
+ *  when anchored, its own id as the anchor; ids are sequential per
+ *  lane; `## Test Cases` exists when any TC does. v1.3 reads the
+ *  provenance from the `lrs:case` mark under the heading and still
+ *  accepts the pre-1.3 trailing `<!-- src: … -->`. */
 export function lintTestPlanBody(body) {
   const failures = [];
   const text = String(body || "");
-  const heads = [...text.matchAll(/^### (TC-([PNU])(\d+))\b([^\n]*)$/gm)];
+  const lines = text.split("\n");
+  const heads = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^### (TC-([PNU])(\d+))\b(.*)$/.exec(lines[i]);
+    if (!m) continue;
+    // the mark sits on the next non-blank line
+    let j = i + 1;
+    while (j < lines.length && lines[j].trim() === "") j++;
+    heads.push({
+      id: m[1], lane: m[2], n: parseInt(m[3], 10), rest: m[4],
+      src: readMark(lines[j] ?? "", "case")?.src ?? (/<!-- src: (.*?) -->\s*$/.exec(m[4]) || [])[1],
+    });
+  }
   if (heads.length && !/^## Test Cases$/m.test(text)) failures.push("missing ## Test Cases");
-  // a body in the draft contract (TestPlanGen output) carries no src
-  // comments at all — that is its shape, not a lint failure; only a
-  // rendered body with SOME src comments must have them on every case
-  const anySrc = heads.some((h) => /<!-- src: .*? -->\s*$/.test(h[4]));
+  // a body in the draft contract (TestPlanGen output) carries no
+  // provenance at all — that is its shape, not a lint failure; only a
+  // rendered body with SOME provenance must have it on every case
+  const anySrc = heads.some((h) => h.src !== undefined);
   const seen = { P: 0, N: 0, U: 0 };
   for (const h of heads) {
-    if (anySrc && !/<!-- src: .*? -->\s*$/.test(h[4])) failures.push(`${h[1]}: no src comment`);
-    const n = parseInt(h[3], 10);
-    if (n !== seen[h[2]] + 1) failures.push(`${h[1]}: expected ${h[2]}${seen[h[2]] + 1}`);
-    seen[h[2]] = n;
+    if (anySrc && h.src === undefined) failures.push(`${h.id}: no src comment`);
+    const anchor = (/\{\s*#([^}\s]+)\s*\}\s*$/.exec(h.rest) || [])[1];
+    if (anchor && anchor !== h.id.toLowerCase()) failures.push(`${h.id}: anchor ${anchor}`);
+    if (h.n !== seen[h.lane] + 1) failures.push(`${h.id}: expected ${h.lane}${seen[h.lane] + 1}`);
+    seen[h.lane] = h.n;
   }
   return failures;
 }

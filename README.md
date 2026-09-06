@@ -224,10 +224,10 @@ prompt change.
 
 ## Documentation map
 
-- `docs/setup.md` — install, sign-in, first run, operations, each job (§15: the wiki)
+- `docs/setup.md` — install, sign-in, first run, operations, each job (§15: the wiki; §16: the markdown layout rollout)
 - `docs/sharepoint-notes.md` — the lists, their GUIDs, and the tenant behaviours the pipeline works around
-- `docs/qa-agent-instructions.md` — the sidecar format as a Q&A agent reads it (the best description of a sidecar)
-- `docs/design/` — Sidecar format 3.0, case indexing, figure indexing, test-plan generation, the markdown layout strategy
+- `docs/qa-agent-instructions.md` — the sidecar format (3.1) as a Q&A agent reads it (the best description of a sidecar)
+- `docs/design/` — Sidecar format 3.1, case indexing, figure indexing, test-plan generation, the markdown layout strategy
 - `docs/changelog/` — `pipeline.md`, `testplangen.md`, `curation.md`; `prompts/CHANGELOG.md` for the prompts
 - `STATUS.md` — what is deployed on the machine, and the open actions
 - `docs/history.md` — the eras this project went through, why things are the way they are, and where every retired artifact went

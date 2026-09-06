@@ -74,7 +74,7 @@ import { createProgress, resolveProgress, secs, noProgress } from "./lib/progres
 import { bodySeamEnd } from "./lib/doclinks.mjs";
 import { caseSpans } from "./lib/caseindex.mjs";
 import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
-import { toMkDocs, normalize } from "./lib/mdlayout.mjs";
+import { toMkDocs, normalize, splitAnchor } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
@@ -97,6 +97,15 @@ const KIND_FOLDERS = {
 export function mkdocsSlug(text) {
   const ascii = String(text ?? "").normalize("NFKD").replace(/[^\x00-\x7f]/g, "");
   return ascii.replace(/[^\w\s-]/g, "").trim().toLowerCase().replace(/[-\s]+/g, "-");
+}
+
+/** A heading's id the way MkDocs assigns it: the explicit `{ #id }`
+ *  when the heading carries one (attr_list is enabled), else the toc
+ *  slug with the duplicate suffix. `text` is what the page shows. */
+export function headingId(headingText, taken) {
+  const { text, id } = splitAnchor(stripComments(headingText).trim());
+  if (id) { taken.add(id); return { text: text.trim(), id }; }
+  return { text: text.trim(), id: uniqueSlug(mkdocsSlug(text), taken) };
 }
 
 /** python-markdown's toc `unique`: id, id_1, id_2 … */
@@ -280,13 +289,17 @@ export function planCases(body) {
   const lines = String(body || "").replace(/\r\n?/g, "\n").split("\n");
   const taken = new Set();
   const anchorAt = new Map();
+  const headAt = new Map();
   for (let i = 0; i < lines.length; i++) {
     const hm = /^(#{1,6}) (.+)$/.exec(lines[i]);
-    if (hm) anchorAt.set(i, uniqueSlug(mkdocsSlug(stripComments(hm[2])), taken));
+    if (!hm) continue;
+    const h = headingId(hm[2], taken);
+    anchorAt.set(i, h.id);
+    headAt.set(i, h.text);
   }
   return caseSpans(body).spans.map((s) => ({
     ordinal: s.ordinal,
-    heading: stripComments(lines[s.start] || "").replace(/^#+\s*/, "").trim(),
+    heading: headAt.get(s.start) || "",
     anchor: anchorAt.get(s.start) || "",
   }));
 }
@@ -303,8 +316,9 @@ export function bodyFigures(body) {
     if (fence) continue;
     const hm = /^(#{1,6}) (.+)$/.exec(ln);
     if (hm) {
-      heading = stripComments(hm[2]).trim();
-      anchor = uniqueSlug(mkdocsSlug(heading), taken);
+      const h = headingId(hm[2], taken);
+      heading = h.text;
+      anchor = h.id;
       continue;
     }
     const re = /!\[([^\]]*)\]\(<?(\.\.\/media\/[^)\s>]+)>?\)/g;
@@ -347,20 +361,33 @@ function docPage(d, model) {
     ? d.issues.map((i) => `${link(p, catalogPage("issues", i.ref), i.ref)} ([open](${i.url}))`).join(" · ")
     : "—";
   const kindLink = link(p, `${d.kindDir}/index.md`, d.kind);
+  // format 3.1 (Markdown_Layout_Plan phase 4): the identity and the
+  // provenance always print; a row the document has nothing to say in
+  // is not printed as `—`
+  const people = [
+    m.author && `author ${person(m.author)}`,
+    m.pe && `PE ${person(m.pe)}`,
+    m.dev && `dev ${person(m.dev)}`,
+  ].filter(Boolean).join(" · ");
   const rows = [
-    ["Doc", `${m.doc_id ?? "—"} · ${kindLink} · ${cell(m.surface) || "—"}`],
-    ["Product", cat("products", m.products)],
-    ["Release", m.target_release ? link(p, catalogPage("releases", m.target_release), m.target_release) : "—"],
-    ["Issues", issues],
-    ["Source", source],
-    ["People", `author ${person(m.author)} · PE ${person(m.pe)} · dev ${person(m.dev)}`],
-    ["Edited", cell(m.last_edited) ? `${cell(m.last_edited)}${m.last_edited_by ? ` by ${cell(m.last_edited_by)}` : ""}` : "—"],
-    ["Extracted", [m.extracted, m.extraction_lane && `lane ${m.extraction_lane}`, m.format && `format ${m.format}`, m.prompt_version && `prompt ${m.prompt_version}`].filter(Boolean).map(cell).join(" · ") || "—"],
-    ["Keywords", cat("keywords", [...new Set(d.keywords)])],
-    ["Tools", cat("tools", m.tools)],
+    ["Doc", `${m.doc_id ?? "—"} · ${kindLink} · ${cell(m.surface) || "—"}`, true],
+    ["Status", cell(m.status), true],
+    ["Product", m.products.length ? cat("products", m.products) : ""],
+    ["Release", m.target_release ? link(p, catalogPage("releases", m.target_release), m.target_release) : ""],
+    ["Issues", d.issues.length ? issues : ""],
+    ["Source", source, true],
+    ["People", people],
+    ["Edited", cell(m.last_edited) ? `${cell(m.last_edited)}${m.last_edited_by ? ` by ${cell(m.last_edited_by)}` : ""}` : ""],
+    ["Extracted", [m.extracted, m.extraction_lane && `lane ${m.extraction_lane}`, m.format && `format ${m.format}`, m.prompt_version && `prompt ${m.prompt_version}`].filter(Boolean).map(cell).join(" · "), true],
+    ["Generated", cell(m.generated)],
+    ["Keywords", d.keywords.length ? cat("keywords", [...new Set(d.keywords)]) : ""],
+    ["Tools", m.tools.length ? cat("tools", m.tools) : ""],
   ];
   const out = [`# ${mdEscape(m.title || d.stem)}`, "", "| Field | Value |", "| --- | --- |"];
-  for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
+  for (const [k, v, always] of rows) {
+    if (!always && (v === "" || v === "—")) continue;
+    out.push(`| **${k}** | ${v === "" ? "—" : v} |`);
+  }
   out.push("");
   if (d.summary) out.push("## Summary", "", normalize(toMkDocs(d.summary)), "");
   if (d.related.length) {

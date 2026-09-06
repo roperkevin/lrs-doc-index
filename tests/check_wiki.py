@@ -124,15 +124,14 @@ STORY = """# Conflict Prevention Story
 | Field | Value |
 | --- | --- |
 | **Doc** | 42 · User Story · Pro |
+| **Status** | Indexed |
 | **Product** | Roads & Highways · Pipeline Referencing |
-| **Release** | 3.8 |
 | **Issues** | [ArcGISPro/ps-location-referencing#4855](https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855) |
 | **Source** | [Story.docx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/Story.docx>) |
-| **People** | author Claire Wang · PE — · dev — |
+| **People** | author Claire Wang |
 | **Edited** | 2026-08-05 09:00 by Claire Wang |
-| **Extracted** | 2026-09-04 · lane xmlstrip · format 3.0 · prompt v3.0.0 |
+| **Extracted** | 2026-09-04 · lane xmlstrip · format 3.1 · prompt v3.0.0 |
 | **Keywords** | routes · locks |
-| **Tools** | — |
 
 ## Summary
 
@@ -336,10 +335,16 @@ def main():
           "`<literal>`" in plan, plan[-400:])
     check("<br> and autolinks survive the escape",
           "](<https://esriis.sharepoint.com" in plan, plan[:1200])
+    story = page("user-stories/4855-conflict-story.md")
+    check("a metadata row the document has nothing to say in is omitted",
+          "| **Release** |" in plan and "| **Tools** |" in plan
+          and "| **Release** |" not in story and "| **Tools** |" not in story
+          and " | — |" not in story, story[:900])
+    check("the Status row is always present — its value on a pre-3.1 file",
+          "| **Status** | Indexed |" in story and "| **Status** | — |" in plan, plan[:900])
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
           and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
-    story = page("user-stories/4855-conflict-story.md")
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------

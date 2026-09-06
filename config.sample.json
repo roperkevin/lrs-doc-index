@@ -126,9 +126,10 @@
     "relatedShortlist": 12,
     "maxCellsWorkbookDump": 60000,
     "caseIndex": {
-      "$comment": "Test-case indexing (Case_Index_Plan.md; sweep v1.42). Enabled by sharePoint.lists.testCases carrying the Test Cases list GUID — the list was created on lrsworkspace 2026-09-05 per schemas/SPList_TestCases.csv and its GUID is in the lists block above; a machine config missing the key indexes documents normally with one loud note. Backfill once with `sweep.mjs --recase --live` (docs/setup.md §12). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text.",
+      "$comment": "Test-case indexing (Case_Index_Plan.md; sweep v1.42). Enabled by sharePoint.lists.testCases carrying the Test Cases list GUID — the list was created on lrsworkspace 2026-09-05 per schemas/SPList_TestCases.csv and its GUID is in the lists block above; a machine config missing the key indexes documents normally with one loud note. Backfill once with `sweep.mjs --recase --live` (docs/setup.md §12). kinds = which DocKinds get case rows; caseTextCap bounds the per-case skim text. anchors (Markdown_Layout_Plan phase 3, sweep v1.54) writes each case heading its own explicit anchor — `### TC-P01 — … { #tc-p01 }` — so the catalog, the Test Cases list Anchor column and the wiki all name a link target that survives a retitle; GitHub and MkDocs honour it, the SharePoint preview has no attr_list and shows it as text, so set false to keep the preview clean (then backfill with `--reformat --live`).",
       "kinds": ["Test Plan"],
-      "caseTextCap": 4000
+      "caseTextCap": 4000,
+      "anchors": true
     },
     "drawings": true,
     "$comment_drawings": "sweep v1.61: every pptx slide that carries a drawing (3+ drawn shapes / connectors / freeforms) yields a faithful SVG of its shapes and text in media/<stem>/ (extract/ShapeExtract.ts) plus a [connections: A → B] line under the slide; indexed as Kind drawing in the Figures list. false turns the lane off.",

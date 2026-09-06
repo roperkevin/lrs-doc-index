@@ -386,7 +386,7 @@ with zipfile.ZipFile('fix_stem.pptx') as z:
 check('Route Split Cases (stem naming)' in ss,
       'stem leg: document title found via media/<stem>/ -> <kind folder>/<stem>.md')
 check('Pipeline Referencing' in ss and 'edited 2026-08-12' in ss,
-      'stem leg: metadata line read from the format-3.0 table')
+      'stem leg: metadata line read from the 3.x table')
 
 if failures:
     print(f'RESULT: FAIL - {len(failures)} assertion(s) failed')

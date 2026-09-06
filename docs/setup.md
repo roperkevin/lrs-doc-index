@@ -1212,3 +1212,44 @@ run overwrites every page. Change a document's classification,
 keywords or related documents in the catalog and the sweep's rewrite
 of the sidecar carries it to the wiki. Gate: `tests/check_wiki.py`
 (fixture-free; the strict MkDocs build runs in CI).
+
+## 16. Markdown layout: the wiki dialect, the case block, format 3.1
+
+`docs/design/Markdown_Layout_Plan.md` phases 2–4, shipped as
+`lib/mdlayout.mjs` v1.1, `wiki.mjs` v1.2, `casegrammar` v1.3,
+`caseindex` v2.2, `sidecarmeta` format 3.1 and `sweep` v1.54. Phase 2
+(the wiki lane) needs nothing here — the site is regenerated on every
+run. Phases 3 and 4 rewrite the corpus, in ONE pass:
+
+1. **Tenant** — nothing to add. The Test Cases columns phase 3 fills
+   (`Shape`, `Confidence`, `Group`, `SourceRef`) were created for the
+   Sidecar_Format_Plan rollout (§13.1).
+2. **Decide the anchors question first.** `sweep.caseIndex.anchors`
+   (default `true`) writes each case heading its own link target —
+   `### TC-P01 — … { #tc-p01 }` — so a link to a case survives a
+   retitle. GitHub ignores the attribute and MkDocs honours it, but
+   the **SharePoint preview shows it as text** on every case heading.
+   If the preview is how the team reads plans, set it to `false`
+   before the backfill; changing it later costs another `--reformat`.
+3. `node pipeline\sweep.mjs --config config.json --reformat --live`
+   — one pass covers both phases: every body re-renders through the
+   case grammar (anchors, the `lrs:case` provenance mark, H4 unit
+   headings, bullet field lines) and every head rewrites as the 3.1
+   table (empty rows omitted, `Status` added). It syncs the Test Cases
+   and Figures rows as it goes, so no `--recase` / `--refigure` is
+   needed afterwards. No AI spend; byte-idempotent on a second run.
+4. **Read one plan and one sparse document** before letting the
+   nightly run continue — a test plan for the case block, and
+   something like a stray `.txt` for the short header.
+5. Paste `docs/qa-agent-instructions.md` (**v1.5**) into the Q&A
+   agent and re-run `docs/history/QA_Smoke_Questions.md`. The
+   instructions describe 3.1, 3.0 and the pre-3.0 yaml shape, so
+   pasting before the backfill finishes is harmless.
+6. The next generated draft uses `testplan_draft` **v1.14** — the same
+   case block, two-digit ids. Drafts already in the Test Plan Drafts
+   folder are not rewritten; `tests/check_draft_coverage.py
+   --baseline` scores one of them without the new asserts.
+
+Rollback is the standing pattern: the `format` value in the Extracted
+row says which shape a file carries, and `--reformat` re-emits from
+raw text, so nothing depends on re-running the model.

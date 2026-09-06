@@ -74,6 +74,7 @@
 
 import { MEDIA_PLACEHOLDER, kebab } from "./slug.mjs";
 import { caseTags, diffCaseRows, slugger } from "./caseindex.mjs";
+import { splitAnchor, readMark } from "./mdlayout.mjs";
 
 export const FIGURE_INDEX_VERSION = "1.2";
 export const FIGURE_KINDS = ["image", "diagram", "icon", "drawing"];
@@ -176,7 +177,9 @@ export function prettifyMedia(docText) {
     if (fenced) { out.push(line); continue; }
     const hm = /^(#{1,6}) (.+)$/.exec(line);
     if (hm) {
-      const text = hm[2].replace(/<!--[\s\S]*?-->/g, "").trim();
+      // an explicit `{ #id }` (casegrammar v1.3) is the anchor, never
+    // part of the heading a Figures row shows
+    const text = splitAnchor(hm[2].replace(/<!--[\s\S]*?-->/g, "").trim()).text.trim();
       const sm = /^Slide (\d+)(?:\s+[—–-]\s+(.*))?$/.exec(text);
       if (sm) {
         slideNo = parseInt(sm[1], 10);
@@ -372,7 +375,16 @@ export function extractFigures(bodyText, opts = {}) {
     sections.push(cur);
     const text = hm[2].replace(/<!--[\s\S]*?-->/g, "").trim();
     const comment = (/<!--([\s\S]*?)-->/.exec(hm[2]) || [])[1] || "";
-    const sm = /\bslide (\d+)\b/i.exec(comment) || /^Slide (\d+)\b/.exec(text);
+    // casegrammar v1.3 moved a case's provenance off the heading onto
+    // an `lrs:case` mark under it — the slide number is there now
+    let markSrc = "";
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === "") continue;
+      markSrc = readMark(lines[j], "case")?.src || "";
+      break;
+    }
+    const sm = /\bslide (\d+)\b/i.exec(comment) || /\bslide (\d+)\b/i.exec(markSrc)
+      || /^Slide (\d+)\b/.exec(text);
     const level = hm[1].length;
     // a case section (`### TC-P01 — …`) claims the figures below it up
     // to the next heading of ANY level (the grammar's section rule);

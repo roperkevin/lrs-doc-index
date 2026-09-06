@@ -1,6 +1,6 @@
 ---
 name: testplan_draft
-version: 1.13.0
+version: 1.14.0
 model: claude-opus-5
 effort: high
 max_tokens: 64000
@@ -111,42 +111,46 @@ comes from these tables, or the case states its own delta.
 Cases proving the story's workflow behaves as specified. Each case
 verifies exactly ONE behavior (the CASE GRANULARITY rule). Each case:
 
-### TC-P1 — <short case name>
-**Steps:**
-- [ ] 1. <tester action>
-- [ ] 2. <tester action>
+### TC-P01 — <short case name> { #tc-p01 }
+- **Steps:**
+  - [ ] 1. <tester action>
+  - [ ] 2. <tester action>
+- **Expected Result:** the single observable outcome this case
+  verifies, stated with the case's concrete fixture values and
+  specific enough to judge pass/fail as a whole — never two
+  independent outcomes (split the case instead). When the case
+  creates or changes records, follow the sentence with a GFM table
+  of the affected record(s)' expected field values after the edit
+  (the CONCRETE TEST DATA rule).
+- **Trace:** the story statement this case verifies, quoted or
+  closely paraphrased — ALWAYS, for every case (the STORY-FIRST
+  TRACE rule). When an exemplar pattern shaped the case (e.g.
+  "exemplar covers the multi-user variant of each edit") or a
+  reference-functionality statement grounds its specifics, cite it
+  by document title IN ADDITION to the story statement, never
+  instead of it.
+- **Figure:** OPTIONAL — only when STORY TEXT carries a figure image
+  link (`![...](...)`) whose diagram depicts the state, topology, or
+  workflow THIS case exercises: close the case with that link copied
+  VERBATIM from STORY TEXT — alt text and path, character for
+  character (the FIGURES rule). Most cases have none; omit the line
+  entirely then.
 
-**Expected Result:** the single observable outcome this case
-verifies, stated with the case's concrete fixture values and
-specific enough to judge pass/fail as a whole — never two
-independent outcomes (split the case instead). When the case creates
-or changes records, follow the sentence with a GFM table of the
-affected record(s)' expected field values after the edit (the
-CONCRETE TEST DATA rule).
-
-**Trace:** the story statement this case verifies, quoted or closely
-paraphrased — ALWAYS, for every case (the STORY-FIRST TRACE rule).
-When an exemplar pattern shaped the case (e.g. "exemplar covers the
-multi-user variant of each edit") or a reference-functionality
-statement grounds its specifics, cite it by document title IN
-ADDITION to the story statement, never instead of it.
-
-**Figure:** OPTIONAL — only when STORY TEXT carries a figure image
-link (`![...](...)`) whose diagram depicts the state, topology, or
-workflow THIS case exercises: close the case with that link copied
-VERBATIM from STORY TEXT — alt text and path, character for
-character (the FIGURES rule). Most cases have none; omit the line
-entirely then.
-
-Number sequentially: TC-P1, TC-P2, ... Steps are always a task list
-(one checkbox per numbered action, each a SINGLE tester action);
-Expected Result, Trace, and (when present) Figure are standalone
-bold-labeled lines, never checkboxes. Steps and Expected Result name
-concrete fixture data — never abstract stand-ins (the CONCRETE TEST
-DATA rule).
+THE CASE BLOCK, exactly: the heading is `### <id> — <name>
+{ #<id lowercased> }` — the explicit anchor is what links to the
+case survive a retitle. Number sequentially with a TWO-DIGIT
+sequence per lane: TC-P01, TC-P02, ... The four field lines are
+BULLETS with a bold label, in the order above; Steps nest one level
+under `- **Steps:**` as a task list (one checkbox per numbered
+action, each a SINGLE tester action); Expected Result, Trace and
+(when present) Figure are never checkboxes. Steps and Expected
+Result name concrete fixture data — never abstract stand-ins (the
+CONCRETE TEST DATA rule). This is the same case block the document
+catalog writes for every existing test plan, so a drafted case and
+an indexed one read and index identically.
 
 ## Negative Tests
-Directly under the heading, before TC-N1, emit this fixed alert
+Directly under the heading, before TC-N01, emit this fixed alert
 verbatim:
 
 > [!CAUTION]
@@ -154,10 +158,10 @@ verbatim:
 > succeeding.
 
 Then cases proving correct behavior on invalid input, conflicts,
-denied permissions, and boundary conditions. Same shape, numbered
-TC-N1, TC-N2, ... Every case carries the same mandatory **Trace:**
-line. A story statement that a value is PRESERVED or NOT updated on
-a valid edit that succeeds (an attribute-only edit leaves referents
+denied permissions, and boundary conditions. Same case block,
+numbered TC-N01, TC-N02, ... Every case carries the same mandatory
+`- **Trace:**` bullet. A story statement that a value is PRESERVED
+or NOT updated on a valid edit that succeeds (an attribute-only edit leaves referents
 unchanged; a date edit keeps measures) is a POSITIVE case whose
 Expected Result names the unchanged value — never a Negative case,
 whose pass is a denial or error.
@@ -492,17 +496,15 @@ via Create Route, Extend Route, Realign Route, and Reassign Route.
 
 ## Positive Tests
 
-### TC-P1 — Lock acquired on Create Route
-**Steps:**
-- [ ] 1. As user A, run Create Route with Route ID R100 and from
-      date 1/1/2000.
-- [ ] 2. Inspect the lock table before saving edits.
-
-**Expected Result:** A lock for route R100 is held by user A at
-creation time, not deferred to save.
-
-**Trace:** "acquire locks when creating a new route" — story
-workflow section.
+### TC-P01 — Lock acquired on Create Route { #tc-p01 }
+- **Steps:**
+  - [ ] 1. As user A, run Create Route with Route ID R100 and from
+        date 1/1/2000.
+  - [ ] 2. Inspect the lock table before saving edits.
+- **Expected Result:** A lock for route R100 is held by user A at
+  creation time, not deferred to save.
+- **Trace:** "acquire locks when creating a new route" — story
+  workflow section.
 
 ## Negative Tests
 
@@ -510,18 +512,16 @@ workflow section.
 > A pass below is the described denial or error — never the edit
 > succeeding.
 
-### TC-N1 — Second user blocked on locked new route
-**Steps:**
-- [ ] 1. As user A, create route R100 without saving.
-- [ ] 2. As user B, attempt Reassign Route onto route R100.
-
-**Expected Result:** User B is denied with a lock conflict; no edit
-is applied.
-
-**Trace:** "a lock held by one user blocks another user's edit" —
-story conflict-prevention statement; exemplar pattern — multi-user
-denial case for each lock-acquiring edit (Edit Locks for Route
-Edits).
+### TC-N01 — Second user blocked on locked new route { #tc-n01 }
+- **Steps:**
+  - [ ] 1. As user A, create route R100 without saving.
+  - [ ] 2. As user B, attempt Reassign Route onto route R100.
+- **Expected Result:** User B is denied with a lock conflict; no
+  edit is applied.
+- **Trace:** "a lock held by one user blocks another user's edit" —
+  story conflict-prevention statement; exemplar pattern —
+  multi-user denial case for each lock-acquiring edit (Edit Locks
+  for Route Edits).
 
 ## Open Questions
 - [ ] [VERIFY: minimum lock-root configuration for setup]
@@ -533,7 +533,7 @@ Edits).
 
 | Source plan | Source case | Applies? | Covered by / why not |
 | --- | --- | --- | --- |
-| Edit Locks for Route Edits (exemplar) | Second user denied editing a lock-held route | Yes | TC-N1 |
+| Edit Locks for Route Edits (exemplar) | Second user denied editing a lock-held route | Yes | TC-N01 |
 | Edit Locks for Route Edits (exemplar) | Lock survives a service restart | Verify | Open Questions — story/references silent for new routes |
 | Edit Locks for Route Edits (exemplar) | Lock released when the holder discards unsaved edits | No | Story covers lock acquisition only — release is out of scope |
 
@@ -541,8 +541,8 @@ Edits).
 
 | # | Requirement (source) | Covered by |
 | --- | --- | --- |
-| 1 | "acquire locks when creating a new route" via Create, Extend, Realign, Reassign Route (workflow section) | TC-P1 (Create — abbreviated; the full draft carries one case per pathway) |
-| 2 | a lock held by one user blocks another user's edit on the same route (conflict-prevention statement) | TC-N1 |
+| 1 | "acquire locks when creating a new route" via Create, Extend, Realign, Reassign Route (workflow section) | TC-P01 (Create — abbreviated; the full draft carries one case per pathway) |
+| 2 | a lock held by one user blocks another user's edit on the same route (conflict-prevention statement) | TC-N01 |
 [[[DRAFT END]]]
 
 ## User

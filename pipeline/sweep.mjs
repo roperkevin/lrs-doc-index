@@ -82,7 +82,7 @@ import {
   upsertDocsBlock, bodySeamEnd,
 } from "./lib/doclinks.mjs";
 import { tidyBody, compactWhy } from "./lib/presentation.mjs";
-import { renderTestPlanBody, lintTestPlanBody } from "./lib/casegrammar.mjs";
+import { renderTestPlanBody, lintTestPlanBody, canonicalizeCaseBlocks } from "./lib/casegrammar.mjs";
 import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
@@ -308,6 +308,18 @@ function drawingFiles(drawings, renames) {
  *  kinds (casegrammar.mjs — a plan with no detectable case keeps its
  *  tidied slide sections). The LLM input, TextPreview and the
  *  similarity index keep the raw text. */
+/** Explicit `{ #tc-p01 }` case anchors — on unless
+ *  `sweep.caseIndex.anchors` says otherwise. */
+function caseAnchors(cfg) {
+  return cfg?.sweep?.caseIndex?.anchors !== false;
+}
+
+/** A body the LLM lane normalized — the pre-1.3 trailing src comment
+ *  or the `lrs:case` mark (Markdown_Layout_Plan phase 3). */
+function isNormalized(body) {
+  return /<!-- src: LLM\b/.test(body) || /<!-- lrs:case [^>]*\bdet=LLM\b/.test(body);
+}
+
 function renderBody(docText, docKind, cfg, sum) {
   const tidied = tidyBody(docText);
   // phase 5: User Story decks that follow the team template map onto
@@ -319,7 +331,7 @@ function renderBody(docText, docKind, cfg, sum) {
   }
   const kinds = (cfg.sweep.caseIndex && cfg.sweep.caseIndex.kinds) || ["Test Plan"];
   if (!kinds.includes(docKind)) return tidied;
-  const r = renderTestPlanBody(tidied);
+  const r = renderTestPlanBody(tidied, { anchors: caseAnchors(cfg) });
   if (sum) {
     if (r.shape !== "none") sum.plans_profiled = (sum.plans_profiled || 0) + 1;
     const lint = lintTestPlanBody(r.body);
@@ -682,7 +694,8 @@ function normalizeRows(items, kind) {
   });
 }
 
-// ---- sidecar header (format 3.0 — Sidecar_Format_Plan phase 1) ------
+// ---- sidecar header (format 3.1 — Sidecar_Format_Plan phase 1,
+// Markdown_Layout_Plan phase 4) ---------------------------------------
 // H1 + the metadata TABLE (the only metadata representation; see
 // lib/sidecarmeta.mjs), then Summary, the Related region and the
 // header/body seam. `sidecarHead` is the part --reformat regenerates;
@@ -1204,7 +1217,7 @@ async function main() {
       const seam = bodySeamEnd(content);
       if (seam < 0) continue;
       const body = content.slice(seam);
-      if (body.includes("<!-- src: LLM")) continue;            // already normalized
+      if (isNormalized(body)) continue;                       // already normalized
       if (extractCases(body).shape !== "none") continue;         // the detectors cover it
       if (!hasSignal(auditBody(body))) continue;                 // genuinely caseless
       if (body.length > Number(nc.maxInputChars)) {
@@ -1238,8 +1251,14 @@ async function main() {
           stopGen();
         }
         prog(`doc ${p.r.ID} — model replied, ${raw.length} chars in ${secs(Date.now() - genT0)}`);
-        const out = unwrapReply(raw);
-        const v = verifyNormalized(p.body, out);
+        // the model writes the pre-1.3 heading form (its prompt asks
+        // for `<!-- src: LLM · … -->`), so the reply is VERIFIED in
+        // that shape and canonicalized only once it is accepted — an
+        // LLM-normalized plan then carries the same case block as
+        // every deterministic one (Markdown_Layout_Plan phase 3)
+        const reply = unwrapReply(raw);
+        const v = verifyNormalized(p.body, reply);
+        const out = canonicalizeCaseBlocks(reply, { anchors: caseAnchors(cfg) });
         entry.cases = v.cases;
         if (!v.ok) {
           entry.failures = v.failures;
@@ -1877,7 +1896,7 @@ async function main() {
         // phase 4: a body the LLM lane normalized (and a human accepted)
         // is kept — the deterministic re-render would throw it away;
         // a source edit reindexes it fresh anyway
-        if (cur.slice(seam).includes("<!-- src: LLM")) {
+        if (isNormalized(cur.slice(seam))) {
           rfsum.llm_kept = (rfsum.llm_kept || 0) + 1;
           continue;
         }
@@ -1929,6 +1948,7 @@ async function main() {
         const head = sidecarHead({
           h1Title: (existing.Title || name) === name ? name.replace(/\.[^.]*$/, "") : existing.Title,
           rowId: existing.ID, fileName: name, sourceLink,
+          status: existing.IndexStatus || "Indexed",
           docKind: existing.DocKind || "", surface: existing.Surface || "",
           targetRelease: existing.TargetRelease || "", pe: existing.PE || "", dev: existing.Dev || "",
           srcAuthor, srcEditor, srcEditedText: fmtDate(srcEdited, true),
@@ -2507,7 +2527,7 @@ async function indexDoc(ctx) {
   // (e)+(f) header
   const header = sidecarHeader({
     h1Title: title === name ? name.replace(/\.[^.]*$/, "") : title,
-    title, fileName: name, sourceLink, rowId,
+    title, fileName: name, sourceLink, rowId, status: "Indexed",
     docKind, surface, targetRelease: ai.targetRelease || "",
     pe: ai.pe || "", dev: ai.dev || "",
     srcAuthor, srcEditor, srcEdited, srcEditedText: fmtDate(srcEdited, true), lane,

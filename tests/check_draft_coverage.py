@@ -1,6 +1,5 @@
-"""Offline coverage lint for a TestPlanGen draft (prompt v1.7
-contract — unchanged by prompt v1.8, which adds no structural
-asserts; fixture-data concreteness is a §4 reading check).
+"""Offline coverage lint for a TestPlanGen draft (prompt v1.14
+contract; fixture-data concreteness is a §4 reading check).
 
 Runs over a downloaded draft .md (from Shared Documents/Test Plan
 Drafts/) — no tenant access, no fixtures. Complements smoke rows 1
@@ -9,7 +8,8 @@ the draft honors the coverage contract, and prints the counters used
 for before/after comparison when a prompt bump lands
 (`docs/history/TestPlanGen_Coverage_Runbook.md` step 5).
 
-Asserts (v1.7 contract, amended v1.12 — the conditional-section citation in 5):
+Asserts (v1.8 contract — v1.7 amended by v1.12's conditional-section
+citation in 5, and by 9, the case block):
 
   1. the six core sections present, in order: Overview,
      Setup / Prerequisites, Positive Tests, Negative Tests,
@@ -26,7 +26,7 @@ Asserts (v1.7 contract, amended v1.12 — the conditional-section citation in 5)
      (the prompt's Coverage Map rule lets those sections' bullets
      carry a requirement); every TC id a cell cites exists in the
      draft; every TC id in the draft appears in some cell
-  6. TC numbering sequential per lane (TC-P1..Pn, TC-N1..Nn)
+  6. TC numbering sequential per lane (TC-P01..Pnn, TC-N01..Nnn)
   7. granularity, the structural half (v1.6): every TC case has
      exactly ONE `**Expected Result:**` line and at least one
      `- [ ]` Steps checkbox (the semantic half — a single outcome
@@ -41,15 +41,23 @@ Asserts (v1.7 contract, amended v1.12 — the conditional-section citation in 5)
      COMPLETE — one row per source case — needs the source plans
      and stays a human smoke/review check; the section's presence
      is lane-dependent, so absence alone never fails.)
+  9. the case block (prompt v1.14, Markdown_Layout_Plan phase 3):
+     every case id is TWO digits and continues its lane's sequence,
+     the heading ends with its own `{ #tc-p01 }` anchor, and the
+     field lines are bold-labelled BULLETS (`- **Expected Result:**`,
+     `- **Trace:**`) with the Steps task list nested under
+     `- **Steps:**` — the same block casegrammar writes for every
+     indexed plan, so a drafted case and an indexed one read and
+     index identically. Skipped under --baseline.
 
 Prints (never gates): TC-P / TC-N / [VERIFY] / Coverage Map row /
 steps-per-case / sweep-row counts, and a WARN when the draft sits
 under the prompt's floor (4 positive / 3 negative — almost
 certainly under-covered).
 
-`--baseline` scores a pre-v1.5/v1.6/v1.7 draft for the before side
-of a comparison: section 1's Coverage Map requirement and checks 5,
-7 and 8 are skipped, counters still print.
+`--baseline` scores a pre-v1.5/v1.6/v1.7/v1.14 draft for the before
+side of a comparison: section 1's Coverage Map requirement and checks
+5, 7, 8 and 9 are skipped, counters still print.
 
 This file is the AUTHORITY for the contract: pipeline/lib/draftlint.mjs
 (the local generation job's pre-write verifier, TestPlanGen v2.16)
@@ -107,11 +115,12 @@ def main():
                   f'conditional section non-empty: {cond_h}')
 
     # 2 — every case has a Trace line; 7 — granularity (structural)
-    cases = re.findall(r'^### (TC-[PN]\d+)[^\n]*\n(.*?)(?=^###? |\Z)',
+    cases = re.findall(r'^### (TC-[PN]\d+)([^\n]*)\n(.*?)(?=^###? |\Z)',
                        text, re.M | re.S)
     check(len(cases) > 0, 'at least one TC case found')
     n_steps = 0
-    for cid, body in cases:
+    seen = {'P': 0, 'N': 0}
+    for cid, head, body in cases:
         check('**Trace:**' in body, f'{cid} carries a **Trace:** line')
         n_steps += len(re.findall(r'^\s*- \[[ x]\]', body, re.M))
         if not baseline:
@@ -119,6 +128,18 @@ def main():
                   f'{cid} has exactly one **Expected Result:** line')
             check(bool(re.search(r'^\s*- \[[ x]\]', body, re.M)),
                   f'{cid} has at least one Steps checkbox')
+            # the one case block (Markdown_Layout_Plan phase 3): a
+            # two-digit sequence per lane, the heading's own anchor,
+            # and bold-labelled BULLETS for the field lines
+            check(bool(re.match(r'^TC-[PN]\d\d$', cid)),
+                  f'{cid} is a two-digit id')
+            lane, num = cid[3], int(cid[4:])
+            check(num == seen[lane] + 1, f'{cid} continues the {lane} sequence')
+            seen[lane] = num
+            check(head.rstrip().endswith('{ #%s }' % cid.lower()),
+                  f'{cid} heading carries its own anchor')
+            check('- **Trace:**' in body and '- **Expected Result:**' in body,
+                  f'{cid} field lines are bullets')
 
     # 3 — CAUTION alert heads Negative Tests
     neg = text.split('## Negative Tests', 1)
@@ -142,7 +163,7 @@ def main():
         map_rows = [r for r in rows[2:] if not re.match(r'^\|[\s\-|:]+\|$',
                                                         r.strip())]
         check(len(map_rows) >= 1, 'Coverage Map has at least one data row')
-        draft_ids = {cid for cid, _ in cases}
+        draft_ids = {c[0] for c in cases}
         cited_ids = set()
         for i, row in enumerate(map_rows, 1):
             cells = [c.strip() for c in row.strip().strip('|').split('|')]
@@ -187,7 +208,7 @@ def main():
                       if not re.match(r'^\|[\s\-|:]+\|$', r.strip())]
         check(len(sweep_rows) >= 1,
               'Source Case Sweep has at least one data row')
-        draft_ids = {cid for cid, _ in cases}
+        draft_ids = {c[0] for c in cases}
         for i, row in enumerate(sweep_rows, 1):
             cells = [c.strip() for c in row.strip().strip('|').split('|')]
             verdict = (cells[2] if len(cells) >= 4 else '').strip('*')

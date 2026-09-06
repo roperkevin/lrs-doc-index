@@ -35,6 +35,7 @@ reads the .pptx back with python-pptx, asserting the deck contract:
 Needs python-pptx (tests/requirements.txt — the CI
 full-format job installs it). Usage: python3 check_draft2pptx.py
 """
+import json
 import os
 import subprocess
 import sys
@@ -183,6 +184,37 @@ def main():
     except ImportError:
         print("SKIP: python-pptx not installed (pip install -r requirements.txt)")
         sys.exit(0)
+
+    # ---- the v1.14 case block (Markdown_Layout_Plan phase 3): the
+    # field lines are bold-labelled BULLETS with the steps nested, and
+    # the heading carries its own anchor. parseDraft must lift the same
+    # model out of it as out of the pre-v1.14 bare-paragraph form.
+    from subprocess import run as _run
+    probe = (
+        "# Test Plan — X\n\n## Positive Tests\n\n"
+        "### TC-P01 — A case { #tc-p01 }\n"
+        "- **Steps:**\n  - [ ] 1. Do the thing.\n  - [ ] 2. Check it.\n"
+        "- **Expected Result:** The thing happened.\n"
+        "- **Trace:** \"the thing must happen\" — story.\n"
+    )
+    probe_js = (
+        'import { parseDraft } from "file://%s/pipeline/render/draft2pptx.mjs";\n'
+        "const m = parseDraft(%s);\n"
+        "const tc = m.sections[0].cases[0];\n"
+        "console.log(JSON.stringify({title: tc.title, steps: tc.steps.length, "
+        "expected: tc.expected, trace: tc.trace}));\n"
+    ) % (REPO, json.dumps(probe))
+    pj = os.path.join(tempfile.mkdtemp(prefix="draft2pptx-probe-"), "probe.mjs")
+    with open(pj, "w", encoding="utf-8") as f:
+        f.write(probe_js)
+    pr = _run(["node", pj], capture_output=True, text=True, cwd=REPO)
+    parsed = json.loads(pr.stdout or "{}") if pr.returncode == 0 else {}
+    check("the v1.14 case block parses: anchored heading, nested steps, bullet fields",
+          parsed.get("steps") == 2
+          and parsed.get("expected") == "The thing happened."
+          and parsed.get("trace", "").startswith('"the thing must happen"')
+          and parsed.get("title", "").startswith("TC-P01 — A case"),
+          pr.stdout + pr.stderr[-300:])
 
     tmp = tempfile.mkdtemp(prefix="draft2pptx-gate-")
     md1 = os.path.join(tmp, "TestPlanDraft__doc12__20260904-000000.md")

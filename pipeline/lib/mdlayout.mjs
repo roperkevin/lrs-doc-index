@@ -112,3 +112,67 @@ export function toMkDocs(text) {
 export function normalize(text) {
   return String(text ?? "").replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
 }
+
+// ---- the machine-comment grammar (Markdown_Layout_Plan §4.4) --------
+
+/**
+ * One grammar for the machine data hidden in a markdown file:
+ *
+ *   <!-- lrs:case det=S4 conf=high src="slide 1 · Positive Tests · 1" -->
+ *   <!-- lrs:docs:begin -->  …  <!-- lrs:docs:end -->
+ *
+ * `kind` names what the mark is about, the attributes are key=value
+ * with quotes only where a value has spaces. One writer, one reader,
+ * instead of the five ad-hoc comment shapes the emitters grew
+ * (`rel:N s=…`, `docs:begin`, `src: …`, `slide N`, the draft banner).
+ * The readers accept the older shapes for one backfill window, the
+ * way `sidecarmeta.readMeta` still accepts the pre-3.0 yaml.
+ */
+const attrValue = (v) => {
+  const s = String(v ?? "").replace(/\s+/g, " ").replace(/-{2,}/g, "-").replace(/[<>"]/g, "").trim();
+  return /[\s=]/.test(s) ? `"${s}"` : s;
+};
+
+/** `<!-- lrs:<kind> k=v … -->`; attributes with an empty value are dropped. */
+export function mark(kind, attrs = {}) {
+  const body = Object.entries(attrs)
+    .filter(([, v]) => v !== undefined && v !== null && String(v) !== "")
+    .map(([k, v]) => `${k}=${attrValue(v)}`)
+    .join(" ");
+  return `<!-- lrs:${kind}${body ? " " + body : ""} -->`;
+}
+
+/** One mark's attributes, or null when the line carries no `lrs:<kind>`. */
+export function readMark(line, kind) {
+  const m = new RegExp(`<!--\\s*lrs:${kind}\\b([^>]*?)-->`).exec(String(line ?? ""));
+  if (!m) return null;
+  const out = {};
+  const re = /([A-Za-z_][\w-]*)=(?:"([^"]*)"|(\S+))/g;
+  for (let a; (a = re.exec(m[1])) !== null; ) out[a[1]] = a[2] !== undefined ? a[2] : a[3];
+  return out;
+}
+
+/** Every `lrs:<kind>` mark in a stretch of text, in document order. */
+export function marks(text, kind) {
+  const out = [];
+  for (const ln of String(text ?? "").split("\n")) {
+    const m = readMark(ln, kind);
+    if (m) out.push(m);
+  }
+  return out;
+}
+
+// ---- explicit heading anchors (Markdown_Layout_Plan §4.3) ----------
+
+/**
+ * `### TC-P01 — Title { #tc-p01 }` -> { text: "### TC-P01 — Title",
+ * id: "tc-p01" }. The attr_list form GitHub ignores, MkDocs honours
+ * and the SharePoint preview shows as text — a case's link target
+ * that survives a retitle. A heading without one comes back with
+ * `id: ""` and its text untouched.
+ */
+export function splitAnchor(heading) {
+  const s = String(heading ?? "");
+  const m = /\{\s*#([A-Za-z][\w.:-]*)\s*\}\s*$/.exec(s);
+  return m ? { text: s.slice(0, m.index).replace(/\s+$/, ""), id: m[1] } : { text: s, id: "" };
+}

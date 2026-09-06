@@ -1287,18 +1287,35 @@ def main():
     check("alpha sidecar in kind folder", alpha_sc is not None and os.sep + "Test Plans" + os.sep in alpha_sc,
           str(alpha_sc))
     sc = open(alpha_sc).read() if alpha_sc else ""
-    check("sidecar header shape (format 3.0: H1 + metadata table, no yaml block)",
+    check("sidecar header shape (format 3.1: H1 + metadata table, no yaml block)",
           sc.startswith("# Alpha Plan")
           and "<!-- metadata" not in sc and "```yaml" not in sc
           and "| Field | Value |" in sc
           and re.search(r"(?m)^\| \*\*Doc\*\* \| \d+ · Test Plan · Pro \|$", sc) is not None
-          and f"· format 3.0 · prompt {STAMP} |" in sc, sc[:400])
+          and "| **Status** | Indexed |" in sc
+          and f"· format 3.1 · prompt {STAMP} |" in sc, sc[:400])
     check("sidecar issue row links the issue", "#123](https://devtopia.esri.com/" in sc
           and "| **Issues** | [" in sc, sc[:400])
-    check("sidecar table carries every row in order",
-          [m for m in re.findall(r"(?m)^\| \*\*([A-Za-z]+)\*\* \|", sc)][:10]
-          == ["Doc", "Product", "Release", "Issues", "Source", "People", "Edited",
-              "Extracted", "Keywords", "Tools"], sc[:600])
+    # format 3.1: a FIXED row order, and only the rows with something
+    # to say. Alpha is a rich fixture, so every row but Generated is
+    # present; spec.pdf below is the sparse one.
+    CANON_ROWS = ["Doc", "Status", "Product", "Release", "Issues", "Source",
+                  "People", "Edited", "Extracted", "Generated", "Keywords", "Tools"]
+    rows_alpha = re.findall(r"(?m)^\| \*\*([A-Za-z]+)\*\* \|", sc)
+    check("sidecar table rows keep the canonical order",
+          rows_alpha == [k for k in CANON_ROWS if k in rows_alpha]
+          and rows_alpha[:2] == ["Doc", "Status"], str(rows_alpha))
+    check("no metadata row is printed as an em dash",
+          re.search(r"(?m)^\| \*\*[A-Za-z]+\*\* \| — \|$", sc) is None, sc[:600])
+    check("Generated rides a machine-authored file only, never a sidecar",
+          "| **Generated** |" not in sc, sc[:600])
+    rows_spec = re.findall(r"(?m)^\| \*\*([A-Za-z]+)\*\* \|", spec_sc)
+    check("a sparse document gets a short table, not ten em dashes",
+          rows_spec == [k for k in CANON_ROWS if k in rows_spec]
+          and "Doc" in rows_spec and "Status" in rows_spec
+          and "Source" in rows_spec and "Extracted" in rows_spec
+          and "Release" not in rows_spec and "Tools" not in rows_spec,
+          str(rows_spec) + spec_sc[:400])
     check("sidecar body appended", "Alpha test plan covering lock acquisition" in sc)
     check("product detected on the row",
           alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
@@ -1373,8 +1390,10 @@ def main():
     # slide sections (kinds-only by design)
     alpha_content = open(alpha_sc).read()
     alpha_body = alpha_content[alpha_content.rindex("\n---\n") + 5:]
-    check("case heading is a TC id + scenario with the detector/slide provenance",
-          "### TC-P01 — Loop Route <!-- src: S1 · slide 2 · case 3 -->" in alpha_body, alpha_body)
+    check("case heading is a TC id + scenario, anchored by its own id",
+          "### TC-P01 — Loop Route { #tc-p01 }" in alpha_body, alpha_body)
+    check("the provenance rides an lrs:case mark under the heading",
+          '<!-- lrs:case det=S1 conf=high src="slide 2 · case 3" -->' in alpha_body, alpha_body)
     check("classification remainder becomes the Group line",
           "- **Group:** Line Network" in alpha_body, alpha_body)
     check("full case line survives in the body (measures never lost)",
@@ -1387,12 +1406,15 @@ def main():
     check("promoted classification line removed from the body",
           not re.search(r"(?m)^Positive - Line network$", alpha_body), alpha_body)
     check("no heading carries a split measure or route id",
-          not re.search(r"(?mi)^#{2,3} .*(split(ting)? measure|\bR\d+L\d+\b)", alpha_body), alpha_body)
+          not re.search(r"(?mi)^#{2,4} .*(split(ting)? measure|\bR\d+L\d+\b)", alpha_body), alpha_body)
     check("checklist slide lands under Other content, not as a case",
-          "### Slide 3 <!-- slide 3 -->" in alpha_body.split("## Other content")[-1]
+          "\n#### Slide 3 <!-- slide 3 -->" in alpha_body.split("## Other content")[-1]
           and "17. Verify the effective date defaults to today" in alpha_body, alpha_body)
     check("long case line yields a short scenario title in the Negative lane",
-          "### TC-N01 — Merge Option Disabled <!-- src: S1 · slide 4 · case 9 -->" in alpha_body, alpha_body)
+          "### TC-N01 — Merge Option Disabled { #tc-n01 }\n"
+          '<!-- lrs:case det=S1 conf=high src="slide 4 · case 9" -->' in alpha_body, alpha_body)
+    check("unit headings are H4, so H3 in a plan body means a test case",
+          not re.search(r"(?m)^### (?!TC-[PNU])", alpha_body), alpha_body)
     check("redundant Group suppressed (classification already says it)",
           "- **Group:** Merge Option Disabled" not in alpha_body, alpha_body)
     check("full case text survives as the Case line",
@@ -1491,9 +1513,11 @@ def main():
     check("case row title is the visible heading",
           ac.get("Title") == "TC-P01 — Loop Route",
           str(ac.get("Title")))
-    check("case anchor deep-links the sidecar heading",
-          ac.get("Anchor") == "tc-p01--loop-route",
+    check("case anchor deep-links the sidecar heading by case id",
+          ac.get("Anchor") == "tc-p01",
           str(ac.get("Anchor")))
+    check("SourceRef still reads detector-first",
+          str(ac.get("SourceRef")) == "S1 · slide 2 · case 3", str(ac.get("SourceRef")))
     check("case text keeps the specifics",
           "Split measure: 40" in str(ac.get("CaseText")), str(ac.get("CaseText")))
     check("beta (User Story) minted no case rows despite its case sections",
@@ -1516,7 +1540,7 @@ def main():
           re.search(r"(?m)^## Alpha Plan \(2: 1 positive / 1 negative\)$", cat)
           is not None, cat)
     check("catalog case row deep-links the sidecar anchor",
-          "#tc-p01--loop-route>" in cat
+          "#tc-p01>" in cat
           and "| Positive |" in cat and "Loop Route" in cat, cat)
     check("catalog rows carry the group and the detector",
           "| Line Network |" in cat and "| S1 |" in cat, cat)
@@ -1965,7 +1989,8 @@ def main():
           and "### Notes" not in after, after[-400:])
     alpha_after = open(alpha_sc).read()
     check("reformat re-derives the case grammar on the plan",
-          "### TC-P01 — Loop Route <!-- src: S1 · slide 2 · case 3 -->" in alpha_after
+          "### TC-P01 — Loop Route { #tc-p01 }" in alpha_after
+          and '<!-- lrs:case det=S1 conf=high src="slide 2 · case 3" -->' in alpha_after
           and "- **Group:** Line Network" in alpha_after, alpha_after[-600:])
     check("reformat leaves the story on tidied slide sections",
           "## Slide 4" in after and "### TC-" not in after, after[-400:])
@@ -2574,8 +2599,11 @@ def main():
           and int(out.get("refused", 0)) == 0, str(out))
     check("normalize live: head preserved, body is the verified grammar with LLM provenance",
           gamma_now.startswith(gamma_head)
-          and "### TC-P01 — Correct line order of 100, 200, 300 on a normal line <!-- src: LLM · slide 1" in gamma_now
+          and "### TC-P01 — Correct line order of 100, 200, 300 on a normal line { #tc-p01 }" in gamma_now
           and "```" not in gamma_now, gamma_now[-500:])
+    check("normalize live: the accepted reply is canonicalized into the case block",
+          '<!-- lrs:case det=LLM conf=llm src="slide 1' in gamma_now
+          and "<!-- src: LLM" not in gamma_now, gamma_now[-500:])
     check("normalize prompt carried the plan title and body",
           state.gen_prompts and "Gamma Plan" in state.gen_prompts[-1]
           and "Correct line order of 100, 200, 300" in state.gen_prompts[-1], str(state.gen_prompts[-1:])[:300])
@@ -2618,11 +2646,13 @@ def main():
     # its body, reformat, restore)
     alpha_keep = open(alpha_sc).read()
     with open(alpha_sc, "w") as f:
-        f.write(alpha_keep.replace("<!-- src: S1 · slide 2 · case 3 -->", "<!-- src: LLM · slide 2 · case 3 -->", 1))
+        f.write(alpha_keep.replace('<!-- lrs:case det=S1 conf=high src="slide 2 · case 3" -->',
+                                   '<!-- lrs:case det=LLM conf=llm src="slide 2 · case 3" -->', 1))
     proc = run_sweep(cfg_path, ["--live", "--reformat"])
     out = json.loads(proc.stdout.splitlines()[0])
     check("--reformat keeps an LLM-normalized body",
-          int(out.get("llm_kept", 0)) == 1 and "<!-- src: LLM · slide 2 · case 3 -->" in open(alpha_sc).read(), str(out))
+          int(out.get("llm_kept", 0)) == 1
+          and 'det=LLM' in open(alpha_sc).read(), str(out))
     with open(alpha_sc, "w") as f:
         f.write(alpha_keep)
     run_sweep(cfg_path, ["--live", "--reformat"])

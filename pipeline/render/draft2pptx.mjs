@@ -203,14 +203,17 @@ export function parseDraft(md) {
       continue;
     }
     if (cur) {
-      if (b.kind === "p" && /^\*\*Steps:?\*\*$/.test(b.text)) continue;
-      let m = /^\*\*Expected Result:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      // the case's field lines: bold-labelled BULLETS since prompt
+      // v1.14 (Markdown_Layout_Plan phase 3), bare paragraphs before it
+      const field = b.kind === "p" || b.kind === "bullet" ? b.text : "";
+      if (/^\*\*Steps:?\*\*$/.test(field)) continue;
+      let m = /^\*\*Expected Result:?\*\*\s*(.*)$/.exec(field);
       if (m) { cur.expected = m[1]; continue; }
-      m = /^\*\*Trace:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      m = /^\*\*Trace:?\*\*\s*(.*)$/.exec(field);
       if (m) { cur.trace = m[1]; continue; }
       // prompt v1.10's optional case-closing Figure line: image links
       // copied verbatim from the story sidecar — lift alt + href out
-      m = /^\*\*Figure:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      m = /^\*\*Figure:?\*\*\s*(.*)$/.exec(field);
       if (m) {
         let found = false;
         for (const im of m[1].matchAll(/!\[([^\]]*)\]\(([^()\s]+)\)/g)) {

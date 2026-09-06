@@ -27,6 +27,7 @@ Pure stdlib + Node 22+, CI-friendly (harness.yml fixture-free job).
 Usage: python3 check_caseindex.py
 """
 import json
+import re
 import os
 import subprocess
 import sys
@@ -419,8 +420,15 @@ def main():
     check("deck: url ref claims its number, hashtag takes defaultRepo",
           c1.get("issueRefs") == ["A/b#612", "ArcGISPro/ps-location-referencing#4855"],
           json.dumps(c1.get("issueRefs")))
-    check("deck: anchor is the GitHub slug of the visible heading",
-          c1.get("anchor") == "tc-p01--loop", c1.get("anchor", ""))
+    check("deck: anchor is the case id, from the heading's explicit { #id }",
+          c1.get("anchor") == "tc-p01", c1.get("anchor", ""))
+    check("deck: confidence and detector come from the lrs:case mark",
+          c1.get("confidence") == "high" and c1.get("shape") == "S1", json.dumps(c1))
+    check("deck: SourceRef keeps its 'detector · source' shape",
+          str(c1.get("sourceRef", "")).startswith("S1 · slide 4"), c1.get("sourceRef", ""))
+    check("deck: the mark's src text stays out of the case body",
+          "lrs:case" not in c1.get("text", "") and "slide 4" not in c1.get("text", ""),
+          c1.get("text", ""))
     c2 = cases[1] if len(cases) > 1 else {}
     check("deck: rule-b classification-only heading is a case",
           c2.get("title") == "TC-N01 — Normal Route", c2.get("title", ""))
@@ -433,7 +441,13 @@ def main():
           [c["ordinal"] for c in cases] == [1, 2])
     body = r["deckBody"]
     check("deck: checklist slide lands under Other content (not a case)",
-          "### Slide 6 <!-- slide 6 -->" in body.split("## Other content")[-1], body)
+          "#### Slide 6 <!-- slide 6 -->" in body.split("## Other content")[-1], body)
+    check("unit headings are H4, so H3 in a plan body means a test case",
+          not re.search(r"(?m)^### (?!TC-[PNU])", body), body)
+    check("every case heading carries its own anchor and its mark",
+          all(f"### {c['caseNo']} — " in body and f"{{ #{c['caseNo'].lower()} }}" in body
+              for c in cases)
+          and body.count("<!-- lrs:case ") == len(cases), body)
     check("deck: divider section rendered but not a case",
           "Conflict Prevention test cases" in body.split("## Other content")[-1], body)
     check("deck: profile sections in order",

@@ -420,8 +420,8 @@ Header + drafts (phases 4–5, `--reformat` backfill, format 3.1):
 |---|---|---|---|
 | 1. The kernel | §4.1 extraction only — every emitter renders through `mdlayout.mjs`, output unchanged | every existing gate green **and** byte-identical output on all fixtures (the point of the phase) | none |
 | 2. The wiki lane — **shipped** (`lib/mdlayout.mjs` v1.0, `wiki.mjs` v1.1) | §4.5 — D1–D4, extensions, escaping, TOC depth | 7 new `check_wiki.py` legs, all failing on wiki v1.0; `mkdocs build --strict` in CI | none — the wiki is regenerated every run |
-| 3. The case block | §4.3 — padding, bullet fields, `lrs:case` mark, explicit anchors, H4 units | `check_caseindex.py` per-detector fixtures; the draftlint agreement leg; case count must not regress | `--recase --live` |
-| 4. The header | §4.2.1 — optional rows, `Status`, `Generated`, format 3.1 | `check_local_sweep` idempotency leg (a second `--reformat` is a no-op); `readMeta` reads 3.0 and 3.1 | `--reformat --live` |
+| 3. The case block — **shipped** (casegrammar v1.3, caseindex v2.2, prompt v1.14, draftlint v1.6) | §4.3 — padding, bullet fields, `lrs:case` mark, explicit anchors, H4 units, and `canonicalizeCaseBlocks` for bodies already in the grammar | `check_caseindex` 107, `check_testplangen` 238, the draftlint agreement leg at contract v1.8 | `--reformat --live` (it re-renders bodies AND syncs the rows; `--recase` alone does not rewrite a body) |
+| 4. The header — **shipped** (sidecarmeta format 3.1, sweep v1.54, wiki v1.2, agent v1.5) | §4.2.1 — optional rows, `Status`, `Generated`, format 3.1 | `check_local_sweep` 348 (incl. the idempotency leg); `readMeta` reads 3.1, 3.0 and the pre-3.0 yaml | `--reformat --live`, the same run as phase 3 |
 | 5. Drafts | §4.2.2 + marked addenda + the wiki's Drafts section | `check_testplangen.py` skeleton legs; `readMeta` on a draft fixture | none — drafts are timestamped, never rewritten |
 | 6. Retire the old grammars | drop the read-side synonyms once the corpus has converged | a corpus scan finds no pre-3.1 file | none |
 
@@ -439,12 +439,12 @@ Open — each is a recommendation, not a settled choice.
 |---|---|---|
 | D1 | A layout kernel module, or a written spec three emitters follow | **Kernel.** The written spec exists today (`Sidecar_Format_Plan.md` §4.1) and drifted anyway |
 | D2 | Source dialect | **GFM, translated per lane** — taken, in phase 2. The alternative — write MkDocs-flavored markdown — breaks GitHub, SharePoint and `draft2docx` to fix one consumer |
-| D3 | Empty metadata rows | **Omit optional rows**, keep the order and the always-present core (Doc, Source, Edited, Status) |
-| D4 | Case id padding | **`TC-P01` everywhere**; the draft prompt changes, the readers already tolerate both |
-| D5 | Explicit case anchors (`{ #tc-p01 }`) | **Yes** — stable links are worth the attribute showing as text in the SharePoint preview. Reject if the preview is a primary reading surface for plans |
-| D6 | One machine-comment grammar | **Yes**, with a one-window read-side tolerance for the five current forms |
+| D3 | Empty metadata rows | **Omit optional rows** — taken, in phase 4. The order is kept and the always-present core is Doc, Status, Source, Extracted (Extracted carries the `format` stamp the backfill gates on, so it cannot be dropped; Edited can) |
+| D4 | Case id padding | **`TC-P01` everywhere** — taken, in phase 3 |
+| D5 | Explicit case anchors (`{ #tc-p01 }`) | **Yes** — taken, in phase 3, behind `sweep.caseIndex.anchors` (default on) so the SharePoint-preview cost can be reversed with one config line and a `--reformat` |
+| D6 | One machine-comment grammar | **Yes** — `mdlayout.mark`/`readMark` ship in phase 3 and the case provenance uses them. The `rel:`, `docs:` and `slide N` marks keep their own syntax until phase 6; the readers accept both |
 | D7 | Drafts adopt the document skeleton | **Yes** — it is what makes drafts catalog-visible; it also puts a table above a document a PE reads in SharePoint, which is the cost |
-| D8 | Unit headings to H4 | **Yes** — H3 becomes "case" and the wiki TOC becomes useful. Costs one `--recase` pass |
+| D8 | Unit headings to H4 | **Yes** — taken, in phase 3 |
 | D9 | Publish drafts to the wiki | **Behind config** (`wiki.drafts`), default off — drafts are unreviewed and the banner says so |
 
 ---
