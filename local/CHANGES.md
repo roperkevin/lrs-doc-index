@@ -1,6 +1,6 @@
 # Local sweep — release notes
 
-## designsystem v1.3 / check_design_tokens.py (2026-09-06, with TestPlanGen v2.39)
+## designsystem v1.3 / check_design_tokens.py (2026-09-06, with TestPlanGen v2.42)
 
 Every token block verified against the published npm packages by the
 new `local/harness/check_design_tokens.py` (manual, network; 180/180
@@ -8,7 +8,7 @@ with `--all`); six transcription slips corrected — Carbon
 border-subtle-01 on both themes and g100 text-helper, Fluent
 subtitle1's line height, USWDS's line-height token 2, its largest
 column gap and its default typeface (Source Sans Pro, not Public
-Sans). Record: `testplangen/CHANGES.md` v2.39.
+Sans). Record: `testplangen/CHANGES.md` v2.42.
 
 ## designsystem v1.2 / deck2pptx v1.2 / deckspec v1.1 / draft2pptx v1.3 (2026-09-06, with TestPlanGen v2.37)
 

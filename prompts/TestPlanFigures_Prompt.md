@@ -1,4 +1,15 @@
-# Test Plan Figures Prompt — v0.2 (authored; wired as `testplangen.mjs --figures`, anthropic lane verbatim; no tenant paste)
+# Test Plan Figures Prompt — v0.3 (authored; wired as `testplangen.mjs --figures`, anthropic lane verbatim; no tenant paste)
+
+v0.3 (TestPlanGen v2.40): a route may carry an optional `"ticks"`
+interval — intermediate ticks between the labelled calibration points
+(the renderer labels them too when they fit, at most 60 per route). A
+rendering choice, not test data, so it is never grounded — but use it
+only when the case names measures that fall between calibration
+points, so a reader can locate them. The renderer itself now labels
+every line event's ends and every point event with its measure and
+places every label collision-free (`local/lib/figurespec.mjs` v1.1);
+nothing in a specification changes for that. Selection rules,
+exclusions, and output are unchanged.
 
 v0.2 (TestPlanGen v2.38): the X6 figure budget is an INPUT,
 **FiguresCap**, substituted from `testplangen.figuresCap` (default 6)
@@ -63,7 +74,7 @@ Inputs, exact names: **PlanTitle**, **Draft** (the verified draft
 body between the DRAFT markers — banner and machine addenda excluded),
 **FiguresCap** (a positive integer — `testplangen.figuresCap`, default 6).
 
-Versioning: `TestPlanFiguresPromptVersion: v0.2`
+Versioning: `TestPlanFiguresPromptVersion: v0.3`
 (`testplangen/CHANGES.md`); bumping it never touches
 `TestPlanGenPromptVersion` or `Config.PromptVersion`.
 
@@ -126,7 +137,7 @@ Common fields on every figure:
 kind "route-measure":
   "panels": 1 to 3 panels, each
     {"label": "Before" | "After" | "<date as written>" | "" ,
-     "routes": [ {"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "tone": "ink"|"muted", "arrow": true|false} ],   (1 to 3 routes; calibration = labelled major ticks, at most 8, must include from and to when the plan states them; arrow = the route's direction of increasing measure is stated)
+     "routes": [ {"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "ticks": 10, "tone": "ink"|"muted", "arrow": true|false} ],   (1 to 3 routes; calibration = labelled major ticks, at most 8, must include from and to when the plan states them; ticks = OPTIONAL intermediate tick interval in measure units — omit it unless the case names measures between the calibration points; a positive number giving at most 60 ticks over from–to; arrow = the route's direction of increasing measure is stated)
      "events": [ {"id": "E1", "route": "R1", "from": 10, "to": 40, "tone": "cool"} | {"id": "P1", "route": "R1", "at": 25, "tone": "warm"} ],   (at most 8; line events stack in order under the route, point events sit on it)
      "marks": [ {"kind": "split"|"gap"|"retire"|"realign"|"reassign"|"extend"|"calibration"|"cut"|"lock", "route": "R1", "at": 16, "to": 24, "label": "split @ 16"} ] }   (at most 6; "to" only for a ranged mark such as gap/retire/realign/extend; a lock mark marks a whole route when "at" is omitted)
 

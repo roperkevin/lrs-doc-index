@@ -1,5 +1,5 @@
 /**
- * draftlint.mjs v1.4 — in-process draft verification for
+ * draftlint.mjs v1.5 — in-process draft verification for
  * local/testplangen.mjs, two layers:
  *
  * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
@@ -34,7 +34,8 @@
  * `groundDraft` (v1.1, phase 2 of Local_TestPlanGen_Plan.md; v1.2
  * adds check d and the [VERIFY-line exclusion in check b, prompt
  * v1.9's story-first trace; v1.3 adds check e, prompt v1.10's
- * FIGURES rule) — the
+ * FIGURES rule; v1.5 adds the METHOD NAMES exception to check b,
+ * prompt v1.13) — the
  * GROUNDING layer, possible only locally because the job holds the
  * story it just sent: heuristic spot-checks of the draft against
  * STORY TEXT + StoryMeta. Deliberately NOT part of the Python
@@ -58,7 +59,14 @@
  *      Builder Split") passes — the doc 910 false positives. Note:
  *      the plan sketched a cites-a-reference exception, dropped here
  *      deliberately — the prompt's tools rule admits no tool names
- *      from reference documents at all;
+ *      from reference documents at all. v1.5 (prompt v1.13's METHOD
+ *      NAMES rule): a phrase the draft DECLARES on a Setup
+ *      `**Methods:**` line passes when it also appears in the
+ *      source corpus (the optional third argument — the exemplar,
+ *      reference, and related-cases text the job sent); a declared
+ *      name found in no source is its own finding. Without a source
+ *      corpus there is no exception — the declaration alone never
+ *      admits a name;
  *   c) enumeration echo: a comma/and list of 3+ short items in a
  *      workflow-shaped story sentence must have every item mentioned
  *      somewhere in the draft (a cheap ENUMERATION COVERAGE screen);
@@ -386,18 +394,55 @@ function splitsIntoKnown(parts, normStory) {
   return false;
 }
 
+// the borrowed method names a draft declares on its Setup
+// `**Methods:**` line(s) (prompt v1.13): the comma / "and" list that
+// precedes the first " — ", "(", or "[VERIFY" — normalized, so
+// "Route & Measure" and "route measure" compare equal
+export function declaredMethods(draftText) {
+  const out = new Set();
+  for (const line of String(draftText).split("\n")) {
+    const m = line.match(/^\s*\*\*Methods:\*\*\s*(.*)$/);
+    if (!m) continue;
+    const list = m[1].split(/\s+[—–-]{1,2}\s+|\s*\(|\s*\[VERIFY/)[0];
+    for (const item of list.split(/\s*,\s*(?:and\s+)?|\s+and\s+/)) {
+      const key = normText(item);
+      if (key.length >= 3) out.add(key);
+    }
+  }
+  return out;
+}
+
 /**
  * Heuristic grounding spot-checks of a draft against its own story
- * (storyCorpus = the capped STORY TEXT + the composed StoryMeta).
+ * (storyCorpus = the capped STORY TEXT + the composed StoryMeta;
+ * sourceCorpus, optional, = the EXEMPLAR TEXT + REFERENCE
+ * FUNCTIONALITY + RELATED CASES text the job sent — the METHOD
+ * NAMES exception in check b needs it and is inert without it).
  * Returns "grounding: ..."-prefixed finding strings; never throws on
  * content, never edits anything.
  */
-export function groundDraft(draftText, storyCorpus) {
+export function groundDraft(draftText, storyCorpus, sourceCorpus = "") {
   const findings = [];
   const draft = String(draftText);
   const normDraft = " " + normText(draft) + " ";
   const normStory = " " + normText(storyCorpus) + " ";
   const storyStems = contentStems(storyCorpus);
+  const normSource = normText(sourceCorpus) === "" ? "" : " " + normText(sourceCorpus) + " ";
+  // METHOD NAMES (prompt v1.13): names declared on the Setup Methods
+  // line that a source lane actually carries may appear in Steps /
+  // Expected Result lines; a declared name no source carries is a
+  // borrowed name from nowhere
+  const declared = declaredMethods(draft);
+  const borrowed = new Set();
+  for (const key of declared) {
+    if (normSource === "") break;
+    if (normSource.includes(" " + key + " ")) borrowed.add(key);
+    else {
+      findings.push(
+        `grounding: declared method "${key}" appears in no source document (the METHOD NAMES rule — borrowed names come from the exemplar, reference, or related-cases lanes)`
+      );
+    }
+  }
 
   // a) Coverage Map requirements must trace to the story
   const cmAt = draft.indexOf("## Coverage Map");
@@ -445,6 +490,10 @@ export function groundDraft(draftText, storyCorpus) {
       const key = normText(phrase);
       if (TOOL_ALLOW.has(key) || flaggedTools.has(key)) continue;
       if (normStory.includes(" " + key + " ")) continue;
+      // v1.5: a method name the draft declares AND a source carries
+      // (prompt v1.13's METHOD NAMES rule) is borrowed vocabulary,
+      // not an invented tool
+      if (borrowed.has(key)) continue;
       // v1.4: a Title Case run that merely ABUTS a known term and a
       // story word ("Experience Builder Split", "Split ArcGIS Pro") is
       // not a tool name — pass when it splits into a known multi-word

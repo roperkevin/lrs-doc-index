@@ -51,8 +51,13 @@ verifier the cloud flow could not have
                      story-first rule) each surface as "grounding:"
                      findings; an echoed enumeration and a
                      source-plan title inside a [VERIFY] item do
-                     not; testplangen.grounding false disables
-                     just that layer
+                     not; a method name declared on the Setup
+                     Methods line AND carried by a source lane
+                     passes the tools check, an undeclared one is
+                     flagged, a declared one no source carries is
+                     its own finding (draftlint v1.5, the prompt
+                     v1.13 METHOD NAMES rule); testplangen.grounding
+                     false disables just that layer
   leg 9 auto         the phase-3 unattended mode: owner-switch
                      refusal, reference-form exclusion, dry
                      selection with zero model calls, drafted +
@@ -360,7 +365,8 @@ FIG_REPLY = json.dumps({
          "caption": "R1 (0–100) and R2 (0–60) before the merge; after it R1 spans 0–160 with E1 at 10–40 and E2 at 105–130.",
          "panels": [
              {"label": "Before",
-              "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "tone": "ink", "arrow": True},
+              # v1.20 (figurespec v1.1): R1 asks for intermediate ticks every 10
+              "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100], "ticks": 10, "tone": "ink", "arrow": True},
                          {"id": "R2", "from": 0, "to": 60, "calibration": [0, 60], "tone": "ink", "arrow": True}],
               "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40, "tone": "cool"},
                          {"id": "E2", "route": "R2", "from": 5, "to": 30, "tone": "warm"}],
@@ -383,7 +389,8 @@ FIG_REPLY = json.dumps({
         {"case": "TC-P2", "rule": "R1", "kind": "route-measure",
          "title": "TC-P2 — Merge produces one route",
          "caption": "One route remains.",
-         "panels": [{"label": "", "routes": [{"id": "R1", "from": 0, "to": 100}],
+         # …and a tick interval that would draw 1000 ticks (figurespec v1.1 caps at 60)
+         "panels": [{"label": "", "routes": [{"id": "R1", "from": 0, "to": 100, "ticks": 0.1}],
                      "events": [{"id": "E1", "route": "R1", "at": 999, "tone": "cool"}], "marks": []}]},
         # an unknown case id — must be dropped
         {"case": "TC-P9", "rule": "R1", "kind": "topology", "title": "TC-P9 — ghost", "caption": "x",
@@ -780,7 +787,9 @@ def main():
 
     # ---- corpus: sidecars + Doc Index rows ----
     plan_body = ("### Case 1 — locked-route denial\nA second user is denied "
-                 "editing a route the first user holds a lock on. " + "x" * 340)
+                 "editing a route the first user holds a lock on. Referent "
+                 "methods exercised: Route & Measure, Coordinates, Location "
+                 "Offset. " + "x" * 340)
     url_a = sidecar(sidecar_dir, "Test Plans", "plan-a__doc21.md", plan_body)
     url_b = sidecar(sidecar_dir, "Test Plans", "plan-b__doc22.md", plan_body)
     url_c = sidecar(sidecar_dir, "Test Plans", "plan-c__doc23.md", plan_body)
@@ -1031,7 +1040,7 @@ def main():
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
     check("banner: comment stamp with prompt version + provider",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.12")
+          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.13")
           and "provider aibuilder" in draft.splitlines()[0], draft[:200])
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
@@ -1364,6 +1373,46 @@ def main():
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("known term abutting a story word / trailing value word not flagged as a tool",
           r.returncode == 0 and "tool-like name" not in draft, draft[:900])
+    # v1.19 (draftlint v1.5, prompt v1.13's METHOD NAMES rule): a method
+    # name borrowed from an exemplar — declared on the Setup Methods
+    # line AND present in a source lane (Plan A names it) — is not a
+    # tool; undeclared it still is; declared but sourced nowhere is a
+    # finding of its own
+    METHODS_LINE = (
+        "\n**Methods:** Route & Measure, Coordinates, Location Offset — the "
+        "referent methods behind the story's \"all input methods\", as named "
+        "in \"Plan A\" (exemplar). [VERIFY: confirm the set on Pro]\n")
+    METHOD_STEP = (
+        "- [ ] 2. Inspect the measures on the merged route.\n"
+        "- [ ] 3. Repeat the merge locating the routes by Location Offset.")
+    state.drafts.clear()
+    declared = GOOD_DRAFT.replace(
+        "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n",
+        "- [ ] 1. LRS network with two mergeable routes. [VERIFY: minimum network configuration]\n"
+        + METHODS_LINE
+    ).replace("- [ ] 2. Inspect the measures on the merged route.", METHOD_STEP)
+    state.gen_text = wrap(declared)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("declared, source-carried method name not flagged as a tool (METHOD NAMES)",
+          r.returncode == 0 and "tool-like name" not in draft
+          and "declared method" not in draft, draft[:1200])
+    state.drafts.clear()
+    undeclared = GOOD_DRAFT.replace("- [ ] 2. Inspect the measures on the merged route.", METHOD_STEP)
+    state.gen_text = wrap(undeclared)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("undeclared method name still flagged as a tool",
+          r.returncode == 0 and 'tool-like name "Location Offset"' in draft, draft[:1200])
+    state.drafts.clear()
+    unsourced = declared.replace("Location Offset", "Quantum Offset")
+    state.gen_text = wrap(unsourced)
+    r = run_job(cfg_main, ["--story", "12", "--live"])
+    draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
+    check("declared method no source carries is flagged, and stays a tool-like name",
+          r.returncode == 0
+          and 'declared method "quantum offset" appears in no source document' in draft
+          and 'tool-like name "Quantum Offset"' in draft, draft[:1400])
     state.gen_text = wrap(GOOD_DRAFT)
     r = run_job(cfg_main, ["--story", "16", "--dry-run"])
     check("grounding findings counted in verify=",
@@ -2026,7 +2075,8 @@ def main():
           and f"](<{stem}--fig-tc-p1.svg>)" in latest and f"](<{stem}--fig-tc-n1.svg>)" in latest
           and "(rule R2)" in latest and "(rule R5)" in latest
           and "2 rendered of 4 proposed, 2 dropped" in latest
-          and "- TC-P2 — TC-P2: panel 1 event E1 at 999 is not a value" in latest
+          and "- TC-P2 — TC-P2: panel 1 route R1 ticks 0.1 would draw 1000 ticks — at most 60; "
+              "TC-P2: panel 1 event E1 at 999 is not a value" in latest
           and "- TC-P9 — TC-P9: not a TC case in the plan" in latest
           and "Not illustrated: TC-P2 (X2 — geometry equals TC-P1)" in latest,
           latest[latest.find("## Generated Figures"):][:1200])
@@ -2046,6 +2096,60 @@ def main():
           and ">extended<" in s_p1 and ">160<" in s_p1
           and 'class="ln swatch flat s-green"' in s_p1 and ">E2 105 → 130<" in s_p1,
           s_p1[:400])
+    # v1.20 (figurespec v1.1): R1's ticks every 10 draw eight intermediate
+    # ticks (0/50/100 are calibration), labelled since they fit; every
+    # line event's ends carry their measure (105 and 130 are E2's ends
+    # and nothing else in the figure); no two text boxes overlap
+    check("route-measure SVG: intermediate ticks drawn and labelled where they fit",
+          s_p1.count('class="ln tick"') == 8 and ">10<" in s_p1 and ">90<" in s_p1,
+          str(s_p1.count('class="ln tick"')))
+    check("route-measure SVG: measure labels at both ends of every line event",
+          ">105<" in s_p1 and ">130<" in s_p1 and ">40<" in s_p1 and ">5<" in s_p1, s_p1[-1200:])
+    texts = re.findall(r'<text class="([^"]+)" x="([-\d.]+)" y="([-\d.]+)" text-anchor="(\w+)"[^>]*>([^<]*)</text>', s_p1)
+    def box(cls, x, y, anchor, s):
+        base = cls.split(" ")[0]
+        w = len(s) * {"measure": 6.3, "id": 7.4, "note": 6.8, "legend": 6, "nlabel": 6.9}.get(base, 6.6) + 3
+        h = {"measure": 11, "id": 13, "note": 12.5, "legend": 11, "nlabel": 12.5}.get(base, 12.5) + 1
+        x0 = float(x) - (w / 2 if anchor == "middle" else w if anchor == "end" else 0)
+        return (x0, x0 + w, float(y) - h / 2, float(y) + h / 2)
+    boxes = [box(c, x, y, a, t) for c, x, y, a, t in texts if c != "legend"]
+    overlaps = [(a, b) for i, a in enumerate(boxes) for b in boxes[i + 1:]
+                if a[0] < b[1] and b[0] < a[1] and a[2] < b[3] and b[2] < a[3]]
+    check("route-measure SVG: no two labels overlap (estimated boxes)", overlaps == [], str(overlaps[:3]))
+    # v1.21 (figurespec v1.2): one scale per figure — Before's R1 0–100
+    # and After's R1 0–160 put "100" at the same x in both panels
+    x100 = re.findall(r'<text class="measure" x="([\d.]+)"[^>]*>100</text>', s_p1)
+    check("route-measure SVG: panels share one measure scale",
+          len(x100) == 2 and x100[0] == x100[1], str(x100))
+    # …and a panel is diffed against the one before it: a split spec
+    # rendered in-process shows E1's prior 16–40 dotted under its
+    # bar, E3 (gone after) as a ghost row, P1's prior position as a
+    # hollow dot, the route's prior 0–100 behind the extension, and
+    # the renderer's own legend key
+    split_spec = json.dumps({
+        "case": "TC-P3", "rule": "R2", "kind": "route-measure", "title": "TC-P3 — Split", "caption": "cap",
+        "panels": [
+            {"label": "Before", "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100]}],
+             "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40}, {"id": "E3", "route": "R1", "from": 60, "to": 80},
+                        {"id": "P1", "route": "R1", "at": 30}], "marks": []},
+            {"label": "After", "routes": [{"id": "R1", "from": 0, "to": 160, "calibration": [0, 50, 100, 160]}],
+             "events": [{"id": "E1", "route": "R1", "from": 10, "to": 16}, {"id": "E2", "route": "R1", "from": 16, "to": 40},
+                        {"id": "P1", "route": "R1", "at": 45}], "marks": []}],
+    })
+    script = ("import { renderFigureSvg } from %r;\n"
+              "process.stdout.write(renderFigureSvg(%s));\n"
+              % ("file://" + os.path.join(REPO, "local", "lib", "figurespec.mjs"), split_spec))
+    res = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, cwd=REPO)
+    svg = res.stdout
+    check("route-measure SVG: the later panel shows prior extents as ghosts, with a legend key",
+          res.returncode == 0
+          and svg.count('class="ln event flat s-muted dotted"') == 2       # E1's prior 16–40 + E3's ghost row
+          and svg.count('class="node t-plain s-muted dashed"') == 1       # P1's prior position
+          and svg.count('class="ln ctx dotted"') == 1                     # R1's prior 0–100
+          and ">prior extent (earlier panel)<" in svg
+          and 'class="ln swatch flat s-muted dotted"' in svg
+          and 'class="id f-muted"' in svg and ">E3<" in svg,
+          (res.stderr or svg)[:600])
     check("sequence SVG: actors, lifelines, the denied step in red",
           ">User A<" in s_n1 and ">User B<" in s_n1
           and s_n1.count('class="ln leader dashed"') == 2
