@@ -303,23 +303,35 @@ Decisions folded in:
 <!-- lrs:<kind>:begin … -->  …  <!-- lrs:<kind>:end -->
 ```
 
-`kind` ∈ `case`, `rel`, `related`, `docs`, `body`, `unit`, `addendum`,
-`verify`, `gen`. One writer (`mark`/`region`), one reader
-(`marks(text, kind)`), one regex in the codebase instead of five.
-Migration is read-side-tolerant: the reader accepts today's five forms
-for one backfill window, exactly as `readMeta` accepts the pre-3.0
-yaml today (`sidecarmeta.mjs:185-211`).
+`kind` ∈ `case`, `addendum`, `verify` today (phases 3 and 5), and
+whatever a future mark needs. One writer (`mark`), one reader
+(`readMark`/`marks`).
 
-Two things this buys immediately:
+**What did NOT move, and why** (decision D6, revised in phase 6): the
+four existing marks — `rel:N s=…`, `related:begin/end`,
+`docs:begin/end` and `slide N` — keep their own syntax. The grammar
+was worth introducing for the forms that were *unparseable* (a case's
+free-text `src:` comment, the draft's prose banner); it is not worth a
+rename for forms that are already unambiguous, have one reader each,
+and anchor the seam every job resolves a body through. A rename would
+also add four more shapes for the readers to tolerate, which is the
+opposite of what phase 6 exists to do.
+
+Two things the grammar bought immediately:
 
 - `<!-- lrs:addendum name=issue-trace -->` marks the machine-minted
   draft sections, so "where does model output end" is answerable
   mechanically (D8) — the verifier, the deck pass and any re-index can
   skip them instead of relying on the repeated italic sentence.
-- `<!-- lrs:body:begin -->` gives every file the seam the sidecar gets
-  from `---`, including drafts and index pages, so `bodySeamEnd`
-  stops being a scan for the first `---` after `related:end`
-  (`doclinks.mjs:256-264`). The `---` stays for the rendered look.
+- A draft's provenance became readable: `Generated` and `Source` are
+  table rows, so `readMeta` reads a draft and the wiki can publish one
+  (phase 5). The HTML comment that used to carry it was parseable by
+  nothing.
+
+(The plan also sketched `<!-- lrs:body:begin -->` as a replacement for
+the `---` seam scan. Not built: `bodySeamEnd` works, drafts do not use
+it, and moving the seam is the single riskiest edit in the system for
+no behavioural gain.)
 
 ### 4.5 The dialect contract
 
@@ -422,8 +434,8 @@ Header + drafts (phases 4–5, `--reformat` backfill, format 3.1):
 | 2. The wiki lane — **shipped** (`lib/mdlayout.mjs` v1.0, `wiki.mjs` v1.1) | §4.5 — D1–D4, extensions, escaping, TOC depth | 7 new `check_wiki.py` legs, all failing on wiki v1.0; `mkdocs build --strict` in CI | none — the wiki is regenerated every run |
 | 3. The case block — **shipped** (casegrammar v1.3, caseindex v2.2, prompt v1.14, draftlint v1.6) | §4.3 — padding, bullet fields, `lrs:case` mark, explicit anchors, H4 units, and `canonicalizeCaseBlocks` for bodies already in the grammar | `check_caseindex` 107, `check_testplangen` 238, the draftlint agreement leg at contract v1.8 | `--reformat --live` (it re-renders bodies AND syncs the rows; `--recase` alone does not rewrite a body) |
 | 4. The header — **shipped** (sidecarmeta format 3.1, sweep v1.54, wiki v1.2, agent v1.5) | §4.2.1 — optional rows, `Status`, `Generated`, format 3.1 | `check_local_sweep` 348 (incl. the idempotency leg); `readMeta` reads 3.1, 3.0 and the pre-3.0 yaml | `--reformat --live`, the same run as phase 3 |
-| 5. Drafts | §4.2.2 + marked addenda + the wiki's Drafts section | `check_testplangen.py` skeleton legs; `readMeta` on a draft fixture | none — drafts are timestamped, never rewritten |
-| 6. Retire the old grammars | drop the read-side synonyms once the corpus has converged | a corpus scan finds no pre-3.1 file | none |
+| 5. Drafts — **shipped** (testplangen v1.24, wiki v1.3) | §4.2.2 + marked addenda + the wiki's Drafts section behind `wiki.draftsDir` | `check_testplangen` 243 (incl. a `readMeta`-on-a-draft probe), `check_wiki` 49, `check_draft2pptx` 43 | none — drafts are timestamped, never rewritten |
+| 6. Retire the old grammars — **the scan is shipped** (`lib/layoutaudit.mjs` v1.0, sweep `--layout-audit`); the deletion waits on a converged corpus | drop the read-side synonyms once no sidecar carries the shape | `--layout-audit` reports the shape's file count at 0 | none |
 
 Rollback is the existing pattern: the `format` value in the Extracted
 row gates the backfill, and `--reformat` re-emits from raw text, so no
@@ -442,10 +454,10 @@ Open — each is a recommendation, not a settled choice.
 | D3 | Empty metadata rows | **Omit optional rows** — taken, in phase 4. The order is kept and the always-present core is Doc, Status, Source, Extracted (Extracted carries the `format` stamp the backfill gates on, so it cannot be dropped; Edited can) |
 | D4 | Case id padding | **`TC-P01` everywhere** — taken, in phase 3 |
 | D5 | Explicit case anchors (`{ #tc-p01 }`) | **Yes** — taken, in phase 3, behind `sweep.caseIndex.anchors` (default on) so the SharePoint-preview cost can be reversed with one config line and a `--reformat` |
-| D6 | One machine-comment grammar | **Yes** — `mdlayout.mark`/`readMark` ship in phase 3 and the case provenance uses them. The `rel:`, `docs:` and `slide N` marks keep their own syntax until phase 6; the readers accept both |
-| D7 | Drafts adopt the document skeleton | **Yes** — it is what makes drafts catalog-visible; it also puts a table above a document a PE reads in SharePoint, which is the cost |
+| D6 | One machine-comment grammar | **Partly — and deliberately so.** `mdlayout.mark`/`readMark` ship, and the two genuinely ad-hoc forms moved onto them: a case's free-text `src:` (phase 3) and the draft's prose banner and verify comment (phase 5). The remaining four — `rel:N s=…`, `related:begin/end`, `docs:begin/end`, `slide N` — **keep their own syntax**. Each is already unambiguous, has exactly one reader, and sits on the seam every job depends on (`bodySeamEnd` anchors on `related:end`); renaming them buys a prefix and costs a wide, load-bearing diff plus a *wider* tolerance window — the opposite of what phase 6 is for. Revisit only if a third form of one of them ever appears |
+| D7 | Drafts adopt the document skeleton | **Yes** — taken, in phase 5. Four rows (Doc, Status, Source, Generated) replace an HTML comment and a paragraph of prose, so the head is no longer than it was; surface, target release and PE stay in the model's Overview table rather than being duplicated into the head |
 | D8 | Unit headings to H4 | **Yes** — taken, in phase 3 |
-| D9 | Publish drafts to the wiki | **Behind config** (`wiki.drafts`), default off — drafts are unreviewed and the banner says so |
+| D9 | Publish drafts to the wiki | **Behind config** — taken, in phase 5, as `wiki.draftsDir` (the local path of the drafts folder), default empty. A published draft joins no catalog and its page says it is unreviewed |
 
 ---
 

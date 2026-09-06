@@ -1213,13 +1213,14 @@ keywords or related documents in the catalog and the sweep's rewrite
 of the sidecar carries it to the wiki. Gate: `tests/check_wiki.py`
 (fixture-free; the strict MkDocs build runs in CI).
 
-## 16. Markdown layout: the wiki dialect, the case block, format 3.1
+## 16. Markdown layout: the wiki dialect, the case block, format 3.1, drafts
 
-`docs/design/Markdown_Layout_Plan.md` phases 2–4, shipped as
-`lib/mdlayout.mjs` v1.1, `wiki.mjs` v1.2, `casegrammar` v1.3,
-`caseindex` v2.2, `sidecarmeta` format 3.1 and `sweep` v1.54. Phase 2
-(the wiki lane) needs nothing here — the site is regenerated on every
-run. Phases 3 and 4 rewrite the corpus, in ONE pass:
+`docs/design/Markdown_Layout_Plan.md` phases 2–6, shipped as
+`lib/mdlayout.mjs` v1.1, `lib/layoutaudit.mjs` v1.0, `wiki.mjs` v1.3,
+`casegrammar` v1.3, `caseindex` v2.2, `sidecarmeta` format 3.1,
+`sweep` v1.54 and `testplangen` v1.24. Phase 2 (the wiki lane) needs
+nothing here — the site is regenerated on every run. Phases 3 and 4
+rewrite the corpus, in ONE pass; phases 5 and 6 are steps 7 and 8:
 
 1. **Tenant** — nothing to add. The Test Cases columns phase 3 fills
    (`Shape`, `Confidence`, `Group`, `SourceRef`) were created for the
@@ -1249,6 +1250,23 @@ run. Phases 3 and 4 rewrite the corpus, in ONE pass:
    case block, two-digit ids. Drafts already in the Test Plan Drafts
    folder are not rewritten; `tests/check_draft_coverage.py
    --baseline` scores one of them without the new asserts.
+
+7. **Drafts** (phase 5) need nothing: they are timestamped and never
+   rewritten, so the next generated draft simply opens in the new
+   shape. To publish them to the wiki, set `wiki.draftsDir` to the
+   LOCAL path of the synced `Shared Documents/Test Plan Drafts`
+   folder; each draft becomes a page plus a Drafts catalog, marked
+   unreviewed and joining no catalog. Empty (the default) = no Drafts
+   section.
+8. **After the backfill, check what converged** (phase 6):
+   `node pipeline\sweep.mjs --config config.json --layout-audit --live`
+   — read-only apart from `_Layout Audit.md`, no model, no list
+   writes. It reports the format mix and, for each shape an earlier
+   phase replaced, how many sidecars still carry it and which reader
+   that keeps alive. The run prints `retirable now: …` — the shapes no
+   file carries any more. Those readers can be deleted (they are named
+   in `pipeline/lib/layoutaudit.mjs`); until then they stay, which is
+   why nothing broke while the backfill was pending.
 
 Rollback is the standing pattern: the `format` value in the Extracted
 row says which shape a file carries, and `--reformat` re-emits from

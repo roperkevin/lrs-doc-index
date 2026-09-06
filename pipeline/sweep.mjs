@@ -71,6 +71,7 @@ import { sendAlert, recordHeartbeat, checkHeartbeat } from "./lib/alerts.mjs";
 import { extractCases, toRowFields, diffCaseRows, prepareVocab } from "./lib/caseindex.mjs";
 import { prettifyMedia, placeDrawings, extractFigures, toFigureRowFields, diffFigureRows, imageSize } from "./lib/figureindex.mjs";
 import { auditBody, summarizeAudit, renderAuditPage, hasSignal } from "./lib/caseaudit.mjs";
+import { auditLayout, summarizeLayout, renderLayoutPage } from "./lib/layoutaudit.mjs";
 import { unwrapReply, verifyNormalized, NORMALIZE_PROMPT_VERSION } from "./lib/casenormalize.mjs";
 import { renderMetaTable, readMeta, metaList, relEntries, relatedRegion, migrateRelMarkers, isFormat3 } from "./lib/sidecarmeta.mjs";
 import { mintStem, mintStems, stemOf, relinkMedia, mediaLinksOf, primaryIssue, defaultAbbreviations, MEDIA_PLACEHOLDER } from "./lib/slug.mjs";
@@ -472,6 +473,7 @@ function loadConfig(argv) {
     else if (a === "--recase") args.flags.recase = true;
     else if (a === "--refigure") args.flags.refigure = true;
     else if (a === "--case-audit") args.flags.caseAudit = true;
+    else if (a === "--layout-audit") args.flags.layoutAudit = true;
     else if (a === "--rename") args.flags.rename = true;
     else if (a === "--normalize-cases") args.flags.normalize = true;
     else if (a === "--rename-plan") { args.flags.rename = true; args.flags.dry = true; }
@@ -480,7 +482,7 @@ function loadConfig(argv) {
     else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
   }
-  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--refigure] [--case-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat] [--progress|--no-progress]");
+  if (!args.config) throw new Error("usage: sweep.mjs --config <config.json> [--live|--dry-run] [--max N] [--only <file>] [--rerank] [--reformat] [--recase] [--refigure] [--case-audit] [--layout-audit] [--rename|--rename-plan] [--normalize-cases] [--check-heartbeat] [--progress|--no-progress]");
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, SWEEP_REQUIRED, args.config);
@@ -509,6 +511,7 @@ function loadConfig(argv) {
     throw new Error("--refigure is a standalone mode — do not combine it with --rerank, --reformat or --recase");
   }
   if (args.flags.caseAudit) cfg.sweep.caseAudit = true;
+  if (args.flags.layoutAudit) cfg.sweep.layoutAudit = true;
   if (args.flags.rename) cfg.sweep.rename = true;
   if (args.flags.normalize) cfg.sweep.normalize = true;
   if (cfg.sweep.normalize && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure || cfg.sweep.caseAudit || cfg.sweep.rename)) {
@@ -516,6 +519,9 @@ function loadConfig(argv) {
   }
   if (cfg.sweep.rename && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure || cfg.sweep.caseAudit)) {
     throw new Error("--rename is a standalone mode — do not combine it with --rerank, --reformat, --recase, --refigure or --case-audit");
+  }
+  if (cfg.sweep.layoutAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure || cfg.sweep.caseAudit || cfg.sweep.rename || cfg.sweep.normalize)) {
+    throw new Error("--layout-audit is a standalone mode — do not combine it with another mode");
   }
   if (cfg.sweep.caseAudit && (cfg.sweep.rerank || cfg.sweep.reformat || cfg.sweep.recase || cfg.sweep.refigure)) {
     throw new Error("--case-audit is a standalone mode — do not combine it with --rerank, --reformat, --recase or --refigure");
@@ -753,7 +759,8 @@ async function main() {
   const prog = createProgress({ enabled: cfg._progress });
   const modeName =
     sw.rerank ? "--rerank" : sw.reformat ? "--reformat" : sw.recase ? "--recase" :
-    sw.refigure ? "--refigure" : sw.caseAudit ? "--case-audit" : sw.rename ? "--rename" :
+    sw.refigure ? "--refigure" : sw.caseAudit ? "--case-audit" :
+    sw.layoutAudit ? "--layout-audit" : sw.rename ? "--rename" :
     sw.normalize ? "--normalize-cases" : "nightly index";
   prog(
     `sweep ${modeName} — ${dry ? "DRY RUN (no writes)" : "LIVE"}, ` +
@@ -1438,6 +1445,63 @@ async function main() {
     for (const t of table) if (t.changed) process.stdout.write(`${t.folder}/${t.from} -> ${t.to}\n`);
     if (dry) process.stdout.write(`rename plan: ${table.filter((t) => t.changed).length} of ${table.length} sidecars would be renamed (log: ${nLog}); re-run with --rename --live to apply\n`);
     else if (nsum.renamed) process.stdout.write(`renamed ${nsum.renamed} sidecar(s); run --recase --live and --refigure --live next so Test Cases anchors, figure links and Figures image URLs follow\n`);
+    return;
+  }
+
+  // ---- --layout-audit: which sidecars still carry a shape an earlier
+  // phase replaced (Markdown_Layout_Plan phase 6). Every phase left
+  // the readers able to understand the shape they replaced, so no
+  // consumer had to wait for a backfill; this is how anyone tells when
+  // that tolerance can come out. Reads the sidecars on disk, writes
+  // `_Layout Audit.md` on a live run. No list writes, no extraction,
+  // no AI calls.
+  if (sw.layoutAudit) {
+    const lPhase = prog.phase("layout audit");
+    const entries = [];
+    let noSidecar = 0;
+    const indexed = docIndexRows.filter((r) => r.ID && r.IndexStatus === "Indexed" && r.TextFileUrl);
+    const lTick = prog.counter(indexed.length, "sidecars");
+    for (const r of indexed) {
+      if (sw.smokeFile && lower(String(r.FileName || "").trim()) !== lower(sw.smokeFile.trim())) continue;
+      const local = urlToLocal(String(r.TextFileUrl), sw, cfg);
+      if (!local || !fs.existsSync(local)) { noSidecar++; continue; }
+      const content = fs.readFileSync(local, "utf8");
+      const parts = String(r.TextFileUrl).split("/");
+      const file = decodeURIComponent(parts[parts.length - 1] || "");
+      const folder = decodeURIComponent(parts[parts.length - 2] || "");
+      const a = auditLayout(content, { kind: r.DocKind || "" });
+      entries.push({
+        id: r.ID, title: r.Title || r.FileName || `doc ${r.ID}`,
+        target: folder ? `${folder}/${file}` : file, ...a,
+      });
+      lTick(r.Title || r.FileName || `doc ${r.ID}`, a.legacy ? `format ${a.format}, legacy` : `format ${a.format}`);
+    }
+    const lsum = { mode: "layout-audit", dry_run: dry, no_sidecar: noSidecar, ...summarizeLayout(entries) };
+    lPhase.done(
+      `${entries.length} sidecar(s) audited, ${lsum.converged} carrying no legacy shape, ` +
+      `${noSidecar} without a sidecar on disk`
+    );
+    if (!dry && cfg.sweep.indexPages !== false) {
+      const pg = path.join(cfg.paths.sidecarLibrary, "_Layout Audit.md");
+      fs.writeFileSync(pg, renderLayoutPage(entries, new Date().toISOString()));
+      if (remote) {
+        remote.queuePut(pg);
+        await remote.flush().catch((e) =>
+          process.stderr.write(`remote flush of layout audit: ${e.message}\n`));
+      }
+    }
+    const lDir = cfg.paths.workDir || tmpDir;
+    fs.mkdirSync(lDir, { recursive: true });
+    const lStamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+    const lLog = path.join(lDir, `sweep-${lStamp}.json`);
+    fs.writeFileSync(lLog, JSON.stringify({ summary: lsum, sidecars: entries }, null, 1));
+    pruneRunLogs(lDir);
+    process.stdout.write(JSON.stringify({ ...lsum, logFile: lLog }) + "\n");
+    process.stdout.write(
+      lsum.retirable.length
+        ? `retirable now: ${lsum.retirable.join(", ")} — no sidecar carries these, their readers can be deleted\n`
+        : "retirable now: none — every legacy shape is still in the corpus; run --reformat --live to converge it\n"
+    );
     return;
   }
 

@@ -230,9 +230,24 @@ export function parseDraft(md) {
     sec.blocks.push(b);
   }
   for (const b of pre) {
+    if (b.kind === "table") {
+      // the draft's metadata table (Markdown_Layout_Plan phase 5):
+      // Generated carries the stamp, Source the story it came from
+      for (const row of b.rows) {
+        const key = String(row[0] || "").replace(/\*/g, "").trim();
+        const val = String(row[1] || "").trim();
+        if (key === "Generated") {
+          model.generated = (/(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)/.exec(val) || [, val])[1];
+        } else if (key === "Source") {
+          model.story = (/^\[([^\]]*)\]/.exec(val) || [, val.split(" · ")[0]])[1];
+        }
+      }
+      continue;
+    }
     if (b.kind === "alert" && b.label === "WARNING") {
+      // the pre-phase-5 banner said it in prose
       const g = /Generated\s+(\S+?)\s+from\s+(.*?)(?:\.\s|\.$|$)/.exec(b.text);
-      if (g) { model.generated = g[1]; model.story = g[2].replace(/ Source sidecar:.*$/, ""); }
+      if (g && !model.generated) { model.generated = g[1]; model.story = g[2].replace(/ Source sidecar:.*$/, ""); }
     } else if (b.kind === "alert" && b.label === "IMPORTANT") {
       model.verify = b.text;
     } else if (b.kind === "p") model.intro.push(b.text);

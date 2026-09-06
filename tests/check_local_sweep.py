@@ -2445,6 +2445,50 @@ def main():
     check("case-audit refuses to combine with --recase",
           proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
 
+    # ---- layout-audit leg (Markdown_Layout_Plan phase 6) -------------
+    print("== layout-audit leg")
+    layout_pg = os.path.join(sidecar_dir, "_Layout Audit.md")
+    if os.path.exists(layout_pg):
+        os.remove(layout_pg)
+    llm_before_la = state.llm_calls
+    proc = run_sweep(cfg_path, ["--layout-audit"])
+    check("layout-audit dry run exit 0", proc.returncode == 0, proc.stderr[-400:])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("layout-audit dry run walks the corpus and writes no page",
+          out.get("mode") == "layout-audit" and out.get("dry_run") is True
+          and int(out.get("sidecars", 0)) >= 2
+          and not os.path.exists(layout_pg), str(out))
+    check("a corpus the sweep just wrote carries no legacy shape",
+          out.get("converged") == out.get("sidecars")
+          and out.get("formats", {}).get("3.1") == out.get("sidecars")
+          and sorted(out.get("retirable", [])) == sorted(out.get("shape_files", {}).keys()),
+          str(out))
+    # plant one legacy shape and prove the audit names it and its reader
+    keep_alpha = open(alpha_sc).read()
+    with open(alpha_sc, "w") as f:
+        f.write(keep_alpha.replace("### TC-P01 — Loop Route { #tc-p01 }",
+                                   "### TC-P01 — Loop Route", 1))
+    proc = run_sweep(cfg_path, ["--layout-audit", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("layout-audit live names the shape, its file and the reader it keeps alive",
+          os.path.exists(layout_pg)
+          and out.get("shape_files", {}).get("unanchoredCases") == 1
+          and "unanchoredCases" not in out.get("retirable", [])
+          and "caseindex.slugger" in open(layout_pg).read()
+          and "Alpha Plan" in open(layout_pg).read().split("## Sidecars still carrying one")[-1],
+          str(out))
+    check("layout-audit says on stdout what can be retired now",
+          "retirable now:" in proc.stdout and "yamlFrame" in proc.stdout, proc.stdout[-300:])
+    check("layout-audit spent no AI calls and touched no list",
+          state.llm_calls == llm_before_la
+          and len(state.lists.get(LISTS["testCases"], {})) == len(tcs),
+          f"{state.llm_calls} vs {llm_before_la}")
+    with open(alpha_sc, "w") as f:
+        f.write(keep_alpha)
+    proc = run_sweep(cfg_path, ["--layout-audit", "--reformat"])
+    check("layout-audit refuses to combine with another mode",
+          proc.returncode != 0 and "standalone" in proc.stderr, proc.stderr[-300:])
+
     # ---- rename leg (Sidecar_Format_Plan phase 1b) -------------------
     # a corpus still on the pre-1b naming: alpha's sidecar sits at
     # {slug}__doc{id}.md with a flat media/doc10_*.png image, beta's

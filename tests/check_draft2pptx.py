@@ -216,6 +216,35 @@ def main():
           and parsed.get("title", "").startswith("TC-P01 — A case"),
           pr.stdout + pr.stderr[-300:])
 
+    # ---- the phase-5 draft head: the provenance the title slide
+    # stamps comes from the metadata table now, not from banner prose
+    head_probe = (
+        "# Test Plan — Route Merge\n\n"
+        "| Field | Value |\n| --- | --- |\n"
+        "| **Doc** | draft · Test Plan · Pro |\n"
+        "| **Status** | Draft — unreviewed |\n"
+        "| **Source** | [Route Merge](<https://x.test/12-route-merge.md>) · story 12 |\n"
+        "| **Generated** | pipeline/testplangen.mjs v1.24 · prompt v1.14.0 · 2026-09-06T22:10:00.000Z |\n\n"
+        "> [!WARNING]\n> **DRAFT — machine-generated, unreviewed.**\n\n"
+        "## Positive Tests\n\n### TC-P01 — A case { #tc-p01 }\n"
+        "- **Steps:**\n  - [ ] 1. Do it.\n- **Expected Result:** Done.\n"
+    )
+    hp_js = (
+        'import { parseDraft } from "file://%s/pipeline/render/draft2pptx.mjs";\n'
+        "const m = parseDraft(%s);\n"
+        "console.log(JSON.stringify({t: m.title, g: m.generated, s: m.story}));\n"
+    ) % (REPO, json.dumps(head_probe))
+    hpj = os.path.join(tempfile.mkdtemp(prefix="draft2pptx-head-"), "head.mjs")
+    with open(hpj, "w", encoding="utf-8") as f:
+        f.write(hp_js)
+    hr = _run(["node", hpj], capture_output=True, text=True, cwd=REPO)
+    hm = json.loads(hr.stdout or "{}") if hr.returncode == 0 else {}
+    check("the phase-5 draft head gives the title slide its stamp",
+          hm.get("t") == "Test Plan — Route Merge"
+          and hm.get("g") == "2026-09-06T22:10:00.000Z"
+          and hm.get("s") == "Route Merge",
+          hr.stdout + hr.stderr[-300:])
+
     tmp = tempfile.mkdtemp(prefix="draft2pptx-gate-")
     md1 = os.path.join(tmp, "TestPlanDraft__doc12__20260904-000000.md")
     with open(md1, "w", encoding="utf-8") as f:

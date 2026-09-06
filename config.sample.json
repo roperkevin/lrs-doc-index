@@ -43,10 +43,11 @@
   },
 
   "wiki": {
-    "$comment": "The catalog as a wiki (pipeline/wiki.mjs — docs/setup.md §15): every sidecar rendered into an MkDocs site and pushed to a PRIVATE git repository whose Pages workflow serves it (devtopia — this repository is public, the sidecars are internal). Optional; the job reads paths.sidecarLibrary and the newest list backup in paths.workDir, never SharePoint or a model. repoUrl = the clone URL of the wiki repository (credentials from the machine's git credential helper; with --push the tree is committed and pushed, unchanged corpus = no commit); branch = the branch its Pages workflow builds (main); outDir = where the tree is rendered (<workDir>/wiki); siteName / siteUrl land in mkdocs.yml; recent = rows on the Recent page. Schedule ops\\run_wiki.cmd after the nightly sweep (ops\\wiki_task.xml).",
+    "$comment": "The catalog as a wiki (pipeline/wiki.mjs — docs/setup.md §15): every sidecar rendered into an MkDocs site and pushed to a PRIVATE git repository whose Pages workflow serves it (devtopia — this repository is public, the sidecars are internal). Optional; the job reads paths.sidecarLibrary and the newest list backup in paths.workDir, never SharePoint or a model. repoUrl = the clone URL of the wiki repository (credentials from the machine's git credential helper; with --push the tree is committed and pushed, unchanged corpus = no commit); branch = the branch its Pages workflow builds (main); outDir = where the tree is rendered (<workDir>/wiki); siteName / siteUrl land in mkdocs.yml; recent = rows on the Recent page. draftsDir (Markdown_Layout_Plan phase 5, wiki v1.3) publishes the TestPlanGen drafts too — set it to the LOCAL path of the Test Plan Drafts folder (the synced 'Shared Documents/Test Plan Drafts'); each draft becomes a page plus a Drafts catalog, marked unreviewed and joining NO catalog (not kinds, not keywords, not test cases). Empty (the default) = no Drafts section at all. Schedule ops\\run_wiki.cmd after the nightly sweep (ops\\wiki_task.xml).",
     "repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git",
     "branch": "main",
-    "siteName": "LRS Doc Index"
+    "siteName": "LRS Doc Index",
+    "draftsDir": ""
   },
 
   "spo": {

@@ -72,8 +72,13 @@ export function escapeBodyText(text) {
         // a link/image target `](<…>)` keeps its angle brackets
         return /\]\($/.test(s.slice(0, i)) ? m : "&lt;";
       });
-      // attr_list only reads a brace run that ENDS a line
-      out = out.replace(/(?<!\\)\{([^{}\n]*)\}[ \t]*$/gm, "\\{$1}");
+      // attr_list only reads a brace run that ENDS a line — and an
+      // attribute list is exactly what we WANT read when the pipeline
+      // wrote it (a case heading's `{ #tc-p01 }`, a figure's
+      // `{ width=160 }`), so only a brace run that is not one is
+      // escaped
+      out = out.replace(/(?<!\\)\{([^{}\n]*)\}[ \t]*$/gm, (m, inner) =>
+        /^\s*[#.]|=/.test(inner) ? m : `\\{${inner}}`);
       return out;
     })
     .join("");

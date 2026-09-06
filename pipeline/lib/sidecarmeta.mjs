@@ -56,9 +56,11 @@ export const META_ROWS = [
 ];
 
 /** The identity and the provenance: always printed, `—` when empty.
- *  `Generated` is always printed on a machine-authored file and never
- *  on a sidecar, so it is conditional like the rest. */
+ *  A machine-authored file (a generated draft — Markdown_Layout_Plan
+ *  phase 5) has no extraction, so `Generated` takes `Extracted`'s
+ *  place in its core; `p.generated` is what selects the set. */
 export const ALWAYS_ROWS = ["Doc", "Status", "Source", "Extracted"];
+export const MACHINE_ALWAYS_ROWS = ["Doc", "Status", "Source", "Generated"];
 
 /** A table cell: no pipes, no newlines, no bare separator glyph. */
 export function cell(s) {
@@ -89,7 +91,8 @@ export function renderMetaTable(p) {
   );
   const rev = cell(p.docRevision);
   const source = `[${cell(p.fileName)}](<${String(p.sourceLink || "").replace(/>/g, "%3E")}>)` +
-    (rev ? `${SEP}rev ${rev}` : "");
+    (rev ? `${SEP}rev ${rev}` : "") +
+    (cell(p.sourceNote) ? `${SEP}${cell(p.sourceNote)}` : "");
   // 3.1: a person the document does not name is not printed as `—`
   const people = [
     cell(p.srcAuthor) ? `author ${cell(p.srcAuthor)}` : "",
@@ -99,10 +102,13 @@ export function renderMetaTable(p) {
   const edited = (p.srcEditedText || "") !== ""
     ? `${cell(p.srcEditedText)} by ${or(p.srcEditor, "unknown")}`
     : "";
-  const extracted = [
-    cell(p.extractedOn), `lane ${or(p.lane, "none")}`, `format ${SIDECAR_FORMAT}`,
-    p.promptVersion ? `prompt ${cell(p.promptVersion)}` : "",
-  ].filter(Boolean).join(SEP);
+  // a machine-authored file was never extracted: no Extracted row
+  const extracted = cell(p.extractedOn)
+    ? [
+        cell(p.extractedOn), `lane ${or(p.lane, "none")}`, `format ${SIDECAR_FORMAT}`,
+        p.promptVersion ? `prompt ${cell(p.promptVersion)}` : "",
+      ].filter(Boolean).join(SEP)
+    : "";
   const rows = {
     Doc: `${p.rowId}${SEP}${or(p.docKind, "Other")}${SEP}${or(p.surface, "Other")}`,
     Status: or(p.status, "Indexed"),
@@ -117,8 +123,9 @@ export function renderMetaTable(p) {
     Keywords: list(p.keywords),
     Tools: list(p.tools),
   };
+  const always = cell(p.generated) ? MACHINE_ALWAYS_ROWS : ALWAYS_ROWS;
   const shown = META_ROWS.filter(
-    (k) => ALWAYS_ROWS.includes(k) || (rows[k] !== "" && rows[k] !== EMPTY)
+    (k) => always.includes(k) || (rows[k] !== "" && rows[k] !== EMPTY)
   );
   return [
     "| Field | Value |",

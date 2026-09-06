@@ -487,7 +487,8 @@ import { generate } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, TESTPLANGEN_REQUIRED } from "./lib/config.mjs";
 import { lower, cut, num, hyperlink, stripQuotes, urlToLocal, pruneRunLogs } from "./lib/util.mjs";
 import { lintDraft, groundDraft, contentStems, stemMatches } from "./lib/draftlint.mjs";
-import { relEntries, metaList } from "./lib/sidecarmeta.mjs";
+import { relEntries, metaList, renderMetaTable } from "./lib/sidecarmeta.mjs";
+import { mark } from "./lib/mdlayout.mjs";
 import { extractCases, caseSpans } from "./lib/caseindex.mjs";
 import { stemOf } from "./lib/slug.mjs";
 import { storyTextFirst } from "./lib/storyprofile.mjs";
@@ -500,7 +501,7 @@ import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
 import { renderDeck, generateDeckSpec, DECK_PROMPT_VERSION, DECK_VERSION } from "./render/deck2pptx.mjs";
 import { designOf, DEFAULT_DESIGN, DEFAULT_THEME } from "./lib/designsystem.mjs";
 
-const JOB_VERSION = "v1.23";
+const JOB_VERSION = "v1.24";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIG_PROMPT_VERSION = "v0.4"; // TestPlanFiguresPromptVersion (banner/addendum stamp)
 
@@ -1599,7 +1600,7 @@ function existingCasesSection(ctx, cc) {
   return {
     count: rows.length,
     section:
-      "\n## Existing Test Cases\n\n" +
+      "\n## Existing Test Cases\n" + mark("addendum", { name: "existing-cases" }) + "\n\n" +
       "_Deterministic addendum — minted by pipeline/testplangen.mjs from the " +
       "sweep's Test Cases list, not by the model: indexed test cases across " +
       `the catalog that already cite this story's devtopia issues (${rows.length} ` +
@@ -1648,7 +1649,7 @@ async function issueTraceOf(ctx, story) {
     return {
       count: lines.length,
       section:
-        "\n## Issue Trace\n\n" +
+        "\n## Issue Trace\n" + mark("addendum", { name: "issue-trace" }) + "\n\n" +
         "_Deterministic addendum — minted by pipeline/testplangen.mjs from the " +
         "Doc IDs and Issue Refs lists, not by the model. Cross-check against " +
         "devtopia during the review pass._\n\n" +
@@ -2119,7 +2120,7 @@ async function generateOne(ctx, story) {
         figs.skipped.map((k) => `${cellSafe(k.case, 12)} (${cellSafe(k.reason, 80)})`).join(", ") + "\n"
       : "";
     figuresSection =
-      "\n## Generated Figures\n\n" +
+      "\n## Generated Figures\n" + mark("addendum", { name: "generated-figures" }) + "\n\n" +
       "_Deterministic addendum — figures PROPOSED by the TestPlanFigures prompt " +
       `${FIG_PROMPT_VERSION} from this draft's own test data, grounding-checked and ` +
       "rendered by pipeline/testplangen.mjs (the model never drew). Reading aids for " +
@@ -2134,7 +2135,7 @@ async function generateOne(ctx, story) {
   if (tp.verify === "annotate" && findings.length) {
     const listed = findings.slice(0, 20);
     verifyBlock =
-      `<!-- verify: ${findings.length} finding(s) — lib/draftlint.mjs, prompt ${tp.promptVersion} contract + grounding -->\n` +
+      mark("verify", { findings: findings.length, lint: `draftlint ${tp.promptVersion} contract + grounding` }) + "\n" +
       "> [!IMPORTANT]\n" +
       `> Draft verifier: ${findings.length} finding(s) — review these first:\n` +
       listed.map((f) => `> - ${f}`).join("\n") +
@@ -2156,14 +2157,34 @@ async function generateOne(ctx, story) {
           : "")
       : "";
   const caseStamp = routedIds.length ? ` · case-routed [${routedIds.join(",")}]` : "";
+  // v1.24 (Markdown_Layout_Plan phase 5): a draft is a DOCUMENT, in
+  // the same skeleton every sidecar carries — the H1 the model wrote,
+  // the metadata table, then the callouts. What used to be an HTML
+  // comment nobody could parse and a paragraph of prose is now the
+  // Generated and Source rows, so `sidecarmeta.readMeta` reads a
+  // draft, the catalog can see one, and the finalize round trip keeps
+  // the run's provenance.
+  const generatedAt = new Date().toISOString();
+  const metaTable = renderMetaTable({
+    rowId: "draft",
+    docKind: "Test Plan",
+    surface: story.Surface || "Other",
+    status: `Draft — ${findings.length ? `${findings.length} verifier finding(s)` : "unreviewed"}`,
+    fileName: stripQuotes(story.Title) || `story ${story.ID}`,
+    sourceLink: storyUrl,
+    sourceNote: `story ${story.ID}${truncFlag}`,
+    // identity and provenance only — surface, target release and PE
+    // are the model's Overview table, and duplicating them here is the
+    // very thing format 3.0 was written to stop
+    generated:
+      `pipeline/testplangen.mjs ${JOB_VERSION} · prompt ${tp.promptVersion} · ` +
+      `${generatedAt}${pinStamp}${caseStamp}`,
+  });
   const banner =
-    `<!-- machine-generated test-plan draft — TestPlanGen prompt ${tp.promptVersion}` +
-    ` · pipeline/testplangen.mjs ${JOB_VERSION}${pinStamp}${caseStamp} -->\n` +
+    metaTable + "\n" +
     "> [!WARNING]\n" +
-    `> **DRAFT — machine-generated, unreviewed.** Generated ${new Date().toISOString()} ` +
-    `from user story doc ${story.ID} — "${stripQuotes(story.Title)}". ` +
-    `Source sidecar: <${storyUrl}>${truncFlag}\n` +
-    "> Review every case and resolve all [VERIFY] items before use. Do NOT " +
+    "> **DRAFT — machine-generated, unreviewed.** Review every case and " +
+    "resolve all [VERIFY] items before use. Do NOT " +
     "upload this file to the LocationReferencing Documents library or the " +
     "LRS Doc Index library — finalize into the team test-plan format first " +
     "(TestPlanGen_Setup.md §4).\n\n";
@@ -2176,7 +2197,7 @@ async function generateOne(ctx, story) {
   // bracket characters so the markdown link can never break.
   const seenWebRefs = referenceRefs.filter((r) => r.web && r.injected);
   const webRefSection = seenWebRefs.length
-    ? "\n## Reference Documentation\n\n" +
+    ? "\n## Reference Documentation\n" + mark("addendum", { name: "reference-docs" }) + "\n\n" +
       "_Deterministic addendum — minted by pipeline/testplangen.mjs from the " +
       "run's pinned `--reference` URLs, not by the model: the web " +
       "documentation pages fed into the REFERENCE FUNCTIONALITY lane. " +
@@ -2189,8 +2210,13 @@ async function generateOne(ctx, story) {
   // case index already holds for this story's issues, for the dedupe
   // and cross-check during the §4 review
   const existingCases = existingCasesSection(ctx, cc);
+  // the model's own H1 leads the file; the table and the callouts sit
+  // under it, and the body follows (phase 5's document skeleton)
+  const h1 = /^# .*$/m.exec(draftOut);
+  const head = h1 ? `${h1[0]}\n\n` : `# Test Plan — ${stripQuotes(story.Title)}\n\n`;
+  const body = h1 ? draftOut.slice(h1.index + h1[0].length).replace(/^\n+/, "\n") : draftOut;
   let draft =
-    banner + verifyBlock + draftOut + "\n" + trace.section + existingCases.section +
+    head + banner + verifyBlock + body + "\n" + trace.section + existingCases.section +
     figuresSection + webRefSection;
 
   // ---- the review deck (v1.16, --deck): one more model pass over the
@@ -2204,7 +2230,7 @@ async function generateOne(ctx, story) {
       svgs: new Map(figs.rendered.map((r) => [r.url.split("/").pop(), r.svg])),
     });
     draft +=
-      "\n## Review Deck\n\n" +
+      "\n## Review Deck\n" + mark("addendum", { name: "review-deck" }) + "\n\n" +
       "_Deterministic addendum — the review deck laid out by the TestPlanDeck prompt " +
       `${DECK_PROMPT_VERSION} over this draft (pattern and region decisions), grounded ` +
       "slide by slide and rendered as native editable PowerPoint objects by " +

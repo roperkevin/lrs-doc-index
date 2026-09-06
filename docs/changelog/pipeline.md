@@ -1,5 +1,105 @@
 # Local sweep — release notes
 
+## Drafts are documents, and the convergence audit (2026-09-06)
+
+`docs/design/Markdown_Layout_Plan.md` phases 5 and 6:
+`testplangen` v1.24, `wiki` v1.3, new `lib/layoutaudit.mjs` v1.0,
+`sweep --layout-audit`.
+
+**Phase 5 — a draft is a document.** A generated draft opened with an
+HTML comment nobody could parse and a paragraph of prose:
+
+    <!-- machine-generated test-plan draft — TestPlanGen prompt v1.13 · … -->
+    > [!WARNING]
+    > **DRAFT — machine-generated, unreviewed.** Generated 2026-…Z from
+    > user story doc 12 — "Route Merge". Source sidecar: <…>
+
+It now opens in the same skeleton every sidecar carries — the H1 the
+model already wrote, the metadata table, then the callouts:
+
+    # Test Plan — Route Merge
+
+    | Field | Value |
+    | --- | --- |
+    | **Doc** | draft · Test Plan · Pro |
+    | **Status** | Draft — 2 verifier finding(s) |
+    | **Source** | [Route Merge](<…/12-route-merge.md>) · story 12 |
+    | **Generated** | pipeline/testplangen.mjs v1.24 · prompt v1.14.0 · 2026-…Z |
+
+    > [!WARNING]
+    > **DRAFT — machine-generated, unreviewed.** Review every case …
+
+- `sidecarmeta.readMeta` reads a draft now, which is what makes the
+  rest possible. A machine-authored file's core rows are Doc, Status,
+  Source and **Generated** — it was never extracted, so it has no
+  Extracted row.
+- The Status row counts the verifier's findings, so a reader sees the
+  draft's state before the prose.
+- Surface, target release and PE stay in the model's Overview table
+  and are NOT duplicated into the head — the duplication format 3.0
+  was written to remove.
+- The five deterministic addenda (Issue Trace, Existing Test Cases,
+  Generated Figures, Reference Documentation, Review Deck) carry
+  `<!-- lrs:addendum name=… -->`, so "where does model output end" is
+  answerable mechanically instead of by reading an italic sentence.
+  The verify block's free-prose comment became `<!-- lrs:verify … -->`.
+- `render/draft2pptx.mjs` reads the provenance off the table (and
+  still off the old banner, for a draft written before this).
+
+**Phase 5 — the wiki publishes drafts, behind `wiki.draftsDir`.** Set
+it to the local path of the Test Plan Drafts folder and each draft
+becomes a page plus a Drafts catalog, newest first, with its Source
+row linked to the story's own page. Default empty: no Drafts section
+at all. A draft is unreviewed machine output, so it joins **no**
+catalog — not kinds, not keywords, not test cases — and both its page
+and the catalog say so.
+
+Two defects the drafts fixture caught, both on sidecar pages too:
+
+- **`escapeBodyText` was escaping our own attribute lists.** Phase 2
+  escapes a trailing `{…}` run so `attr_list` cannot eat a source
+  document's brace text; phase 3 then started writing `{ #tc-p01 }`
+  anchors, and phase 2 dutifully escaped them — every case anchor on
+  the wiki was `\{ #tc-p01 }`, i.e. broken. A brace run that IS an
+  attribute list (`#id`, `.class`, `key=value`) is now left alone.
+- The wiki's draft page keeps the callouts above the first `## `
+  heading; slicing from the first H2 dropped the "unreviewed" warning,
+  which is the most important thing on the page.
+
+**Phase 6 — the convergence audit.** Every phase left the readers able
+to understand the shape it replaced, so no consumer had to wait for a
+backfill. That tolerance is not free: each legacy form is a branch
+that must keep working and a fixture that must keep passing. It can
+come out only when the corpus no longer holds the shape — and nothing
+could tell you when that was true.
+
+`sweep.mjs --layout-audit` (read-only, no model, no list writes) walks
+the sidecars and writes `_Layout Audit.md`: the format mix, and for
+each legacy shape how many files carry it, what it is, and **which
+reader it keeps alive** — `yamlFrame`, `yamlRelated`, `format30`,
+`srcComment`, `deckCases`, `h3Units`, `unanchoredCases`. A shape whose
+file count is 0 is a reader that can be deleted; the run prints that
+list on stdout. Run it after `--reformat --live` and delete what it
+says is retirable.
+
+**What did not change, deliberately.** The plan's §4.4 sketched moving
+every machine comment onto the `lrs:` grammar. Two moved — a case's
+free-text `src:` (phase 3) and the draft's banner and verify comments
+(phase 5) — because they were unparseable. The other four (`rel:N
+s=…`, `related:begin/end`, `docs:begin/end`, `slide N`) keep their own
+syntax: each is already unambiguous, has exactly one reader, and sits
+on the seam every job resolves a body through. Renaming them buys a
+prefix and costs a wide diff on the most load-bearing code in the
+system plus four more shapes for the readers to tolerate — which is
+the opposite of what phase 6 exists to do. Recorded against decision
+D6 in the plan.
+
+Gates: `check_local_sweep` 355 (a `--layout-audit` leg that plants a
+legacy shape and proves the audit names it and its reader),
+`check_testplangen` 243 (a `readMeta`-on-a-draft probe),
+`check_wiki` 49 (the Drafts section, and the anchor-escape defect),
+`check_draft2pptx` 43.
+
 ## The one case block, and the 3.1 header (2026-09-06)
 
 `docs/design/Markdown_Layout_Plan.md` phases 3 and 4, in one rollout:

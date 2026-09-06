@@ -53,7 +53,7 @@ with a JSON-lines protocol (`pipeline/llm.mjs`, `lrsdoc/cli.py`).
 | Path | What it is |
 |---|---|
 | `pipeline/` | The jobs (`sweep`, `curate`, `testplangen`, `gantt`, `wiki`), the Graph/SPO client, delegated auth, the model bridge, and helper tools (`probe.mjs` list write probes, `doc_crawl.mjs` Esri help-page inventory) |
-| `pipeline/lib/` | Pure modules the jobs share: case grammar and indexing, figure indexing and specs, doc links, BM25 body index, browse pages, status page, alerts, remote-files mirror, deck layout, design systems, draft lint, the markdown layout kernel (`mdlayout.mjs`), run narration (`progress.mjs`) |
+| `pipeline/lib/` | Pure modules the jobs share: case grammar and indexing, figure indexing and specs, doc links, BM25 body index, browse pages, status page, alerts, remote-files mirror, deck layout, design systems, draft lint, the markdown layout kernel (`mdlayout.mjs`) and its convergence audit (`layoutaudit.mjs`), run narration (`progress.mjs`) |
 | `pipeline/render/` | Draft and figure renderers: `draft2docx`, `draft2pptx`, `deck2pptx`, `svg2pptx` |
 | `pipeline/data/` | Data files the jobs read (`esri_doc_links.json`, `slug_abbreviations.json`) |
 | `extract/` | The seven extractors (`ZipTextExtract`, `WorkbookDump`, `MediaExtract`, `ShapeExtract`, `RegexExtract`, `RelatedRank`, `SidecarPatch`), still in their Office-Script shape, run in-process by `extract/runner/` |
@@ -81,8 +81,8 @@ reconciles ghosts (rows whose source is gone). It also writes the
 `_Index.md` browse pages, a status page, a per-run JSON log and a
 gzip list backup. Standalone modes re-run one layer over the corpus
 without model spend: `--rerank`, `--reformat`, `--recase`,
-`--refigure`, `--rename`, `--case-audit`; `--normalize-cases` is the
-opt-in model lane for caseless test plans. `--dry-run` records every
+`--refigure`, `--rename`, `--case-audit`, `--layout-audit`;
+`--normalize-cases` is the opt-in model lane for caseless test plans. `--dry-run` records every
 write into a plan instead of performing it.
 
 **`curate.mjs` — weekly keyword curation.** Sends the keyword
@@ -114,9 +114,10 @@ Links, which RelatedRank already weights.
 MkDocs site (one page per document, catalogs by kind, keyword,
 product, release, person and issue, the test cases and figures with
 anchors, a Recent page) and pushes the tree to a private devtopia
-repository whose Pages workflow serves it. Files in, files out: it
-reads the sidecar library and the sweep's list backup, never
-SharePoint or a model. The page is a *render* of the sidecar, not a
+repository whose Pages workflow serves it, plus — with
+`wiki.draftsDir` set — a Drafts section for the TestPlanGen drafts.
+Files in, files out: it reads the sidecar library and the sweep's list
+backup, never SharePoint or a model. The page is a *render* of the sidecar, not a
 copy: `pipeline/lib/mdlayout.mjs` translates the corpus' GitHub-flavored
 markdown into what MkDocs reads (GFM alerts become admonitions,
 `<placeholder>` and trailing `{brace}` runs out of a source document are

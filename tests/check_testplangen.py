@@ -686,6 +686,14 @@ def doc_row(iid, title, kind, status, surface, url, release="", pe="",
             "fields": fields}
 
 
+def write_tmp(text, suffix=".md"):
+    """A throwaway file for a node probe."""
+    fd, path = tempfile.mkstemp(suffix=suffix, prefix="tpg-probe-")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    return path
+
+
 def run_job(cfg_path, extra):
     return subprocess.run(
         ["node", "--experimental-strip-types", JOB, "--config", cfg_path] + extra,
@@ -1005,16 +1013,41 @@ def main():
              if re.match(r"^/Test Plan Drafts/route-merge__doc12--draft-\d{8}-\d{6}\.md$", p)]
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
-    check("banner: comment stamp with prompt version + job version (no transport stamp)",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.13")
-          and " · pipeline/testplangen.mjs v" in draft.splitlines()[0]
-          and "provider" not in draft.splitlines()[0], draft[:200])
+    # phase 5: a draft is a DOCUMENT — the model's H1, the metadata
+    # table, then the callouts (no HTML banner, no prose provenance)
+    check("draft head: the model's H1 leads the file",
+          draft.startswith("# Test Plan — Route Merge\n"), draft[:200])
+    check("draft head: the metadata table carries Doc, Status, Source, Generated",
+          "| **Doc** | draft · Test Plan · Pro |" in draft
+          and "| **Status** | Draft — unreviewed |" in draft
+          and f"| **Source** | [Route Merge](<{url_story}>) · story 12 |" in draft
+          and re.search(r"\| \*\*Generated\*\* \| pipeline/testplangen\.mjs v[\d.]+ · prompt v1\.13 · \d{4}-", draft)
+          is not None, draft[:700])
+    check("draft head: no HTML banner comment, no duplicated surface facts",
+          "<!-- machine-generated" not in draft
+          and "| **Release** |" not in draft and "| **People** |" not in draft,
+          draft[:700])
+    probe = subprocess.run(
+        ["node", "-e",
+         "import('./pipeline/lib/sidecarmeta.mjs').then(m=>{const fs=require('node:fs');"
+         "console.log(JSON.stringify(m.readMeta(fs.readFileSync(process.argv[1],'utf8'))))})",
+         write_tmp(draft)],
+        capture_output=True, text=True, cwd=REPO)
+    meta = json.loads(probe.stdout or "{}") if probe.returncode == 0 else {}
+    check("draft head: sidecarmeta.readMeta reads a draft",
+          meta.get("doc_id") is None and meta.get("doc_kind") == "Test Plan"
+          and str(meta.get("status", "")).startswith("Draft")
+          and str(meta.get("generated", "")).startswith("pipeline/testplangen.mjs v")
+          and meta.get("source_url") == url_story
+          and meta.get("title") == "Test Plan — Route Merge",
+          probe.stdout + probe.stderr[-300:])
+    gen_at, warn_at = draft.find("| **Generated** |"), draft.find("[!WARNING]")
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
-          and f"Source sidecar: <{url_story}>" in draft, draft[:600])
+          and gen_at >= 0 and warn_at > gen_at, draft[:900])
     check("draft body present, clean draft unannotated",
-          GOOD_DRAFT.strip() in draft and "[!IMPORTANT]" not in draft
-          and "<!-- verify:" not in draft, draft[:600])
+          GOOD_DRAFT.split("\n", 1)[1].strip() in draft and "[!IMPORTANT]" not in draft
+          and "lrs:verify" not in draft, draft[:600])
     check("manual run prints progress lines on stderr, stdout contract intact",
           "progress: Doc Index snapshot" in r.stderr
           and "progress: calling the model" in r.stderr
@@ -1082,7 +1115,8 @@ def main():
           state.ant_last_body.get("max_tokens") == 32000, str(state.ant_last_body.get("max_tokens")))
     check("anthropic draft written",
           len(state.drafts) == 1
-          and list(state.drafts.values())[0].startswith("<!-- machine-generated test-plan draft"),
+          and list(state.drafts.values())[0].startswith("# Test Plan — ")
+          and "| **Generated** | pipeline/testplangen.mjs v" in list(state.drafts.values())[0],
           str(list(state.drafts)))
     check("generation request streams (llm.mjs v1.6 — SSE, not one long silent call)",
           state.ant_last_body.get("stream") is True, str(state.ant_last_body)[:200])
@@ -1180,10 +1214,13 @@ def main():
     check("annotate: IMPORTANT findings block after the banner",
           "> [!IMPORTANT]" in draft
           and "> - TC-N01 carries a **Trace:** line" in draft
-          and re.search(r"<!-- verify: \d+ finding", draft) is not None, draft[:900])
-    check("annotate: block sits between banner and body",
-          draft.index("[!WARNING]") < draft.index("[!IMPORTANT]")
-          < draft.index("# Test Plan"), "")
+          and re.search(r"<!-- lrs:verify findings=\d+", draft) is not None, draft[:900])
+    order = [draft.find(x) for x in ("[!WARNING]", "[!IMPORTANT]", "## Overview")]
+    check("annotate: block sits between the callout and the body",
+          all(i >= 0 for i in order) and order == sorted(order), str(order))
+    check("annotate: the Status row counts the findings",
+          re.search(r"\| \*\*Status\*\* \| Draft — \d+ verifier finding\(s\) \|", draft)
+          is not None, draft[:600])
     summ = summary_of(r.stdout)
     check("annotate: verify counter in Gen_summary",
           re.match(r"^\d+-findings$", summ.get("verify", "")), str(summ))
@@ -1638,7 +1675,7 @@ def main():
           r.returncode == 0 and summ.get("pinnedEx") == "1"
           and summ.get("exemplars") == "2"
           and ex.count("--- EXEMPLAR: plan-a__doc21.md ---") == 1
-          and "pinned exemplars [21]" in draft.splitlines()[0],
+          and "pinned exemplars [21]" in draft,
           r.stdout + draft[:200])
 
     # ---- leg 13: figures in cases (v1.6 / prompt v1.10) ------------
@@ -1771,7 +1808,7 @@ def main():
           r.returncode == 0 and "## Reference Documentation" in draft
           and "- [Enable Referent Fields (Location Referencing)—ArcGIS Pro]("
               + ref_url + ")" in draft
-          and "web references [<" + ref_url + ">]" in draft.splitlines()[0],
+          and "web references [<" + ref_url + ">]" in draft,
           draft[:400] + r.stderr[-400:])
     r = run_job(cfg_main, ["--story", "12", "--dry-run"])
     check("a run without web pins stamps webRefs=0",
@@ -1799,8 +1836,9 @@ def main():
          if f.startswith("testplangen-draft-") and f.endswith(".md")),
         key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
     latest = open(os.path.join(work_dir, local_drafts[-1]), encoding="utf-8").read()
-    check("banner comment carries the case-routed ids",
-          "· case-routed [22]" in latest.splitlines()[0], latest[:300])
+    check("the Generated row carries the case-routed ids",
+          re.search(r"(?m)^\| \*\*Generated\*\* \|.*· case-routed \[22\] \|$", latest)
+          is not None, latest[:600])
     check("Existing Test Cases addendum with the anchor deep link",
           summ.get("existingCases") == "1" and "## Existing Test Cases" in latest
           and "| Plan B (doc 22) | TC-P01 Realign | Positive | `" + REPO_ID + "#7777` | "
@@ -2042,7 +2080,11 @@ def main():
           latest[latest.find("## Generated Figures"):][:1200])
     check("addendum sits after Existing Test Cases / Issue Trace, body untouched",
           latest.index("## Generated Figures") > latest.index("## Issue Trace")
-          and FIG_DRAFT.strip() in latest, "")
+          and FIG_DRAFT.split("\n", 1)[1].strip() in latest, "")
+    check("every deterministic addendum carries its lrs:addendum mark",
+          '<!-- lrs:addendum name=issue-trace -->' in latest
+          and '<!-- lrs:addendum name=generated-figures -->' in latest
+          and '<!-- lrs:addendum name=existing-cases -->' in latest, latest[-1200:])
     s_p1 = open(svg_p1, encoding="utf-8").read()
     s_n1 = open(svg_n1, encoding="utf-8").read()
     check("route-measure SVG: SlideFigures vocabulary, both panels, routes, events, extend mark",
@@ -2375,7 +2417,7 @@ def main():
           "still waiting on the model" not in err
           and "progress:" not in r.stdout and "--- draft:" not in r.stdout
           and summ.get("genFigures") == "2/4"
-          and FIG_DRAFT.strip() in [v for k, v in state.drafts.items() if k.endswith(".md")][0],
+          and FIG_DRAFT.split("\n", 1)[1].strip() in [v for k, v in state.drafts.items() if k.endswith(".md")][0],
           r.stdout[:300])
     # without --stream: no thinking key, no echo
     r = run_job(cfg_fig_ant, ["--story", "12", "--dry-run"])

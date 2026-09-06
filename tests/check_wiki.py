@@ -97,14 +97,16 @@ cut off at the first line break.
 
 ## Test Cases
 
-### TC-P01 — Merge preserves measures <!-- src: S1 · slide 3 -->
+### TC-P01 — Merge preserves measures { #tc-p01 }
+<!-- lrs:case det=S1 conf=high src="slide 3" -->
 - **Group:** Normal Routes
 ![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png)
 
 ### TC-P01 — Merge preserves measures <!-- src: S1 · slide 5 -->
 - **Group:** Normal Routes (a duplicate heading — MkDocs suffixes its id)
 
-### TC-N01 — Lock conflict refuses <!-- src: S1 · slide 4 -->
+### TC-N01 — Lock conflict refuses { #tc-n01 }
+<!-- lrs:case det=S1 conf=high src="slide 4" -->
 - **Group:** Conflicts
 - **Steps:**
   - [ ] 1. Set <RouteID> on the network
@@ -146,6 +148,37 @@ The story.
 ---
 
 Body of the story.
+"""
+
+DRAFT = """# Test Plan — Conflict Prevention
+
+| Field | Value |
+| --- | --- |
+| **Doc** | draft · Test Plan · Pro |
+| **Status** | Draft — 2 verifier finding(s) |
+| **Source** | [Conflict Prevention Story](<https://esriis.sharepoint.com/sites/lrsworkspace/LRS Doc Index/User Stories/4855-conflict-story.md>) · story 42 |
+| **Generated** | pipeline/testplangen.mjs v1.24 · prompt v1.14.0 · 2026-09-06T23:00:00.000Z |
+
+> [!WARNING]
+> **DRAFT — machine-generated, unreviewed.** Review every case and resolve all [VERIFY] items before use.
+
+## Overview
+
+Verifies lock acquisition on new routes.
+
+## Positive Tests
+
+### TC-P01 — Lock acquired on Create Route { #tc-p01 }
+- **Steps:**
+  - [ ] 1. Create route <R100>.
+- **Expected Result:** A lock is held.
+
+## Issue Trace
+<!-- lrs:addendum name=issue-trace -->
+
+| Issue | Source |
+| --- | --- |
+| ArcGISPro/ps-location-referencing#4855 | story |
 """
 
 LEGACY = """# Old Spike
@@ -226,6 +259,12 @@ def main():
            b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
     with open(os.path.join(lib, "media", "4855-merge-plan", "fig-01-slide-03-merge.png"), "wb") as f:
         f.write(png)
+    # a phase-5 draft: the document skeleton, so readMeta reads it
+    drafts_dir = os.path.join(tmp, "Test Plan Drafts")
+    os.makedirs(drafts_dir, exist_ok=True)
+    with open(os.path.join(drafts_dir, "4855-conflict-story--draft-20260906-2300.md"),
+              "w", encoding="utf-8") as f:
+        f.write(DRAFT)
     lists = {"keywords": [
         {"id": "1", "fields": {"Title": "route", "Kind": "topic"}},
         {"id": "2", "fields": {"Title": "routes", "Kind": "topic", "CanonicalRefLookupId": 1}},
@@ -236,7 +275,8 @@ def main():
     with open(os.path.join(work, "list-backup-20260906T000000.json.gz"), "wb") as f:
         f.write(gzip.compress(json.dumps({"exported": "x", "lists": lists}).encode()))
     cfg = {"paths": {"sidecarLibrary": lib, "workDir": work},
-           "wiki": {"siteName": "LRS Doc Index (gate)", "branch": "wiki-main"}}
+           "wiki": {"siteName": "LRS Doc Index (gate)", "branch": "wiki-main",
+                    "draftsDir": drafts_dir}}
     cfg_path = os.path.join(tmp, "config.json")
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
@@ -313,6 +353,9 @@ def main():
     check("the body follows a rule, media link unchanged (resolves through docs/media)",
           "\n---\n\n## Test Cases" in plan and "![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png)" in plan, plan[-600:])
     check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
+    check("a case's own attr_list anchor survives the body escape",
+          "### TC-P01 — Merge preserves measures { #tc-p01 }" in plan
+          and "\\{ #tc-p01 }" not in plan, plan[-900:])
 
     # ---- 2b. the MkDocs dialect translation (v1.1) ----------------
     print("== dialect")
@@ -342,6 +385,33 @@ def main():
           and " | — |" not in story, story[:900])
     check("the Status row is always present — its value on a pre-3.1 file",
           "| **Status** | Indexed |" in story and "| **Status** | — |" in plan, plan[:900])
+    # ---- 2c. the Drafts section (v1.3, phase 5) --------------------
+    print("== drafts")
+    dpage = page("drafts/4855-conflict-story-draft-20260906-2300.md")
+    dindex = page("drafts/index.md")
+    check("a draft becomes a page with its own head",
+          dpage.startswith("# Test Plan — Conflict Prevention")
+          and "| **Doc** | draft · Test Plan · Pro |" in dpage
+          and "| **Status** | Draft — 2 verifier finding(s) |" in dpage
+          and "| **Generated** | pipeline/testplangen.mjs v1.24" in dpage, dpage[:600])
+    check("the draft's Source row links the story's own page",
+          "[Conflict Prevention Story](../user-stories/4855-conflict-story.md)" in dpage, dpage[:800])
+    check("the draft body is translated for MkDocs like any other body",
+          "!!! warning" in dpage and "&lt;R100>" in dpage
+          and "[!WARNING]" not in dpage and "lrs:addendum" not in dpage, dpage)
+    check("the Drafts catalog lists the draft, newest first, and says unreviewed",
+          "# Test-plan drafts" in dindex and "**unreviewed**" in dindex
+          and "| 2026-09-06 23:00 |" in dindex
+          and "[Test Plan — Conflict Prevention](" in dindex, dindex)
+    check("drafts join no catalog and no other page",
+          "Conflict Prevention" not in page("test-plans/index.md")
+          and "drafts/" not in page("cases/index.md")
+          and "drafts/" not in page("recent.md")
+          and "drafts/" not in page("keywords/index.md"), page("test-plans/index.md")[:400])
+    check("the nav and the front page carry the Drafts section",
+          "- Drafts: drafts/index.md" in ycfg
+          and "Test-plan drafts](./drafts/index.md) (1)" in page("index.md"), ycfg + page("index.md")[-400:])
+
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
           and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
@@ -361,15 +431,15 @@ def main():
     # ---- 4. anchors -----------------------------------------------
     print("== anchors")
     cases = page("cases/index.md")
-    check("case catalog: three cases with the plan's section ids, the duplicate heading suffixed",
+    check("case catalog: an anchored case links its own id, an unanchored one the slug",
           "3 cases." in cases
-          and "| 1 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures) |" in cases
-          and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures_1) |" in cases
-          and "#tc-n01-lock-conflict-refuses) |" in cases, cases)
+          and "| 1 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01) |" in cases
+          and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures) |" in cases
+          and "#tc-n01) |" in cases, cases)
     figs = page("figures/index.md")
     check("figure catalog: the image, thumbnail-sized, linking its section",
           "1 figures." in figs
-          and "[![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png){ width=160 }](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures)" in figs, figs)
+          and "[![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png){ width=160 }](../test-plans/4855-merge-plan.md#tc-p01)" in figs, figs)
     if shutil.which("mkdocs"):
         r = run_job(cfg_path, ["--build"])
         check("mkdocs build --strict passes on the rendered tree", r.returncode == 0 and '"built":true' in r.stdout, r.stderr[-800:])

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.1 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.3 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -31,6 +31,17 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v1.3 (Markdown_Layout_Plan.md phase 5) — with `wiki.draftsDir` set,
+ * the Test Plan Drafts folder is published too: one page per draft
+ * plus a Drafts catalog, off by default. A draft is a document in the
+ * same skeleton every sidecar carries, so `readMeta` reads one; but a
+ * draft is unreviewed machine output, so it joins NO catalog — not
+ * kinds, not keywords, not test cases — and its page says so.
+ *
+ * v1.2 (phase 4) — the page's metadata table follows format 3.1: the
+ * identity and the provenance always print, a row the document has
+ * nothing to say in does not.
  *
  * v1.1 (Markdown_Layout_Plan.md phase 2) — the page is a RENDER of the
  * sidecar, not a copy of it. Sidecars are GitHub-flavored markdown;
@@ -78,7 +89,7 @@ import { toMkDocs, normalize, splitAnchor } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.1";
+export const WIKI_VERSION = "v1.3";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -204,6 +215,82 @@ export function readLibrary(libDir, kindFolders = KIND_FOLDERS) {
   return docs;
 }
 
+/**
+ * The Test Plan Drafts folder as pages (Markdown_Layout_Plan phase 5,
+ * `wiki.draftsDir`). A draft is a document in the same skeleton every
+ * sidecar carries, so `readMeta` reads one — which is what makes this
+ * possible at all. Newest first, by the file name's own timestamp;
+ * drafts are NOT catalog documents (they are unreviewed machine
+ * output), so they never join the kind/keyword/case catalogs.
+ */
+export function readDrafts(draftsDir) {
+  if (!draftsDir || !fs.existsSync(draftsDir)) return [];
+  const out = [];
+  for (const name of fs.readdirSync(draftsDir).sort()) {
+    if (!name.toLowerCase().endsWith(".md") || name.startsWith("_")) continue;
+    const file = path.join(draftsDir, name);
+    if (!fs.statSync(file).isFile()) continue;
+    const content = fs.readFileSync(file, "utf8");
+    const meta = readMeta(content);
+    // only a phase-5 draft: a Generated row, and no Doc Index row id
+    if (!meta.generated || meta.doc_id) continue;
+    const stem = name.replace(/\.md$/i, "");
+    const st = /--draft-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(stem);
+    out.push({
+      file, stem, content, meta,
+      page: `drafts/${pageName(stem)}.md`,
+      when: st ? `${st[1]}-${st[2]}-${st[3]} ${st[4]}:${st[5]}` : "",
+    });
+  }
+  return out.sort((a, b) => String(b.when).localeCompare(String(a.when)));
+}
+
+function draftPage(d, model) {
+  const m = d.meta;
+  // the Source row is the story SIDECAR's url — resolve it to the
+  // story's own page when the corpus has it, else leave the link
+  const storyFile = m.source_url
+    ? decodeURIComponent(String(m.source_url).split("/").pop() || "") : "";
+  const target = storyFile ? model.byFile.get(storyFile) : null;
+  const story = target
+    ? link(d.page, target.page, target.meta.title || m.source_file || "the story")
+    : m.source_url ? `[${linkText(m.source_file || "the story")}](<${m.source_url}>)` : "—";
+  const rows = [
+    ["Doc", `draft · ${cell(m.doc_kind) || "Test Plan"} · ${cell(m.surface) || "—"}`],
+    ["Status", cell(m.status) || "—"],
+    ["Source", story],
+    ["Generated", cell(m.generated) || "—"],
+  ];
+  const out = [`# ${mdEscape(m.title || d.stem)}`, "", "| Field | Value |", "| --- | --- |"];
+  for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
+  out.push("");
+  // everything under the draft's own metadata table — the callouts
+  // included; "unreviewed" is the most important thing on the page —
+  // translated for MkDocs like any other body
+  let bodyAt = 0;
+  for (const m of d.content.matchAll(/^\| \*\*[A-Za-z]+\*\* \|.*\|$/gm)) bodyAt = m.index + m[0].length;
+  const body = normalize(toMkDocs(stripComments(d.content.slice(bodyAt))));
+  if (body) out.push("---", "", body, "");
+  return out.join("\n");
+}
+
+function draftsIndex(drafts) {
+  const p = "drafts/index.md";
+  const out = ["# Test-plan drafts", "",
+    "Machine-generated test-plan drafts, newest first — **unreviewed**: " +
+    "every case and every [VERIFY] item still needs a Product Engineer. " +
+    "They are not catalog documents and do not appear in the kind, " +
+    "keyword or test-case catalogs.", "",
+    "| Draft | Generated | Status | From |", "|---|---|---|---|"];
+  for (const d of drafts) {
+    out.push(
+      `| ${link(p, d.page, d.meta.title || d.stem)} | ${cell(d.when) || "—"} | ` +
+      `${cell(d.meta.status) || "—"} | ${cell(d.meta.source_file) || "—"} |`
+    );
+  }
+  return out.join("\n") + "\n";
+}
+
 /** The newest list backup's keyword rows → { canonical: Map(alias→canonical), kinds: Map(title→kind) }. */
 export function readKeywordMap(workDir) {
   const out = { canonical: new Map(), kinds: new Map(), file: "" };
@@ -270,7 +357,7 @@ export function buildModel(docs, kw, opts = {}) {
     return new Map([...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "en")));
   };
   return {
-    docs, byId,
+    docs, byId, byFile,
     kinds: group((d) => [d.kind]),
     keywords: group((d) => [...new Set(d.keywords)]),
     tools: group((d) => d.meta.tools),
@@ -481,7 +568,7 @@ function recentPage(model, n) {
   return ["# Recent", "", `The ${docs.length} most recently edited source documents.`, "", docTable(p, docs), ""].join("\n");
 }
 
-function frontPage(model, kindFolders, opts) {
+function frontPage(model, kindFolders, opts, draftCount = 0) {
   const p = "index.md";
   const out = [`# ${mdEscape(opts.siteName)}`, "",
     `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
@@ -490,7 +577,8 @@ function frontPage(model, kindFolders, opts) {
   out.push("", "## Browse", "",
     `- ${link(p, "keywords/index.md", "Keywords")} (${model.keywords.size}) · ${link(p, "tools/index.md", "Tools")} (${model.tools.size}) · ${link(p, "products/index.md", "Products")} (${model.products.size}) · ${link(p, "releases/index.md", "Releases")} (${model.releases.size})`,
     `- ${link(p, "people/index.md", "People")} (${model.people.size}) · ${link(p, "issues/index.md", "Issues")} (${model.issues.size})`,
-    `- ${link(p, "cases/index.md", "Test cases")} · ${link(p, "figures/index.md", "Figures")} · ${link(p, "recent.md", "Recent")} · ${link(p, "about.md", "About")}`, "");
+    `- ${link(p, "cases/index.md", "Test cases")} · ${link(p, "figures/index.md", "Figures")} · ${link(p, "recent.md", "Recent")} · ${link(p, "about.md", "About")}` +
+      (draftCount ? `\n- ${link(p, "drafts/index.md", "Test-plan drafts")} (${draftCount}) — machine-generated, unreviewed` : ""), "");
   return out.join("\n");
 }
 
@@ -501,16 +589,18 @@ function aboutPage(model, opts) {
     "- **Keywords** are the catalog's vocabulary after curation: an alias merged by the librarian lands on its canonical page.",
     "- **Related documents** are the sweep's ranking (shared issues, shared keywords, body similarity), newest ranking first.",
     "- **Test cases** and **Figures** are read from the sidecar bodies with the same parsers that fill the Test Cases and Figures lists.",
+    "- **Test-plan drafts**, when the site publishes them, are machine-generated and unreviewed: they are not catalog documents and join no catalog.",
     "", `Rendered ${fmtDate(new Date().toISOString())} · ${model.docs.length} documents.`, ""].join("\n");
 }
 
 // ---------------------------------------------------------------- site
 
-function mkdocsYml(model, kindFolders, opts) {
+function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
   const y = (s) => JSON.stringify(String(s));
   const nav = [`  - Home: index.md`];
   for (const [kind] of model.kinds) nav.push(`  - ${y(kindFolders[kind] || kind)}: ${pageName(kindFolders[kind] || kind)}/index.md`);
   for (const [t, s] of [["Keywords", "keywords"], ["Tools", "tools"], ["Products", "products"], ["Releases", "releases"], ["People", "people"], ["Issues", "issues"], ["Test cases", "cases"], ["Figures", "figures"]]) nav.push(`  - ${t}: ${s}/index.md`);
+  if (draftCount) nav.push("  - Drafts: drafts/index.md");
   nav.push("  - Recent: recent.md", "  - About: about.md");
   return [
     `site_name: ${y(opts.siteName)}`,
@@ -610,16 +700,19 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     branch: w.branch || "main",
     recent: Number(w.recent) || 50,
     sourceSite: w.sourceSite || cfg.sweep?.siteUrl || "",
+    draftsDir: w.draftsDir || "",
   };
   const kindFolders = { ...KIND_FOLDERS, ...(cfg.sweep?.kindFolders || {}) };
   const readPhase = prog.phase("read");
   const docs = readLibrary(libDir, kindFolders);
   const kw = readKeywordMap(workDir);
   const model = buildModel(docs, kw, { kindFolders });
+  const drafts = readDrafts(opts.draftsDir);
   readPhase.done(
     `${docs.length} sidecar(s) from ${libDir}, ${model.kinds.size} kind(s), ` +
     `${model.keywords.size} keyword(s)` +
-    (kw.file ? `, list backup ${path.basename(kw.file)} (${kw.canonical.size} alias(es) merged)` : ", no list backup")
+    (kw.file ? `, list backup ${path.basename(kw.file)} (${kw.canonical.size} alias(es) merged)` : ", no list backup") +
+    (opts.draftsDir ? `, ${drafts.length} draft(s) from ${opts.draftsDir}` : "")
   );
 
   const renderPhase = prog.phase("render");
@@ -657,18 +750,24 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     for (const [value, ds] of groups) put(catalogPage(section, value), catalogValuePage(section, value, ds, model));
     renderPhase.step(`${section} — ${groups.size} page(s)`);
   }
+  if (drafts.length) {
+    for (const d of drafts) put(d.page, draftPage(d, model));
+    put("drafts/index.md", draftsIndex(drafts));
+    renderPhase.step(`drafts — ${drafts.length} page(s)`);
+  }
   put("cases/index.md", casesPage(model));
   put("figures/index.md", figuresPage(model));
   put("recent.md", recentPage(model, opts.recent));
   put("about.md", aboutPage(model, opts));
-  put("index.md", frontPage(model, kindFolders, opts));
-  write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts));
+  put("index.md", frontPage(model, kindFolders, opts, drafts.length));
+  write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts.length));
   write(outDir, ".github/workflows/pages.yml", PAGES_WORKFLOW.replace("BRANCH", opts.branch));
   write(outDir, "README.md", WIKI_README(opts));
   write(outDir, ".gitignore", "site/\n");
   renderPhase.done(`${pages} page(s) and ${mediaFiles} media file(s) written to ${outDir}`);
   return {
-    docs: docs.length, kinds: model.kinds.size, keywords: model.keywords.size,
+    docs: docs.length, drafts: drafts.length,
+    kinds: model.kinds.size, keywords: model.keywords.size,
     keyword_aliases_merged: kw.canonical.size, pages, media_files: mediaFiles, media_missing: mediaMissing,
     list_backup: kw.file ? path.basename(kw.file) : "",
   };
