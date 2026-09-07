@@ -1,5 +1,225 @@
 # Local sweep — release notes
 
+## Drafts are documents, and the convergence audit (2026-09-06)
+
+`docs/design/Markdown_Layout_Plan.md` phases 5 and 6:
+`testplangen` v1.24, `wiki` v1.3, new `lib/layoutaudit.mjs` v1.0,
+`sweep --layout-audit`.
+
+**Phase 5 — a draft is a document.** A generated draft opened with an
+HTML comment nobody could parse and a paragraph of prose:
+
+    <!-- machine-generated test-plan draft — TestPlanGen prompt v1.13 · … -->
+    > [!WARNING]
+    > **DRAFT — machine-generated, unreviewed.** Generated 2026-…Z from
+    > user story doc 12 — "Route Merge". Source sidecar: <…>
+
+It now opens in the same skeleton every sidecar carries — the H1 the
+model already wrote, the metadata table, then the callouts:
+
+    # Test Plan — Route Merge
+
+    | Field | Value |
+    | --- | --- |
+    | **Doc** | draft · Test Plan · Pro |
+    | **Status** | Draft — 2 verifier finding(s) |
+    | **Source** | [Route Merge](<…/12-route-merge.md>) · story 12 |
+    | **Generated** | pipeline/testplangen.mjs v1.24 · prompt v1.14.0 · 2026-…Z |
+
+    > [!WARNING]
+    > **DRAFT — machine-generated, unreviewed.** Review every case …
+
+- `sidecarmeta.readMeta` reads a draft now, which is what makes the
+  rest possible. A machine-authored file's core rows are Doc, Status,
+  Source and **Generated** — it was never extracted, so it has no
+  Extracted row.
+- The Status row counts the verifier's findings, so a reader sees the
+  draft's state before the prose.
+- Surface, target release and PE stay in the model's Overview table
+  and are NOT duplicated into the head — the duplication format 3.0
+  was written to remove.
+- The five deterministic addenda (Issue Trace, Existing Test Cases,
+  Generated Figures, Reference Documentation, Review Deck) carry
+  `<!-- lrs:addendum name=… -->`, so "where does model output end" is
+  answerable mechanically instead of by reading an italic sentence.
+  The verify block's free-prose comment became `<!-- lrs:verify … -->`.
+- `render/draft2pptx.mjs` reads the provenance off the table (and
+  still off the old banner, for a draft written before this).
+
+**Phase 5 — the wiki publishes drafts, behind `wiki.draftsDir`.** Set
+it to the local path of the Test Plan Drafts folder and each draft
+becomes a page plus a Drafts catalog, newest first, with its Source
+row linked to the story's own page. Default empty: no Drafts section
+at all. A draft is unreviewed machine output, so it joins **no**
+catalog — not kinds, not keywords, not test cases — and both its page
+and the catalog say so.
+
+Two defects the drafts fixture caught, both on sidecar pages too:
+
+- **`escapeBodyText` was escaping our own attribute lists.** Phase 2
+  escapes a trailing `{…}` run so `attr_list` cannot eat a source
+  document's brace text; phase 3 then started writing `{ #tc-p01 }`
+  anchors, and phase 2 dutifully escaped them — every case anchor on
+  the wiki was `\{ #tc-p01 }`, i.e. broken. A brace run that IS an
+  attribute list (`#id`, `.class`, `key=value`) is now left alone.
+- The wiki's draft page keeps the callouts above the first `## `
+  heading; slicing from the first H2 dropped the "unreviewed" warning,
+  which is the most important thing on the page.
+
+**Phase 6 — the convergence audit.** Every phase left the readers able
+to understand the shape it replaced, so no consumer had to wait for a
+backfill. That tolerance is not free: each legacy form is a branch
+that must keep working and a fixture that must keep passing. It can
+come out only when the corpus no longer holds the shape — and nothing
+could tell you when that was true.
+
+`sweep.mjs --layout-audit` (read-only, no model, no list writes) walks
+the sidecars and writes `_Layout Audit.md`: the format mix, and for
+each legacy shape how many files carry it, what it is, and **which
+reader it keeps alive** — `yamlFrame`, `yamlRelated`, `format30`,
+`srcComment`, `deckCases`, `h3Units`, `unanchoredCases`. A shape whose
+file count is 0 is a reader that can be deleted; the run prints that
+list on stdout. Run it after `--reformat --live` and delete what it
+says is retirable.
+
+**What did not change, deliberately.** The plan's §4.4 sketched moving
+every machine comment onto the `lrs:` grammar. Two moved — a case's
+free-text `src:` (phase 3) and the draft's banner and verify comments
+(phase 5) — because they were unparseable. The other four (`rel:N
+s=…`, `related:begin/end`, `docs:begin/end`, `slide N`) keep their own
+syntax: each is already unambiguous, has exactly one reader, and sits
+on the seam every job resolves a body through. Renaming them buys a
+prefix and costs a wide diff on the most load-bearing code in the
+system plus four more shapes for the readers to tolerate — which is
+the opposite of what phase 6 exists to do. Recorded against decision
+D6 in the plan.
+
+Gates: `check_local_sweep` 355 (a `--layout-audit` leg that plants a
+legacy shape and proves the audit names it and its reader),
+`check_testplangen` 243 (a `readMeta`-on-a-draft probe),
+`check_wiki` 49 (the Drafts section, and the anchor-escape defect),
+`check_draft2pptx` 43.
+
+## The one case block, and the 3.1 header (2026-09-06)
+
+`docs/design/Markdown_Layout_Plan.md` phases 3 and 4, in one rollout:
+`casegrammar` v1.3, `caseindex` v2.2, `mdlayout` v1.1, `sidecarmeta`
+format **3.1**, `sweep` v1.54, `draftlint` v1.6, `testplan_draft`
+prompt v1.14, `wiki` v1.2, agent instructions v1.5.
+
+**Phase 3 — one case block, everywhere.** Two emitters wrote the same
+grammar two ways: the profile minted `TC-P01` with a trailing
+`<!-- src: … -->`, the draft prompt minted `TC-P1` with bare bold
+field lines. Both now write:
+
+```
+### TC-P01 — Correct line order on a normal line { #tc-p01 }
+<!-- lrs:case det=S4 conf=high src="slide 1 · Positive Tests: Normal Routes · 1" -->
+
+- **Group:** Normal Routes
+- **Steps:**
+  - [ ] 1. Append route 200 to route 100
+- **Expected Result:** LineOrder reads 100, 200.
+- **Trace:** "line order is preserved on append" — story slide 4   (drafts)
+```
+
+- **Two-digit ids everywhere**, so `TC-P01 … TC-P10` sort as strings
+  in every catalog.
+- **Explicit anchors.** A case's link target is its id, so it survives
+  a retitle: `_Case Catalog.md`, the Test Cases list's `Anchor` and
+  the wiki now name the same fragment. GitHub ignores the attribute,
+  MkDocs honours it (`attr_list` was already on), and the SharePoint
+  preview shows it as text — `sweep.caseIndex.anchors: false` turns it
+  off for that reason.
+- **Provenance moved off the heading** onto an `lrs:case` mark under
+  it, in the one machine-comment grammar `mdlayout.mark`/`readMark`
+  now owns. Two things follow: the detector's `conf` — computed since
+  casegrammar v1.0 and previously dropped on the floor — rides in the
+  file, and the src text stopped leaking into the case's own keyword
+  tags (it used to sit inside the case section once headings grew).
+- **Field lines are bullets**, with Steps nested as a task list under
+  `- **Steps:**` — what `draft2docx` already rendered, and one regex
+  instead of two for every reader.
+- **Unit headings dropped to H4**, so H3 in a plan body means "a test
+  case" and nothing else, and the wiki's table of contents reads
+  section → case.
+- **`canonicalizeCaseBlocks`** converges a body already in the
+  grammar — a finalized draft re-indexed as a sidecar, a plan the LLM
+  lane normalized — onto the same block, idempotently. The LLM lane
+  keeps its own prompt contract: the reply is verified in the shape
+  the prompt asks for, then canonicalized once accepted.
+
+Readers take the old form for the whole backfill window:
+`caseindex` still parses a trailing `<!-- src: … -->` and the pre-3
+`## Case N <!-- slide N -->` deck sections, and `--baseline` skips the
+new asserts for a draft written before the contract change.
+
+**Phase 4 — the 3.1 header.** Format 3.0's rule was "every row always
+present, `—` when empty". It bought shape-uniformity for a reader and
+charged every consumer's retrieval window for it: on a sparse document
+the header was longer than the content and most of it read `—`. 3.1
+keeps the row ORDER fixed and prints only the rows with something to
+say. Four are always present — **Doc, Status, Source, Extracted** —
+because they are the identity and the provenance. Two rows are new:
+**Status** (what the catalog thinks of the document) and
+**Generated** (a machine-authored file's job/prompt provenance;
+absent on a sidecar). A person the document does not name is left out
+of the People row rather than printed as `dev —`.
+
+`readMeta` reads 3.1, 3.0 and the pre-3.0 yaml frames, so nothing
+needs the backfill to have run. The wiki's page table follows the same
+rule.
+
+**Backfill:** one `sweep.mjs --reformat --live` covers both phases —
+it re-renders every body through the case grammar and rewrites every
+head, and it syncs the Test Cases and Figures rows as it goes. No
+model spend. `--recase --live` afterwards is only needed if the Test
+Cases list is being rebuilt from sidecars that were already rewritten.
+
+Gates: `check_caseindex` 107, `check_testplangen` 238,
+`check_local_sweep` 345, `check_wiki` 42, `check_figureindex` 61,
+`check_draft2pptx` 42 — each with new assertions that fail on the
+previous version, and the draftlint/`check_draft_coverage` agreement
+leg holds the two lints in lockstep at contract v1.8.
+
+## wiki v1.1 + mdlayout v1.0 — the wiki renders the dialect (2026-09-06)
+
+`docs/design/Markdown_Layout_Plan.md` phase 2. The sidecars are
+GitHub-flavored markdown — GFM alerts, task lists, pipe tables — which
+GitHub, the SharePoint preview, the Q&A agent and
+`render/draft2docx.mjs` all read natively. MkDocs Material does not,
+and the wiki was passing the text through unchanged. New
+`pipeline/lib/mdlayout.mjs` is the layout kernel's first inhabitant:
+it owns the dialect and its one translation, and `wiki.mjs` is the
+only lane that applies it.
+
+- **GFM alerts become admonitions.** `> [!WARNING]` / `[!CAUTION]` /
+  `[!IMPORTANT]` render as `!!! warning` / `!!! danger` / `!!! info`
+  blocks. Before, every alert on the site was a blockquote whose first
+  line read `[!WARNING]`.
+- **Body text is escaped where python-markdown would eat it.** A
+  `<RouteID>` placeholder out of a source document was parsed as an
+  HTML tag and vanished; a brace run at the end of a line was consumed
+  by `attr_list`. Both are escaped now. Code spans, fenced blocks,
+  `<br>` inside a table cell (Sidecar_Format_Plan decision 2),
+  autolinks and `](<…>)` link targets are left exactly as they are.
+- **The whole summary reaches the page.** The v1.0 reader's regex
+  ended its lazy match on the `m`-flag `$` — the first line break — so
+  a multi-line summary, and the missing-summary alert's explanation,
+  were cut off.
+- **The `docs:begin/end` region is rendered.** The sweep's per-document
+  Esri documentation links sit between the related region and the
+  `---` seam, so `bodySeamEnd` left them out of the body and the page
+  showed them nowhere. They are now their own `## Esri documentation`
+  section, below Related documents and above the seam.
+- **`mkdocs.yml`** gains `pymdownx.tasklist` (`custom_checkbox: true`)
+  so a task list renders as checkboxes, `sane_lists` so an extracted
+  `1.` run after a paragraph is not a list by accident, and
+  `toc_depth: "2-3"`.
+
+Gate: `tests/check_wiki.py` (40 checks, 7 of them new and all failing
+on wiki v1.0). No corpus backfill — the site is regenerated on every
+run.
 ## llm v2.1 / lrsdoc v1.1.0 — the tenant's own model, the Claude API behind it (2026-09-06)
 
 The company runs its own Claude deployment on Microsoft Foundry. The

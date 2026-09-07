@@ -203,14 +203,17 @@ export function parseDraft(md) {
       continue;
     }
     if (cur) {
-      if (b.kind === "p" && /^\*\*Steps:?\*\*$/.test(b.text)) continue;
-      let m = /^\*\*Expected Result:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      // the case's field lines: bold-labelled BULLETS since prompt
+      // v1.14 (Markdown_Layout_Plan phase 3), bare paragraphs before it
+      const field = b.kind === "p" || b.kind === "bullet" ? b.text : "";
+      if (/^\*\*Steps:?\*\*$/.test(field)) continue;
+      let m = /^\*\*Expected Result:?\*\*\s*(.*)$/.exec(field);
       if (m) { cur.expected = m[1]; continue; }
-      m = /^\*\*Trace:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      m = /^\*\*Trace:?\*\*\s*(.*)$/.exec(field);
       if (m) { cur.trace = m[1]; continue; }
       // prompt v1.10's optional case-closing Figure line: image links
       // copied verbatim from the story sidecar — lift alt + href out
-      m = /^\*\*Figure:?\*\*\s*(.*)$/.exec(b.kind === "p" ? b.text : "");
+      m = /^\*\*Figure:?\*\*\s*(.*)$/.exec(field);
       if (m) {
         let found = false;
         for (const im of m[1].matchAll(/!\[([^\]]*)\]\(([^()\s]+)\)/g)) {
@@ -227,9 +230,24 @@ export function parseDraft(md) {
     sec.blocks.push(b);
   }
   for (const b of pre) {
+    if (b.kind === "table") {
+      // the draft's metadata table (Markdown_Layout_Plan phase 5):
+      // Generated carries the stamp, Source the story it came from
+      for (const row of b.rows) {
+        const key = String(row[0] || "").replace(/\*/g, "").trim();
+        const val = String(row[1] || "").trim();
+        if (key === "Generated") {
+          model.generated = (/(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)/.exec(val) || [, val])[1];
+        } else if (key === "Source") {
+          model.story = (/^\[([^\]]*)\]/.exec(val) || [, val.split(" · ")[0]])[1];
+        }
+      }
+      continue;
+    }
     if (b.kind === "alert" && b.label === "WARNING") {
+      // the pre-phase-5 banner said it in prose
       const g = /Generated\s+(\S+?)\s+from\s+(.*?)(?:\.\s|\.$|$)/.exec(b.text);
-      if (g) { model.generated = g[1]; model.story = g[2].replace(/ Source sidecar:.*$/, ""); }
+      if (g && !model.generated) { model.generated = g[1]; model.story = g[2].replace(/ Source sidecar:.*$/, ""); }
     } else if (b.kind === "alert" && b.label === "IMPORTANT") {
       model.verify = b.text;
     } else if (b.kind === "p") model.intro.push(b.text);

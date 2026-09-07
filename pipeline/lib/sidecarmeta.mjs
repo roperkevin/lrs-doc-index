@@ -1,45 +1,66 @@
 /**
  * sidecarmeta.mjs — the sidecar's metadata TABLE (Sidecar_Format_Plan
- * phase 1, format 3.0) and the readers every consumer shares.
+ * phase 1; format 3.1 is Markdown_Layout_Plan phase 4) and the
+ * readers every consumer shares.
  *
- * Format 3.0 keeps ONE representation of a document's metadata: the
+ * Format 3.0 kept ONE representation of a document's metadata: the
  * visible info table under the H1. There is no yaml block, no code
  * block and no HTML comment frame; the machine `related:` list moved
  * into the Related section's own per-entry markers
- * (`<!-- rel:578 s=1006.257 -->`). Every row is always present (value
- * `—` when empty) so the shape is identical across the corpus, lists
- * use ` · ` as separator, and a `|` inside a value is escaped `\|`.
+ * (`<!-- rel:578 s=1006.257 -->`). Lists use ` · ` as separator, and
+ * a `|` inside a value is escaped `\|`.
+ *
+ * Format 3.1 keeps the row ORDER fixed and stops printing the rows a
+ * document has nothing to say in. 3.0's rule — every row always
+ * present, `—` when empty — bought shape-uniformity for a reader, and
+ * charged for it in every consumer's retrieval window: on a sparse
+ * document the header was longer than the content and most of it read
+ * `—`. Fixed order gives the uniformity; printing `—` ten times does
+ * not add to it. Four rows are ALWAYS present (they are the identity
+ * and the provenance): Doc, Status, Source, Extracted. The rest —
+ * Product, Release, Issues, People, Edited, Keywords, Tools — appear
+ * only when they carry a value, and `readMeta` normalizes an absent
+ * row to ""/[] exactly as it normalized `—`. Two rows are new:
+ * `Status` (what 3.0 said in prose, or not at all) and `Generated`,
+ * which carries a machine-authored file's provenance.
  *
  *   | Field | Value |
  *   | --- | --- |
  *   | **Doc** | 564 · Test Plan · Pro |
+ *   | **Status** | Indexed |
  *   | **Product** | Pipeline Referencing |
- *   | **Release** | — |
  *   | **Issues** | [repo#4975](https://…) |
  *   | **Source** | [file.pptx](<url>) · rev V2 |
- *   | **People** | author Mac Christmas · PE — · dev — |
+ *   | **People** | author Mac Christmas |
  *   | **Edited** | 2023-05-22 22:17 by Mac Christmas |
- *   | **Extracted** | 2026-09-04 · lane xmlstrip · format 3.0 · prompt v2.0.2 |
+ *   | **Extracted** | 2026-09-04 · lane xmlstrip · format 3.1 · prompt v2.0.2 |
  *   | **Keywords** | append routes · line order · route |
- *   | **Tools** | — |
  *
- * The readers (`readMeta`, `metaList`, `relEntries`) understand the
- * table AND the pre-3.0 yaml frames (comment / details / fence /
+ * The readers (`readMeta`, `metaList`, `relEntries`) understand 3.1,
+ * 3.0 AND the pre-3.0 yaml frames (comment / details / fence /
  * frontmatter), so the converging backfill never breaks a consumer:
- * a file in either shape answers the same questions.
+ * a file in any shape answers the same questions.
  */
 
 import { yamlList } from "./doclinks.mjs";
 
-export const SIDECAR_FORMAT = "3.0";
+export const SIDECAR_FORMAT = "3.1";
 export const SEP = " · ";
 export const EMPTY = "—";
 
-/** Field order — the one shape every sidecar carries. */
+/** Field order — the one shape every sidecar carries. A row that is
+ *  not in ALWAYS_ROWS is printed only when it has a value (3.1). */
 export const META_ROWS = [
-  "Doc", "Product", "Release", "Issues", "Source", "People", "Edited",
-  "Extracted", "Keywords", "Tools",
+  "Doc", "Status", "Product", "Release", "Issues", "Source", "People",
+  "Edited", "Extracted", "Generated", "Keywords", "Tools",
 ];
+
+/** The identity and the provenance: always printed, `—` when empty.
+ *  A machine-authored file (a generated draft — Markdown_Layout_Plan
+ *  phase 5) has no extraction, so `Generated` takes `Extracted`'s
+ *  place in its core; `p.generated` is what selects the set. */
+export const ALWAYS_ROWS = ["Doc", "Status", "Source", "Extracted"];
+export const MACHINE_ALWAYS_ROWS = ["Doc", "Status", "Source", "Generated"];
 
 /** A table cell: no pipes, no newlines, no bare separator glyph. */
 export function cell(s) {
@@ -55,10 +76,7 @@ export function item(s) {
   return cell(s).replace(/\s*·\s*/g, " - ");
 }
 
-const list = (xs) => {
-  const out = (xs || []).map(item).filter(Boolean);
-  return out.length ? out.join(SEP) : EMPTY;
-};
+const list = (xs) => (xs || []).map(item).filter(Boolean).join(SEP);
 const or = (s, fallback = EMPTY) => (cell(s) === "" ? fallback : cell(s));
 
 /**
@@ -73,31 +91,46 @@ export function renderMetaTable(p) {
   );
   const rev = cell(p.docRevision);
   const source = `[${cell(p.fileName)}](<${String(p.sourceLink || "").replace(/>/g, "%3E")}>)` +
-    (rev ? `${SEP}rev ${rev}` : "");
-  const people = `author ${or(p.srcAuthor)}${SEP}PE ${or(p.pe)}${SEP}dev ${or(p.dev)}`;
+    (rev ? `${SEP}rev ${rev}` : "") +
+    (cell(p.sourceNote) ? `${SEP}${cell(p.sourceNote)}` : "");
+  // 3.1: a person the document does not name is not printed as `—`
+  const people = [
+    cell(p.srcAuthor) ? `author ${cell(p.srcAuthor)}` : "",
+    cell(p.pe) ? `PE ${cell(p.pe)}` : "",
+    cell(p.dev) ? `dev ${cell(p.dev)}` : "",
+  ].filter(Boolean).join(SEP);
   const edited = (p.srcEditedText || "") !== ""
     ? `${cell(p.srcEditedText)} by ${or(p.srcEditor, "unknown")}`
-    : EMPTY;
-  const extracted = [
-    cell(p.extractedOn), `lane ${or(p.lane, "none")}`, `format ${SIDECAR_FORMAT}`,
-    p.promptVersion ? `prompt ${cell(p.promptVersion)}` : "",
-  ].filter(Boolean).join(SEP);
+    : "";
+  // a machine-authored file was never extracted: no Extracted row
+  const extracted = cell(p.extractedOn)
+    ? [
+        cell(p.extractedOn), `lane ${or(p.lane, "none")}`, `format ${SIDECAR_FORMAT}`,
+        p.promptVersion ? `prompt ${cell(p.promptVersion)}` : "",
+      ].filter(Boolean).join(SEP)
+    : "";
   const rows = {
     Doc: `${p.rowId}${SEP}${or(p.docKind, "Other")}${SEP}${or(p.surface, "Other")}`,
+    Status: or(p.status, "Indexed"),
     Product: list(p.products),
-    Release: or(p.targetRelease),
-    Issues: issues.length ? issues.join(SEP) : EMPTY,
+    Release: cell(p.targetRelease),
+    Issues: issues.join(SEP),
     Source: source,
     People: people,
     Edited: edited,
     Extracted: extracted,
+    Generated: cell(p.generated),
     Keywords: list(p.keywords),
     Tools: list(p.tools),
   };
+  const always = cell(p.generated) ? MACHINE_ALWAYS_ROWS : ALWAYS_ROWS;
+  const shown = META_ROWS.filter(
+    (k) => always.includes(k) || (rows[k] !== "" && rows[k] !== EMPTY)
+  );
   return [
     "| Field | Value |",
     "| --- | --- |",
-    ...META_ROWS.map((k) => `| **${k}** | ${rows[k]} |`),
+    ...shown.map((k) => `| **${k}** | ${rows[k] === "" ? EMPTY : rows[k]} |`),
   ].join("\n") + "\n";
 }
 
@@ -161,11 +194,13 @@ export function readMeta(content) {
     const src = t.get("Source") || "";
     const srcParts = splitList(src);
     const rev = (srcParts.slice(1).map((x) => /^rev (.*)$/.exec(x)).find(Boolean) || [])[1] || "";
+    const orEmpty = (k) => (t.get(k) === EMPTY ? "" : (t.get(k) || ""));
     return {
       format: ex.format || SIDECAR_FORMAT,
       title,
       doc_id: Number(id) || null,
       doc_kind: kind || "", surface: surface || "",
+      status: orEmpty("Status"), generated: orEmpty("Generated"),
       products: splitList(t.get("Product")),
       target_release: t.get("Release") === EMPTY ? "" : (t.get("Release") || ""),
       issues: splitList(t.get("Issues")).map(linkText).filter(Boolean),
@@ -189,6 +224,7 @@ export function readMeta(content) {
     title,
     doc_id: Number(yamlVal(s, "doc_id")) || null,
     doc_kind: yamlVal(s, "doc_kind"), surface: yamlVal(s, "surface"),
+    status: "", generated: "",
     products: yamlList(s, "products"),
     target_release: yamlVal(s, "target_release"),
     issues: yamlList(s, "issues"),

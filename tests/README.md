@@ -19,15 +19,15 @@ python3 check_local_sweep.py                # any single gate
 | Suite | CI job | What it gates | Needs |
 |---|---|---|---|
 | `test_lrsdoc.py` | fixture-free | `lrsdoc/`: the prompt loader (every file in `prompts/` loads, renders, and its schema resolves), the request shape, calls against an SDK-faithful mock (streaming, truncation, refusal, contract errors, retries, dumps), the CLI | anthropic |
-| `check_local_sweep.py` | fixture-free | `pipeline/sweep.mjs` end to end against a mock Graph / SharePoint REST / Anthropic Messages / sign-in stack: every extraction lane, the list writes, sidecars, relatedness, case and figure sync, ghost reconciliation, every standalone mode, `curate.mjs`, `gantt.mjs`, alerts, remote-files mode | Node 22+ |
+| `check_local_sweep.py` | fixture-free | `pipeline/sweep.mjs` end to end against a mock Graph / SharePoint REST / Anthropic Messages / sign-in stack: every extraction lane, the list writes, sidecars, relatedness, case and figure sync, ghost reconciliation, every standalone mode (incl. the `--layout-audit` convergence scan), `curate.mjs`, `gantt.mjs`, alerts, remote-files mode | Node 22+ |
 | `check_testplangen.py` | fixture-free | `pipeline/testplangen.mjs`: story guard, lanes, caps, fail-closed slice, verifier (and its agreement with `check_draft_coverage.py`), lookup, auto mode, addenda, figures and deck passes, streaming | Node 22+ |
-| `check_caseindex.py` | fixture-free | `pipeline/lib/caseindex.mjs` + `casegrammar.mjs`: the six case detectors, per-case metadata, the replace-set planner | Node |
+| `check_caseindex.py` | fixture-free | `pipeline/lib/caseindex.mjs` + `casegrammar.mjs`: the six case detectors, the one case block (explicit anchors, the `lrs:case` mark, H4 unit headings), per-case metadata, the replace-set planner | Node |
 | `check_figureindex.py` | fixture-free | `pipeline/lib/figureindex.mjs`: figure naming rule, parser, rows and planner | Node |
 | `check_slug.py` | fixture-free | `pipeline/lib/slug.mjs`: sidecar stem rules | Node |
 | `check_progress.py` | fixture-free | `pipeline/lib/progress.mjs`: the shared run narration — flag/config precedence, the `progress: ...` line shapes, counter thinning, heartbeats, stdout left alone | Node |
 | `check_storyprofile.py` | fixture-free | `pipeline/lib/storyprofile.mjs`: the User Story body profile | Node |
 | `check_deckspec.py` | fixture-free | `pipeline/lib/designsystem.mjs` + `deckspec.mjs`: tokens, grid, grounding, layout | Node |
-| `check_wiki.py` | fixture-free | `pipeline/wiki.mjs`: the site tree from a small sidecar library, every link resolving, the keyword canonical map, MkDocs-identical section anchors, comment/yaml hygiene, the push flow against a bare repository | Node, mkdocs-material (the strict-build legs) |
+| `check_wiki.py` | fixture-free | `pipeline/wiki.mjs`: the site tree from a small sidecar library, every link resolving, the keyword canonical map, MkDocs-identical section anchors, the dialect translation (alerts, escaping, the summary and docs regions, the mkdocs extensions), the format 3.1 table, the Drafts section, comment/yaml hygiene, the push flow against a bare repository | Node, mkdocs-material (the strict-build legs) |
 | `check_pad_runner.py` | fixture-free | `extract/runner/run_job.mjs` + `ops.mjs`: every extractor op through the loader, parity with `wrap.py` | Node |
 | `check_related.py` | fixture-free | `extract/RelatedRank.ts` + `SidecarPatch.ts` | Node, PyYAML |
 | `check_regex.py` | fixture-free | `extract/RegexExtract.ts`: ids, precedence, revision, slug, products | Node |

@@ -1,6 +1,17 @@
 /**
- * caseindex.mjs v2.1 — individual test cases out of a test plan's
+ * caseindex.mjs v2.2 — individual test cases out of a test plan's
  * sidecar body. Pure module, no I/O, no AI.
+ *
+ * v2.2 (Markdown_Layout_Plan phase 3 — the one case block): the
+ * profile now writes a case as
+ *     ### TC-P01 — <title> { #tc-p01 }
+ *     <!-- lrs:case det=S3 conf=high src="slide 4 · table · A-7" -->
+ * so the reader takes the anchor from the heading's explicit id
+ * (stable across a retitle) and the detector, confidence and source
+ * from the mark under it — which also keeps the src text out of the
+ * case's own body, where it used to leak into the keyword tags. The
+ * pre-1.3 trailing `<!-- src: … -->` still parses, unchanged, for the
+ * backfill window; so does the pre-3 deck form.
  *
  * v2.1 (no CaseIndexVersion bump — row output is unchanged): the
  * `caseSpans` export gives TestPlanGen the line ranges of the same
@@ -92,18 +103,26 @@
  * not the corpus.
  */
 
+import { readMark, splitAnchor } from "./mdlayout.mjs";
+
 const cap = (s, n) => String(s || "").slice(0, n);
 
 /**
  * GitHub-style heading anchor slug (HTML comments don't render, so
  * they never reach the slug). Duplicate slugs take -1, -2, … suffixes
- * the way GitHub's renderer disambiguates them.
+ * the way GitHub's renderer disambiguates them. A heading carrying an
+ * explicit `{ #id }` (casegrammar v1.3) uses that id verbatim.
  */
 export function slugger() {
   const seen = new Map();
   return (heading) => {
-    let s = String(heading)
-      .replace(/<!--[\s\S]*?-->/g, "")
+    // v2.1: an explicit `{ #id }` IS the anchor — no slug, no suffix
+    const ex = splitAnchor(String(heading).replace(/<!--[\s\S]*?-->/g, "").trim());
+    if (ex.id) {
+      seen.set(ex.id, (seen.get(ex.id) || 0) + 1);
+      return ex.id;
+    }
+    let s = ex.text
       .trim()
       .toLowerCase()
       .replace(/[^\p{L}\p{N}\s_-]/gu, "")
@@ -277,7 +296,10 @@ function sectionMeta(sectionLines) {
     if (/^\|[\s:|-]+\|$/.test(s)) { tableCount++; continue; } // header separator row
     if (s.startsWith("|")) { takeRoutes(s); continue; } // route ids live in fixture tables too
     const clean = s.replace(/<!--[\s\S]*?-->/g, "").trim();
-    if (/^(?:- )?\d{1,3}[.)]\s+\S/.test(clean)) stepCount++;
+    // v2.2: a step may be a plain numbered line, a bullet, or the
+    // task-list form both the draft contract and the profile write
+    // (`- [ ] 1. …`, nested under `- **Steps:**`)
+    if (/^(?:[-*]\s+)?(?:\[[ xX]\]\s*)?\d{1,3}[.)]\s+\S/.test(clean)) stepCount++;
     let m;
     // the draft contract's `**Expected Result:** …` line, or the
     // grammar's `- **Expected Result:** …` bullet (v2.0)
@@ -370,16 +392,34 @@ export const CONFIDENCE = { S0: "high", S1: "high", S2: "high", S3: "high", S4: 
 function tcCases(lines, opts) {
   const cases = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = /^### (TC-([PNU])(\d+))\b\s*(?:[—:\-–]\s*)?(.*?)\s*(?:<!-- src: (.*?) -->)?\s*$/.exec(lines[i]);
+    // v2.2: the explicit anchor comes off the line before anything
+    // else reads it, so it lands in neither the title nor the scenario
+    const head = splitAnchor(lines[i]);
+    const m = /^### (TC-([PNU])(\d+))\b\s*(?:[—:\-–]\s*)?(.*?)\s*(?:<!-- src: (.*?) -->)?\s*$/.exec(head.text);
     if (!m) continue;
     let end = lines.length;
     for (let j = i + 1; j < lines.length; j++) {
       if (/^#{2,6} /.test(lines[j])) { end = j; break; }
     }
-    const section = lines.slice(i + 1, end);
-    const src = (m[5] || "").trim();
-    const parts = src ? src.split(/\s*·\s*/) : [];
-    const det = parts.length && /^(S[0-6]|LLM)$/.test(parts[0]) ? parts[0] : "draft";
+    // v2.2: the `lrs:case` mark on the first non-blank line under the
+    // heading carries the provenance, and is NOT part of the case body
+    let markAt = -1, cm = null;
+    for (let j = i + 1; j < end; j++) {
+      if (lines[j].trim() === "") continue;
+      cm = readMark(lines[j], "case");
+      if (cm) markAt = j;
+      break;
+    }
+    const section = lines.slice(i + 1, end).filter((_, k) => i + 1 + k !== markAt);
+    const legacySrc = (m[5] || "").trim();
+    const markSrc = (cm?.src || "").trim();
+    const parts = legacySrc ? legacySrc.split(/\s*·\s*/) : [];
+    const det = cm?.det && /^(S[0-6]|LLM)$/.test(cm.det) ? cm.det
+      : parts.length && /^(S[0-6]|LLM)$/.test(parts[0]) ? parts[0]
+      : "draft";
+    // SourceRef keeps its "detector · source" shape either way, so a
+    // reformatted plan does not rewrite every row it did not change
+    const src = markSrc ? `${det} · ${markSrc}` : legacySrc;
     const slide = /\bslide (\d+)\b/.exec(src);
     let group = "";
     for (const ln of section) {
@@ -392,9 +432,10 @@ function tcCases(lines, opts) {
       slideNo: slide ? parseInt(slide[1], 10) : null,
       classification: m[2] === "P" ? "Positive" : m[2] === "N" ? "Negative" : "Unspecified",
       scenario: m[4].replace(/^[\s\-–—:]+/, "").trim(),
-      title: lines[i].replace(/^### /, "").replace(/<!--[\s\S]*?-->/g, "").trim(),
+      title: head.text.replace(/^### /, "").replace(/<!--[\s\S]*?-->/g, "").trim(),
       group: cap(group, 255),
       sourceRef: cap(src, 255),
+      conf: cm?.conf || "",
       det,
       text: skimText(section, opts.caseTextCap),
       issueRefs: caseIssueRefs(meta._prose.join("\n"), opts.defaultRepo),
@@ -495,7 +536,7 @@ export function extractCases(bodyText, opts = {}) {
       return {
         ordinal: k + 1, ...kase, shape: det, det,
         group: c.group || "", sourceRef: c.sourceRef || "",
-        confidence: CONFIDENCE[det] || "medium",
+        confidence: c.conf || CONFIDENCE[det] || "medium",
         tools: tags.tools, keywords: tags.keywords, figureLinks,
         anchor: anchorAt.get(_headAt) || "",
       };

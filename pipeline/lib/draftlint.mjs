@@ -1,5 +1,5 @@
 /**
- * draftlint.mjs v1.5 — in-process draft verification for
+ * draftlint.mjs v1.6 — in-process draft verification for
  * pipeline/testplangen.mjs, two layers:
  *
  * `lintDraft` — the CONTRACT layer: a port of the TestPlanGen draft
@@ -12,8 +12,7 @@
  * contract change edits the Python first, then mirrors here (labels
  * verbatim).
  *
- * Asserts (v1.7 contract — unchanged by prompt v1.8, which adds no
- * structural asserts; see the Python docstring for prose):
+ * Asserts (v1.8 contract; see the Python docstring for prose):
  *   1 section presence + order (+ non-empty conditionals)
  *   2 every TC case carries a **Trace:** line
  *   3 Negative Tests opens with the fixed CAUTION alert
@@ -24,6 +23,12 @@
  *   6 TC numbering sequential per lane
  *   7 granularity, structural half (one Expected Result, >=1 step)
  *   8 Source Case Sweep, structural half (when present)
+ *   9 the case block (v1.6, prompt v1.14 / Markdown_Layout_Plan
+ *     phase 3): two-digit ids, sequential per lane, the heading's own
+ *     `{ #tc-p01 }` anchor, and bold-labelled BULLETS for the field
+ *     lines — the same block casegrammar writes for every indexed
+ *     plan. Non-baseline only: a draft written before the contract
+ *     change lints with `baseline: true` and is unaffected.
  *
  * lintDraft(text, {baseline}) never throws on draft content; it
  * returns { failures, counters, warn } — failures is the list of
@@ -109,17 +114,17 @@ function untilNextH2(segment) {
 // — a case body runs to the next line starting "## " or "### ".
 function extractCases(text) {
   const heads = [];
-  const headRe = /^### (TC-[PN]\d+)[^\n]*\n/gm;
+  const headRe = /^### (TC-[PN]\d+)([^\n]*)\n/gm;
   let m;
   while ((m = headRe.exec(text))) {
-    heads.push({ id: m[1], bodyStart: m.index + m[0].length });
+    heads.push({ id: m[1], head: m[2], bodyStart: m.index + m[0].length });
   }
   const bounds = [];
   const boundRe = /^###? /gm;
   while ((m = boundRe.exec(text))) bounds.push(m.index);
   return heads.map((h) => {
     const next = bounds.find((p) => p >= h.bodyStart);
-    return [h.id, text.slice(h.bodyStart, next === undefined ? text.length : next)];
+    return [h.id, text.slice(h.bodyStart, next === undefined ? text.length : next), h.head];
   });
 }
 
@@ -166,7 +171,8 @@ export function lintDraft(text, { baseline = false } = {}) {
   const tcCases = extractCases(text);
   check(tcCases.length > 0, "at least one TC case found");
   let nSteps = 0;
-  for (const [cid, body] of tcCases) {
+  const seen = { P: 0, N: 0 };
+  for (const [cid, body, head] of tcCases) {
     check(body.includes("**Trace:**"), `${cid} carries a **Trace:** line`);
     nSteps += (body.match(/^\s*- \[[ x]\]/gm) || []).length;
     if (!baseline) {
@@ -175,6 +181,17 @@ export function lintDraft(text, { baseline = false } = {}) {
         `${cid} has exactly one **Expected Result:** line`
       );
       check(/^\s*- \[[ x]\]/m.test(body), `${cid} has at least one Steps checkbox`);
+      // the one case block (Markdown_Layout_Plan phase 3): a two-digit
+      // sequence per lane, the heading's own anchor, and bold-labelled
+      // BULLETS for the field lines
+      check(/^TC-[PN]\d\d$/.test(cid), `${cid} is a two-digit id`);
+      const lane = cid[3], num = Number(cid.slice(4));
+      check(num === seen[lane] + 1, `${cid} continues the ${lane} sequence`);
+      seen[lane] = num;
+      check(String(head).trimEnd().endsWith(`{ #${cid.toLowerCase()} }`),
+        `${cid} heading carries its own anchor`);
+      check(body.includes("- **Trace:**") && body.includes("- **Expected Result:**"),
+        `${cid} field lines are bullets`);
     }
   }
   const draftIds = new Set(tcCases.map(([cid]) => cid));
@@ -473,7 +490,7 @@ export function groundDraft(draftText, storyCorpus, sourceCorpus = "") {
     .split("\n")
     .filter(
       (l) =>
-        (/^\s*- \[[ x]\]/.test(l) || l.trimStart().startsWith("**Expected Result:**")) &&
+        (/^\s*- \[[ x]\]/.test(l) || /^\s*(?:- )?\*\*Expected Result:\*\*/.test(l)) &&
         !l.includes("[VERIFY")
     );
   const flaggedTools = new Set();
@@ -569,7 +586,7 @@ export function groundDraft(draftText, storyCorpus, sourceCorpus = "") {
   // appear in the story. An exemplar/reference-only Trace fails
   // both (the title's words are not the story's) and is flagged.
   for (const [cid, body] of extractCases(draft)) {
-    const tm = body.match(/^\s*\*\*Trace:\*\*([\s\S]*?)(?=\n\s*\n|$)/m);
+    const tm = body.match(/^\s*(?:- )?\*\*Trace:\*\*([\s\S]*?)(?=\n\s*\n|\n\s*- \*\*|$)/m);
     if (!tm) continue; // a missing Trace line is the contract lint's finding
     const trace = tm[1];
     const quoted = [...trace.matchAll(/"([^"]{4,})"/g)].map((m) => m[1]);

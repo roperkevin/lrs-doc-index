@@ -133,7 +133,8 @@ function collectInputs(argv) {
 // figure's whole context: its H1 is the document title, its yaml block
 // carries the document metadata, and the figure's own case section
 // (heading + tables) sits around the figure's image link in the body.
-// the sidecar's metadata — the format-3.0 table, or the legacy yaml
+// the sidecar's metadata — the 3.x table (3.1 omits the rows a
+// document has nothing to say in), or the legacy yaml
 // block on a file the backfill has not rewritten yet (sidecarmeta.mjs
 // reads both)
 

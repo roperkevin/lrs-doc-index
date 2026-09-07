@@ -253,22 +253,18 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 
 ## Positive Tests
 
-### TC-P1 — Merge preserves measures
-**Steps:**
-- [ ] 1. Run Merge Routes on route A and route B.
-- [ ] 2. Inspect the measures on the merged route.
+### TC-P01 — Merge preserves measures { #tc-p01 }
+- **Steps:**
+  - [ ] 1. Run Merge Routes on route A and route B.
+  - [ ] 2. Inspect the measures on the merged route.
+- **Expected Result:** The merged route keeps the source measures unchanged.
+- **Trace:** "the merge must preserve measures" — story requirement.
 
-**Expected Result:** The merged route keeps the source measures unchanged.
-
-**Trace:** "the merge must preserve measures" — story requirement.
-
-### TC-P2 — Merge produces one route
-**Steps:**
-- [ ] 1. Run Merge Routes on route A and route B.
-
-**Expected Result:** Exactly one route remains after the merge.
-
-**Trace:** "merge two routes" — story workflow section.
+### TC-P02 — Merge produces one route { #tc-p02 }
+- **Steps:**
+  - [ ] 1. Run Merge Routes on route A and route B.
+- **Expected Result:** Exactly one route remains after the merge.
+- **Trace:** "merge two routes" — story workflow section.
 
 ## Negative Tests
 
@@ -276,13 +272,11 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 > A pass below is the described denial or error — never the edit
 > succeeding.
 
-### TC-N1 — Merge denied on locked route
-**Steps:**
-- [ ] 1. As user B, attempt Merge Routes on a route locked by user A.
-
-**Expected Result:** The merge is denied with a lock conflict.
-
-**Trace:** "Edits to a locked route must be denied" — story conflict statement; exemplar pattern — multi-user denial case (Plan A).
+### TC-N01 — Merge denied on locked route { #tc-n01 }
+- **Steps:**
+  - [ ] 1. As user B, attempt Merge Routes on a route locked by user A.
+- **Expected Result:** The merge is denied with a lock conflict.
+- **Trace:** "Edits to a locked route must be denied" — story conflict statement; exemplar pattern — multi-user denial case (Plan A).
 
 ## Open Questions
 - [ ] [VERIFY: minimum network configuration for setup]
@@ -292,7 +286,7 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 
 | Source plan | Source case | Applies? | Covered by / why not |
 | --- | --- | --- | --- |
-| Plan A (exemplar) | Second user denied editing a locked route | Yes | TC-N1 |
+| Plan A (exemplar) | Second user denied editing a locked route | Yes | TC-N01 |
 | Plan A (exemplar) | Lock survives a service restart | Verify | Open Questions — story silent |
 | Plan B (exemplar) | Lock released on discard | No | Out of the story's scope |
 
@@ -300,20 +294,20 @@ Verifies measure-preserving merge of two routes in ArcGIS Pro.
 
 | # | Requirement (source) | Covered by |
 | --- | --- | --- |
-| 1 | "merge two routes" (workflow section) | TC-P2 |
-| 2 | "the merge must preserve measures" (requirement) | TC-P1 |
-| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |
+| 1 | "merge two routes" (workflow section) | TC-P02 |
+| 2 | "the merge must preserve measures" (requirement) | TC-P01 |
+| 3 | route edits denied on a locked route (conflict statement) | TC-N01 |
 """
 
-# GOOD_DRAFT with two seeded violations: TC-N1 loses its Trace line,
+# GOOD_DRAFT with two seeded violations: TC-N01 loses its Trace line,
 # and Coverage Map row 3 loses its Covered by cell — expected
-# findings: the Trace check, the row-3 citation check, and TC-N1
+# findings: the Trace check, the row-3 citation check, and TC-N01
 # uncited.
 BAD_DRAFT = GOOD_DRAFT.replace(
-    "**Trace:** \"Edits to a locked route must be denied\" — story conflict "
+    "- **Trace:** \"Edits to a locked route must be denied\" — story conflict "
     "statement; exemplar pattern — multi-user denial case (Plan A).\n", ""
 ).replace(
-    "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |",
+    "| 3 | route edits denied on a locked route (conflict statement) | TC-N01 |",
     "| 3 | route edits denied on a locked route (conflict statement) | |",
 )
 
@@ -325,11 +319,11 @@ wrap = lambda body: "Here is your draft.\n[[[DRAFT BEGIN]]]\n" + body + "\n[[[DR
 COND_DRAFT = GOOD_DRAFT.replace(
     "## Open Questions\n",
     "## Automation Notes\n- Extend the merge automation to cover measure preservation. "
-    "**Trace:** \"automate the merge cases\" — story automation section.\n\n"
+    "- **Trace:** \"automate the merge cases\" — story automation section.\n\n"
     "## Open Questions\n",
 ).replace(
-    "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |\n",
-    "| 3 | route edits denied on a locked route (conflict statement) | TC-N1 |\n"
+    "| 3 | route edits denied on a locked route (conflict statement) | TC-N01 |\n",
+    "| 3 | route edits denied on a locked route (conflict statement) | TC-N01 |\n"
     "| 4 | \"automate the merge cases\" (automation section) | Automation Notes |\n",
 )
 COND_BAD_DRAFT = COND_DRAFT.replace(
@@ -348,22 +342,22 @@ FIG_DRAFT = GOOD_DRAFT.replace(
     "Events:\n\n| Event | Route | From | To |\n| --- | --- | --- | --- |\n"
     "| E1 | R1 | 10 | 40 |\n| E2 | R2 | 5 | 30 |\n",
 ).replace(
-    "- [ ] 1. Run Merge Routes on route A and route B.\n- [ ] 2. Inspect the measures on the merged route.\n\n"
-    "**Expected Result:** The merged route keeps the source measures unchanged.",
-    "- [ ] 1. Run Merge Routes on route R1 and route R2.\n- [ ] 2. Inspect the measures on the merged route R1.\n\n"
-    "**Expected Result:** The merged route R1 spans 0 to 160 and keeps the source measures unchanged:\n\n"
+    "  - [ ] 1. Run Merge Routes on route A and route B.\n  - [ ] 2. Inspect the measures on the merged route.\n"
+    "- **Expected Result:** The merged route keeps the source measures unchanged.",
+    "  - [ ] 1. Run Merge Routes on route R1 and route R2.\n  - [ ] 2. Inspect the measures on the merged route R1.\n"
+    "- **Expected Result:** The merged route R1 spans 0 to 160 and keeps the source measures unchanged:\n\n"
     "| Event | Route | From | To |\n| --- | --- | --- | --- |\n| E1 | R1 | 10 | 40 |\n| E2 | R1 | 105 | 130 |",
 ).replace(
-    "- [ ] 1. As user B, attempt Merge Routes on a route locked by user A.",
-    "- [ ] 1. As User A, lock route R1.\n- [ ] 2. As User B, attempt Merge Routes on route R1.",
+    "  - [ ] 1. As user B, attempt Merge Routes on a route locked by user A.",
+    "  - [ ] 1. As User A, lock route R1.\n  - [ ] 2. As User B, attempt Merge Routes on route R1.",
 )
 assert "| R1 | 0 | 100 |" in FIG_DRAFT and "As User B" in FIG_DRAFT
 
 FIG_REPLY = json.dumps({
     "plan": "Test Plan — Route Merge",
     "figures": [
-        {"case": "TC-P1", "rule": "R2", "kind": "route-measure",
-         "title": "TC-P1 — Merge preserves measures",
+        {"case": "TC-P01", "rule": "R2", "kind": "route-measure",
+         "title": "TC-P01 — Merge preserves measures",
          "caption": "R1 (0–100) and R2 (0–60) before the merge; after it R1 spans 0–160 with E1 at 10–40 and E2 at 105–130.",
          "panels": [
              {"label": "Before",
@@ -380,30 +374,30 @@ FIG_REPLY = json.dumps({
               "marks": [{"kind": "extend", "route": "R1", "at": 100, "to": 160, "label": "extended"}]}],
          "legend": ["E1 10 → 40", "E2 105 → 130"],
          "source": {"steps": [1, 2], "expected": True, "tables": ["Setup / Prerequisites › Routes"]}},
-        {"case": "TC-N1", "rule": "R5", "kind": "sequence",
-         "title": "TC-N1 — Merge denied on locked route",
+        {"case": "TC-N01", "rule": "R5", "kind": "sequence",
+         "title": "TC-N01 — Merge denied on locked route",
          "caption": "User A locks R1; User B's Merge Routes on R1 is denied with a lock conflict.",
          "actors": [{"id": "A", "label": "User A"}, {"id": "B", "label": "User B"}],
          "steps": [{"from": "A", "to": "A", "label": "lock route R1", "outcome": "ok", "step": 1},
                    {"from": "B", "to": "A", "label": "Merge Routes on R1", "outcome": "denied", "step": 2}],
          "source": {"steps": [1, 2], "expected": True, "tables": []}},
         # an INVENTED measure (999 is nowhere in the plan) — must be dropped
-        {"case": "TC-P2", "rule": "R1", "kind": "route-measure",
-         "title": "TC-P2 — Merge produces one route",
+        {"case": "TC-P02", "rule": "R1", "kind": "route-measure",
+         "title": "TC-P02 — Merge produces one route",
          "caption": "One route remains.",
          # …and a tick interval that would draw 1000 ticks (figurespec v1.1 caps at 60)
          "panels": [{"label": "", "routes": [{"id": "R1", "from": 0, "to": 100, "ticks": 0.1}],
                      "events": [{"id": "E1", "route": "R1", "at": 999, "tone": "cool"}], "marks": []}]},
         # an unknown case id — must be dropped
-        {"case": "TC-P9", "rule": "R1", "kind": "topology", "title": "TC-P9 — ghost", "caption": "x",
+        {"case": "TC-P09", "rule": "R1", "kind": "topology", "title": "TC-P09 — ghost", "caption": "x",
          "nodes": [{"id": "R1"}, {"id": "R2"}], "edges": [{"from": "R1", "to": "R2"}]},
     ],
-    "skipped": [{"case": "TC-P2", "reason": "X2 — geometry equals TC-P1"}],
+    "skipped": [{"case": "TC-P02", "reason": "X2 — geometry equals TC-P01"}],
 })
 FIG_REPLY_WRAPPED = "Sure.\n[[[FIGURES BEGIN]]]\n" + FIG_REPLY + "\n[[[FIGURES END]]]\n"
 
 # leg 21: the review-deck pass (v1.16, --deck) — a deck spec over
-# FIG_DRAFT's cases that places the run's own generated TC-P1 figure
+# FIG_DRAFT's cases that places the run's own generated TC-P01 figure
 # (embedded from memory) and one slide the grounding check must drop
 DECK_REPLY = json.dumps({
     "plan": "Test Plan — Route Merge",
@@ -412,11 +406,11 @@ DECK_REPLY = json.dumps({
         {"pattern": "stats", "title": "At a glance", "regions": {"tiles": [
             {"count": "positive-cases", "label": "Positive cases", "tone": "success"},
             {"count": "negative-cases", "label": "Negative cases", "tone": "danger"}]}},
-        {"pattern": "two-column", "title": "Merge preserves measures", "source": "TC-P1", "tone": "success", "regions": {
-            "left": {"from": {"case": "TC-P1", "field": "steps"}},
-            "right": [{"label": "Expected", "body": {"from": {"case": "TC-P1", "field": "expected"}}, "tone": "success"}]}},
-        {"pattern": "figure", "title": "Before and after the merge", "source": "TC-P1",
-         "regions": {"figure": "{STEM}--fig-tc-p1.svg"}},
+        {"pattern": "two-column", "title": "Merge preserves measures", "source": "TC-P01", "tone": "success", "regions": {
+            "left": {"from": {"case": "TC-P01", "field": "steps"}},
+            "right": [{"label": "Expected", "body": {"from": {"case": "TC-P01", "field": "expected"}}, "tone": "success"}]}},
+        {"pattern": "figure", "title": "Before and after the merge", "source": "TC-P01",
+         "regions": {"figure": "{STEM}--fig-tc-p01.svg"}},
         {"pattern": "bullets", "title": "Invented", "regions": {"items": ["A sentence the draft never says."]}},
         {"pattern": "closing", "regions": {"headline": "Decide", "asks": ["Review the cases"]}},
     ],
@@ -441,13 +435,11 @@ Verifies realignment of a route.
 
 ## Positive Tests
 
-### TC-P1 — Realign updates the route shape
-**Steps:**
-- [ ] 1. Realign the route along a new path.
-
-**Expected Result:** The route follows the new path.
-
-**Trace:** "realign a route" — story statement.
+### TC-P01 — Realign updates the route shape { #tc-p01 }
+- **Steps:**
+  - [ ] 1. Realign the route along a new path.
+- **Expected Result:** The route follows the new path.
+- **Trace:** "realign a route" — story statement.
 
 ## Negative Tests
 
@@ -455,13 +447,11 @@ Verifies realignment of a route.
 > A pass below is the described denial or error — never the edit
 > succeeding.
 
-### TC-N1 — Realign denied without an editable route
-**Steps:**
-- [ ] 1. Attempt to realign a route that is not editable.
-
-**Expected Result:** The realign is denied.
-
-**Trace:** "realign a route" — denial variant of the story statement.
+### TC-N01 — Realign denied without an editable route { #tc-n01 }
+- **Steps:**
+  - [ ] 1. Attempt to realign a route that is not editable.
+- **Expected Result:** The realign is denied.
+- **Trace:** "realign a route" — denial variant of the story statement.
 
 ## Open Questions
 - [ ] [VERIFY: minimum configuration for setup]
@@ -470,8 +460,8 @@ Verifies realignment of a route.
 
 | # | Requirement (source) | Covered by |
 | --- | --- | --- |
-| 1 | "realign a route" (story) | TC-P1 |
-| 2 | "realign a route" denial handling (story) | TC-N1 |
+| 1 | "realign a route" (story) | TC-P01 |
+| 2 | "realign a route" denial handling (story) | TC-N01 |
 """
 
 
@@ -696,6 +686,14 @@ def doc_row(iid, title, kind, status, surface, url, release="", pe="",
             "fields": fields}
 
 
+def write_tmp(text, suffix=".md"):
+    """A throwaway file for a node probe."""
+    fd, path = tempfile.mkstemp(suffix=suffix, prefix="tpg-probe-")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    return path
+
+
 def run_job(cfg_path, extra):
     return subprocess.run(
         ["node", "--experimental-strip-types", JOB, "--config", cfg_path] + extra,
@@ -800,9 +798,11 @@ def main():
     # list row carries the story's Tool tag; TC-P04's row carries a
     # story Keyword; the other three score zero.
     def plan_case(cid, title, extra=""):
-        body = (f"### {cid} — {title} <!-- src: S2 · slide 3 -->\n\n"
-                f"**Steps:**\n- [ ] 1. Do the thing for {title.lower()}. {extra}\n\n"
-                f"**Expected Result:** {title} succeeds.\n\n")
+        # the v1.3 case block, as casegrammar renders an indexed plan
+        body = (f"### {cid} — {title} {{ #{cid.lower()} }}\n"
+                f'<!-- lrs:case det=S2 conf=high src="slide 3" -->\n\n'
+                f"- **Steps:**\n  - [ ] 1. Do the thing for {title.lower()}. {extra}\n"
+                f"- **Expected Result:** {title} succeeds.\n\n")
         return body + ("filler. " * ((500 - len(body)) // 8)) + "\n"
     plan_f_cases = [
         plan_case("TC-P01", "Create a route"),
@@ -894,7 +894,7 @@ def main():
         {"id": "801", "fields": {"Title": "Case 2: Negative - Locked Route",
                                  "DocumentLookupId": 21, "CaseKey": "21|2",
                                  "IssueRefs": ""}},
-        {"id": "802", "fields": {"Title": "TC-P1 Realign", "DocumentLookupId": 22,
+        {"id": "802", "fields": {"Title": "TC-P01 Realign", "DocumentLookupId": 22,
                                  "CaseKey": "22|1", "Anchor": "tc-p1-realign",
                                  "Classification": "Positive",
                                  "IssueRefs": f"{REPO_ID}#7777"}},
@@ -1013,16 +1013,41 @@ def main():
              if re.match(r"^/Test Plan Drafts/route-merge__doc12--draft-\d{8}-\d{6}\.md$", p)]
     check("draft written with the timestamped name", len(paths) == 1, str(list(state.drafts)))
     draft = state.drafts[paths[0]] if paths else ""
-    check("banner: comment stamp with prompt version + job version (no transport stamp)",
-          draft.startswith("<!-- machine-generated test-plan draft — TestPlanGen prompt v1.13")
-          and " · pipeline/testplangen.mjs v" in draft.splitlines()[0]
-          and "provider" not in draft.splitlines()[0], draft[:200])
+    # phase 5: a draft is a DOCUMENT — the model's H1, the metadata
+    # table, then the callouts (no HTML banner, no prose provenance)
+    check("draft head: the model's H1 leads the file",
+          draft.startswith("# Test Plan — Route Merge\n"), draft[:200])
+    check("draft head: the metadata table carries Doc, Status, Source, Generated",
+          "| **Doc** | draft · Test Plan · Pro |" in draft
+          and "| **Status** | Draft — unreviewed |" in draft
+          and f"| **Source** | [Route Merge](<{url_story}>) · story 12 |" in draft
+          and re.search(r"\| \*\*Generated\*\* \| pipeline/testplangen\.mjs v[\d.]+ · prompt v1\.13 · \d{4}-", draft)
+          is not None, draft[:700])
+    check("draft head: no HTML banner comment, no duplicated surface facts",
+          "<!-- machine-generated" not in draft
+          and "| **Release** |" not in draft and "| **People** |" not in draft,
+          draft[:700])
+    probe = subprocess.run(
+        ["node", "-e",
+         "import('./pipeline/lib/sidecarmeta.mjs').then(m=>{const fs=require('node:fs');"
+         "console.log(JSON.stringify(m.readMeta(fs.readFileSync(process.argv[1],'utf8'))))})",
+         write_tmp(draft)],
+        capture_output=True, text=True, cwd=REPO)
+    meta = json.loads(probe.stdout or "{}") if probe.returncode == 0 else {}
+    check("draft head: sidecarmeta.readMeta reads a draft",
+          meta.get("doc_id") is None and meta.get("doc_kind") == "Test Plan"
+          and str(meta.get("status", "")).startswith("Draft")
+          and str(meta.get("generated", "")).startswith("pipeline/testplangen.mjs v")
+          and meta.get("source_url") == url_story
+          and meta.get("title") == "Test Plan — Route Merge",
+          probe.stdout + probe.stderr[-300:])
+    gen_at, warn_at = draft.find("| **Generated** |"), draft.find("[!WARNING]")
     check("banner: WARNING alert + review contract",
           "> [!WARNING]" in draft and "resolve all [VERIFY] items" in draft
-          and f"Source sidecar: <{url_story}>" in draft, draft[:600])
+          and gen_at >= 0 and warn_at > gen_at, draft[:900])
     check("draft body present, clean draft unannotated",
-          GOOD_DRAFT.strip() in draft and "[!IMPORTANT]" not in draft
-          and "<!-- verify:" not in draft, draft[:600])
+          GOOD_DRAFT.split("\n", 1)[1].strip() in draft and "[!IMPORTANT]" not in draft
+          and "lrs:verify" not in draft, draft[:600])
     check("manual run prints progress lines on stderr, stdout contract intact",
           "progress: Doc Index snapshot" in r.stderr
           and "progress: calling the model" in r.stderr
@@ -1090,7 +1115,8 @@ def main():
           state.ant_last_body.get("max_tokens") == 32000, str(state.ant_last_body.get("max_tokens")))
     check("anthropic draft written",
           len(state.drafts) == 1
-          and list(state.drafts.values())[0].startswith("<!-- machine-generated test-plan draft"),
+          and list(state.drafts.values())[0].startswith("# Test Plan — ")
+          and "| **Generated** | pipeline/testplangen.mjs v" in list(state.drafts.values())[0],
           str(list(state.drafts)))
     check("generation request streams (llm.mjs v1.6 — SSE, not one long silent call)",
           state.ant_last_body.get("stream") is True, str(state.ant_last_body)[:200])
@@ -1151,7 +1177,7 @@ def main():
           sorted(js_bad["failures"]) == sorted(py_labels_bad),
           f"py={sorted(py_labels_bad)} js={sorted(js_bad['failures'])}")
     check("agreement: the seeded findings surface",
-          "TC-N1 carries a **Trace:** line" in js_bad["failures"]
+          "TC-N01 carries a **Trace:** line" in js_bad["failures"]
           and any("row 3" in x for x in js_bad["failures"]), str(js_bad["failures"]))
     cond_md = os.path.join(tmp, "cond.md")
     cond_bad_md = os.path.join(tmp, "cond_bad.md")
@@ -1178,7 +1204,7 @@ def main():
     check("strict refuses a bad draft", r.returncode != 0, r.stdout)
     check("strict lists the findings on stderr",
           "draft verifier (strict)" in r.stderr
-          and "TC-N1 carries a **Trace:** line" in r.stderr, r.stderr)
+          and "TC-N01 carries a **Trace:** line" in r.stderr, r.stderr)
     check("strict writes nothing", state.drafts == {}, str(list(state.drafts)))
 
     # annotate: write with the findings block
@@ -1187,11 +1213,14 @@ def main():
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("annotate: IMPORTANT findings block after the banner",
           "> [!IMPORTANT]" in draft
-          and "> - TC-N1 carries a **Trace:** line" in draft
-          and re.search(r"<!-- verify: \d+ finding", draft) is not None, draft[:900])
-    check("annotate: block sits between banner and body",
-          draft.index("[!WARNING]") < draft.index("[!IMPORTANT]")
-          < draft.index("# Test Plan"), "")
+          and "> - TC-N01 carries a **Trace:** line" in draft
+          and re.search(r"<!-- lrs:verify findings=\d+", draft) is not None, draft[:900])
+    order = [draft.find(x) for x in ("[!WARNING]", "[!IMPORTANT]", "## Overview")]
+    check("annotate: block sits between the callout and the body",
+          all(i >= 0 for i in order) and order == sorted(order), str(order))
+    check("annotate: the Status row counts the findings",
+          re.search(r"\| \*\*Status\*\* \| Draft — \d+ verifier finding\(s\) \|", draft)
+          is not None, draft[:600])
     summ = summary_of(r.stdout)
     check("annotate: verify counter in Gen_summary",
           re.match(r"^\d+-findings$", summ.get("verify", "")), str(summ))
@@ -1274,7 +1303,7 @@ def main():
     state.drafts.clear()
     invented = GOOD_DRAFT + (
         '| 4 | "the system shall notify the supervisor by email" '
-        "(invented) | TC-P1 |\n")
+        "(invented) | TC-P01 |\n")
     state.gen_text = wrap(invented)
     r = run_job(cfg_main, ["--story", "12", "--live"])
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
@@ -1283,11 +1312,12 @@ def main():
           and "Coverage Map row 4 requirement not traceable" in draft, draft[:800])
     state.drafts.clear()
     tooled = GOOD_DRAFT.replace(
-        "- [ ] 1. Run Merge Routes on route A and route B.\n\n"
-        "**Expected Result:** Exactly one route remains after the merge.",
-        "- [ ] 1. Run Merge Routes on route A and route B.\n"
-        "- [ ] 2. Run Quantum Route Wizard on the merged route.\n\n"
-        "**Expected Result:** Exactly one route remains after the merge.")
+        "  - [ ] 1. Run Merge Routes on route A and route B.\n"
+        "- **Expected Result:** Exactly one route remains after the merge.",
+        "  - [ ] 1. Run Merge Routes on route A and route B.\n"
+        "  - [ ] 2. Run Quantum Route Wizard on the merged route.\n"
+        "- **Expected Result:** Exactly one route remains after the merge.")
+    assert "Quantum Route Wizard" in tooled
     state.gen_text = wrap(tooled)
     r = run_job(cfg_main, ["--story", "12", "--live"])
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
@@ -1315,15 +1345,15 @@ def main():
           r.returncode == 0 and "enumerated item" not in draft, draft[:900])
     state.drafts.clear()
     exemplar_only = GOOD_DRAFT.replace(
-        "**Trace:** \"Edits to a locked route must be denied\" — story conflict "
+        "- **Trace:** \"Edits to a locked route must be denied\" — story conflict "
         "statement; exemplar pattern — multi-user denial case (Plan A).",
-        "**Trace:** exemplar pattern — multi-user denial case (Plan A).")
+        "- **Trace:** exemplar pattern — multi-user denial case (Plan A).")
     state.gen_text = wrap(exemplar_only)
     r = run_job(cfg_main, ["--story", "12", "--live"])
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     check("exemplar-only Trace flagged (the story-first rule)",
           r.returncode == 0
-          and "TC-N1 Trace cites no story statement" in draft, draft[:900])
+          and "TC-N01 Trace cites no story statement" in draft, draft[:900])
     state.drafts.clear()
     verify_titled = GOOD_DRAFT.replace(
         "- [ ] [VERIFY: minimum network configuration for setup]",
@@ -1645,16 +1675,16 @@ def main():
           r.returncode == 0 and summ.get("pinnedEx") == "1"
           and summ.get("exemplars") == "2"
           and ex.count("--- EXEMPLAR: plan-a__doc21.md ---") == 1
-          and "pinned exemplars [21]" in draft.splitlines()[0],
+          and "pinned exemplars [21]" in draft,
           r.stdout + draft[:200])
 
     # ---- leg 13: figures in cases (v1.6 / prompt v1.10) ------------
     print("== leg 13: figures")
     fig_draft = GOOD_DRAFT.replace(
-        "**Trace:** \"the merge must preserve measures\" — story requirement.",
-        "**Trace:** \"the merge must preserve measures\" — story requirement.\n"
+        "- **Trace:** \"the merge must preserve measures\" — story requirement.",
+        "- **Trace:** \"the merge must preserve measures\" — story requirement.\n"
         "\n"
-        "**Figure:** " + story_fig)
+        "- **Figure:** " + story_fig)
     # contract untouched: a Figure-line draft passes BOTH lints
     fig_md = os.path.join(tmp, "fig.md")
     with open(fig_md, "w") as f:
@@ -1673,7 +1703,7 @@ def main():
           r.returncode == 0 and "grounding: figure link" not in draft,
           draft[:900])
     check("cited link absolutized to the sidecar library media URL",
-          "**Figure:** ![Routes R1 and R2 before the merge](" + abs_link + ")"
+          "- **Figure:** ![Routes R1 and R2 before the merge](" + abs_link + ")"
           in draft and "../media/" not in draft, draft[:1500])
     check("Gen_summary counts the rewritten figure links",
           summary_of(r.stdout).get("figures") == "1", r.stdout)
@@ -1684,7 +1714,7 @@ def main():
     # file name is not encoded twice
     state.drafts.clear()
     state.gen_text = wrap(fig_draft.replace("**Figure:** " + story_fig,
-                                            "**Figure:** " + story_fig + "\n\n**Figure:** " + story_fig2))
+                                            "- **Figure:** " + story_fig + "\n\n**Figure:** " + story_fig2))
     r = run_job(cfg_main, ["--story", "12", "--live"])
     draft = list(state.drafts.values())[0] if len(state.drafts) == 1 else ""
     abs_link2 = SITE_URL + "/LRS%20Doc%20Index/media/12-route-merge/fig-02-slide-03-merge%20result.svg"
@@ -1778,7 +1808,7 @@ def main():
           r.returncode == 0 and "## Reference Documentation" in draft
           and "- [Enable Referent Fields (Location Referencing)—ArcGIS Pro]("
               + ref_url + ")" in draft
-          and "web references [<" + ref_url + ">]" in draft.splitlines()[0],
+          and "web references [<" + ref_url + ">]" in draft,
           draft[:400] + r.stderr[-400:])
     r = run_job(cfg_main, ["--story", "12", "--dry-run"])
     check("a run without web pins stamps webRefs=0",
@@ -1806,11 +1836,12 @@ def main():
          if f.startswith("testplangen-draft-") and f.endswith(".md")),
         key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))
     latest = open(os.path.join(work_dir, local_drafts[-1]), encoding="utf-8").read()
-    check("banner comment carries the case-routed ids",
-          "· case-routed [22]" in latest.splitlines()[0], latest[:300])
+    check("the Generated row carries the case-routed ids",
+          re.search(r"(?m)^\| \*\*Generated\*\* \|.*· case-routed \[22\] \|$", latest)
+          is not None, latest[:600])
     check("Existing Test Cases addendum with the anchor deep link",
           summ.get("existingCases") == "1" and "## Existing Test Cases" in latest
-          and "| Plan B (doc 22) | TC-P1 Realign | Positive | `" + REPO_ID + "#7777` | "
+          and "| Plan B (doc 22) | TC-P01 Realign | Positive | `" + REPO_ID + "#7777` | "
               "[open](<" + url_b + "#tc-p1-realign>) |" in latest
           and latest.index("## Issue Trace") < latest.index("## Existing Test Cases"),
           latest[-900:])
@@ -2014,7 +2045,7 @@ def main():
     check("figures inputs: PlanTitle from the draft H1, Draft = the verified body, FiguresCap = the default 6",
           state.fig_last_inputs.get("PlanTitle") == "Test Plan — Route Merge"
           and state.fig_last_inputs.get("FiguresCap") == "6"
-          and "### TC-P1 — Merge preserves measures" in state.fig_last_inputs.get("Draft", "")
+          and "### TC-P01 — Merge preserves measures" in state.fig_last_inputs.get("Draft", "")
           and "[[[DRAFT" not in state.fig_last_inputs.get("Draft", "")
           and "machine-generated" not in state.fig_last_inputs.get("Draft", ""),
           json.dumps(state.fig_last_inputs)[:300])
@@ -2030,31 +2061,35 @@ def main():
     latest_name = local_drafts[-1]
     latest = open(os.path.join(work_dir, latest_name), encoding="utf-8").read()
     stem = latest_name[:-3]
-    svg_p1 = os.path.join(work_dir, f"{stem}--fig-tc-p1.svg")
-    svg_n1 = os.path.join(work_dir, f"{stem}--fig-tc-n1.svg")
+    svg_p1 = os.path.join(work_dir, f"{stem}--fig-tc-p01.svg")
+    svg_n1 = os.path.join(work_dir, f"{stem}--fig-tc-n01.svg")
     check("dry run: the two grounded figures land beside the local draft copy",
           os.path.isfile(svg_p1) and os.path.isfile(svg_n1)
-          and not os.path.isfile(os.path.join(work_dir, f"{stem}--fig-tc-p2.svg")),
+          and not os.path.isfile(os.path.join(work_dir, f"{stem}--fig-tc-p02.svg")),
           str(sorted(f for f in os.listdir(work_dir) if "--fig-" in f)))
     check("Generated Figures addendum: links, captions, rules, drop reasons, not-illustrated",
           "## Generated Figures" in latest
           and f"![R1 (0–100) and R2 (0–60) before the merge" in latest
-          and f"](<{stem}--fig-tc-p1.svg>)" in latest and f"](<{stem}--fig-tc-n1.svg>)" in latest
+          and f"](<{stem}--fig-tc-p01.svg>)" in latest and f"](<{stem}--fig-tc-n01.svg>)" in latest
           and "(route-measure, rule R2)" in latest and "(sequence, rule R5)" in latest
           and "2 rendered of 4 proposed, 2 dropped" in latest
-          and "- TC-P2 — TC-P2: panel 1 route R1 ticks 0.1 would draw 1000 ticks — at most 60; "
-              "TC-P2: panel 1 event E1 at 999 is not a value" in latest
-          and "- TC-P9 — TC-P9: not a TC case in the plan" in latest
-          and "Not illustrated: TC-P2 (X2 — geometry equals TC-P1)" in latest,
+          and "- TC-P02 — TC-P02: panel 1 route R1 ticks 0.1 would draw 1000 ticks — at most 60; "
+              "TC-P02: panel 1 event E1 at 999 is not a value" in latest
+          and "- TC-P09 — TC-P09: not a TC case in the plan" in latest
+          and "Not illustrated: TC-P02 (X2 — geometry equals TC-P01)" in latest,
           latest[latest.find("## Generated Figures"):][:1200])
     check("addendum sits after Existing Test Cases / Issue Trace, body untouched",
           latest.index("## Generated Figures") > latest.index("## Issue Trace")
-          and FIG_DRAFT.strip() in latest, "")
+          and FIG_DRAFT.split("\n", 1)[1].strip() in latest, "")
+    check("every deterministic addendum carries its lrs:addendum mark",
+          '<!-- lrs:addendum name=issue-trace -->' in latest
+          and '<!-- lrs:addendum name=generated-figures -->' in latest
+          and '<!-- lrs:addendum name=existing-cases -->' in latest, latest[-1200:])
     s_p1 = open(svg_p1, encoding="utf-8").read()
     s_n1 = open(svg_n1, encoding="utf-8").read()
     check("route-measure SVG: SlideFigures vocabulary, both panels, routes, events, extend mark",
           s_p1.startswith('<svg xmlns="http://www.w3.org/2000/svg"')
-          and "<title>TC-P1 — Merge preserves measures</title>" in s_p1
+          and "<title>TC-P01 — Merge preserves measures</title>" in s_p1
           and ".route{stroke:#16302F" in s_p1 and 'marker id="ar"' in s_p1
           and s_p1.count('class="ln route"') == 3
           and ">Before<" in s_p1 and ">After<" in s_p1
@@ -2094,7 +2129,7 @@ def main():
     # hollow dot, the route's prior 0–100 behind the extension, and
     # the renderer's own legend key
     split_spec = json.dumps({
-        "case": "TC-P3", "rule": "R2", "kind": "route-measure", "title": "TC-P3 — Split", "caption": "cap",
+        "case": "TC-P03", "rule": "R2", "kind": "route-measure", "title": "TC-P03 — Split", "caption": "cap",
         "panels": [
             {"label": "Before", "routes": [{"id": "R1", "from": 0, "to": 100, "calibration": [0, 50, 100]}],
              "events": [{"id": "E1", "route": "R1", "from": 10, "to": 40}, {"id": "E3", "route": "R1", "from": 60, "to": 80},
@@ -2124,65 +2159,65 @@ def main():
         "# Test Plan — Route Retirement\n\n## Setup / Prerequisites\n\nRoutes:\n\n"
         "| Route | From | To | Status | Effective |\n| --- | --- | --- | --- | --- |\n"
         "| R1 | 0 | 100 | Active | 2026-01-01 |\n\n## Positive Tests\n\n"
-        "### TC-P1 — Retire route R1 on a date\n**Steps:**\n"
-        "- [ ] 1. Open the Retire Route pane.\n- [ ] 2. In the Route Name field enter R1.\n"
-        "- [ ] 3. Set Retire Date to 2026-03-01.\n- [ ] 4. Check Retire dependent events.\n- [ ] 5. Click Run.\n\n"
-        "**Expected Result:** R1 is Active until 2026-03-01 and Retired after it; a time-aware query at "
-        "2026-06-01 returns no route. The Results table lists Route, Status, Effective.\n\n**Trace:** \"x\" — story.\n\n"
-        "### TC-P2 — Edit types by event type\n**Steps:**\n"
-        "- [ ] 1. For each of Point event and Line event, run Split, Merge and Retire.\n\n"
-        "**Expected Result:** Split is ok for Line event and denied for Point event; Merge is ok for both.\n\n"
-        "**Trace:** \"y\" — story.\n\n## Negative Tests\n\n"
-        "### TC-N1 — Reactivating a Retired route is denied\n**Steps:**\n"
-        "- [ ] 1. Select the Retired route R1.\n- [ ] 2. Attempt to set Status to Active.\n"
-        "- [ ] 3. Confirm the Reactivate dialog.\n\n"
-        "**Expected Result:** The change is denied with \"Retired routes cannot be reactivated\"; R1 stays Retired.\n\n"
-        "**Trace:** \"z\" — story.\n")
+        "### TC-P01 — Retire route R1 on a date { #tc-p01 }\n- **Steps:**\n"
+        "  - [ ] 1. Open the Retire Route pane.\n  - [ ] 2. In the Route Name field enter R1.\n"
+        "  - [ ] 3. Set Retire Date to 2026-03-01.\n  - [ ] 4. Check Retire dependent events.\n  - [ ] 5. Click Run.\n\n"
+        "- **Expected Result:** R1 is Active until 2026-03-01 and Retired after it; a time-aware query at "
+        "2026-06-01 returns no route. The Results table lists Route, Status, Effective.\n- **Trace:** \"x\" — story.\n\n"
+        "### TC-P02 — Edit types by event type { #tc-p02 }\n- **Steps:**\n"
+        "  - [ ] 1. For each of Point event and Line event, run Split, Merge and Retire.\n\n"
+        "- **Expected Result:** Split is ok for Line event and denied for Point event; Merge is ok for both.\n\n"
+        "- **Trace:** \"y\" — story.\n\n## Negative Tests\n\n"
+        "### TC-N01 — Reactivating a Retired route is denied { #tc-n01 }\n- **Steps:**\n"
+        "  - [ ] 1. Select the Retired route R1.\n  - [ ] 2. Attempt to set Status to Active.\n"
+        "  - [ ] 3. Confirm the Reactivate dialog.\n\n"
+        "- **Expected Result:** The change is denied with \"Retired routes cannot be reactivated\"; R1 stays Retired.\n\n"
+        "- **Trace:** \"z\" — story.\n")
     variety_specs = [
-        {"case": "TC-P1", "rule": "R4", "kind": "timeline", "title": "TC-P1 — Retire route R1 on a date", "caption": "c",
+        {"case": "TC-P01", "rule": "R4", "kind": "timeline", "title": "TC-P01 — Retire route R1 on a date", "caption": "c",
          "axis": ["2026-01-01", "2026-03-01", "2026-06-01"],
          "spans": [{"id": "R1", "label": "R1 Active", "from": "2026-01-01", "to": "2026-03-01", "tone": "cool"},
                    {"id": "R1", "label": "R1 Retired", "from": "2026-03-01", "tone": "red"}],
          "points": [{"id": "R1", "label": "query → no route", "at": "2026-06-01", "tone": "green"}],
          "legend": ["R1 Active → Retired"]},
-        {"case": "TC-N1", "rule": "R6", "kind": "state", "title": "TC-N1 — Reactivating", "caption": "c",
+        {"case": "TC-N01", "rule": "R6", "kind": "state", "title": "TC-N01 — Reactivating", "caption": "c",
          "states": [{"id": "Active", "tone": "green"}, {"id": "Retired", "tone": "red"}],
          "transitions": [{"from": "Active", "to": "Retired", "label": "retire @ 2026-03-01", "outcome": "ok"},
                          {"from": "Retired", "to": "Active", "label": "reactivate", "outcome": "denied", "step": 2},
                          {"from": "Retired", "to": "Retired", "label": "stays Retired"}],
          "initial": "Active"},
-        {"case": "TC-P2", "rule": "R7", "kind": "matrix", "title": "TC-P2 — Edit types", "caption": "c",
+        {"case": "TC-P02", "rule": "R7", "kind": "matrix", "title": "TC-P02 — Edit types", "caption": "c",
          "rows": [{"id": "Point event"}, {"id": "Line event"}], "cols": [{"id": "Split"}, {"id": "Merge"}, {"id": "Retire"}],
          "rowsTitle": "event type", "colsTitle": "edit",
          "cells": [{"row": "Point event", "col": "Split", "value": "denied"}, {"row": "Line event", "col": "Split", "value": "ok"},
                    {"row": "Point event", "col": "Merge", "value": "ok"}, {"row": "Line event", "col": "Merge", "value": "ok"}]},
-        {"case": "TC-P1", "rule": "R8", "kind": "wireframe", "title": "TC-P1 — Retire route R1 on a date", "caption": "c",
+        {"case": "TC-P01", "rule": "R8", "kind": "wireframe", "title": "TC-P01 — Retire route R1 on a date", "caption": "c",
          "frame": {"title": "Retire Route", "kind": "dialog"},
          "controls": [{"kind": "field", "label": "Route Name", "value": "R1", "step": 2, "tone": "cool"},
                       {"kind": "dropdown", "label": "Retire Date", "value": "2026-03-01", "step": 3},
                       {"kind": "checkbox", "label": "Retire dependent events", "value": "checked", "step": 4},
                       {"kind": "table", "label": "Results", "columns": ["Route", "Status", "Effective"]},
                       {"kind": "button", "label": "Run", "step": 5, "tone": "green"}]},
-        {"case": "TC-N1", "rule": "R9", "kind": "workflow", "title": "TC-N1 — Reactivating", "caption": "c",
+        {"case": "TC-N01", "rule": "R9", "kind": "workflow", "title": "TC-N01 — Reactivating", "caption": "c",
          "nodes": [{"id": "s", "kind": "start", "label": "Retired R1"}, {"id": "n1", "kind": "step", "label": "Set Status to Active", "step": 2},
                    {"id": "d", "kind": "decision", "label": "Route Retired?"}, {"id": "n3", "kind": "step", "label": "Confirm Reactivate", "step": 3},
                    {"id": "e1", "kind": "end", "label": "denied", "tone": "red"}, {"id": "e2", "kind": "end", "label": "Status Active"}],
          "edges": [{"from": "s", "to": "n1"}, {"from": "n1", "to": "d"}, {"from": "d", "to": "e1", "label": "yes"},
                    {"from": "d", "to": "n3", "label": "no"}, {"from": "n3", "to": "e2"}, {"from": "e1", "to": "s", "label": "stays Retired", "style": "dashed"}]},
         # each of these must DROP with the named finding
-        {"case": "TC-P1", "rule": "R4", "kind": "timeline", "title": "TC-P1 — x", "caption": "c", "axis": ["2026-01-01", "2027-12-31"],
+        {"case": "TC-P01", "rule": "R4", "kind": "timeline", "title": "TC-P01 — x", "caption": "c", "axis": ["2026-01-01", "2027-12-31"],
          "spans": [{"id": "R1", "from": "2026-01-01", "to": "2027-12-31"}]},
-        {"case": "TC-N1", "rule": "R6", "kind": "state", "title": "TC-N1 — x", "caption": "c",
+        {"case": "TC-N01", "rule": "R6", "kind": "state", "title": "TC-N01 — x", "caption": "c",
          "states": [{"id": "Active"}, {"id": "Archived"}], "transitions": [{"from": "Active", "to": "Archived"}]},
-        {"case": "TC-P2", "rule": "R7", "kind": "matrix", "title": "TC-P2 — x", "caption": "c",
+        {"case": "TC-P02", "rule": "R7", "kind": "matrix", "title": "TC-P02 — x", "caption": "c",
          "rows": [{"id": "Point event"}, {"id": "Curve event"}], "cols": [{"id": "Split"}, {"id": "Merge"}],
          "cells": [{"row": "Point event", "col": "Split", "value": "denied"}, {"row": "Point event", "col": "Split", "value": "ok"}]},
-        {"case": "TC-P1", "rule": "R8", "kind": "wireframe", "title": "TC-P1 — x", "caption": "c", "frame": {"title": "Retire Route"},
+        {"case": "TC-P01", "rule": "R8", "kind": "wireframe", "title": "TC-P01 — x", "caption": "c", "frame": {"title": "Retire Route"},
          "controls": [{"kind": "field", "label": "Route Name", "value": "R7"}, {"kind": "slider", "label": "Run"}, {"kind": "button", "label": "Cancel"}]},
-        {"case": "TC-N1", "rule": "R9", "kind": "workflow", "title": "TC-N1 — x", "caption": "c",
+        {"case": "TC-N01", "rule": "R9", "kind": "workflow", "title": "TC-N01 — x", "caption": "c",
          "nodes": [{"id": "a", "kind": "start", "label": "x"}, {"id": "b", "kind": "loop", "label": "y"}, {"id": "c", "kind": "end", "label": "z"}],
          "edges": [{"from": "a", "to": "b"}, {"from": "b", "to": "q"}]},
-        {"case": "TC-P1", "rule": "R10", "kind": "sketch", "title": "TC-P1 — x", "caption": "c"},
+        {"case": "TC-P01", "rule": "R10", "kind": "sketch", "title": "TC-P01 — x", "caption": "c"},
     ]
     script = (
         "import { draftCorpus, verifyFigureSpec, renderFigureSvg, KINDS } from %r;\n"
@@ -2271,9 +2306,9 @@ def main():
         log = json.load(f)
     check("run log records every spec: files for rendered, findings for dropped",
           log.get("figures", {}).get("proposed") == 4
-          and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P1", "TC-N1"]
-          and [x["case"] for x in log["figures"]["dropped"]] == ["TC-P2", "TC-P9"]
-          and any(a["path"].endswith("--fig-tc-p1.svg") for a in log.get("plan") or []),
+          and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P01", "TC-N01"]
+          and [x["case"] for x in log["figures"]["dropped"]] == ["TC-P02", "TC-P09"]
+          and any(a["path"].endswith("--fig-tc-p01.svg") for a in log.get("plan") or []),
           json.dumps(log.get("figures"))[:400])
     # live: the SVGs upload as the draft's siblings with the svg content type
     state.drafts.clear()
@@ -2282,12 +2317,12 @@ def main():
     svgs = sorted(pth for pth in state.drafts if pth.endswith(".svg"))
     check("live run: draft + two SVG siblings uploaded",
           r.returncode == 0 and len(md) == 1 and len(svgs) == 2
-          and svgs[0] == md[0][:-3] + "--fig-tc-n1.svg" and svgs[1] == md[0][:-3] + "--fig-tc-p1.svg"
+          and svgs[0] == md[0][:-3] + "--fig-tc-n01.svg" and svgs[1] == md[0][:-3] + "--fig-tc-p01.svg"
           and state.drafts[svgs[1]].startswith("<svg"), str(list(state.drafts)))
     live_draft = state.drafts[md[0]] if md else ""
     check("live addendum links the site URL of each figure",
           f"](<{SITE_URL}/Shared Documents/Test Plan Drafts/" in live_draft
-          and "--fig-tc-p1.svg>)" in live_draft, live_draft[-800:])
+          and "--fig-tc-p01.svg>)" in live_draft, live_draft[-800:])
     # fail soft: a reply without sentinels skips the pass, the draft still lands
     state.fig_text = "I could not decide."
     state.drafts.clear()
@@ -2311,7 +2346,7 @@ def main():
     check("anthropic figures pass (testplangen.figures: true): prompt verbatim, inputs substituted",
           r.returncode == 0 and state.ant_calls == ant_before + 2 and state.fig_calls == fig_before + 1
           and "SELECTION RULES" in prompt and "<<<DRAFT BEGIN>>>" in prompt
-          and "### TC-P1 — Merge preserves measures" in prompt
+          and "### TC-P01 — Merge preserves measures" in prompt
           and "X6 BUDGET WITH VARIETY: at most 6 figures per plan" in prompt
           and not re.search(r"\{(PlanTitle|Draft|FiguresCap)\}", prompt)
           and state.ant_last_body.get("max_tokens") == 24000
@@ -2337,8 +2372,8 @@ def main():
     log = json.load(open(json.loads(r.stdout.splitlines()[0])["logFile"], encoding="utf-8"))
     check("figuresCap 1: the prompt asks for at most 1, the pass keeps the first grounded spec and drops the second with X6",
           r.returncode == 0 and "X6 BUDGET WITH VARIETY: at most 1 figures per plan" in prompt and summ.get("genFigures") == "1/4"
-          and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P1"]
-          and any(d["case"] == "TC-N1" and "over the figures cap (testplangen.figuresCap 1)" in d["findings"][0] for d in log["figures"]["dropped"]),
+          and [x["case"] for x in log["figures"]["rendered"]] == ["TC-P01"]
+          and any(d["case"] == "TC-N01" and "over the figures cap (testplangen.figuresCap 1)" in d["findings"][0] for d in log["figures"]["dropped"]),
           (summ.get("genFigures"), json.dumps(log.get("figures"))[:300]))
     cfg_fig_bad = write_cfg("config-fig-bad.json",
                             llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
@@ -2382,7 +2417,7 @@ def main():
           "still waiting on the model" not in err
           and "progress:" not in r.stdout and "--- draft:" not in r.stdout
           and summ.get("genFigures") == "2/4"
-          and FIG_DRAFT.strip() in [v for k, v in state.drafts.items() if k.endswith(".md")][0],
+          and FIG_DRAFT.split("\n", 1)[1].strip() in [v for k, v in state.drafts.items() if k.endswith(".md")][0],
           r.stdout[:300])
     # without --stream: no thinking key, no echo
     r = run_job(cfg_fig_ant, ["--story", "12", "--dry-run"])
@@ -2404,7 +2439,7 @@ def main():
           and summ.get("relatedCases") == "2" and summ.get("relatedPlans") == "1"
           and int(summ.get("relCaseChars", "0")) == len(rc), rc[:500] + str(summ))
     check("related cases: section text sliced from the plan's sidecar, heading line dropped",
-          "**Expected Result:** Merge keeps measures succeeds." in rc and "**Steps:**" in rc
+          "- **Expected Result:** Merge keeps measures succeeds." in rc and "**Steps:**" in rc
           and rc.count("### TC-P02") == 1, rc[:600])
     check("related cases: the untagged case rides the title index only; in-lane plans excluded",
           "Other cases in this plan: TC-P01 — Create a route" in rc
@@ -2458,7 +2493,7 @@ def main():
     # dry run — the mock cannot know it, so the reply is patched per
     # run from the Figures input the job sent (a stand-in for a model
     # copying the file name from its input)
-    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "PLACEHOLDER")
+    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p01.svg", "PLACEHOLDER")
     # first pass: learn the stem from the Figures input echoed in the prompt
     ant_before, fig_before, deck_before = state.ant_calls, state.fig_calls, state.deck_calls
     r = run_job(cfg_deck, ["--story", "12", "--dry-run", "--figures", "--deck"])
@@ -2468,9 +2503,9 @@ def main():
           r.returncode == 0 and state.ant_calls == ant_before + 3 and state.fig_calls == fig_before + 1
           and state.deck_calls == deck_before + 1 and state.ant_last_body.get("max_tokens") == 4321
           and "DECK SPECIFICATION VOCABULARY" in prompt, r.stdout + r.stderr[-400:])
-    m_fig = re.search(r"- (\S+--fig-tc-p1\.svg) — generated figure for TC-P1", prompt)
+    m_fig = re.search(r"- (\S+--fig-tc-p01\.svg) — generated figure for TC-P01", prompt)
     check("the deck prompt's Figures input names this run's generated figures and the draft's cases",
-          m_fig is not None and "### TC-P1 — Merge preserves measures" in prompt
+          m_fig is not None and "### TC-P01 — Merge preserves measures" in prompt
           and "## Generated Figures" in prompt and "## Issue Trace" in prompt
           and not re.search(r"\{(PlanTitle|Draft|Figures)\}", prompt), prompt[prompt.find("The figures"):][:300])
     check("a spec placing an uncited figure: that slide dropped, the deck still lands (deck=4/6)",
@@ -2480,8 +2515,8 @@ def main():
     # reply from the Figures line of the prompt it just received
     def patched_text():
         p = mock.prompt_text(state.ant_last_body)
-        mm = re.search(r"- (\S+--fig-tc-p1\.svg) — generated figure", p)
-        return DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", mm.group(1) if mm else "none.svg")
+        mm = re.search(r"- (\S+--fig-tc-p01\.svg) — generated figure", p)
+        return DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p01.svg", mm.group(1) if mm else "none.svg")
     state.deck_text_fn = patched_text
     r = run_job(cfg_deck, ["--story", "12", "--dry-run", "--figures", "--deck"])
     summ = summary_of(r.stdout)
@@ -2510,7 +2545,7 @@ def main():
         s3 = z.read("ppt/slides/slide3.xml").decode("utf-8")
         n1 = z.read("ppt/notesSlides/notesSlide1.xml").decode("utf-8") if "ppt/notesSlides/notesSlide1.xml" in names else ""
     check("the generated figure is embedded from memory as a native shape group on the figure slide",
-          "<p:grpSp>" in s4 and 'name="TC-P1 — Merge preserves measures"' in s4 and "not embedded" not in s4, s4[:300])
+          "<p:grpSp>" in s4 and 'name="TC-P01 — Merge preserves measures"' in s4 and "not embedded" not in s4, s4[:300])
     check("the case slide carries the pulled steps + expected result; the notes page carries the notes",
           "Run Merge Routes on route R1 and route R2." in s3 and "spans 0 to 160" in s3
           and "Open with the story." in n1, "")
@@ -2557,7 +2592,7 @@ def main():
     cfg_deck_cb = write_cfg("config-deck-carbon.json",
                             llm={"apiKey": "mock-key", "baseUrl": base, "maxRetries": 0},
                             testplangen={"neighborCap": 8, "deckDesign": "carbon", "deckTheme": "dark"})
-    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
+    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p01.svg", "none.svg")
     r = run_job(cfg_deck_cb, ["--story", "12", "--dry-run", "--deck"])
     latest_cb = sorted((f for f in os.listdir(work_dir) if f.startswith("testplangen-draft-") and f.endswith("--deck.pptx")),
                        key=lambda f: os.path.getmtime(os.path.join(work_dir, f)))[-1]
@@ -2571,14 +2606,14 @@ def main():
           and log_cb.get("deck", {}).get("design") == "IBM Carbon (dark)" and "on the IBM Carbon (dark) design system" in latest_md_cb,
           (r.stderr[-300:], json.dumps(log_cb.get("deck"))[:200]))
     # the deck call's three inputs by name (from the Python layer's dump)
-    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p1.svg", "none.svg")
+    state.deck_text = DECK_REPLY_WRAPPED.replace("{STEM}--fig-tc-p01.svg", "none.svg")
     cfg_deck_in = write_cfg("config-deck-inputs.json")
     deck_before = state.deck_calls
     r = run_job(cfg_deck_in, ["--story", "12", "--dry-run", "--deck"])
     check("deck pass: PlanTitle + Draft + Figures inputs by name",
           r.returncode == 0 and state.deck_calls == deck_before + 1
           and state.deck_last_inputs.get("PlanTitle") == "Test Plan — Route Merge"
-          and "### TC-P1" in state.deck_last_inputs.get("Draft", "")
+          and "### TC-P01" in state.deck_last_inputs.get("Draft", "")
           and state.deck_last_inputs.get("Figures", "").startswith("(none)")
           and summary_of(r.stdout).get("deck") == "4/6", json.dumps(state.deck_last_inputs)[:200] + r.stderr[-200:])
 

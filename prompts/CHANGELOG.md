@@ -5,6 +5,19 @@ front-matter format (2026-09-06) are the ones the old file headers
 carried; their per-round notes are in `docs/history/patches-README.md`,
 `docs/changelog/testplangen.md` and `docs/changelog/pipeline.md`.
 
+- 2026-09-06 — testplan_draft **1.14.0**: one case block, shared with
+  the document catalog (`docs/design/Markdown_Layout_Plan.md` phase
+  3). Case ids are two digits per lane (`TC-P01`, not `TC-P1`); the
+  heading ends with its own anchor (`{ #tc-p01 }`) so a link to a case
+  survives a retitle; and the four field lines are bold-labelled
+  BULLETS in a fixed order — `- **Steps:**` with the checkbox list
+  nested one level under it, then `- **Expected Result:**`,
+  `- **Trace:**`, `- **Figure:**`. Same content, same rules, same
+  sections: this is the shape casegrammar writes for every indexed
+  plan, so a drafted case and an indexed one read and index
+  identically. Gated by `tests/check_draft_coverage.py` assert 9 and
+  its `pipeline/lib/draftlint.mjs` port (contract v1.8); `--baseline`
+  skips it for a draft written before the bump.
 - 2026-09-06 — docindex_classify **3.0.0**: the classifier runs on
   Claude Opus 5 through the Anthropic API with schema-pinned JSON
   output (`schemas/docindex_classify.json`); the AI Builder model that
