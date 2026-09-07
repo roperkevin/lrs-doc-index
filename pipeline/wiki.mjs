@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.4 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.5 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -25,12 +25,30 @@
  *   docs/cases/index.md           every test case, by plan, anchored
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
+ *   docs/stylesheets/extra.css  the site's own styling (v1.4)
  *
  * Bodies keep their sidecar shape (the same relative
  * `../media/<stem>/` links resolve, because pages sit one folder deep
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v1.4 — the site's formatting. The page MARKDOWN is unchanged (the
+ * metadata table, the catalog tables and the browse lines are the
+ * contract `tests/check_wiki.py` pins); what changed is how MkDocs
+ * dresses it. The render now writes `docs/stylesheets/extra.css` and
+ * `mkdocs.yml` points at it: the metadata table becomes a key/value
+ * card (header row hidden, labels muted, a fixed label column), each
+ * `### TC-…` case heading a card of its own, the catalog tables fill
+ * the column with the short columns kept on one line. The front
+ * page's Browse section is a grid of cards (`md_in_html` +
+ * `pymdownx.emoji` for the icons). The nav groups the kinds under
+ * Documents, the catalogs under Catalogs and cases / figures under
+ * Extracted, which `navigation.sections` shows as sidebar headings.
+ * The search plugin (always on) gets Material's recommended
+ * tokenizer separator, so `TC-P01`, `ps-location-referencing#4855`
+ * and `merge-events` are found by their parts, and `search.share`.
+ * The palette follows the OS preference and still toggles.
  *
  * v1.3 (Markdown_Layout_Plan.md phase 5) — with `wiki.draftsDir` set,
  * the Test Plan Drafts folder is published too: one page per draft
@@ -39,7 +57,7 @@
  * draft is unreviewed machine output, so it joins NO catalog — not
  * kinds, not keywords, not test cases — and its page says so.
  *
- * v1.4 (figure presentation) — the corpus's pictures get the three
+ * v1.5 (figure presentation) — the corpus's pictures get the three
  * reader affordances the raw site never had. `mkdocs.yml` gains
  * `markdown_captions` (a body image renders as `<figure>` with its alt
  * text as a visible `<figcaption>` — the figure index's own
@@ -116,7 +134,7 @@ import { toMkDocs, normalize, splitAnchor } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.3";
+export const WIKI_VERSION = "v1.5";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -159,7 +177,7 @@ export function uniqueSlug(id, taken) {
 
 const stripComments = (s) => String(s ?? "").replace(/<!--[\s\S]*?-->/g, "");
 const cell = (s) => String(s ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
-/** One value inside a double-quoted HTML attribute (v1.4, the figure
+/** One value inside a double-quoted HTML attribute (v1.5, the figure
  *  catalog's raw-HTML thumbnails). */
 const attr = (s) => cell(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const mdEscape = (s) => String(s ?? "").replace(/([\\`*_[\]<>])/g, "\\$1");
@@ -291,9 +309,9 @@ function draftPage(d, model) {
     ["Source", story],
     ["Generated", cell(m.generated) || "—"],
   ];
-  const out = [`# ${mdEscape(m.title || d.stem)}`, "", "| Field | Value |", "| --- | --- |"];
+  const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
-  out.push("");
+  out.push("", META_CLOSE, "");
   // everything under the draft's own metadata table — the callouts
   // included; "unreviewed" is the most important thing on the page —
   // translated for MkDocs like any other body
@@ -454,6 +472,10 @@ const rel = (fromPage, toPage) => {
 const link = (fromPage, toPage, text) => `[${linkText(text)}](${rel(fromPage, toPage).replace(/ /g, "%20")})`;
 const catalogPage = (section, value) => `${section}/${pageName(value)}.md`;
 
+// v1.4: the metadata table's wrapper (md_in_html), see EXTRA_CSS
+const META_OPEN = '<div class="doc-meta" markdown>';
+const META_CLOSE = "</div>";
+
 function docRow(fromPage, d) {
   const title = d.meta.title || d.stem;
   return `| ${link(fromPage, d.page, title)} | ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${cell(d.summary).slice(0, 160) || "—"} |`;
@@ -462,7 +484,11 @@ const DOC_TABLE_HEAD = "| Document | Product | Release | Edited | Summary |\n|--
 const byEdited = (a, b) => String(b.meta.last_edited).localeCompare(String(a.meta.last_edited));
 
 function docTable(fromPage, docs) {
-  return [DOC_TABLE_HEAD, ...docs.slice().sort(byEdited).map((d) => docRow(fromPage, d))].join("\n");
+  // v1.4: wrapped so the stylesheet can keep the short columns on one
+  // line (md_in_html renders the table inside the div)
+  return ['<div class="doc-table" markdown>', "",
+    DOC_TABLE_HEAD, ...docs.slice().sort(byEdited).map((d) => docRow(fromPage, d)),
+    "", "</div>"].join("\n");
 }
 
 function docPage(d, model) {
@@ -500,12 +526,14 @@ function docPage(d, model) {
     ["Keywords", d.keywords.length ? cat("keywords", [...new Set(d.keywords)]) : ""],
     ["Tools", m.tools.length ? cat("tools", m.tools) : ""],
   ];
-  const out = [`# ${mdEscape(m.title || d.stem)}`, "", "| Field | Value |", "| --- | --- |"];
+  // v1.4: the table sits in a div the stylesheet turns into a card;
+  // the rows themselves are the format 3.1 contract and do not change
+  const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v, always] of rows) {
     if (!always && (v === "" || v === "—")) continue;
     out.push(`| **${k}** | ${v === "" ? "—" : v} |`);
   }
-  out.push("");
+  out.push("", META_CLOSE, "");
   if (d.summary) out.push("## Summary", "", normalize(toMkDocs(d.summary)), "");
   if (d.related.length) {
     out.push("## Related documents", "");
@@ -585,7 +613,7 @@ function figuresPage(model) {
       const img = f.link.replace(/^\.\.\//, "../").replace(/ /g, "%20");
       const href = `${rel(p, d.page).replace(/ /g, "%20")}#${f.anchor}`;
       // raw HTML, not `[![alt](img){ width=160 }](href)`: markdown_captions
-      // (v1.4) would turn the image into a <figure>, which cannot sit
+      // (v1.5) would turn the image into a <figure>, which cannot sit
       // inside a link — the anchor empties and the figure escapes it —
       // and would move `width=160` onto the <figure>. Raw HTML keeps the
       // link, the width and the alt, and takes no caption or panzoom box.
@@ -609,11 +637,24 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
     `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
     "| Kind | Documents |", "|---|---|"];
   for (const [kind, docs] of model.kinds) out.push(`| ${link(p, `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind)} | ${docs.length} |`);
-  out.push("", "## Browse", "",
-    `- ${link(p, "keywords/index.md", "Keywords")} (${model.keywords.size}) · ${link(p, "tools/index.md", "Tools")} (${model.tools.size}) · ${link(p, "products/index.md", "Products")} (${model.products.size}) · ${link(p, "releases/index.md", "Releases")} (${model.releases.size})`,
-    `- ${link(p, "people/index.md", "People")} (${model.people.size}) · ${link(p, "issues/index.md", "Issues")} (${model.issues.size})`,
-    `- ${link(p, "cases/index.md", "Test cases")} · ${link(p, "figures/index.md", "Figures")} · ${link(p, "recent.md", "Recent")} · ${link(p, "about.md", "About")}` +
-      (draftCount ? `\n- ${link(p, "drafts/index.md", "Test-plan drafts")} (${draftCount}) — machine-generated, unreviewed` : ""), "");
+  // v1.4: one Material card per catalog (md_in_html grid, emoji
+  // icons); the link text and the count are what the gate looks for
+  const card = (icon, target, title, count, blurb) => [
+    `-   :material-${icon}:{ .lg .middle } ${link(p, target, title)}${count == null ? "" : ` (${count})`}`, "",
+    "    ---", "", `    ${blurb}`, ""];
+  out.push("", "## Browse", "", '<div class="grid cards" markdown>', "",
+    ...card("tag-multiple", "keywords/index.md", "Keywords", model.keywords.size, "The catalog's vocabulary after curation — an alias lands on its canonical term's page."),
+    ...card("hammer-wrench", "tools/index.md", "Tools", model.tools.size, "Official tool names the documents mention."),
+    ...card("package-variant", "products/index.md", "Products", model.products.size, "Product lines, as detected from names and text."),
+    ...card("rocket-launch", "releases/index.md", "Releases", model.releases.size, "Target releases the documents state."),
+    ...card("account-group", "people/index.md", "People", model.people.size, "Authors, product engineers and developers named on the documents."),
+    ...card("bug", "issues/index.md", "Issues", model.issues.size, "devtopia issues the documents reference, each with the documents that cite it."),
+    ...card("clipboard-check", "cases/index.md", "Test cases", null, "Every test case the test plans carry, by plan, linking its section."),
+    ...card("image-multiple", "figures/index.md", "Figures", null, "Every figure the bodies carry, by document."),
+    ...card("history", "recent.md", "Recent", null, "The most recently edited source documents."),
+    ...(draftCount ? card("file-document-edit", "drafts/index.md", "Test-plan drafts", draftCount, "Machine-generated, **unreviewed** — not catalog documents.") : []),
+    ...card("information", "about.md", "About", null, "What this site is, what it is not, and where each page's content comes from."),
+    "</div>", "");
   return out.join("\n");
 }
 
@@ -632,9 +673,13 @@ function aboutPage(model, opts) {
 
 function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
   const y = (s) => JSON.stringify(String(s));
-  const nav = [`  - Home: index.md`];
-  for (const [kind] of model.kinds) nav.push(`  - ${y(kindFolders[kind] || kind)}: ${pageName(kindFolders[kind] || kind)}/index.md`);
-  for (const [t, s] of [["Keywords", "keywords"], ["Tools", "tools"], ["Products", "products"], ["Releases", "releases"], ["People", "people"], ["Issues", "issues"], ["Test cases", "cases"], ["Figures", "figures"]]) nav.push(`  - ${t}: ${s}/index.md`);
+  // v1.4: three sections (navigation.sections shows them as sidebar
+  // headings) around the flat pages
+  const nav = [`  - Home: index.md`, "  - Documents:"];
+  for (const [kind] of model.kinds) nav.push(`      - ${y(kindFolders[kind] || kind)}: ${pageName(kindFolders[kind] || kind)}/index.md`);
+  nav.push("  - Catalogs:");
+  for (const [t, s] of [["Keywords", "keywords"], ["Tools", "tools"], ["Products", "products"], ["Releases", "releases"], ["People", "people"], ["Issues", "issues"]]) nav.push(`      - ${t}: ${s}/index.md`);
+  nav.push("  - Extracted:", "      - Test cases: cases/index.md", "      - Figures: figures/index.md");
   if (draftCount) nav.push("  - Drafts: drafts/index.md");
   nav.push("  - Recent: recent.md", "  - About: about.md");
   return [
@@ -643,14 +688,29 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "docs_dir: docs",
     "theme:",
     "  name: material",
-    "  features: [navigation.sections, navigation.top, search.suggest, search.highlight, content.tabs.link, toc.follow]",
+    "  icon:",
+    "    logo: material/book-open-page-variant",
+    "  features: [navigation.sections, navigation.top, navigation.tracking, navigation.footer, search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, toc.follow]",
     "  palette:",
-    "    - scheme: default",
+    '    - media: "(prefers-color-scheme: light)"',
+    "      scheme: default",
+    "      primary: indigo",
+    "      accent: indigo",
     "      toggle: { icon: material/brightness-7, name: Dark }",
-    "    - scheme: slate",
+    '    - media: "(prefers-color-scheme: dark)"',
+    "      scheme: slate",
+    "      primary: indigo",
+    "      accent: indigo",
     "      toggle: { icon: material/brightness-4, name: Light }",
+    "extra_css:",
+    "  - stylesheets/extra.css",
+    `copyright: ${y(`Rendered by pipeline/wiki.mjs ${WIKI_VERSION} from the LRS Doc Index catalog — a render, not a source.`)}`,
     "plugins:",
-    "  - search",
+    "  - search:",
+    // Material's recommended tokenizer: split on punctuation and
+    // camelCase too, so TC-P01, ps-location-referencing#4855 and
+    // merge-events are found by their parts
+    `      separator: '[\\s\\-,:!=\\[\\]()"\`/]+|\\.(?!\\d)|&[lg]t;|(?!\\b)(?=[A-Z][a-z])'`,
     "  - glightbox",
     "  - panzoom:",
     // the plugin's own `images: true` is read off the GLOBAL config by
@@ -665,11 +725,15 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "  - tables",
     "  - markdown_captions",
     "  - attr_list",
+    "  - md_in_html",
     "  - admonition",
     "  - fenced_code",
     "  - sane_lists",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
+    "  - pymdownx.emoji:",
+    "      emoji_index: !!python/name:material.extensions.emoji.twemoji",
+    "      emoji_generator: !!python/name:material.extensions.emoji.to_svg",
     "  - toc:",
     "      permalink: true",
     '      toc_depth: "2-3"',
@@ -697,6 +761,73 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "",
   ].filter((l) => l !== "").join("\n");
 }
+
+/** docs/stylesheets/extra.css (v1.4). Material's own variables
+ *  throughout, so the light and the slate palette both work. */
+const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every render */
+:root { --lrs-radius: 0.4rem; }
+
+/* tables fill the column (Material inlines them); the long column wraps */
+.md-typeset .md-typeset__table { display: block; }
+.md-typeset .md-typeset__table table:not([class]) { display: table; width: 100%; }
+
+/* the document header: a key/value card, not a two-column table */
+.doc-meta .md-typeset__scrollwrap { margin: 0 0 1.6em; }
+.doc-meta table:not([class]) {
+  font-size: 0.72rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--lrs-radius);
+  background: var(--md-code-bg-color);
+  overflow: hidden;
+}
+.doc-meta table:not([class]) thead { display: none; }
+.doc-meta table:not([class]) td {
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+  padding: 0.5em 0.9em;
+  vertical-align: top;
+}
+.doc-meta table:not([class]) tr:first-child td { border-top: 0; }
+.doc-meta table:not([class]) td:first-child {
+  width: 6.5em;
+  white-space: nowrap;
+  padding-top: 0.7em;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.doc-meta table:not([class]) td:first-child strong { font-weight: 600; }
+
+/* a test case is a card: the heading carries the case id */
+.md-typeset h3[id^="tc-"] {
+  margin: 1.8em 0 0.6em;
+  padding: 0.45em 0.8em;
+  border-left: 0.2rem solid var(--md-primary-fg-color);
+  border-radius: 0 var(--lrs-radius) var(--lrs-radius) 0;
+  background: var(--md-code-bg-color);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.md-typeset h3[id^="tc-"] .headerlink { font-weight: 400; }
+
+/* catalog tables: the short columns stay on one line, the summary is quiet */
+.doc-table td:nth-child(2), .doc-table td:nth-child(3), .doc-table td:nth-child(4) { white-space: nowrap; }
+.doc-table td:last-child { color: var(--md-default-fg-color--light); }
+
+/* the front page's cards */
+.md-typeset .grid.cards > ul > li { border-radius: var(--lrs-radius); }
+.md-typeset .grid.cards > ul > li > p:first-child { font-weight: 600; }
+.md-typeset .grid.cards > ul > li > hr { margin: 0.6em 0; }
+
+/* related documents: a list of links, the reason in a lighter ink */
+.md-typeset h2#related-documents + ul { list-style: none; margin-left: 0; }
+.md-typeset h2#related-documents + ul > li {
+  margin: 0 0 0.4em;
+  padding: 0.35em 0.8em;
+  border-left: 0.2rem solid var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+}
+`;
 
 const PAGES_WORKFLOW = `name: pages
 on:
@@ -823,6 +954,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   put("recent.md", recentPage(model, opts.recent));
   put("about.md", aboutPage(model, opts));
   put("index.md", frontPage(model, kindFolders, opts, drafts.length));
+  write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
   write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts.length));
   write(outDir, ".github/workflows/pages.yml", PAGES_WORKFLOW.replace("BRANCH", opts.branch));
   write(outDir, "README.md", WIKI_README(opts));

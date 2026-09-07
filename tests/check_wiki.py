@@ -416,7 +416,7 @@ def main():
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
           and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
-    # v1.4: the three figure-presentation plugins. panzoom takes
+    # v1.5: the three figure-presentation plugins. panzoom takes
     # include_selectors, NOT `images: true` — mkdocs-panzoom-plugin 0.5.2
     # reads that key off the global config, so it never fires.
     check("mkdocs.yml wires captions, lightbox and pan/zoom for figures",
@@ -448,7 +448,7 @@ def main():
           and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures) |" in cases
           and "#tc-n01) |" in cases, cases)
     figs = page("figures/index.md")
-    # v1.4: raw HTML, not markdown — markdown_captions would turn a
+    # v1.5: raw HTML, not markdown — markdown_captions would turn a
     # markdown image into a <figure>, emptying the anchor around it and
     # moving `width=160` onto the figure. Raw HTML keeps link + width +
     # alt and takes neither a caption nor a panzoom box.
