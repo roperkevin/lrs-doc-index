@@ -1,5 +1,5 @@
 /**
- * mdlayout.mjs v1.0 — the markdown layout kernel
+ * mdlayout.mjs v1.2 — the markdown layout kernel
  * (docs/design/Markdown_Layout_Plan.md §4.1, phase 2's inhabitant).
  *
  * The project writes ONE markdown dialect — GitHub-flavored: ATX
@@ -14,7 +14,10 @@
  * so the translation lives HERE and runs in that lane only — the files
  * on disk stay dialect-neutral:
  *
- *   > [!WARNING] …        ->  !!! warning  + indented body
+ *   - **Group:** Normal   ->  Group / `:   Normal` (a definition list)
+ *   > [!WARNING]          ->  !!! warning  + indented body
+ *   > [!WARNING] Title    ->  !!! warning "Title"
+ *   > [!NOTE]-            ->  ??? note       (collapsed; `+` opens it)
  *   <RouteID>             ->  &lt;RouteID>   (raw text python-markdown
  *                             would otherwise swallow as an HTML tag)
  *   trailing {measure}    ->  \{measure}     (attr_list is enabled)
@@ -22,13 +25,57 @@
  *
  * Code spans and fenced blocks are never touched: `<` renders itself
  * there, and escaping would show the entity.
+ *
+ * v1.2 — definition lists
+ * (https://squidfunk.github.io/mkdocs-material/reference/lists/). The
+ * case grammar writes its fields as bold-label bullets — `- **Group:**
+ * Normal Routes` — because GFM has no definition list and GitHub, the
+ * SharePoint preview and `draft2docx` all read a bullet. MkDocs does
+ * have one, and a case's fields ARE definitions, so the lane
+ * translates them; `defList()` composes one for the pages a job
+ * writes. Nothing on disk changes shape.
+ *
+ * v1.1 — the whole admonition vocabulary Material documents
+ * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/)
+ * is reachable from the dialect, and `admonition()` composes one
+ * directly for the pages a job WRITES for the wiki (no GitHub
+ * consumer, so no dialect constraint): every Material type and its
+ * aliases, a custom title, `""` for no title at all, the collapsible
+ * `???`/`???+` forms and the `inline` modifier.
  */
 
-/** GFM alert type -> python-markdown admonition class. */
+/**
+ * GFM / Obsidian-style alert type -> python-markdown admonition class.
+ *
+ * The first five are the dialect's own vocabulary and their mapping is
+ * fixed (GFM's IMPORTANT is an aside, not a hint; its CAUTION is the
+ * strongest of the five). The rest are Material's remaining types and
+ * their documented aliases, read tolerantly: a source document that
+ * carries `> [!EXAMPLE]` gets the right block instead of a blockquote
+ * whose first line reads "[!EXAMPLE]". `draft` is the site's own
+ * custom type (its colour and icon live in the wiki's extra.css).
+ */
 const ADMONITION = {
+  // GFM's five
   NOTE: "note", TIP: "tip", IMPORTANT: "info",
   WARNING: "warning", CAUTION: "danger",
+  // Material's remaining types and aliases
+  ABSTRACT: "abstract", SUMMARY: "abstract", TLDR: "abstract",
+  INFO: "info", TODO: "info",
+  HINT: "tip",
+  SUCCESS: "success", CHECK: "success", DONE: "success",
+  QUESTION: "question", HELP: "question", FAQ: "question",
+  ATTENTION: "warning",
+  FAILURE: "failure", FAIL: "failure", MISSING: "failure",
+  DANGER: "danger", ERROR: "danger",
+  BUG: "bug", EXAMPLE: "example",
+  QUOTE: "quote", CITE: "quote",
+  // the site's own
+  DRAFT: "draft",
 };
+
+/** Every class an alert can name, for the consumers that style them. */
+export const ADMONITION_TYPES = [...new Set(Object.values(ADMONITION))].sort();
 
 /** Fenced code blocks and inline code spans, as [text, isCode] runs. */
 function codeRuns(text) {
@@ -85,32 +132,125 @@ export function escapeBodyText(text) {
 }
 
 /**
- * GFM alerts -> admonition blocks. Only the top-level form the
- * emitters write (`> [!TYPE]` on its own line, then `> ` body lines);
- * a blockquote that is not an alert is left as a blockquote.
+ * One admonition block, composed (Material's reference syntax):
+ *
+ *   admonition("warning", "Body.", { title: "Careful" })
+ *     -> !!! warning "Careful"  + indented body
+ *   admonition("note", "…", { collapse: "open" })   -> ???+ note
+ *   admonition("info", "…", { title: "", inline: "end" })
+ *     -> !!! info inline end ""
+ *
+ * `title` omitted keeps the type's own title ("Warning"); `title: ""`
+ * removes the title bar entirely. `collapse` is "" (a plain block),
+ * "collapsed" (`???`, needs pymdownx.details) or "open" (`???+`).
+ * `inline` is "" , "start" or "end".
+ *
+ * This is for text a JOB writes for the MkDocs lane only. Anything
+ * that also has to render on GitHub or in the SharePoint preview
+ * writes a GFM alert and lets `alertsToAdmonitions` translate it.
+ */
+export function admonition(type, body = "", opts = {}) {
+  const { title, collapse = "", inline = "" } = opts;
+  const marker = collapse === "open" ? "???+" : collapse ? "???" : "!!!";
+  const cls = (ADMONITION[String(type ?? "").toUpperCase()] || String(type ?? "note"))
+    .toLowerCase().replace(/[^a-z0-9_-]/g, "") || "note";
+  const mods = inline === "start" || inline === true ? " inline" : inline === "end" ? " inline end" : "";
+  const named = title === undefined ? "" : ` "${String(title).replace(/"/g, "'")}"`;
+  const lines = String(body ?? "").split("\n").map((l) => (l.trim() === "" ? "" : `    ${l}`));
+  return [`${marker} ${cls}${mods}${named}`, "", ...lines, ""].join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * GFM alerts -> admonition blocks. The top-level form the emitters
+ * write (`> [!TYPE]` on its own line, then `> ` body lines), plus the
+ * two things Material can say and GFM's own marker cannot: text after
+ * the marker becomes the block's title, and a `-` / `+` suffix makes
+ * it collapsible (`???` / `???+`). A blockquote that is not an alert,
+ * and an alert naming a type nothing maps, are left as blockquotes.
  */
 export function alertsToAdmonitions(text) {
   const lines = String(text ?? "").split("\n");
   const out = [];
   for (let i = 0; i < lines.length; i++) {
-    const m = /^>\s*\[!([A-Za-z]+)\]\s*$/.exec(lines[i]);
-    if (!m || !ADMONITION[m[1].toUpperCase()]) { out.push(lines[i]); continue; }
+    const m = /^>\s*\[!([A-Za-z]+)\]([-+]?)[ \t]*(.*)$/.exec(lines[i]);
+    const cls = m && ADMONITION[m[1].toUpperCase()];
+    if (!cls) { out.push(lines[i]); continue; }
     const body = [];
     let j = i + 1;
     for (; j < lines.length && /^>/.test(lines[j]); j++) {
       body.push(lines[j].replace(/^>[ \t]?/, ""));
     }
-    out.push(`!!! ${ADMONITION[m[1].toUpperCase()]}`, "");
-    for (const b of body) out.push(b.trim() === "" ? "" : `    ${b}`);
-    out.push("");
+    const named = m[3].trim();
+    out.push(admonition(cls, body.join("\n"), {
+      // `> [!NOTE] ""` is Material's "no title bar"; bare text is a title
+      title: named === '""' ? "" : named || undefined,
+      collapse: m[2] === "-" ? "collapsed" : m[2] === "+" ? "open" : "",
+    }));
     i = j - 1;
   }
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
+/** A bold-label field bullet: `- **Expected Result:** A lock is held.` */
+const FIELD_LINE = /^-[ \t]+\*\*(.+?):\*\*[ \t]*(.*)$/;
+
+/**
+ * One definition list, composed. `defList([["Doc", "the row id"], …])`
+ * -> `Doc` / `:   the row id`. A multi-line definition keeps its own
+ * shape, indented under the marker.
+ */
+export function defList(pairs) {
+  const out = [];
+  for (const [term, def] of pairs) {
+    // python-markdown reads a run of terms as ONE list only when a
+    // blank line separates the groups; without it the second term is
+    // swallowed into the first definition
+    if (out.length) out.push("");
+    out.push(String(term ?? "").trim());
+    const lines = String(def ?? "").split("\n").filter((l, i) => i === 0 || l.trim() !== "");
+    out.push(`:   ${(lines[0] || "").trim()}`);
+    for (const l of lines.slice(1)) out.push(`    ${l.replace(/^[ \t]{1,4}/, "")}`);
+  }
+  return out.join("\n");
+}
+
+/**
+ * A run of the case grammar's field bullets -> a definition list. The
+ * fields of a test case (Group, Case, Steps, Expected Result) are
+ * definitions, not list items; GFM has no way to say so, MkDocs does,
+ * and this is the lane that can tell the difference.
+ *
+ * Only a CONTIGUOUS run at the top level converts, and lines indented
+ * under a field — the task list under `- **Steps:**` — travel with it
+ * into the definition. Anything else, a plain bullet list included, is
+ * left exactly as it is.
+ */
+export function fieldsToDefList(text) {
+  const lines = String(text ?? "").split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!FIELD_LINE.test(lines[i])) { out.push(lines[i]); continue; }
+    const fields = [];
+    for (; i < lines.length; i++) {
+      const m = FIELD_LINE.exec(lines[i]);
+      if (m) { fields.push([m[1].trim(), m[2].trim() ? [m[2].trim()] : []]); continue; }
+      // an indented line after a field belongs to that field — the
+      // task list under `- **Steps:**` travels into the definition
+      if (fields.length && /^[ \t]+\S/.test(lines[i])) {
+        fields[fields.length - 1][1].push(lines[i].replace(/^[ \t]{1,4}/, ""));
+        continue;
+      }
+      break;
+    }
+    i--;
+    out.push(defList(fields.map(([term, body]) => [term, body.join("\n")])), "");
+  }
+  return out.join("\n");
+}
+
 /** The MkDocs lane's full translation of a stretch of sidecar text. */
 export function toMkDocs(text) {
-  return escapeBodyText(alertsToAdmonitions(text));
+  return escapeBodyText(alertsToAdmonitions(fieldsToDefList(text)));
 }
 
 /** One trailing newline, no trailing whitespace, no blank-line runs. */

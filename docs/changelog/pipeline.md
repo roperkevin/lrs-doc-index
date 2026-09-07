@@ -1,5 +1,128 @@
 # Local sweep — release notes
 
+## Lists: a case's fields are definitions (2026-09-07)
+
+`wiki` v1.8, `mdlayout` v1.2.
+[Material's lists reference](https://squidfunk.github.io/mkdocs-material/reference/lists/)
+was mostly already in place — task lists shipped in phase 2 with
+`custom_checkbox`, and ordered / unordered lists need no extension —
+so this is the one thing that was missing, `def_list`, put where it
+earns its place.
+
+- **A test case's fields render as definitions.** The case grammar
+  writes `- **Group:** Normal Routes`, `- **Steps:**`,
+  `- **Expected Result:** …` as bold-label bullets, and it writes them
+  that way because GFM has no definition list: GitHub, the SharePoint
+  preview and `draft2docx` all read a bullet. MkDocs does have one and
+  a case's fields ARE definitions, so `mdlayout.fieldsToDefList()`
+  translates them in that lane only. The task list under `Steps`
+  travels into its definition, checkboxes intact. Nothing on disk
+  changes shape — the same rule as the alerts.
+- **Only a contiguous run of field bullets converts.** A plain bullet
+  list — the related-documents list, a list extracted out of a source
+  document — is left exactly as it was.
+- **The fields are styled like the metadata card**: a quiet uppercase
+  label over its value, so a case block and the document header speak
+  the same visual language.
+- **About's provenance list is composed as a definition list**
+  (`mdlayout.defList()`), which is what it always was in prose.
+
+**`clickable_checkbox` is deliberately not enabled.** Material offers
+it, and it is the wrong thing here: this site is a *render* of the
+catalog, so a tick would not survive a reload, and a draft's whole
+premise is that a Product Engineer still has to review every case. A
+checkbox that looks like it records progress and does not is worse
+than one that plainly does not. About now says so on the page.
+
+Gate: `tests/check_wiki.py` 68 checks, six new, with the `mkdocs build
+--strict` legs run and the HTML checked — one `<dl>` per case block,
+the task list nested in the `Steps` definition, and the def list
+rendering correctly inside a collapsible admonition. No backfill.
+
+## Data tables that sort (2026-09-07)
+
+`wiki` v1.7.
+[Material's data-tables reference](https://squidfunk.github.io/mkdocs-material/reference/data-tables/)
+applied to the catalog, which is mostly tables: the kind catalogs, the
+keyword / tool / product / release / people / issue indexes, the cases,
+Recent and the Drafts catalog.
+
+- **Every composed table sorts on a header click.** Ascending, then
+  descending, with the sibling headers reset and an arrow showing
+  which column is driving. Keyboard reachable (`Tab` to a header,
+  `Enter` or `Space`), and `aria-sort` carries the state for a screen
+  reader.
+- **Numbers sort as numbers, blanks sink.** A count column orders 3,
+  7, 12 rather than 12, 3, 7; the render's em dash — its "nothing to
+  say" — sorts to the bottom whichever way the column runs. The site's
+  dates are already ISO-ish (`2026-09-06 23:00`), so text order is
+  chronological order.
+- **Only the tables the render composes.** `.doc-table` and the new
+  `.sortable` wrapper. The metadata card is excluded — the stylesheet
+  hides its header row, so there is nothing to click — and so is any
+  table extracted out of a source document, whose first row may not be
+  a header at all.
+- **Count and ordinal columns are right-aligned** (`|---:|`), the
+  alignment syntax the same reference documents.
+
+**The one deviation, and why.** Material reaches sorting by loading
+`tablesort` from a public CDN. This site is served from a devtopia
+Pages build on the internal network, where an external script is the
+one thing that can fail silently — the tables would simply stop
+sorting, with nothing in the build to say so. So the render writes
+`docs/javascripts/tables.js` itself, the way it already writes
+`extra.css`: same behaviour, no runtime dependency, and nothing
+vendored into the repository.
+
+Gate: `tests/check_wiki.py` 62 checks, four new, with the `mkdocs
+build --strict` legs run. The behaviour was also driven in Chromium
+against a built page — numeric ordering, the descending toggle, blanks
+held last in both directions, sibling headers reset, and the keyboard
+path. No backfill.
+
+## Admonitions, the whole Material set (2026-09-07)
+
+`wiki` v1.6, `mdlayout` v1.1. Phase 2 taught the wiki five admonition
+types and no way to title one; the rest of
+[Material's reference set](https://squidfunk.github.io/mkdocs-material/reference/admonitions/)
+is now reachable from the dialect and from the pages the render
+composes.
+
+- **The whole alert vocabulary maps.** Beyond GFM's five (whose
+  meanings are fixed — `IMPORTANT` is an aside, `CAUTION` the
+  strongest), a body that carries `> [!EXAMPLE]`, `> [!QUESTION]`,
+  `> [!SUCCESS]`, `> [!FAILURE]`, `> [!ABSTRACT]`, `> [!BUG]` or
+  `> [!QUOTE]` — with Material's documented aliases — gets the right
+  block instead of a blockquote whose first line reads the marker.
+- **An alert can carry a title.** `> [!IMPORTANT] Reviewer, start
+  here` becomes `!!! info "Reviewer, start here"`. Before, a marker
+  with anything after it matched nothing and reached the page as raw
+  text. `> [!NOTE] ""` is Material's no-title form.
+- **Collapsible blocks.** A `-` or `+` after the marker gives `???`
+  (collapsed) or `???+` (open), and `mkdocs.yml` gains
+  `pymdownx.details` for them and `pymdownx.superfences` so a fenced
+  block nested inside an admonition still renders.
+- **`mdlayout.admonition()`** composes one directly. Text a job writes
+  *for the MkDocs lane only* has no GitHub or SharePoint consumer, so
+  it is not bound by the dialect — decision D2 constrains the files on
+  disk, not the render's own pages.
+- **The composed pages use them.** The draft page and the Drafts
+  catalog carry their unreviewed notice as a `!!! draft` block rather
+  than a bold run in a paragraph a reader skims past; About states the
+  render-not-a-source rule in an `!!! info` and folds its provenance
+  list into a `???+ note`; the front page opens Browse with a search
+  tip. `draft` is a custom type — its colour and icon are defined in
+  `extra.css`, the way Material documents — and every type picks up
+  the site's radius and a quieter body.
+
+Gate: `tests/check_wiki.py` 58 checks, six of them new and all failing
+on wiki v1.5, with the `mkdocs build --strict` legs run and the
+rendered HTML checked for `admonition draft`, `details.note[open]` and
+`details.example`. The gates that share `mdlayout` are green
+unchanged: `check_testplangen` 243, `check_local_sweep` 355,
+`check_caseindex` 107, `check_figureindex` 61, `check_draft2pptx` 43,
+`check_draft2docx` 24. No backfill — the site is regenerated on every
+run, and no file on disk changes shape.
 ## Figures get their reader affordances, and the sweep gate stops hanging (2026-09-07)
 
 `wiki` v1.5, `tests/check_local_sweep.py` hardening.

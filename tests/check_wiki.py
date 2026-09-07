@@ -28,6 +28,18 @@ carry two alias → canonical merges — then renders the site and proves:
      admonitions, `<placeholder>` and a trailing `{brace}` run are
      escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
      carries the extensions the dialect needs
+  5e. the v1.8 lists: the case grammar's bold-label field bullets
+     become a definition list (with the task list travelling into the
+     Steps definition), a plain bullet list is left alone, and
+     About's provenance list is composed as one
+  5d. the v1.7 data tables: the tables the render COMPOSES carry the
+     sortable wrapper and the sort script, count and ordinal columns
+     are right-aligned, and the metadata card is left alone
+  5c. the v1.6 admonitions: an alert's trailing text becomes the
+     block's title, Material's types beyond GFM's five map, a `-`
+     fold suffix makes the block collapsible, the composed pages
+     (draft, drafts catalog, About, front) carry their notices as
+     admonitions, and extra.css defines the custom `draft` type
   6. --push: a first push lands the tree on a bare repository; a
      second run over an unchanged library pushes nothing new; no
      wiki.repoUrl refuses with the fix; a missing library refuses
@@ -117,6 +129,12 @@ cut off at the first line break.
 > [!CAUTION]
 > A pass here is the described denial.
 > Never the edit succeeding.
+
+> [!IMPORTANT] Reviewer, start here
+> The merge path changed in 11.4.
+
+> [!EXAMPLE]-
+> A worked example the reader can unfold.
 
 Trailing text with a `code` span and a kept `<literal>` one.
 """
@@ -371,6 +389,13 @@ def main():
     check("GFM alerts become admonition blocks MkDocs renders",
           "!!! danger" in plan and "    A pass here is the described denial." in plan
           and "[!CAUTION]" not in plan, plan[-800:])
+    check("an alert's trailing text becomes the admonition's title",
+          '!!! info "Reviewer, start here"' in plan
+          and "    The merge path changed in 11.4." in plan
+          and "[!IMPORTANT]" not in plan, plan[-1400:])
+    check("a Material type beyond GFM's five maps, and a fold suffix collapses the block",
+          "??? example" in plan and "    A worked example the reader can unfold." in plan
+          and "[!EXAMPLE]" not in plan, plan[-1400:])
     check("a <placeholder> in body text is escaped, not swallowed as HTML",
           "&lt;RouteID>" in plan and "<RouteID>" not in plan, plan[-800:])
     check("a trailing brace run is escaped away from attr_list",
@@ -415,7 +440,65 @@ def main():
 
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
-          and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
+          and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg
+          and "- admonition" in ycfg and "pymdownx.details" in ycfg
+          and "pymdownx.superfences" in ycfg, ycfg)
+    # ---- 2d. the composed pages' own admonitions (v1.6) -----------
+    about = page("about.md")
+    front = page("index.md")
+    css = open(os.path.join(docs, "stylesheets", "extra.css"), encoding="utf-8").read()
+    check("the unreviewed notice is a draft admonition on both the draft page and its catalog",
+          '!!! draft "Unreviewed draft"' in dpage and "**unreviewed**" in dpage
+          and '!!! draft "Unreviewed"' in dindex, dpage[:1400])
+    check("About states the render-not-a-source rule in an admonition and folds its provenance list",
+          '!!! info "A render, not a source"' in about
+          and '???+ note "Where each page' in about
+          and "    Doc ids\n    :   Doc Index list row ids" in about, about)
+    check("the front page opens Browse with a search tip",
+          '!!! tip "Finding a document"' in front and "## Browse" in front, front[-1400:])
+    check("extra.css defines the custom draft admonition (colour and icon)",
+          "--md-admonition-icon--draft" in css
+          and ".md-typeset .admonition.draft" in css, css[:200])
+
+    # ---- 2e. data tables (v1.7) -----------------------------------
+    tjs = open(os.path.join(docs, "javascripts", "tables.js"), encoding="utf-8").read()
+    check("the render writes its own sort script and mkdocs.yml loads it",
+          "extra_javascript:" in ycfg and "- javascripts/tables.js" in ycfg
+          and ".doc-table table, .sortable table" in tjs
+          and "aria-sort" in tjs and "document$" in tjs, ycfg)
+    check("the composed catalog tables are wrapped for sorting",
+          '<div class="sortable" markdown>' in page("keywords/index.md")
+          and '<div class="sortable" markdown>' in front
+          and '<div class="sortable" markdown>' in page("cases/index.md")
+          and '<div class="sortable" markdown>' in dindex
+          and '<div class="doc-table" markdown>' in page("test-plans/index.md"),
+          page("keywords/index.md")[:400])
+    check("count and ordinal columns are right-aligned",
+          "| Keyword | Documents |\n|---|---:|" in page("keywords/index.md")
+          and "| Kind | Documents |\n|---|---:|" in front
+          and "| # | Case |\n|---:|---|" in page("cases/index.md"),
+          page("cases/index.md")[:500])
+    # ---- 2f. lists (v1.8) ------------------------------------------
+    check("mkdocs.yml enables def_list",
+          "- def_list" in ycfg and "clickable_checkbox" not in ycfg, ycfg)
+    check("a case's field bullets become a definition list",
+          "Group\n:   Normal Routes" in plan
+          and "Group\n:   Conflicts" in plan
+          and "- **Group:**" not in plan, plan[-1600:])
+    check("the task list travels into the Steps definition, still escaped",
+          "Steps\n:   - [ ] 1. Set &lt;RouteID> on the network" in plan
+          and "    - [ ] 2. Read the value in \\{measure}" in plan, plan[-1600:])
+    check("a plain bullet list is not a definition list",
+          "- [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue" in plan, plan[:2000])
+    check("the draft's own field bullets are translated too",
+          "Expected Result\n:   A lock is held." in dpage, dpage)
+    check("About's provenance list is a definition list, and says why nothing ticks",
+          "    Doc ids\n    :   Doc Index list row ids" in about
+          and "    The checkboxes\n    :   Rendered, never clickable." in about
+          and "- **Doc**" not in about, about)
+    check("the metadata card is never sortable (its header row is hidden)",
+          '<div class="sortable" markdown>' not in plan.split("\n---\n")[0]
+          and '<div class="doc-meta" markdown>' in plan, plan[:400])
     # v1.5: the three figure-presentation plugins. panzoom takes
     # include_selectors, NOT `images: true` — mkdocs-panzoom-plugin 0.5.2
     # reads that key off the global config, so it never fires.
@@ -426,6 +509,8 @@ def main():
     check("mkdocs.yml carries Material's mermaid custom fence",
           "pymdownx.superfences" in ycfg and "name: mermaid" in ycfg
           and "format: !!python/name:pymdownx.superfences.fence_code_format" in ycfg, ycfg)
+    check("pymdownx.superfences is configured once — never a duplicate yaml key",
+          ycfg.count("- pymdownx.superfences") == 1, ycfg)
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------

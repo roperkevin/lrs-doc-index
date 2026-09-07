@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.5 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.8 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -26,6 +26,7 @@
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
  *   docs/stylesheets/extra.css  the site's own styling (v1.4)
+ *   docs/javascripts/tables.js  click-to-sort for the tables (v1.7)
  *
  * Bodies keep their sidecar shape (the same relative
  * `../media/<stem>/` links resolve, because pages sit one folder deep
@@ -33,29 +34,44 @@
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
  *
- * v1.4 — the site's formatting. The page MARKDOWN is unchanged (the
- * metadata table, the catalog tables and the browse lines are the
- * contract `tests/check_wiki.py` pins); what changed is how MkDocs
- * dresses it. The render now writes `docs/stylesheets/extra.css` and
- * `mkdocs.yml` points at it: the metadata table becomes a key/value
- * card (header row hidden, labels muted, a fixed label column), each
- * `### TC-…` case heading a card of its own, the catalog tables fill
- * the column with the short columns kept on one line. The front
- * page's Browse section is a grid of cards (`md_in_html` +
- * `pymdownx.emoji` for the icons). The nav groups the kinds under
- * Documents, the catalogs under Catalogs and cases / figures under
- * Extracted, which `navigation.sections` shows as sidebar headings.
- * The search plugin (always on) gets Material's recommended
- * tokenizer separator, so `TC-P01`, `ps-location-referencing#4855`
- * and `merge-events` are found by their parts, and `search.share`.
- * The palette follows the OS preference and still toggles.
+ * v1.8 — lists
+ * (https://squidfunk.github.io/mkdocs-material/reference/lists/). Task
+ * lists shipped in phase 2 and ordered / unordered lists need nothing,
+ * so the delta is `def_list`: a test case's fields (Group, Case,
+ * Steps, Expected Result) are definitions, and the case grammar writes
+ * them as bold-label bullets only because GFM has no other way to say
+ * it. `mdlayout` v1.2 translates them in this lane, and About's
+ * provenance list is composed as one. Material's `clickable_checkbox`
+ * is deliberately NOT enabled — see the About page: this site is a
+ * render, a tick would not survive a reload, and the drafts' whole
+ * point is that a Product Engineer still has to review them.
  *
- * v1.3 (Markdown_Layout_Plan.md phase 5) — with `wiki.draftsDir` set,
- * the Test Plan Drafts folder is published too: one page per draft
- * plus a Drafts catalog, off by default. A draft is a document in the
- * same skeleton every sidecar carries, so `readMeta` reads one; but a
- * draft is unreviewed machine output, so it joins NO catalog — not
- * kinds, not keywords, not test cases — and its page says so.
+ * v1.7 — data tables
+ * (https://squidfunk.github.io/mkdocs-material/reference/data-tables/).
+ * Every table the render COMPOSES sorts on a header click, and the
+ * count and ordinal columns are right-aligned. Material reaches
+ * sorting by loading `tablesort` from a public CDN; this site is
+ * served from a devtopia Pages build on the internal network, where an
+ * external script is the one thing that fails silently, so the render
+ * writes `docs/javascripts/tables.js` itself — the same behaviour with
+ * no runtime dependency. Only composed tables sort (`.doc-table` and
+ * the new `.sortable` wrapper): never the metadata card, whose header
+ * row the stylesheet hides, and never a table extracted out of a
+ * source document, whose first row may not be a header at all.
+ *
+ * v1.6 — admonitions, the whole Material set
+ * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/).
+ * `mkdocs.yml` gains `pymdownx.details` (the collapsible `???` and
+ * `???+` forms; `pymdownx.superfences`, which Material pairs with it
+ * so a fenced block can nest inside an admonition, arrives with the
+ * mermaid fence in v1.5), `extra.css` gives every type the site's own radius and
+ * defines the custom `draft` type, and `lib/mdlayout.mjs` v1.1 reads
+ * the whole alert vocabulary out of a body — a title after the marker,
+ * a `-`/`+` fold suffix, and Material's types beyond GFM's five. The
+ * pages this job COMPOSES use them too: the drafts catalog's and the
+ * draft page's "unreviewed" notice are `!!! draft` blocks rather than
+ * a bold run in a paragraph, the front page opens with a search tip,
+ * and About's provenance list is a `???+ note` a reader can fold away.
  *
  * v1.5 (figure presentation) — the corpus's pictures get the three
  * reader affordances the raw site never had. `mkdocs.yml` gains
@@ -83,6 +99,30 @@
  * shape in one — and it captures the angle-bracket link form
  * `![alt](<path with spaces>)` brackets and all, producing a broken
  * `src`.)
+ *
+ * v1.4 — the site's formatting. The page MARKDOWN is unchanged (the
+ * metadata table, the catalog tables and the browse lines are the
+ * contract `tests/check_wiki.py` pins); what changed is how MkDocs
+ * dresses it. The render now writes `docs/stylesheets/extra.css` and
+ * `mkdocs.yml` points at it: the metadata table becomes a key/value
+ * card (header row hidden, labels muted, a fixed label column), each
+ * `### TC-…` case heading a card of its own, the catalog tables fill
+ * the column with the short columns kept on one line. The front
+ * page's Browse section is a grid of cards (`md_in_html` +
+ * `pymdownx.emoji` for the icons). The nav groups the kinds under
+ * Documents, the catalogs under Catalogs and cases / figures under
+ * Extracted, which `navigation.sections` shows as sidebar headings.
+ * The search plugin (always on) gets Material's recommended
+ * tokenizer separator, so `TC-P01`, `ps-location-referencing#4855`
+ * and `merge-events` are found by their parts, and `search.share`.
+ * The palette follows the OS preference and still toggles.
+ *
+ * v1.3 (Markdown_Layout_Plan.md phase 5) — with `wiki.draftsDir` set,
+ * the Test Plan Drafts folder is published too: one page per draft
+ * plus a Drafts catalog, off by default. A draft is a document in the
+ * same skeleton every sidecar carries, so `readMeta` reads one; but a
+ * draft is unreviewed machine output, so it joins NO catalog — not
+ * kinds, not keywords, not test cases — and its page says so.
  *
  * v1.2 (phase 4) — the page's metadata table follows format 3.1: the
  * identity and the provenance always print, a row the document has
@@ -130,11 +170,11 @@ import { createProgress, resolveProgress, secs, noProgress } from "./lib/progres
 import { bodySeamEnd } from "./lib/doclinks.mjs";
 import { caseSpans } from "./lib/caseindex.mjs";
 import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
-import { toMkDocs, normalize, splitAnchor } from "./lib/mdlayout.mjs";
+import { toMkDocs, normalize, splitAnchor, admonition, defList } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.5";
+export const WIKI_VERSION = "v1.8";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -312,6 +352,12 @@ function draftPage(d, model) {
   const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("", META_CLOSE, "");
+  // v1.6: the one thing a reader must not miss, in the site's own
+  // admonition type rather than a paragraph they can skim past
+  out.push(admonition("draft",
+    "Machine-generated and **unreviewed**: every case and every [VERIFY] item still needs a " +
+    "Product Engineer. This page is a render of the drafts folder — it is not a catalog " +
+    "document and joins no catalog.", { title: "Unreviewed draft" }), "");
   // everything under the draft's own metadata table — the callouts
   // included; "unreviewed" is the most important thing on the page —
   // translated for MkDocs like any other body
@@ -325,10 +371,12 @@ function draftPage(d, model) {
 function draftsIndex(drafts) {
   const p = "drafts/index.md";
   const out = ["# Test-plan drafts", "",
-    "Machine-generated test-plan drafts, newest first — **unreviewed**: " +
-    "every case and every [VERIFY] item still needs a Product Engineer. " +
-    "They are not catalog documents and do not appear in the kind, " +
-    "keyword or test-case catalogs.", "",
+    "Machine-generated test-plan drafts, newest first.", "",
+    admonition("draft",
+      "Every draft here is **unreviewed**: every case and every [VERIFY] item still " +
+      "needs a Product Engineer. Drafts are not catalog documents and do not appear " +
+      "in the kind, keyword or test-case catalogs.", { title: "Unreviewed" }), "",
+    '<div class="sortable" markdown>', "",
     "| Draft | Generated | Status | From |", "|---|---|---|---|"];
   for (const d of drafts) {
     out.push(
@@ -336,6 +384,7 @@ function draftsIndex(drafts) {
       `${cell(d.meta.status) || "—"} | ${cell(d.meta.source_file) || "—"} |`
     );
   }
+  out.push("", "</div>");
   return out.join("\n") + "\n";
 }
 
@@ -476,6 +525,11 @@ const catalogPage = (section, value) => `${section}/${pageName(value)}.md`;
 const META_OPEN = '<div class="doc-meta" markdown>';
 const META_CLOSE = "</div>";
 
+/** v1.7: wrap a composed table so `javascripts/tables.js` picks it up.
+ *  Only the tables the RENDER writes are sortable — a table extracted
+ *  out of a source document has no header row to trust. */
+const sortable = (lines) => ['<div class="sortable" markdown>', "", ...lines, "", "</div>"];
+
 function docRow(fromPage, d) {
   const title = d.meta.title || d.stem;
   return `| ${link(fromPage, d.page, title)} | ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${cell(d.summary).slice(0, 160) || "—"} |`;
@@ -551,12 +605,15 @@ function docPage(d, model) {
 
 function catalogIndex(section, title, groups, intro, model, kindLabel) {
   const p = `${section}/index.md`;
-  const out = [`# ${title}`, "", intro, "", "| " + kindLabel + " | Documents |", "|---|---|"];
+  const out = [`# ${title}`, "", intro, "",
+    '<div class="sortable" markdown>', "",
+    "| " + kindLabel + " | Documents |", "|---|---:|"];
   for (const [value, docs] of groups) {
     const extra = section === "keywords" && model.keywordKinds.get(value.toLowerCase())
       ? ` (${model.keywordKinds.get(value.toLowerCase())})` : "";
     out.push(`| ${link(p, catalogPage(section, value), value)}${extra} | ${docs.length} |`);
   }
+  out.push("", "</div>");
   return out.join("\n") + "\n";
 }
 
@@ -589,11 +646,11 @@ function casesPage(model) {
     const cases = planCases(d.body);
     if (!cases.length) continue;
     total += cases.length;
-    out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "", "| # | Case |", "|---|---|");
-    for (const c of cases) {
-      const href = `${rel(p, d.page).replace(/ /g, "%20")}#${c.anchor}`;
-      out.push(`| ${c.ordinal} | [${linkText(c.heading)}](${href}) |`);
-    }
+    out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "",
+      ...sortable([
+        "| # | Case |", "|---:|---|",
+        ...cases.map((c) => `| ${c.ordinal} | [${linkText(c.heading)}](${rel(p, d.page).replace(/ /g, "%20")}#${c.anchor}) |`),
+      ]));
     out.push("");
   }
   out.splice(3, 0, `${total} cases.`);
@@ -635,13 +692,19 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
   const p = "index.md";
   const out = [`# ${mdEscape(opts.siteName)}`, "",
     `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
-    "| Kind | Documents |", "|---|---|"];
+    '<div class="sortable" markdown>', "",
+    "| Kind | Documents |", "|---|---:|"];
   for (const [kind, docs] of model.kinds) out.push(`| ${link(p, `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind)} | ${docs.length} |`);
+  out.push("", "</div>");
   // v1.4: one Material card per catalog (md_in_html grid, emoji
   // icons); the link text and the count are what the gate looks for
   const card = (icon, target, title, count, blurb) => [
     `-   :material-${icon}:{ .lg .middle } ${link(p, target, title)}${count == null ? "" : ` (${count})`}`, "",
     "    ---", "", `    ${blurb}`, ""];
+  out.push("", admonition("tip",
+    "Search (press `/`) splits an id into its parts, so `TC-P01`, " +
+    "`ps-location-referencing#4855` and `merge-events` each find the pages that carry them.",
+    { title: "Finding a document" }));
   out.push("", "## Browse", "", '<div class="grid cards" markdown>', "",
     ...card("tag-multiple", "keywords/index.md", "Keywords", model.keywords.size, "The catalog's vocabulary after curation — an alias lands on its canonical term's page."),
     ...card("hammer-wrench", "tools/index.md", "Tools", model.tools.size, "Official tool names the documents mention."),
@@ -660,13 +723,23 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
 
 function aboutPage(model, opts) {
   return ["# About this wiki", "",
-    `Generated by \`pipeline/wiki.mjs ${WIKI_VERSION}\` of the LRS Doc Index pipeline from the catalog's sidecar files${opts.sourceSite ? ` (the LRS Doc Index library on ${opts.sourceSite})` : ""}. It is a rendering, not a source: edit nothing here — the next run overwrites every page. To change a document's classification, keywords or related documents, change it in the catalog (the Doc Index lists) and let the nightly sweep rewrite the sidecar.`, "",
-    "- **Doc** ids are Doc Index list row ids (the id test-plan generation takes).",
-    "- **Keywords** are the catalog's vocabulary after curation: an alias merged by the librarian lands on its canonical page.",
-    "- **Related documents** are the sweep's ranking (shared issues, shared keywords, body similarity), newest ranking first.",
-    "- **Test cases** and **Figures** are read from the sidecar bodies with the same parsers that fill the Test Cases and Figures lists.",
-    "- **Test-plan drafts**, when the site publishes them, are machine-generated and unreviewed: they are not catalog documents and join no catalog.",
-    "", `Rendered ${fmtDate(new Date().toISOString())} · ${model.docs.length} documents.`, ""].join("\n");
+    `Generated by \`pipeline/wiki.mjs ${WIKI_VERSION}\` of the LRS Doc Index pipeline from the catalog's sidecar files${opts.sourceSite ? ` (the LRS Doc Index library on ${opts.sourceSite})` : ""}.`, "",
+    admonition("info",
+      "This site is a rendering, not a source: edit nothing here — the next run overwrites " +
+      "every page. To change a document's classification, keywords or related documents, " +
+      "change it in the catalog (the Doc Index lists) and let the nightly sweep rewrite the " +
+      "sidecar.", { title: "A render, not a source" }), "",
+    // a details block (pymdownx.details): open, so it reads as a list,
+    // but a reader who knows this can fold it away
+    admonition("note", defList([
+      ["Doc ids", "Doc Index list row ids — the id test-plan generation takes."],
+      ["Keywords", "The catalog's vocabulary after curation: an alias merged by the librarian lands on its canonical page."],
+      ["Related documents", "The sweep's ranking (shared issues, shared keywords, body similarity), newest ranking first."],
+      ["Test cases and Figures", "Read from the sidecar bodies with the same parsers that fill the Test Cases and Figures lists."],
+      ["Test-plan drafts", "When the site publishes them: machine-generated and unreviewed. They are not catalog documents and join no catalog."],
+      ["The checkboxes", "Rendered, never clickable. This site is a render of the catalog — a tick would not survive a reload, and a draft's cases still need a Product Engineer."],
+    ]), { title: "Where each page's content comes from", collapse: "open" }), "",
+    `Rendered ${fmtDate(new Date().toISOString())} · ${model.docs.length} documents.`, ""].join("\n");
 }
 
 // ---------------------------------------------------------------- site
@@ -704,6 +777,8 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "      toggle: { icon: material/brightness-4, name: Light }",
     "extra_css:",
     "  - stylesheets/extra.css",
+    "extra_javascript:",
+    "  - javascripts/tables.js",
     `copyright: ${y(`Rendered by pipeline/wiki.mjs ${WIKI_VERSION} from the LRS Doc Index catalog — a render, not a source.`)}`,
     "plugins:",
     "  - search:",
@@ -727,8 +802,15 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "  - attr_list",
     "  - md_in_html",
     "  - admonition",
+    // the collapsible admonition forms (??? / ???+). Material's
+    // admonitions reference pairs these with pymdownx.superfences for a
+    // fenced block nested inside one — that extension is configured
+    // below, with the mermaid custom fence, and serves both purposes.
+    "  - pymdownx.details",
     "  - fenced_code",
     "  - sane_lists",
+    // a case's fields, and About's provenance list (v1.8)
+    "  - def_list",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
     "  - pymdownx.emoji:",
@@ -761,6 +843,78 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "",
   ].filter((l) => l !== "").join("\n");
 }
+
+/** docs/javascripts/tables.js (v1.7). Material's data-tables reference
+ *  reaches sortable tables by loading `tablesort` from a public CDN;
+ *  this site is served from a devtopia Pages build on the internal
+ *  network, where an external script is the one thing that can fail
+ *  silently, so the render writes the behaviour itself. Same result,
+ *  no runtime dependency, and it sorts only the tables the render
+ *  composes (`.doc-table` and `.sortable`) — never the metadata card,
+ *  never a table extracted out of a source document. */
+const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every render */
+(function () {
+  var SELECTOR = ".doc-table table, .sortable table";
+
+  /* A cell's sort key. A whole-cell number sorts numerically; the
+     site's dates are already ISO-ish ("2026-09-06 23:00"), so they
+     sort correctly as text; everything else is case-folded text.
+     An em dash is the render's "nothing to say" and counts as empty. */
+  function key(cell) {
+    var t = (cell.textContent || "").trim();
+    if (t === "—") return "";
+    if (/^-?[0-9][0-9,]*(\\.[0-9]+)?$/.test(t)) return parseFloat(t.replace(/,/g, ""));
+    return t.toLowerCase();
+  }
+
+  function sortBy(table, col, dir) {
+    var body = table.tBodies[0];
+    if (!body) return;
+    var rows = Array.prototype.slice.call(body.rows);
+    var keyed = rows.map(function (row, i) {
+      return { row: row, key: row.cells[col] ? key(row.cells[col]) : "", i: i };
+    });
+    /* empty cells last whichever way the column is sorted */
+    var filled = keyed.filter(function (r) { return r.key !== ""; });
+    var blank = keyed.filter(function (r) { return r.key === ""; });
+    filled.sort(function (a, b) {
+      var c = typeof a.key === "number" && typeof b.key === "number"
+        ? a.key - b.key
+        : String(a.key).localeCompare(String(b.key), undefined, { numeric: true });
+      return (c || a.i - b.i) * dir;   /* a stable tie-break on the original order */
+    });
+    filled.concat(blank).forEach(function (r) { body.appendChild(r.row); });
+  }
+
+  function makeSortable(table) {
+    var head = table.tHead && table.tHead.rows[0];
+    if (!head || table.dataset.lrsSortable) return;
+    table.dataset.lrsSortable = "1";
+    Array.prototype.forEach.call(head.cells, function (th, col) {
+      th.setAttribute("role", "button");
+      th.setAttribute("tabindex", "0");
+      th.setAttribute("aria-sort", "none");
+      function toggle() {
+        var dir = th.getAttribute("aria-sort") === "ascending" ? -1 : 1;
+        Array.prototype.forEach.call(head.cells, function (o) { o.setAttribute("aria-sort", "none"); });
+        th.setAttribute("aria-sort", dir === 1 ? "ascending" : "descending");
+        sortBy(table, col, dir);
+      }
+      th.addEventListener("click", toggle);
+      th.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
+  }
+
+  function scan() { document.querySelectorAll(SELECTOR).forEach(makeSortable); }
+
+  /* Material re-renders the article on instant navigation; document$
+     fires on every page. Without the theme's observable, run once. */
+  if (typeof document$ !== "undefined") document$.subscribe(scan);
+  else document.addEventListener("DOMContentLoaded", scan);
+})();
+`;
 
 /** docs/stylesheets/extra.css (v1.4). Material's own variables
  *  throughout, so the light and the slate palette both work. */
@@ -809,6 +963,71 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   font-weight: 600;
 }
 .md-typeset h3[id^="tc-"] .headerlink { font-weight: 400; }
+
+/* admonitions (v1.6): the site's radius, a quieter body, and one
+   custom type — draft — for machine-generated, unreviewed pages */
+.md-typeset .admonition, .md-typeset details {
+  border-radius: var(--lrs-radius);
+  border-width: 1px 1px 1px 0.2rem;
+  font-size: 0.7rem;
+}
+.md-typeset .admonition-title, .md-typeset summary {
+  border-radius: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
+}
+.md-typeset .admonition > :last-child, .md-typeset details > :last-child { margin-bottom: 0.6rem; }
+:root {
+  --lrs-draft: #d97706;
+  --md-admonition-icon--draft: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25Z"/></svg>');
+}
+.md-typeset .admonition.draft, .md-typeset details.draft { border-color: var(--lrs-draft); }
+.md-typeset .draft > .admonition-title, .md-typeset .draft > summary {
+  background-color: rgba(217, 119, 6, 0.1);
+}
+.md-typeset .draft > .admonition-title::before, .md-typeset .draft > summary::before {
+  background-color: var(--lrs-draft);
+  -webkit-mask-image: var(--md-admonition-icon--draft);
+          mask-image: var(--md-admonition-icon--draft);
+}
+
+/* definition lists (v1.8): a case's fields and About's provenance, in
+   the metadata card's vocabulary — a quiet uppercase label over its value */
+.md-typeset dl { margin: 0.6em 0 1.2em; }
+.md-typeset dl dt {
+  margin-top: 0.9em;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.md-typeset dl dt:first-child { margin-top: 0; }
+.md-typeset dl dd { margin: 0.15em 0 0; }
+.md-typeset dl dd > ul, .md-typeset dl dd > ol { margin-top: 0.3em; }
+
+/* sortable catalog tables (v1.7): the header is the control */
+.doc-table th[role="button"], .sortable th[role="button"] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.doc-table th[role="button"]:hover, .sortable th[role="button"]:hover { color: var(--md-accent-fg-color); }
+.doc-table th[aria-sort]::after, .sortable th[aria-sort]::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 0.4em;
+  vertical-align: middle;
+  border: 0.25em solid transparent;
+}
+.doc-table th[aria-sort="none"]::after, .sortable th[aria-sort="none"]::after {
+  border-top-color: currentColor;
+  opacity: 0.25;
+}
+.doc-table th[aria-sort="ascending"]::after, .sortable th[aria-sort="ascending"]::after { border-bottom-color: currentColor; }
+.doc-table th[aria-sort="descending"]::after, .sortable th[aria-sort="descending"]::after { border-top-color: currentColor; }
 
 /* catalog tables: the short columns stay on one line, the summary is quiet */
 .doc-table td:nth-child(2), .doc-table td:nth-child(3), .doc-table td:nth-child(4) { white-space: nowrap; }
@@ -955,6 +1174,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   put("about.md", aboutPage(model, opts));
   put("index.md", frontPage(model, kindFolders, opts, drafts.length));
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
+  write(docsDir, "javascripts/tables.js", TABLES_JS);
   write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts.length));
   write(outDir, ".github/workflows/pages.yml", PAGES_WORKFLOW.replace("BRANCH", opts.branch));
   write(outDir, "README.md", WIKI_README(opts));
