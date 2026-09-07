@@ -1,5 +1,40 @@
 # Local sweep — release notes
 
+## The wiki dressed for reading (2026-09-07)
+
+`wiki` v1.4. The page **markdown is unchanged** — the format 3.1
+metadata table, the catalog tables and the front page's browse lines
+are the contract `tests/check_wiki.py` pins, and all 52 checks pass,
+the strict build included. What changed is how MkDocs Material dresses
+that markdown:
+
+- **A stylesheet the render writes.** `docs/stylesheets/extra.css`,
+  pointed at from `mkdocs.yml`, in Material's own variables so the
+  light and the slate palette both work. The metadata table becomes a
+  key/value card (header row hidden, muted uppercase labels in a fixed
+  column); each `### TC-…` case heading a card with the primary-color
+  rule; the related list a quiet list of links; the catalog tables fill
+  the column with Product / Release / Edited kept on one line and the
+  summary column in a lighter ink.
+- **The front page's Browse section is a grid of cards**, one per
+  catalog with an icon and a one-line blurb (`md_in_html` +
+  `pymdownx.emoji`); the kinds table stays.
+- **The nav has sections** — Documents (the kinds), Catalogs, Extracted
+  (test cases, figures) — which `navigation.sections` shows as sidebar
+  headings; Drafts, Recent and About stay flat.
+- **Search, tuned.** The plugin was always on; it now carries
+  Material's recommended tokenizer `separator`, so `P01` finds
+  `TC-P01`, `4855` finds `ps-location-referencing#4855` and `events`
+  finds `merge-events`; `search.share` gives a copyable query link.
+- **Theme.** The palette follows the OS preference and still toggles;
+  `navigation.footer` (previous / next), `navigation.tracking`,
+  `content.code.copy`, a book logo, and a footer line that says the
+  site is a render, not a source.
+
+The metadata and catalog tables sit in `<div class="doc-meta" markdown>`
+/ `<div class="doc-table" markdown>` wrappers so the stylesheet can
+address them — that is the whole of the change to the page text.
+
 ## Drafts are documents, and the convergence audit (2026-09-06)
 
 `docs/design/Markdown_Layout_Plan.md` phases 5 and 6:
