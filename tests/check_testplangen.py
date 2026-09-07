@@ -2158,7 +2158,10 @@ def main():
     variety_draft = (
         "# Test Plan — Route Retirement\n\n## Setup / Prerequisites\n\nRoutes:\n\n"
         "| Route | From | To | Status | Effective |\n| --- | --- | --- | --- | --- |\n"
-        "| R1 | 0 | 100 | Active | 2026-01-01 |\n\n## Positive Tests\n\n"
+        "| R1 | 0 | 100 | Active | 2026-01-01 |\n\nEvents:\n\n"
+        "| Event | Route | From Measure | To Measure | Length | Surface Type | Owner |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| E1 | R1 | 10 | 40 | 30 | Asphalt | County |\n\n## Positive Tests\n\n"
         "### TC-P01 — Retire route R1 on a date { #tc-p01 }\n- **Steps:**\n"
         "  - [ ] 1. Open the Retire Route pane.\n  - [ ] 2. In the Route Name field enter R1.\n"
         "  - [ ] 3. Set Retire Date to 2026-03-01.\n  - [ ] 4. Check Retire dependent events.\n  - [ ] 5. Click Run.\n\n"
@@ -2172,7 +2175,16 @@ def main():
         "  - [ ] 1. Select the Retired route R1.\n  - [ ] 2. Attempt to set Status to Active.\n"
         "  - [ ] 3. Confirm the Reactivate dialog.\n\n"
         "- **Expected Result:** The change is denied with \"Retired routes cannot be reactivated\"; R1 stays Retired.\n\n"
-        "- **Trace:** \"z\" — story.\n")
+        "- **Trace:** \"z\" — story.\n\n"
+        # v1.4: the data record-diff (R10) and calibration-chart (R11) ground against
+        "### TC-P03 — Split E1 carries its attributes { #tc-p03 }\n- **Steps:**\n"
+        "  - [ ] 1. Split E1 on R1 at measure 16.\n\n"
+        "- **Expected Result:** E1 keeps From Measure 10 and takes To Measure 16, its Length is proportioned to 6, "
+        "Surface Type Asphalt is duplicated onto both halves, and Owner is blank on the new record.\n- **Trace:** \"a\" — story.\n\n"
+        "### TC-P04 — Recalibrate R1 at distance 50 { #tc-p04 }\n- **Steps:**\n"
+        "  - [ ] 1. Set the calibration point at distance 50 to measure 60.\n\n"
+        "- **Expected Result:** Before the edit R1 runs distance 0 to measure 0, distance 50 to measure 50, "
+        "distance 100 to measure 100; after it distance 50 carries measure 60.\n- **Trace:** \"b\" — story.\n")
     variety_specs = [
         {"case": "TC-P01", "rule": "R4", "kind": "timeline", "title": "TC-P01 — Retire route R1 on a date", "caption": "c",
          "axis": ["2026-01-01", "2026-03-01", "2026-06-01"],
@@ -2204,6 +2216,21 @@ def main():
                    {"id": "e1", "kind": "end", "label": "denied", "tone": "red"}, {"id": "e2", "kind": "end", "label": "Status Active"}],
          "edges": [{"from": "s", "to": "n1"}, {"from": "n1", "to": "d"}, {"from": "d", "to": "e1", "label": "yes"},
                    {"from": "d", "to": "n3", "label": "no"}, {"from": "n3", "to": "e2"}, {"from": "e1", "to": "s", "label": "stays Retired", "style": "dashed"}]},
+        # v1.4: the two new kinds ground and render...
+        {"case": "TC-P03", "rule": "R10", "kind": "record-diff", "title": "TC-P03 — Split E1 carries its attributes", "caption": "c",
+         "records": [{"id": "E1", "label": "E1", "tone": "cool"}],
+         "fields": [{"name": "From Measure", "before": "10", "after": "10", "change": "same"},
+                    {"name": "To Measure", "before": "40", "after": "16", "change": "changed"},
+                    {"name": "Length", "before": "30", "after": "6", "change": "changed"},
+                    {"name": "Surface Type", "before": "Asphalt", "after": "Asphalt", "change": "same"},
+                    {"name": "Owner", "before": "County", "after": "", "change": "removed"}]},
+        {"case": "TC-P04", "rule": "R11", "kind": "calibration-chart", "title": "TC-P04 — Recalibrate R1 at distance 50", "caption": "c",
+         "route": {"id": "R1", "distanceLabel": "Distance", "measureLabel": "Measure"},
+         "series": [{"id": "Before", "label": "Before", "tone": "cool",
+                     "points": [{"distance": 0, "measure": 0}, {"distance": 50, "measure": 50}, {"distance": 100, "measure": 100}]},
+                    {"id": "After", "label": "After", "tone": "green",
+                     "points": [{"distance": 0, "measure": 0}, {"distance": 50, "measure": 60}, {"distance": 100, "measure": 100}]}],
+         "markers": [{"at": {"distance": 50, "measure": 60}, "label": "calibration @ 60", "tone": "red"}]},
         # each of these must DROP with the named finding
         {"case": "TC-P01", "rule": "R4", "kind": "timeline", "title": "TC-P01 — x", "caption": "c", "axis": ["2026-01-01", "2027-12-31"],
          "spans": [{"id": "R1", "from": "2026-01-01", "to": "2027-12-31"}]},
@@ -2217,7 +2244,16 @@ def main():
         {"case": "TC-N01", "rule": "R9", "kind": "workflow", "title": "TC-N01 — x", "caption": "c",
          "nodes": [{"id": "a", "kind": "start", "label": "x"}, {"id": "b", "kind": "loop", "label": "y"}, {"id": "c", "kind": "end", "label": "z"}],
          "edges": [{"from": "a", "to": "b"}, {"from": "b", "to": "q"}]},
-        {"case": "TC-P01", "rule": "R10", "kind": "sketch", "title": "TC-P01 — x", "caption": "c"},
+        {"case": "TC-P03", "rule": "R10", "kind": "record-diff", "title": "TC-P03 — x", "caption": "c",
+         "records": [{"id": "E9"}],
+         "fields": [{"name": "Length", "before": "30", "after": "6", "change": "same"},
+                    {"name": "Speed Limit", "before": "55", "after": "45", "change": "changed"},
+                    {"name": "Owner", "before": "County", "after": "County", "change": "removed"}]},
+        {"case": "TC-P04", "rule": "R11", "kind": "calibration-chart", "title": "TC-P04 — x", "caption": "c",
+         "route": {"id": "R1"},
+         "series": [{"id": "Before", "points": [{"distance": 100, "measure": 100}, {"distance": 50, "measure": 50}]},
+                    {"id": "After", "points": [{"distance": 0, "measure": 0}, {"distance": 100, "measure": 999}]}]},
+        {"case": "TC-P01", "rule": "R12", "kind": "sketch", "title": "TC-P01 — x", "caption": "c"},
     ]
     script = (
         "import { draftCorpus, verifyFigureSpec, renderFigureSvg, KINDS } from %r;\n"
@@ -2242,13 +2278,14 @@ def main():
     except Exception:
         vout = {"kinds": [], "results": []}
     vres = vout.get("results", [])
-    check("figurespec v1.3 exports eight kinds",
-          vout.get("kinds") == ["route-measure", "topology", "sequence", "timeline", "state", "matrix", "wireframe", "workflow"],
+    check("figurespec v1.4 exports ten kinds",
+          vout.get("kinds") == ["route-measure", "topology", "sequence", "timeline", "state", "matrix", "wireframe", "workflow",
+                                "record-diff", "calibration-chart"],
           (res.stderr or res.stdout)[:400])
-    rendered = [r for r in vres[:5] if "svg" in r]
-    check("the five variety kinds ground and render; svg2pptx parses each with no unknown element",
-          len(rendered) == 5 and all(not r["unknown"] and r["w"] == 760 and 120 <= r["h"] <= 600 for r in rendered),
-          json.dumps([{k: v for k, v in r.items() if k != "svg"} for r in vres[:5]])[:600])
+    rendered = [r for r in vres[:7] if "svg" in r]
+    check("the seven variety kinds ground and render; svg2pptx parses each with no unknown element",
+          len(rendered) == 7 and all(not r["unknown"] and r["w"] == 760 and 120 <= r["h"] <= 600 for r in rendered),
+          json.dumps([{k: v for k, v in r.items() if k != "svg"} for r in vres[:7]])[:600])
     by_kind = {r["kind"]: r for r in rendered}
     tl = by_kind.get("timeline", {}).get("svg", "")
     check("timeline SVG: three dated ticks on an arrowed axis, a closed and an open (dotted) span, a point",
@@ -2276,23 +2313,53 @@ def main():
           "<polygon " in fl and fl.count("<ellipse ") == 3 and ">2. Set Status to<" in fl and ">Active<" in fl
           and ">yes<" in fl and ">no<" in fl and 'class="ln edge dashed"' in fl and ">stays Retired<" in fl
           and 'class="node t-red s-red"' in fl, fl[-900:])
-    drops = [r.get("findings", []) for r in vres[5:]]
+    drops = [r.get("findings", []) for r in vres[7:]]
     check("ungrounded or off-vocabulary variety specs drop with the named finding",
-          len(drops) == 6
+          len(drops) == 8
           and any('axis date "2027-12-31" is not written' in f for f in drops[0])
           and any('state "Archived" is not in the case' in f for f in drops[1])
           and any('row "Curve event" is not in the case' in f for f in drops[2]) and any("repeats" in f for f in drops[2])
           and any('value "R7" is not in the case' in f for f in drops[3]) and any('kind "slider" is not in the vocabulary' in f for f in drops[3])
           and any('label "Cancel" is not in the case' in f for f in drops[3])
           and any('kind "loop" is not start | step | decision | end' in f for f in drops[4]) and any('edge to "q" is not a node id' in f for f in drops[4])
-          and any("rule is not R1..R9" in f for f in drops[5]) and any('kind "sketch" is not one of' in f for f in drops[5]),
+          and any("rule is not R1..R11" in f for f in drops[7]) and any('kind "sketch" is not one of' in f for f in drops[7])
+          # v1.4 drops: an ungrounded record and field, a self-contradictory
+          # change, an out-of-order series and an invented measure
+          and any('record id "E9" is not in the case' in f for f in drops[5])
+          and any('field "Speed Limit" is not in the case' in f for f in drops[5])
+          and any('is "same", but its before and after values differ' in f for f in drops[5])
+          and any('is "removed", so its after value must be blank' in f for f in drops[5])
+          and any("does not follow the point before it" in f for f in drops[6])
+          and any("measure 999 is not a value in the case" in f for f in drops[6]),
           json.dumps(drops)[:900])
+    # v1.4: numIn grounds a number that ENDS A SENTENCE ("carries measure
+    # 60.") while still refusing one that is only part of a longer number
+    num_script = (
+        "import { draftCorpus, verifyFigureSpec } from %r;\n"
+        "const corpus = draftCorpus(%s);\n"
+        "const mk = (m) => ({case: 'TC-P1', rule: 'R1', kind: 'route-measure', title: 'TC-P1 — x', caption: 'c',\n"
+        "  panels: [{label: '', routes: [{id: 'R1', from: 0, to: 100}], events: [{id: 'E1', route: 'R1', from: 10, to: m}], marks: []}]});\n"
+        "process.stdout.write(JSON.stringify([60, 65.5, 65, 16].map((m) => verifyFigureSpec(mk(m), corpus).length)));\n"
+        % ("file://" + os.path.join(REPO, "pipeline", "lib", "figurespec.mjs"),
+           json.dumps("# P\n\n## Setup / Prerequisites\n\n| Route | From | To |\n| --- | --- | --- |\n| R1 | 0 | 100 |\n\n"
+                      "## Positive Tests\n\n### TC-P1 — x { #tc-p1 }\n- **Steps:**\n  - [ ] 1. Extend E1 from 10.\n\n"
+                      "- **Expected Result:** E1 reaches 65.5 and the marker carries measure 60.\n- **Trace:** \"t\" — story.\n")))
+    rnum = subprocess.run(["node", "--input-type=module", "-e", num_script], capture_output=True, text=True, cwd=REPO)
+    # 60 ends a sentence and 65.5 is written outright, so both ground;
+    # 65 only exists inside 65.5 and 16 is not in the plan at all
+    check("grounding: a number ending a sentence grounds; one buried in a longer number still does not",
+          rnum.stdout.strip() == "[0,0,1,1]", (rnum.stdout or rnum.stderr)[:300])
     fig_prompt = open(os.path.join(REPO, "prompts", "testplan_figures.md"), encoding="utf-8").read()
-    check("TestPlanFigures prompt v0.4 names every kind, rules R6–R9, the kind-choice table and the variety clause",
-          "version: 0.4.0" in fig_prompt
-          and all(f'"{k}"' in fig_prompt for k in ["timeline", "state", "matrix", "wireframe", "workflow"])
-          and all(f"- {r}:" in fig_prompt for r in ["R6 LIFECYCLE", "R7 COMBINATIONS", "R8 UI WORKFLOW", "R9 PROCEDURE"])
+    check("TestPlanFigures prompt v0.5 names every kind, rules R6–R11, the kind-choice table and the variety clause",
+          "version: 0.5.0" in fig_prompt
+          and all(f'"{k}"' in fig_prompt for k in ["timeline", "state", "matrix", "wireframe", "workflow",
+                                                   "record-diff", "calibration-chart"])
+          and all(f"- {r}:" in fig_prompt for r in ["R6 LIFECYCLE", "R7 COMBINATIONS", "R8 UI WORKFLOW", "R9 PROCEDURE",
+                                                    "R10 ATTRIBUTE CHANGE", "R11 CALIBRATION"])
           and "KIND CHOICE" in fig_prompt and "X6 BUDGET WITH VARIETY" in fig_prompt
+          # the ranking clause must place the two new rules, or X6 would
+          # drop them first every time
+          and fig_prompt.count("R2 > R10 > R3 > R7 > R6 > R8 > R9 > R1 > R11 > R4 > R5") == 2
           and all(f"{{{k}}}" in fig_prompt for k in ["PlanTitle", "Draft", "FiguresCap"]), "")
     check("sequence SVG: actors, lifelines, the denied step in red",
           ">User A<" in s_n1 and ">User B<" in s_n1

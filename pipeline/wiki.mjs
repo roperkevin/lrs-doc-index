@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.7 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.8 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -26,7 +26,7 @@
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
  *   docs/stylesheets/extra.css  the site's own styling (v1.4)
- *   docs/javascripts/tables.js  click-to-sort for the tables (v1.6)
+ *   docs/javascripts/tables.js  click-to-sort for the tables (v1.7)
  *
  * Bodies keep their sidecar shape (the same relative
  * `../media/<stem>/` links resolve, because pages sit one folder deep
@@ -34,7 +34,7 @@
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
  *
- * v1.7 — lists
+ * v1.8 — lists
  * (https://squidfunk.github.io/mkdocs-material/reference/lists/). Task
  * lists shipped in phase 2 and ordered / unordered lists need nothing,
  * so the delta is `def_list`: a test case's fields (Group, Case,
@@ -46,7 +46,7 @@
  * render, a tick would not survive a reload, and the drafts' whole
  * point is that a Product Engineer still has to review them.
  *
- * v1.6 — data tables
+ * v1.7 — data tables
  * (https://squidfunk.github.io/mkdocs-material/reference/data-tables/).
  * Every table the render COMPOSES sorts on a header click, and the
  * count and ordinal columns are right-aligned. Material reaches
@@ -59,11 +59,12 @@
  * row the stylesheet hides, and never a table extracted out of a
  * source document, whose first row may not be a header at all.
  *
- * v1.5 — admonitions, the whole Material set
+ * v1.6 — admonitions, the whole Material set
  * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/).
  * `mkdocs.yml` gains `pymdownx.details` (the collapsible `???` and
- * `???+` forms) and `pymdownx.superfences` (a fenced block nested
- * inside one), `extra.css` gives every type the site's own radius and
+ * `???+` forms; `pymdownx.superfences`, which Material pairs with it
+ * so a fenced block can nest inside an admonition, arrives with the
+ * mermaid fence in v1.5), `extra.css` gives every type the site's own radius and
  * defines the custom `draft` type, and `lib/mdlayout.mjs` v1.1 reads
  * the whole alert vocabulary out of a body — a title after the marker,
  * a `-`/`+` fold suffix, and Material's types beyond GFM's five. The
@@ -71,6 +72,33 @@
  * draft page's "unreviewed" notice are `!!! draft` blocks rather than
  * a bold run in a paragraph, the front page opens with a search tip,
  * and About's provenance list is a `???+ note` a reader can fold away.
+ *
+ * v1.5 (figure presentation) — the corpus's pictures get the three
+ * reader affordances the raw site never had. `mkdocs.yml` gains
+ * `markdown_captions` (a body image renders as `<figure>` with its alt
+ * text as a visible `<figcaption>` — the figure index's own
+ * `Figure N — <title>` alt texts become the captions for free),
+ * `glightbox` (click a picture, get it full size over the page) and
+ * `panzoom` (alt-drag to pan, alt-scroll to zoom, with a full-screen
+ * button — for the wide route-measure and matrix figures that do not
+ * fit a column). The Pages workflow installs all three.
+ *
+ * The figure catalog's THUMBNAILS are emitted as raw HTML instead of
+ * `[![alt](img){ width=160 }](href)` markdown: markdown_captions turns
+ * a markdown image into a `<figure>`, which cannot live inside a link
+ * — the anchor came out empty and the figure escaped it, losing the
+ * link into the case section — and `{ width=160 }` landed on the
+ * `<figure>` instead of sizing the image. Raw HTML is invisible to
+ * both markdown extensions, so a thumbnail keeps its link, its width
+ * and its alt, and stays free of caption and pan/zoom chrome; body
+ * images, which are what the affordances are for, are unaffected.
+ * (`mkdocs-img2fig-plugin` is the other captioner in the MkDocs
+ * catalog and is NOT usable here: it regex-rewrites raw markdown in
+ * `on_page_markdown`, so it mangles `![...](...)` inside fenced code
+ * blocks — `docs/design/Figure_Index_Plan.md` documents the SC-4 link
+ * shape in one — and it captures the angle-bracket link form
+ * `![alt](<path with spaces>)` brackets and all, producing a broken
+ * `src`.)
  *
  * v1.4 — the site's formatting. The page MARKDOWN is unchanged (the
  * metadata table, the catalog tables and the browse lines are the
@@ -146,7 +174,7 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList } from "./lib/mdl
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.7";
+export const WIKI_VERSION = "v1.8";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -189,6 +217,9 @@ export function uniqueSlug(id, taken) {
 
 const stripComments = (s) => String(s ?? "").replace(/<!--[\s\S]*?-->/g, "");
 const cell = (s) => String(s ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+/** One value inside a double-quoted HTML attribute (v1.5, the figure
+ *  catalog's raw-HTML thumbnails). */
+const attr = (s) => cell(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const mdEscape = (s) => String(s ?? "").replace(/([\\`*_[\]<>])/g, "\\$1");
 const linkText = (s) => mdEscape(cell(s)).replace(/\\\|/g, "|");
 const pageName = (s) => kebab(s) || "untitled";
@@ -321,7 +352,7 @@ function draftPage(d, model) {
   const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("", META_CLOSE, "");
-  // v1.5: the one thing a reader must not miss, in the site's own
+  // v1.6: the one thing a reader must not miss, in the site's own
   // admonition type rather than a paragraph they can skim past
   out.push(admonition("draft",
     "Machine-generated and **unreviewed**: every case and every [VERIFY] item still needs a " +
@@ -494,7 +525,7 @@ const catalogPage = (section, value) => `${section}/${pageName(value)}.md`;
 const META_OPEN = '<div class="doc-meta" markdown>';
 const META_CLOSE = "</div>";
 
-/** v1.6: wrap a composed table so `javascripts/tables.js` picks it up.
+/** v1.7: wrap a composed table so `javascripts/tables.js` picks it up.
  *  Only the tables the RENDER writes are sortable — a table extracted
  *  out of a source document has no header row to trust. */
 const sortable = (lines) => ['<div class="sortable" markdown>', "", ...lines, "", "</div>"];
@@ -638,7 +669,12 @@ function figuresPage(model) {
     for (const f of figs) {
       const img = f.link.replace(/^\.\.\//, "../").replace(/ /g, "%20");
       const href = `${rel(p, d.page).replace(/ /g, "%20")}#${f.anchor}`;
-      out.push(`- [![${cell(f.alt)}](${img}){ width=160 }](${href}) ${f.heading ? `[${linkText(f.heading)}](${href})` : ""}`);
+      // raw HTML, not `[![alt](img){ width=160 }](href)`: markdown_captions
+      // (v1.5) would turn the image into a <figure>, which cannot sit
+      // inside a link — the anchor empties and the figure escapes it —
+      // and would move `width=160` onto the <figure>. Raw HTML keeps the
+      // link, the width and the alt, and takes no caption or panzoom box.
+      out.push(`- <a href="${attr(href)}"><img src="${attr(img)}" width="160" alt="${attr(f.alt)}"></a> ${f.heading ? `[${linkText(f.heading)}](${href})` : ""}`);
     }
     out.push("");
   }
@@ -750,19 +786,30 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     // camelCase too, so TC-P01, ps-location-referencing#4855 and
     // merge-events are found by their parts
     `      separator: '[\\s\\-,:!=\\[\\]()"\`/]+|\\.(?!\\d)|&[lg]t;|(?!\\b)(?=[A-Z][a-z])'`,
+    "  - glightbox",
+    "  - panzoom:",
+    // the plugin's own `images: true` is read off the GLOBAL config by
+    // mkdocs-panzoom-plugin 0.5.2 (plugin.py: `config.get("images")`,
+    // not `self.config`), so it never fires; include_selectors is read
+    // correctly. Its matcher takes element/class selectors only — an
+    // attribute selector such as img[src$=".svg"] silently matches
+    // nothing — so pan/zoom goes on every body image.
+    '      include_selectors: ["img"]',
+    "      full_screen: true",
     "markdown_extensions:",
     "  - tables",
+    "  - markdown_captions",
     "  - attr_list",
     "  - md_in_html",
     "  - admonition",
-    // the collapsible admonition forms (??? / ???+) and a fenced block
-    // nested inside one — Material's own recommendation for the
-    // admonitions reference
+    // the collapsible admonition forms (??? / ???+). Material's
+    // admonitions reference pairs these with pymdownx.superfences for a
+    // fenced block nested inside one — that extension is configured
+    // below, with the mermaid custom fence, and serves both purposes.
     "  - pymdownx.details",
-    "  - pymdownx.superfences",
     "  - fenced_code",
     "  - sane_lists",
-    // a case's fields, and About's provenance list (v1.7)
+    // a case's fields, and About's provenance list (v1.8)
     "  - def_list",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
@@ -772,6 +819,23 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "  - toc:",
     "      permalink: true",
     '      toc_depth: "2-3"',
+    // Material's own diagram support (its `mermaid` custom fence), so a
+    // hand-written page can carry a ```mermaid block. It supersedes
+    // fenced_code for fenced blocks without changing how they render,
+    // and it is what makes the panzoom plugin above do the job it was
+    // built for — its default selectors are `.mermaid` and `.d2`.
+    // NOTE the diagram is drawn in the READER's browser from
+    // https://unpkg.com/mermaid@11 (Material lazy-loads it; nothing is
+    // bundled), so a viewer with no route to unpkg.com sees the block
+    // as text. Nothing in the generated corpus emits mermaid — the
+    // sidecars are rendered from Office documents, and generated
+    // figures stay SVG files, since those must also reach SharePoint,
+    // draft2docx/draft2pptx and svg2pptx.
+    "  - pymdownx.superfences:",
+    "      custom_fences:",
+    "        - name: mermaid",
+    "          class: mermaid",
+    "          format: !!python/name:pymdownx.superfences.fence_code_format",
     "nav:",
     ...nav,
     "not_in_nav: |",
@@ -780,7 +844,7 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
   ].filter((l) => l !== "").join("\n");
 }
 
-/** docs/javascripts/tables.js (v1.6). Material's data-tables reference
+/** docs/javascripts/tables.js (v1.7). Material's data-tables reference
  *  reaches sortable tables by loading `tablesort` from a public CDN;
  *  this site is served from a devtopia Pages build on the internal
  *  network, where an external script is the one thing that can fail
@@ -900,7 +964,7 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 .md-typeset h3[id^="tc-"] .headerlink { font-weight: 400; }
 
-/* admonitions (v1.5): the site's radius, a quieter body, and one
+/* admonitions (v1.6): the site's radius, a quieter body, and one
    custom type — draft — for machine-generated, unreviewed pages */
 .md-typeset .admonition, .md-typeset details {
   border-radius: var(--lrs-radius);
@@ -927,7 +991,7 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
           mask-image: var(--md-admonition-icon--draft);
 }
 
-/* definition lists (v1.7): a case's fields and About's provenance, in
+/* definition lists (v1.8): a case's fields and About's provenance, in
    the metadata card's vocabulary — a quiet uppercase label over its value */
 .md-typeset dl { margin: 0.6em 0 1.2em; }
 .md-typeset dl dt {
@@ -942,7 +1006,7 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .md-typeset dl dd { margin: 0.15em 0 0; }
 .md-typeset dl dd > ul, .md-typeset dl dd > ol { margin-top: 0.3em; }
 
-/* sortable catalog tables (v1.6): the header is the control */
+/* sortable catalog tables (v1.7): the header is the control */
 .doc-table th[role="button"], .sortable th[role="button"] {
   cursor: pointer;
   user-select: none;
@@ -1004,7 +1068,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install mkdocs-material
+      - run: pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions
       - run: mkdocs build --strict
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -1025,7 +1089,7 @@ const WIKI_README = (opts) => `# ${opts.siteName}
 
 A generated MkDocs site: every page is rendered from the LRS Doc Index catalog by \`pipeline/wiki.mjs\` and overwritten on the next run. Do not edit here.
 
-Local preview: \`pip install mkdocs-material && mkdocs serve\`.
+Local preview: \`pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions && mkdocs serve\`.
 Publishing: the \`pages\` workflow builds the site on every push to \`${opts.branch}\` and deploys it to this repository's GitHub Pages (Settings → Pages → Source: GitHub Actions, once).
 `;
 

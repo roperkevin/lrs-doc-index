@@ -351,16 +351,16 @@ The wiki lane therefore gains `toMkDocs(text)`, applied to bodies in
 
 | Construct | Translation |
 |---|---|
-| `> [!WARNING]` / `[!CAUTION]` / `[!IMPORTANT]` | `!!! warning` / `!!! danger` / `!!! info` admonition blocks (the `admonition` extension is already enabled) — fixes D1. **Extended in wiki v1.5 / mdlayout v1.1** to the whole set Material documents: every type and alias beyond GFM's five (`abstract`, `success`, `question`, `failure`, `bug`, `example`, `quote`, …), text after the marker as the block's title (`> [!IMPORTANT] Reviewer, start here` → `!!! info "Reviewer, start here"`; `""` for none), and a `-` / `+` fold suffix for the collapsible `???` / `???+` forms. GFM's own five keep the mapping above |
+| `> [!WARNING]` / `[!CAUTION]` / `[!IMPORTANT]` | `!!! warning` / `!!! danger` / `!!! info` admonition blocks (the `admonition` extension is already enabled) — fixes D1. **Extended in wiki v1.6 / mdlayout v1.1** to the whole set Material documents: every type and alias beyond GFM's five (`abstract`, `success`, `question`, `failure`, `bug`, `example`, `quote`, …), text after the marker as the block's title (`> [!IMPORTANT] Reviewer, start here` → `!!! info "Reviewer, start here"`; `""` for none), and a `-` / `+` fold suffix for the collapsible `???` / `???+` forms. GFM's own five keep the mapping above |
 | `- [ ] 1. …` | enable `pymdownx.tasklist: {custom_checkbox: true}` in `mkdocsYml` — fixes D2. Rendered, never clickable: the site is a render, so a tick would not survive a reload |
-| `- **Group:** …` (the §4.3 case field lines) | a `def_list` definition list, the task list under `- **Steps:**` travelling into its definition (wiki v1.7 / mdlayout v1.2). The fields are definitions; the case grammar writes bullets only because GFM has no way to say so |
+| `- **Group:** …` (the §4.3 case field lines) | a `def_list` definition list, the task list under `- **Steps:**` travelling into its definition (wiki v1.8 / mdlayout v1.2). The fields are definitions; the case grammar writes bullets only because GFM has no way to say so |
 | raw `<…>` / `{…}` in body text | escape outside code spans and fences before rendering — fixes D3 |
 | the `docs` region | rendered as its own `## Esri documentation` section on the page — fixes D4 |
 | `<!-- lrs:case … -->` | consumed: `shape`/`conf` become a small caption under the case heading, `src` a title attribute |
 
 `mkdocsYml` also gains `sane_lists` (extracted `1.` runs after a
 paragraph are lists by accident today) and `toc: {toc_depth: "2-3"}`
-now that H4 means "provenance" (§4.3); wiki v1.5 adds
+now that H4 means "provenance" (§4.3); wiki v1.6 adds
 `pymdownx.details` (the collapsible admonition forms) and
 `pymdownx.superfences` (a fenced block nested inside one).
 
@@ -370,7 +370,7 @@ GitHub or SharePoint consumer, so `mdlayout.admonition()` writes
 MkDocs syntax there directly: D2 constrains the files on disk, not the
 render's own output.
 
-That line also decides which tables sort (wiki v1.6). A composed table
+That line also decides which tables sort (wiki v1.7). A composed table
 is wrapped `.doc-table` / `.sortable` and gets click-to-sort headers;
 a table that came out of a *source document* does not, because its
 first row is a header only by convention. The metadata card is
@@ -447,7 +447,7 @@ Header + drafts (phases 4–5, `--reformat` backfill, format 3.1):
 | Phase | Scope | Gate | Backfill |
 |---|---|---|---|
 | 1. The kernel | §4.1 extraction only — every emitter renders through `mdlayout.mjs`, output unchanged | every existing gate green **and** byte-identical output on all fixtures (the point of the phase) | none |
-| 2. The wiki lane — **shipped** (`lib/mdlayout.mjs` v1.0, `wiki.mjs` v1.1; admonitions extended to Material's full set in mdlayout v1.1 / wiki v1.5) | §4.5 — D1–D4, extensions, escaping, TOC depth | 7 new `check_wiki.py` legs, all failing on wiki v1.0; `mkdocs build --strict` in CI | none — the wiki is regenerated every run |
+| 2. The wiki lane — **shipped** (`lib/mdlayout.mjs` v1.0, `wiki.mjs` v1.1; admonitions extended to Material's full set in mdlayout v1.1 / wiki v1.6) | §4.5 — D1–D4, extensions, escaping, TOC depth | 7 new `check_wiki.py` legs, all failing on wiki v1.0; `mkdocs build --strict` in CI | none — the wiki is regenerated every run |
 | 3. The case block — **shipped** (casegrammar v1.3, caseindex v2.2, prompt v1.14, draftlint v1.6) | §4.3 — padding, bullet fields, `lrs:case` mark, explicit anchors, H4 units, and `canonicalizeCaseBlocks` for bodies already in the grammar | `check_caseindex` 107, `check_testplangen` 238, the draftlint agreement leg at contract v1.8 | `--reformat --live` (it re-renders bodies AND syncs the rows; `--recase` alone does not rewrite a body) |
 | 4. The header — **shipped** (sidecarmeta format 3.1, sweep v1.54, wiki v1.2, agent v1.5) | §4.2.1 — optional rows, `Status`, `Generated`, format 3.1 | `check_local_sweep` 348 (incl. the idempotency leg); `readMeta` reads 3.1, 3.0 and the pre-3.0 yaml | `--reformat --live`, the same run as phase 3 |
 | 5. Drafts — **shipped** (testplangen v1.24, wiki v1.3) | §4.2.2 + marked addenda + the wiki's Drafts section behind `wiki.draftsDir` | `check_testplangen` 243 (incl. a `readMeta`-on-a-draft probe), `check_wiki` 49, `check_draft2pptx` 43 | none — drafts are timestamped, never rewritten |

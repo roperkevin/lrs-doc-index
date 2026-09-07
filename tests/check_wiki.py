@@ -28,14 +28,14 @@ carry two alias → canonical merges — then renders the site and proves:
      admonitions, `<placeholder>` and a trailing `{brace}` run are
      escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
      carries the extensions the dialect needs
-  5e. the v1.7 lists: the case grammar's bold-label field bullets
+  5e. the v1.8 lists: the case grammar's bold-label field bullets
      become a definition list (with the task list travelling into the
      Steps definition), a plain bullet list is left alone, and
      About's provenance list is composed as one
-  5d. the v1.6 data tables: the tables the render COMPOSES carry the
+  5d. the v1.7 data tables: the tables the render COMPOSES carry the
      sortable wrapper and the sort script, count and ordinal columns
      are right-aligned, and the metadata card is left alone
-  5c. the v1.5 admonitions: an alert's trailing text becomes the
+  5c. the v1.6 admonitions: an alert's trailing text becomes the
      block's title, Material's types beyond GFM's five map, a `-`
      fold suffix makes the block collapsible, the composed pages
      (draft, drafts catalog, About, front) carry their notices as
@@ -338,7 +338,8 @@ def main():
           and "Recent: recent.md" in ycfg, ycfg)
     wf = open(os.path.join(out, ".github", "workflows", "pages.yml"), encoding="utf-8").read()
     check("Pages workflow builds strict from the configured branch and deploys",
-          "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf, wf[:300])
+          "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf
+          and "mkdocs-glightbox" in wf and "mkdocs-panzoom-plugin" in wf and "markdown-captions" in wf, wf[:400])
     check("README says the tree is generated", "Do not edit here" in open(os.path.join(out, "README.md"), encoding="utf-8").read())
 
     # ---- 2. links -------------------------------------------------
@@ -442,7 +443,7 @@ def main():
           and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg
           and "- admonition" in ycfg and "pymdownx.details" in ycfg
           and "pymdownx.superfences" in ycfg, ycfg)
-    # ---- 2d. the composed pages' own admonitions (v1.5) -----------
+    # ---- 2d. the composed pages' own admonitions (v1.6) -----------
     about = page("about.md")
     front = page("index.md")
     css = open(os.path.join(docs, "stylesheets", "extra.css"), encoding="utf-8").read()
@@ -459,7 +460,7 @@ def main():
           "--md-admonition-icon--draft" in css
           and ".md-typeset .admonition.draft" in css, css[:200])
 
-    # ---- 2e. data tables (v1.6) -----------------------------------
+    # ---- 2e. data tables (v1.7) -----------------------------------
     tjs = open(os.path.join(docs, "javascripts", "tables.js"), encoding="utf-8").read()
     check("the render writes its own sort script and mkdocs.yml loads it",
           "extra_javascript:" in ycfg and "- javascripts/tables.js" in ycfg
@@ -477,7 +478,7 @@ def main():
           and "| Kind | Documents |\n|---|---:|" in front
           and "| # | Case |\n|---:|---|" in page("cases/index.md"),
           page("cases/index.md")[:500])
-    # ---- 2f. lists (v1.7) ------------------------------------------
+    # ---- 2f. lists (v1.8) ------------------------------------------
     check("mkdocs.yml enables def_list",
           "- def_list" in ycfg and "clickable_checkbox" not in ycfg, ycfg)
     check("a case's field bullets become a definition list",
@@ -498,6 +499,18 @@ def main():
     check("the metadata card is never sortable (its header row is hidden)",
           '<div class="sortable" markdown>' not in plan.split("\n---\n")[0]
           and '<div class="doc-meta" markdown>' in plan, plan[:400])
+    # v1.5: the three figure-presentation plugins. panzoom takes
+    # include_selectors, NOT `images: true` — mkdocs-panzoom-plugin 0.5.2
+    # reads that key off the global config, so it never fires.
+    check("mkdocs.yml wires captions, lightbox and pan/zoom for figures",
+          "- markdown_captions" in ycfg and "- glightbox" in ycfg
+          and "- panzoom:" in ycfg and 'include_selectors: ["img"]' in ycfg
+          and "images: true" not in ycfg, ycfg)
+    check("mkdocs.yml carries Material's mermaid custom fence",
+          "pymdownx.superfences" in ycfg and "name: mermaid" in ycfg
+          and "format: !!python/name:pymdownx.superfences.fence_code_format" in ycfg, ycfg)
+    check("pymdownx.superfences is configured once — never a duplicate yaml key",
+          ycfg.count("- pymdownx.superfences") == 1, ycfg)
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------
@@ -520,9 +533,15 @@ def main():
           and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures) |" in cases
           and "#tc-n01) |" in cases, cases)
     figs = page("figures/index.md")
+    # v1.5: raw HTML, not markdown — markdown_captions would turn a
+    # markdown image into a <figure>, emptying the anchor around it and
+    # moving `width=160` onto the figure. Raw HTML keeps link + width +
+    # alt and takes neither a caption nor a panzoom box.
     check("figure catalog: the image, thumbnail-sized, linking its section",
           "1 figures." in figs
-          and "[![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png){ width=160 }](../test-plans/4855-merge-plan.md#tc-p01)" in figs, figs)
+          and '<a href="../test-plans/4855-merge-plan.md#tc-p01">'
+              '<img src="../media/4855-merge-plan/fig-01-slide-03-merge.png" width="160" '
+              'alt="Figure 1 — Merge before"></a>' in figs, figs)
     if shutil.which("mkdocs"):
         r = run_job(cfg_path, ["--build"])
         check("mkdocs build --strict passes on the rendered tree", r.returncode == 0 and '"built":true' in r.stdout, r.stderr[-800:])
