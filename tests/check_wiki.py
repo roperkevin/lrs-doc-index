@@ -445,9 +445,17 @@ def main():
         check("mkdocs build --strict passes on the rendered tree", r.returncode == 0 and '"built":true' in r.stdout, r.stderr[-800:])
         html = open(os.path.join(out, "site", "test-plans", "4855-merge-plan", "index.html"), encoding="utf-8").read() \
             if os.path.isfile(os.path.join(out, "site", "test-plans", "4855-merge-plan", "index.html")) else ""
+        # the point of the leg is AGREEMENT: every fragment the case and
+        # figure catalogs link into this plan must be an id MkDocs
+        # actually emitted — an explicit `{ #tc-p01 }` and a derived
+        # slug alike. Asserting the agreement rather than a list of
+        # slugs keeps the leg honest when the anchoring rule changes.
+        linked = sorted(set(re.findall(r"4855-merge-plan\.md#([\w-]+)", cases + figs)))
+        built = set(re.findall(r'id="([\w-]+)"', html))
         check("the built page carries exactly the ids the catalogs link",
-              'id="tc-p01-merge-preserves-measures"' in html and 'id="tc-p01-merge-preserves-measures_1"' in html
-              and 'id="tc-n01-lock-conflict-refuses"' in html, html[:200])
+              len(linked) >= 3 and all(f in built for f in linked)
+              and "tc-p01" in linked and "tc-n01" in linked,
+              f"linked={linked} missing={[f for f in linked if f not in built]}")
         check("the built page shows the figure", 'src="../../media/4855-merge-plan/fig-01-slide-03-merge.png"' in html, html[-2000:])
     else:
         print("  (mkdocs not on PATH — the strict-build legs are skipped here; CI runs them)")
