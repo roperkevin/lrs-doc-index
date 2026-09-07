@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.3 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.4 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -38,6 +38,33 @@
  * same skeleton every sidecar carries, so `readMeta` reads one; but a
  * draft is unreviewed machine output, so it joins NO catalog — not
  * kinds, not keywords, not test cases — and its page says so.
+ *
+ * v1.4 (figure presentation) — the corpus's pictures get the three
+ * reader affordances the raw site never had. `mkdocs.yml` gains
+ * `markdown_captions` (a body image renders as `<figure>` with its alt
+ * text as a visible `<figcaption>` — the figure index's own
+ * `Figure N — <title>` alt texts become the captions for free),
+ * `glightbox` (click a picture, get it full size over the page) and
+ * `panzoom` (alt-drag to pan, alt-scroll to zoom, with a full-screen
+ * button — for the wide route-measure and matrix figures that do not
+ * fit a column). The Pages workflow installs all three.
+ *
+ * The figure catalog's THUMBNAILS are emitted as raw HTML instead of
+ * `[![alt](img){ width=160 }](href)` markdown: markdown_captions turns
+ * a markdown image into a `<figure>`, which cannot live inside a link
+ * — the anchor came out empty and the figure escaped it, losing the
+ * link into the case section — and `{ width=160 }` landed on the
+ * `<figure>` instead of sizing the image. Raw HTML is invisible to
+ * both markdown extensions, so a thumbnail keeps its link, its width
+ * and its alt, and stays free of caption and pan/zoom chrome; body
+ * images, which are what the affordances are for, are unaffected.
+ * (`mkdocs-img2fig-plugin` is the other captioner in the MkDocs
+ * catalog and is NOT usable here: it regex-rewrites raw markdown in
+ * `on_page_markdown`, so it mangles `![...](...)` inside fenced code
+ * blocks — `docs/design/Figure_Index_Plan.md` documents the SC-4 link
+ * shape in one — and it captures the angle-bracket link form
+ * `![alt](<path with spaces>)` brackets and all, producing a broken
+ * `src`.)
  *
  * v1.2 (phase 4) — the page's metadata table follows format 3.1: the
  * identity and the provenance always print, a row the document has
@@ -132,6 +159,9 @@ export function uniqueSlug(id, taken) {
 
 const stripComments = (s) => String(s ?? "").replace(/<!--[\s\S]*?-->/g, "");
 const cell = (s) => String(s ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+/** One value inside a double-quoted HTML attribute (v1.4, the figure
+ *  catalog's raw-HTML thumbnails). */
+const attr = (s) => cell(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const mdEscape = (s) => String(s ?? "").replace(/([\\`*_[\]<>])/g, "\\$1");
 const linkText = (s) => mdEscape(cell(s)).replace(/\\\|/g, "|");
 const pageName = (s) => kebab(s) || "untitled";
@@ -554,7 +584,12 @@ function figuresPage(model) {
     for (const f of figs) {
       const img = f.link.replace(/^\.\.\//, "../").replace(/ /g, "%20");
       const href = `${rel(p, d.page).replace(/ /g, "%20")}#${f.anchor}`;
-      out.push(`- [![${cell(f.alt)}](${img}){ width=160 }](${href}) ${f.heading ? `[${linkText(f.heading)}](${href})` : ""}`);
+      // raw HTML, not `[![alt](img){ width=160 }](href)`: markdown_captions
+      // (v1.4) would turn the image into a <figure>, which cannot sit
+      // inside a link — the anchor empties and the figure escapes it —
+      // and would move `width=160` onto the <figure>. Raw HTML keeps the
+      // link, the width and the alt, and takes no caption or panzoom box.
+      out.push(`- <a href="${attr(href)}"><img src="${attr(img)}" width="160" alt="${attr(f.alt)}"></a> ${f.heading ? `[${linkText(f.heading)}](${href})` : ""}`);
     }
     out.push("");
   }
@@ -616,8 +651,19 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "      toggle: { icon: material/brightness-4, name: Light }",
     "plugins:",
     "  - search",
+    "  - glightbox",
+    "  - panzoom:",
+    // the plugin's own `images: true` is read off the GLOBAL config by
+    // mkdocs-panzoom-plugin 0.5.2 (plugin.py: `config.get("images")`,
+    // not `self.config`), so it never fires; include_selectors is read
+    // correctly. Its matcher takes element/class selectors only — an
+    // attribute selector such as img[src$=".svg"] silently matches
+    // nothing — so pan/zoom goes on every body image.
+    '      include_selectors: ["img"]',
+    "      full_screen: true",
     "markdown_extensions:",
     "  - tables",
+    "  - markdown_captions",
     "  - attr_list",
     "  - admonition",
     "  - fenced_code",
@@ -655,7 +701,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install mkdocs-material
+      - run: pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions
       - run: mkdocs build --strict
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
@@ -676,7 +722,7 @@ const WIKI_README = (opts) => `# ${opts.siteName}
 
 A generated MkDocs site: every page is rendered from the LRS Doc Index catalog by \`pipeline/wiki.mjs\` and overwritten on the next run. Do not edit here.
 
-Local preview: \`pip install mkdocs-material && mkdocs serve\`.
+Local preview: \`pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions && mkdocs serve\`.
 Publishing: the \`pages\` workflow builds the site on every push to \`${opts.branch}\` and deploys it to this repository's GitHub Pages (Settings → Pages → Source: GitHub Actions, once).
 `;
 
