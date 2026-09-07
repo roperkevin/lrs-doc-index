@@ -89,6 +89,7 @@ the built tab bar, the sidebar entry, the devtopia issue link,
 Rollout: `git pull` on the sweep machine; the next `ops\run_wiki.cmd`
 publishes the new organisation. Nothing to configure; `wiki.offline`
 only if the built folder is ever opened from disk.
+
 ## curate v1.3 (2026-09-07 — the guard learns direction; review by list; unmerge --unreject)
 
 The first live runs of the v2.0 prompt looked right in the morning
