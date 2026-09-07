@@ -28,6 +28,9 @@ carry two alias → canonical merges — then renders the site and proves:
      admonitions, `<placeholder>` and a trailing `{brace}` run are
      escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
      carries the extensions the dialect needs
+  5d. the v1.6 data tables: the tables the render COMPOSES carry the
+     sortable wrapper and the sort script, count and ordinal columns
+     are right-aligned, and the metadata card is left alone
   5c. the v1.5 admonitions: an alert's trailing text becomes the
      block's title, Material's types beyond GFM's five map, a `-`
      fold suffix makes the block collapsible, the composed pages
@@ -451,6 +454,28 @@ def main():
     check("extra.css defines the custom draft admonition (colour and icon)",
           "--md-admonition-icon--draft" in css
           and ".md-typeset .admonition.draft" in css, css[:200])
+
+    # ---- 2e. data tables (v1.6) -----------------------------------
+    tjs = open(os.path.join(docs, "javascripts", "tables.js"), encoding="utf-8").read()
+    check("the render writes its own sort script and mkdocs.yml loads it",
+          "extra_javascript:" in ycfg and "- javascripts/tables.js" in ycfg
+          and ".doc-table table, .sortable table" in tjs
+          and "aria-sort" in tjs and "document$" in tjs, ycfg)
+    check("the composed catalog tables are wrapped for sorting",
+          '<div class="sortable" markdown>' in page("keywords/index.md")
+          and '<div class="sortable" markdown>' in front
+          and '<div class="sortable" markdown>' in page("cases/index.md")
+          and '<div class="sortable" markdown>' in dindex
+          and '<div class="doc-table" markdown>' in page("test-plans/index.md"),
+          page("keywords/index.md")[:400])
+    check("count and ordinal columns are right-aligned",
+          "| Keyword | Documents |\n|---|---:|" in page("keywords/index.md")
+          and "| Kind | Documents |\n|---|---:|" in front
+          and "| # | Case |\n|---:|---|" in page("cases/index.md"),
+          page("cases/index.md")[:500])
+    check("the metadata card is never sortable (its header row is hidden)",
+          '<div class="sortable" markdown>' not in plan.split("\n---\n")[0]
+          and '<div class="doc-meta" markdown>' in plan, plan[:400])
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------

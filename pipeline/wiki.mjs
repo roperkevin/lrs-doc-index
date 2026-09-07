@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.5 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.6 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -26,12 +26,26 @@
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
  *   docs/stylesheets/extra.css  the site's own styling (v1.4)
+ *   docs/javascripts/tables.js  click-to-sort for the tables (v1.6)
  *
  * Bodies keep their sidecar shape (the same relative
  * `../media/<stem>/` links resolve, because pages sit one folder deep
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v1.6 — data tables
+ * (https://squidfunk.github.io/mkdocs-material/reference/data-tables/).
+ * Every table the render COMPOSES sorts on a header click, and the
+ * count and ordinal columns are right-aligned. Material reaches
+ * sorting by loading `tablesort` from a public CDN; this site is
+ * served from a devtopia Pages build on the internal network, where an
+ * external script is the one thing that fails silently, so the render
+ * writes `docs/javascripts/tables.js` itself — the same behaviour with
+ * no runtime dependency. Only composed tables sort (`.doc-table` and
+ * the new `.sortable` wrapper): never the metadata card, whose header
+ * row the stylesheet hides, and never a table extracted out of a
+ * source document, whose first row may not be a header at all.
  *
  * v1.5 — admonitions, the whole Material set
  * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/).
@@ -120,7 +134,7 @@ import { toMkDocs, normalize, splitAnchor, admonition } from "./lib/mdlayout.mjs
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.5";
+export const WIKI_VERSION = "v1.6";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -319,6 +333,7 @@ function draftsIndex(drafts) {
       "Every draft here is **unreviewed**: every case and every [VERIFY] item still " +
       "needs a Product Engineer. Drafts are not catalog documents and do not appear " +
       "in the kind, keyword or test-case catalogs.", { title: "Unreviewed" }), "",
+    '<div class="sortable" markdown>', "",
     "| Draft | Generated | Status | From |", "|---|---|---|---|"];
   for (const d of drafts) {
     out.push(
@@ -326,6 +341,7 @@ function draftsIndex(drafts) {
       `${cell(d.meta.status) || "—"} | ${cell(d.meta.source_file) || "—"} |`
     );
   }
+  out.push("", "</div>");
   return out.join("\n") + "\n";
 }
 
@@ -466,6 +482,11 @@ const catalogPage = (section, value) => `${section}/${pageName(value)}.md`;
 const META_OPEN = '<div class="doc-meta" markdown>';
 const META_CLOSE = "</div>";
 
+/** v1.6: wrap a composed table so `javascripts/tables.js` picks it up.
+ *  Only the tables the RENDER writes are sortable — a table extracted
+ *  out of a source document has no header row to trust. */
+const sortable = (lines) => ['<div class="sortable" markdown>', "", ...lines, "", "</div>"];
+
 function docRow(fromPage, d) {
   const title = d.meta.title || d.stem;
   return `| ${link(fromPage, d.page, title)} | ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${cell(d.summary).slice(0, 160) || "—"} |`;
@@ -541,12 +562,15 @@ function docPage(d, model) {
 
 function catalogIndex(section, title, groups, intro, model, kindLabel) {
   const p = `${section}/index.md`;
-  const out = [`# ${title}`, "", intro, "", "| " + kindLabel + " | Documents |", "|---|---|"];
+  const out = [`# ${title}`, "", intro, "",
+    '<div class="sortable" markdown>', "",
+    "| " + kindLabel + " | Documents |", "|---|---:|"];
   for (const [value, docs] of groups) {
     const extra = section === "keywords" && model.keywordKinds.get(value.toLowerCase())
       ? ` (${model.keywordKinds.get(value.toLowerCase())})` : "";
     out.push(`| ${link(p, catalogPage(section, value), value)}${extra} | ${docs.length} |`);
   }
+  out.push("", "</div>");
   return out.join("\n") + "\n";
 }
 
@@ -579,11 +603,11 @@ function casesPage(model) {
     const cases = planCases(d.body);
     if (!cases.length) continue;
     total += cases.length;
-    out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "", "| # | Case |", "|---|---|");
-    for (const c of cases) {
-      const href = `${rel(p, d.page).replace(/ /g, "%20")}#${c.anchor}`;
-      out.push(`| ${c.ordinal} | [${linkText(c.heading)}](${href}) |`);
-    }
+    out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "",
+      ...sortable([
+        "| # | Case |", "|---:|---|",
+        ...cases.map((c) => `| ${c.ordinal} | [${linkText(c.heading)}](${rel(p, d.page).replace(/ /g, "%20")}#${c.anchor}) |`),
+      ]));
     out.push("");
   }
   out.splice(3, 0, `${total} cases.`);
@@ -620,8 +644,10 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
   const p = "index.md";
   const out = [`# ${mdEscape(opts.siteName)}`, "",
     `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
-    "| Kind | Documents |", "|---|---|"];
+    '<div class="sortable" markdown>', "",
+    "| Kind | Documents |", "|---|---:|"];
   for (const [kind, docs] of model.kinds) out.push(`| ${link(p, `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind)} | ${docs.length} |`);
+  out.push("", "</div>");
   // v1.4: one Material card per catalog (md_in_html grid, emoji
   // icons); the link text and the count are what the gate looks for
   const card = (icon, target, title, count, blurb) => [
@@ -702,6 +728,8 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "      toggle: { icon: material/brightness-4, name: Light }",
     "extra_css:",
     "  - stylesheets/extra.css",
+    "extra_javascript:",
+    "  - javascripts/tables.js",
     `copyright: ${y(`Rendered by pipeline/wiki.mjs ${WIKI_VERSION} from the LRS Doc Index catalog — a render, not a source.`)}`,
     "plugins:",
     "  - search:",
@@ -736,6 +764,78 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "",
   ].filter((l) => l !== "").join("\n");
 }
+
+/** docs/javascripts/tables.js (v1.6). Material's data-tables reference
+ *  reaches sortable tables by loading `tablesort` from a public CDN;
+ *  this site is served from a devtopia Pages build on the internal
+ *  network, where an external script is the one thing that can fail
+ *  silently, so the render writes the behaviour itself. Same result,
+ *  no runtime dependency, and it sorts only the tables the render
+ *  composes (`.doc-table` and `.sortable`) — never the metadata card,
+ *  never a table extracted out of a source document. */
+const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every render */
+(function () {
+  var SELECTOR = ".doc-table table, .sortable table";
+
+  /* A cell's sort key. A whole-cell number sorts numerically; the
+     site's dates are already ISO-ish ("2026-09-06 23:00"), so they
+     sort correctly as text; everything else is case-folded text.
+     An em dash is the render's "nothing to say" and counts as empty. */
+  function key(cell) {
+    var t = (cell.textContent || "").trim();
+    if (t === "—") return "";
+    if (/^-?[0-9][0-9,]*(\\.[0-9]+)?$/.test(t)) return parseFloat(t.replace(/,/g, ""));
+    return t.toLowerCase();
+  }
+
+  function sortBy(table, col, dir) {
+    var body = table.tBodies[0];
+    if (!body) return;
+    var rows = Array.prototype.slice.call(body.rows);
+    var keyed = rows.map(function (row, i) {
+      return { row: row, key: row.cells[col] ? key(row.cells[col]) : "", i: i };
+    });
+    /* empty cells last whichever way the column is sorted */
+    var filled = keyed.filter(function (r) { return r.key !== ""; });
+    var blank = keyed.filter(function (r) { return r.key === ""; });
+    filled.sort(function (a, b) {
+      var c = typeof a.key === "number" && typeof b.key === "number"
+        ? a.key - b.key
+        : String(a.key).localeCompare(String(b.key), undefined, { numeric: true });
+      return (c || a.i - b.i) * dir;   /* a stable tie-break on the original order */
+    });
+    filled.concat(blank).forEach(function (r) { body.appendChild(r.row); });
+  }
+
+  function makeSortable(table) {
+    var head = table.tHead && table.tHead.rows[0];
+    if (!head || table.dataset.lrsSortable) return;
+    table.dataset.lrsSortable = "1";
+    Array.prototype.forEach.call(head.cells, function (th, col) {
+      th.setAttribute("role", "button");
+      th.setAttribute("tabindex", "0");
+      th.setAttribute("aria-sort", "none");
+      function toggle() {
+        var dir = th.getAttribute("aria-sort") === "ascending" ? -1 : 1;
+        Array.prototype.forEach.call(head.cells, function (o) { o.setAttribute("aria-sort", "none"); });
+        th.setAttribute("aria-sort", dir === 1 ? "ascending" : "descending");
+        sortBy(table, col, dir);
+      }
+      th.addEventListener("click", toggle);
+      th.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+      });
+    });
+  }
+
+  function scan() { document.querySelectorAll(SELECTOR).forEach(makeSortable); }
+
+  /* Material re-renders the article on instant navigation; document$
+     fires on every page. Without the theme's observable, run once. */
+  if (typeof document$ !== "undefined") document$.subscribe(scan);
+  else document.addEventListener("DOMContentLoaded", scan);
+})();
+`;
 
 /** docs/stylesheets/extra.css (v1.4). Material's own variables
  *  throughout, so the light and the slate palette both work. */
@@ -811,6 +911,29 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   -webkit-mask-image: var(--md-admonition-icon--draft);
           mask-image: var(--md-admonition-icon--draft);
 }
+
+/* sortable catalog tables (v1.6): the header is the control */
+.doc-table th[role="button"], .sortable th[role="button"] {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.doc-table th[role="button"]:hover, .sortable th[role="button"]:hover { color: var(--md-accent-fg-color); }
+.doc-table th[aria-sort]::after, .sortable th[aria-sort]::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-left: 0.4em;
+  vertical-align: middle;
+  border: 0.25em solid transparent;
+}
+.doc-table th[aria-sort="none"]::after, .sortable th[aria-sort="none"]::after {
+  border-top-color: currentColor;
+  opacity: 0.25;
+}
+.doc-table th[aria-sort="ascending"]::after, .sortable th[aria-sort="ascending"]::after { border-bottom-color: currentColor; }
+.doc-table th[aria-sort="descending"]::after, .sortable th[aria-sort="descending"]::after { border-top-color: currentColor; }
 
 /* catalog tables: the short columns stay on one line, the summary is quiet */
 .doc-table td:nth-child(2), .doc-table td:nth-child(3), .doc-table td:nth-child(4) { white-space: nowrap; }
@@ -957,6 +1080,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   put("about.md", aboutPage(model, opts));
   put("index.md", frontPage(model, kindFolders, opts, drafts.length));
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
+  write(docsDir, "javascripts/tables.js", TABLES_JS);
   write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts.length));
   write(outDir, ".github/workflows/pages.yml", PAGES_WORKFLOW.replace("BRANCH", opts.branch));
   write(outDir, "README.md", WIKI_README(opts));

@@ -1,5 +1,46 @@
 # Local sweep — release notes
 
+## Data tables that sort (2026-09-07)
+
+`wiki` v1.6.
+[Material's data-tables reference](https://squidfunk.github.io/mkdocs-material/reference/data-tables/)
+applied to the catalog, which is mostly tables: the kind catalogs, the
+keyword / tool / product / release / people / issue indexes, the cases,
+Recent and the Drafts catalog.
+
+- **Every composed table sorts on a header click.** Ascending, then
+  descending, with the sibling headers reset and an arrow showing
+  which column is driving. Keyboard reachable (`Tab` to a header,
+  `Enter` or `Space`), and `aria-sort` carries the state for a screen
+  reader.
+- **Numbers sort as numbers, blanks sink.** A count column orders 3,
+  7, 12 rather than 12, 3, 7; the render's em dash — its "nothing to
+  say" — sorts to the bottom whichever way the column runs. The site's
+  dates are already ISO-ish (`2026-09-06 23:00`), so text order is
+  chronological order.
+- **Only the tables the render composes.** `.doc-table` and the new
+  `.sortable` wrapper. The metadata card is excluded — the stylesheet
+  hides its header row, so there is nothing to click — and so is any
+  table extracted out of a source document, whose first row may not be
+  a header at all.
+- **Count and ordinal columns are right-aligned** (`|---:|`), the
+  alignment syntax the same reference documents.
+
+**The one deviation, and why.** Material reaches sorting by loading
+`tablesort` from a public CDN. This site is served from a devtopia
+Pages build on the internal network, where an external script is the
+one thing that can fail silently — the tables would simply stop
+sorting, with nothing in the build to say so. So the render writes
+`docs/javascripts/tables.js` itself, the way it already writes
+`extra.css`: same behaviour, no runtime dependency, and nothing
+vendored into the repository.
+
+Gate: `tests/check_wiki.py` 62 checks, four new, with the `mkdocs
+build --strict` legs run. The behaviour was also driven in Chromium
+against a built page — numeric ordering, the descending toggle, blanks
+held last in both directions, sibling headers reset, and the keyboard
+path. No backfill.
+
 ## Admonitions, the whole Material set (2026-09-07)
 
 `wiki` v1.5, `mdlayout` v1.1. Phase 2 taught the wiki five admonition

@@ -369,6 +369,13 @@ GitHub or SharePoint consumer, so `mdlayout.admonition()` writes
 MkDocs syntax there directly: D2 constrains the files on disk, not the
 render's own output.
 
+That line also decides which tables sort (wiki v1.6). A composed table
+is wrapped `.doc-table` / `.sortable` and gets click-to-sort headers;
+a table that came out of a *source document* does not, because its
+first row is a header only by convention. The metadata card is
+excluded for the same reason its header row is hidden — it is a
+key/value card, not a table to reorder.
+
 **The wiki renders; it does not mirror.** The current `docPage`
 reproduces the sidecar and links its table values — a reasonable v1.0.
 The strategy going forward is that the sidecar is the *record* and the
