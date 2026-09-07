@@ -1,5 +1,95 @@
 # Local sweep — release notes
 
+## wiki v2.0 (2026-09-07 — the site reorganised for readers; the MkDocs catalog reviewed)
+
+The v1.x site was a flat sidebar of index pages with every document
+and every catalog value left out of the nav (`not_in_nav: /*/*.md`):
+a reader who arrived on a document from search had no sense of where
+they were, and a 150-row table or a 300-row keyword list could only be
+sorted, never narrowed. v2.0 changes the organisation, not the
+content — the page markdown the format 3.1 contract pins is unchanged
+under a new front-matter block and a breadcrumb line.
+
+- **Every page is in the nav.** `navigation.tabs` puts Home ·
+  Documents · Browse · Test cases & figures · Drafts (· Recent · About)
+  in a tab bar; each kind and each catalog is a collapsible section
+  whose header opens its own table (`navigation.indexes`) with its
+  pages listed under it by title; `navigation.prune` renders only the
+  active branch, so the 600-entry nav costs a page nothing.
+  `navigation.sections` is gone (it would have listed every document
+  under an always-open heading). Kinds follow `KIND_FOLDERS` order —
+  Test Plans first — in the nav, the front page and the new table.
+- **Two new pages.** `documents/index.md`, where the Documents tab
+  lands: every document in one table with a Kind column. `browse/
+  index.md`, where the Browse tab lands: the six catalogs as cards.
+- **Tables filter as you type.** `tables.js` puts a box above every
+  `.filterable` table with six rows or more (kind indexes, All
+  documents, Recent, the catalog indexes, catalog value pages, the
+  drafts catalog); terms are ANDed. The test-case catalog has one box
+  for the whole page (`.filter-all`) that folds away the plans with no
+  matching case. Cross-kind tables carry a Kind column; a catalog
+  value's page is one table (sortable and filterable across the set)
+  instead of one per kind; group keys sort naturally, so release 3.10
+  follows 3.8.
+- **A document page** opens with a breadcrumb line (`Home › Test
+  Plans`) and carries an **Open <file>** button under the metadata
+  card. External links open in a new tab. A keyword page lists what it
+  is most often tagged with; a person's page says in which roles they
+  appear (`author of 2 · PE of 1`).
+- **Search.** Document pages boost 2, drafts 0.5; the aggregate pages
+  (front, All documents, Recent, the kind and catalog indexes, cases,
+  figures, Browse, the drafts catalog) are excluded from the index —
+  they repeat every title the document pages carry and used to match
+  almost any query.
+- **The front page** in reading order: the search tip (now also
+  saying how the tables and tabs work), Documents by kind with the
+  All-documents link, the eight most recent edits inline, the Browse
+  cards. About gains "How the site is organised".
+- **A kind folder that would land on a folder the wiki reserves**
+  (`documents`, `browse`, `keywords`, …) is refused by name.
+
+**The MkDocs catalog (https://github.com/mkdocs/catalog), reviewed for
+this site.** Adopted: `pymdownx.magiclink` — bare URLs in a body become
+links, as GitHub renders them, and `Org/repo#123` shorthand (the
+related list's "shared issue …", a plan's own references) links the
+tracker; the host comes off the corpus's own issue URLs
+(`issueHostOf`), so devtopia needs no config and a corpus without
+issues gets bare-URL linking only. `pymdownx.tilde` (subscript off) —
+GFM `~~strikethrough~~`, a dialect gap. Material's built-in `offline`
+plugin as **`wiki.offline`** (default false) for a `site/` folder
+opened from a file share; it forces `.html` URLs, hence opt-in.
+`glightbox` `auto_caption`. Replicated in `tables.js` rather than
+installed, because each is a dozen lines and the runner is a Windows
+box: `mkdocs-open-in-new-tab`; breadcrumbs (`mkdocs-breadcrumbs-plugin`,
+and Material's own `navigation.path` is Insiders-only); `section-index`
+is Material's `navigation.indexes`. Passed over: `awesome-nav` /
+`literate-nav` (the nav is generated here), the git date/author/
+latest-changes plugins (dates come from the sidecars), Material's
+`tags` (would duplicate Keywords), `mkdocs-redirects` (nothing records
+a document's previous slug yet — worth revisiting when the sweep
+renames a sidecar), `htmlproofer` / `minify` (the strict build and an
+internal site), `mermaid2` / `plantuml` / `kroki` (nothing in the
+corpus emits them), the inactive `issues` and `localsearch` plugins,
+and Material's `privacy` (self-hosts Google Fonts, but a fetch
+warning would fail the strict nightly build on the runner). Noted:
+`markdown-captions` is marked inactive and GPL-3.0 in the catalog; it
+still builds on the runner and in CI (a Debian-patched setuptools
+refuses its sdist elsewhere), so it stays, with `mkdocs-img2fig` still
+ruled out for the reasons in the v1.5 note.
+
+Gates: `check_wiki.py` **104/104** (was 80: the nav shape, tabs,
+reader order, no `not_in_nav`, the two new pages, the front page's
+order, breadcrumbs and the Open button, filterable wrappers and the
+page-wide filter, the Kind column, co-tags and roles, search front
+matter, natural order, the issue host, tilde, glightbox captions, the
+offline knob, the reserved-folder refusal, and — with mkdocs present —
+the built tab bar, the sidebar entry, the devtopia issue link,
+`<del>`, and the search index without the aggregates).
+
+Rollout: `git pull` on the sweep machine; the next `ops\run_wiki.cmd`
+publishes the new organisation. Nothing to configure; `wiki.offline`
+only if the built folder is ever opened from disk.
+
 ## wiki v1.9 (2026-09-07 — publishing on devtopia)
 
 The first pushes of the wiki to devtopia (GitHub Enterprise Server)
