@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.9 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v2.0 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -17,22 +17,80 @@
  *
  * Output (`wiki.outDir`, default `<workDir>/wiki`):
  *   mkdocs.yml, .github/workflows/pages.yml, README.md
- *   docs/index.md                 the front page (counts, kinds, recent)
+ *   docs/index.md                 the front page (kinds, recent, browse)
+ *   docs/documents/index.md       every document in one filterable table
  *   docs/<kind>/index.md          one catalog table per kind
  *   docs/<kind>/<stem>.md         one page per document
  *   docs/media/<stem>/…           the media the bodies link (copied)
+ *   docs/browse/index.md          the catalogs, as cards
  *   docs/keywords/…, products/…, releases/…, people/…, issues/…
  *   docs/cases/index.md           every test case, by plan, anchored
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
  *   docs/stylesheets/extra.css  the site's own styling (v1.4)
- *   docs/javascripts/tables.js  click-to-sort for the tables (v1.7)
+ *   docs/javascripts/tables.js  sort, filter and link behaviour (v1.7, v2.0)
  *
  * Bodies keep their sidecar shape (the same relative
  * `../media/<stem>/` links resolve, because pages sit one folder deep
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v2.0 — the site reorganised for readers. The v1.x nav was a flat
+ * sidebar of index pages with every document and catalog page left
+ * out of it (`not_in_nav`), so a reader arriving on a document from
+ * search had no sense of where they were, and the only way through a
+ * 150-row table was to sort it. Now:
+ *
+ *   - Every page is in the nav. `navigation.tabs` puts Home, Documents,
+ *     Browse, "Test cases & figures" and Drafts in a tab bar; each kind
+ *     and each catalog is a collapsible section whose header opens its
+ *     own table (`navigation.indexes`), with the pages listed under it
+ *     alphabetically; `navigation.prune` keeps the sidebar to the
+ *     active branch so a 600-entry nav costs a page nothing. The
+ *     Documents tab lands on a NEW `documents/index.md` — every
+ *     document in one table — and the Browse tab on `browse/index.md`,
+ *     the catalogs as cards. Kinds follow KIND_FOLDERS order (Test
+ *     Plans first), not the alphabet.
+ *   - Every large table filters as you type (`.filterable`, the
+ *     render's own `tables.js`; a box appears only when the table has
+ *     enough rows to need one) and the test-case catalog has one box
+ *     for the whole page (`.filter-all`) that also hides the plans with
+ *     no matching case. Cross-kind tables (All documents, Recent, a
+ *     catalog value's page) carry a Kind column and a catalog value's
+ *     page is one table rather than one per kind; group keys sort
+ *     naturally (release 3.10 after 3.8).
+ *   - A document page opens with a breadcrumb line and, under the
+ *     metadata card, an "Open <file>" button for the original — the
+ *     thing a Product Engineer most often came for. A keyword page
+ *     lists the terms it is most often tagged with; a person's page
+ *     says in which roles they appear.
+ *   - Search: document pages are boosted, drafts damped, and the
+ *     aggregate pages (the front page, All documents, Recent, the
+ *     kind and catalog indexes, the case and figure catalogs) are
+ *     excluded from the index — they repeat titles that the document
+ *     pages already carry, so they used to match almost any query.
+ *   - The front page: the search tip, the kinds with an All-documents
+ *     link, the eight most recent edits inline, then the Browse cards.
+ *   - From the MkDocs catalog (https://github.com/mkdocs/catalog),
+ *     reviewed for this site: `pymdownx.magiclink` (bare URLs become
+ *     links, as GitHub renders them, and `Org/repo#123` shorthand
+ *     links the issue tracker — the host is read off the corpus's own
+ *     issue URLs, so devtopia needs no config) and `pymdownx.tilde`
+ *     (GFM `~~strikethrough~~`, subscript off) close two dialect gaps;
+ *     Material's built-in `offline` plugin is an opt-in (`wiki.offline`)
+ *     for the day the built `site/` folder is opened from a file share
+ *     rather than served; glightbox gets `auto_caption`. Behaviours
+ *     that were only a few lines of JavaScript are written into
+ *     `tables.js` instead of adding a package to the runner: external
+ *     links open in a new tab (mkdocs-open-in-new-tab's job) and the
+ *     breadcrumbs are composed by the render. Passed over, with the
+ *     reason in docs/changelog/pipeline.md: the nav plugins (the nav
+ *     is generated here), the git date/author plugins (dates come from
+ *     the sidecars), Material's tags (would duplicate Keywords),
+ *     redirects (nothing records a document's previous slug yet), the
+ *     inactive `issues` and `localsearch` plugins, and `privacy`
+ *     (a fetch warning would fail the strict nightly build).
  *
  * v1.9 — publishing on Enterprise Server. The generated pages.yml is
  * shaped by three config keys (devtopia has no hosted runners, no
@@ -193,6 +251,12 @@
  *   siteName   the site title (default "LRS Doc Index")
  *   siteUrl    the published URL, for mkdocs.yml (default "")
  *   recent     rows on the Recent page (default 50)
+ *   offline    enable Material's built-in `offline` plugin (default
+ *              false): search and navigation then work when the built
+ *              `site/` folder is opened from disk or a file share
+ *              (file://) instead of being served. The plugin switches
+ *              the site to `.html` URLs (`use_directory_urls: false`),
+ *              so leave it off for a Pages or IIS deployment
  *   sourceSite the SharePoint site the Source links point at; only
  *              used for the About page text
  */
@@ -211,8 +275,11 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList } from "./lib/mdl
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.9";
+export const WIKI_VERSION = "v2.0";
 
+// Declaration order is READER order (v2.0): the nav, the front page
+// and the All-documents table list kinds this way, test plans first,
+// not alphabetically. A kind the config adds follows, alphabetically.
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
   "User Story": "User Stories",
@@ -222,6 +289,43 @@ const KIND_FOLDERS = {
   "Doc Review": "Doc Reviews",
   Other: "Other",
 };
+
+/** The six catalogs, in the order the nav and the Browse page show
+ *  them: section (the folder), title, the model key, the index page's
+ *  intro, the column label, the card icon and the card blurb. */
+const CATALOGS = [
+  { section: "keywords", title: "Keywords", key: "keywords", label: "Keyword", icon: "tag-multiple",
+    intro: "The catalog's vocabulary, canonical terms only, with the documents each one tags.",
+    blurb: "The catalog's vocabulary after curation — an alias lands on its canonical term's page." },
+  { section: "tools", title: "Tools", key: "tools", label: "Tool", icon: "hammer-wrench",
+    intro: "Official tool names the documents mention.",
+    blurb: "Official tool names the documents mention." },
+  { section: "products", title: "Products", key: "products", label: "Product", icon: "package-variant",
+    intro: "Product lines, as detected from names and text.",
+    blurb: "Product lines, as detected from names and text." },
+  { section: "releases", title: "Releases", key: "releases", label: "Release", icon: "rocket-launch",
+    intro: "Target releases the documents state.",
+    blurb: "Target releases the documents state." },
+  { section: "people", title: "People", key: "people", label: "Person", icon: "account-group",
+    intro: "Authors, product engineers and developers named on the documents.",
+    blurb: "Authors, product engineers and developers named on the documents." },
+  { section: "issues", title: "Issues", key: "issues", label: "Issue", icon: "bug",
+    intro: "devtopia issues the documents reference.",
+    blurb: "devtopia issues the documents reference, each with the documents that cite it." },
+];
+
+/** Folders the render owns besides the kind folders — a kind folder
+ *  from `sweep.kindFolders` may not collide with one. */
+const RESERVED_DIRS = new Set(["documents", "browse", "cases", "figures", "drafts", "media",
+  "stylesheets", "javascripts", ...CATALOGS.map((c) => c.section)]);
+
+/** Kinds in reader order: KIND_FOLDERS' declaration order first, then
+ *  any other kind the corpus has, alphabetically. */
+function kindOrder(kinds, kindFolders) {
+  const declared = Object.keys(kindFolders);
+  const rank = (k) => { const i = declared.indexOf(k); return i < 0 ? declared.length : i; };
+  return [...kinds.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, "en"));
+}
 
 // ---------------------------------------------------------------- text
 
@@ -386,7 +490,10 @@ function draftPage(d, model) {
     ["Source", story],
     ["Generated", cell(m.generated) || "—"],
   ];
-  const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
+  // v2.0: damped in search — an unreviewed draft must never outrank
+  // the plan or the story it was generated from
+  const out = [...searchMeta({ boost: 0.5 }), ...crumbs(d.page, [["drafts/index.md", "Test-plan drafts"]]),
+    `# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("", META_CLOSE, "");
   // v1.6: the one thing a reader must not miss, in the site's own
@@ -407,21 +514,18 @@ function draftPage(d, model) {
 
 function draftsIndex(drafts) {
   const p = "drafts/index.md";
-  const out = ["# Test-plan drafts", "",
-    "Machine-generated test-plan drafts, newest first.", "",
+  const out = [...searchMeta({ exclude: true }), "# Test-plan drafts", "",
+    `Machine-generated test-plan drafts, newest first. ${TABLE_HELP}`, "",
     admonition("draft",
       "Every draft here is **unreviewed**: every case and every [VERIFY] item still " +
       "needs a Product Engineer. Drafts are not catalog documents and do not appear " +
       "in the kind, keyword or test-case catalogs.", { title: "Unreviewed" }), "",
-    '<div class="sortable" markdown>', "",
-    "| Draft | Generated | Status | From |", "|---|---|---|---|"];
-  for (const d of drafts) {
-    out.push(
-      `| ${link(p, d.page, d.meta.title || d.stem)} | ${cell(d.when) || "—"} | ` +
-      `${cell(d.meta.status) || "—"} | ${cell(d.meta.source_file) || "—"} |`
-    );
-  }
-  out.push("", "</div>");
+    ...sortable([
+      "| Draft | Generated | Status | From |", "|---|---|---|---|",
+      ...drafts.map((d) =>
+        `| ${link(p, d.page, d.meta.title || d.stem)} | ${cell(d.when) || "—"} | ` +
+        `${cell(d.meta.status) || "—"} | ${cell(d.meta.source_file) || "—"} |`),
+    ], { filter: true })];
   return out.join("\n") + "\n";
 }
 
@@ -499,10 +603,14 @@ export function buildModel(docs, kw, opts = {}) {
       if (!m.has(v)) m.set(v, []);
       m.get(v).push(d);
     }
-    return new Map([...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "en")));
+    // v2.0: natural order, so release 3.10 follows 3.8 and TC-P2
+    // precedes TC-P10 — and case-insensitive, so "Merge" and "merge
+    // events" sit together
+    return new Map([...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "en", { numeric: true, sensitivity: "base" }) || a[0].localeCompare(b[0], "en")));
   };
+  const issueUrls = new Map(docs.flatMap((d) => d.issues.map((i) => [i.ref, i.url])));
   return {
-    docs, byId, byFile,
+    docs, byId, byFile, kindFolders,
     kinds: group((d) => [d.kind]),
     keywords: group((d) => [...new Set(d.keywords)]),
     tools: group((d) => d.meta.tools),
@@ -510,9 +618,46 @@ export function buildModel(docs, kw, opts = {}) {
     releases: group((d) => [d.meta.target_release]),
     people: group((d) => [...new Set([d.meta.author, d.meta.pe, d.meta.dev].filter(Boolean))]),
     issues: group((d) => d.issues.map((i) => i.ref)),
-    issueUrls: new Map(docs.flatMap((d) => d.issues.map((i) => [i.ref, i.url]))),
+    issueUrls,
+    // v2.0: the issue tracker's origin, read off the corpus's own issue
+    // links, so `Org/repo#123` shorthand in a body links the right host
+    // (devtopia, not github.com) with nothing to configure
+    issueHost: issueHostOf(issueUrls),
     keywordKinds: kw.kinds,
   };
+}
+
+/** `https://devtopia.esri.com` from the first `https://devtopia.esri.com/Org/repo/issues/N`
+ *  link, "" when the corpus cites no issue or the URL does not parse. */
+export function issueHostOf(issueUrls) {
+  for (const url of issueUrls.values()) {
+    try {
+      const u = new URL(url);
+      if (/^https?:$/.test(u.protocol) && /\/issues\/\d+/.test(u.pathname)) return u.origin;
+    } catch { /* not a URL — try the next */ }
+  }
+  return "";
+}
+
+/** The keywords a keyword is most often tagged with: [{value, n}],
+ *  most shared first, at most `max` (v2.0, the keyword page's
+ *  "Often tagged with" line). */
+export function coKeywords(value, docs, max = 8) {
+  const n = new Map();
+  for (const d of docs) for (const k of new Set(d.keywords)) {
+    if (k === value) continue;
+    n.set(k, (n.get(k) || 0) + 1);
+  }
+  return [...n.entries()].map(([v, c]) => ({ value: v, n: c }))
+    .sort((a, b) => b.n - a.n || a.value.localeCompare(b.value, "en")).slice(0, max);
+}
+
+/** How a person appears across their documents: "author of 2 · PE of 1". */
+export function personRoles(name, docs) {
+  const roles = [["author", "author"], ["pe", "PE"], ["dev", "developer"]]
+    .map(([field, label]) => [label, docs.filter((d) => d.meta[field] === name).length])
+    .filter(([, c]) => c > 0);
+  return roles.map(([label, c]) => `${label} of ${c}`).join(" · ");
 }
 
 /** Test cases of a plan body: [{ordinal, heading, anchor}] with the
@@ -584,23 +729,53 @@ const META_CLOSE = "</div>";
 
 /** v1.7: wrap a composed table so `javascripts/tables.js` picks it up.
  *  Only the tables the RENDER writes are sortable — a table extracted
- *  out of a source document has no header row to trust. */
-const sortable = (lines) => ['<div class="sortable" markdown>', "", ...lines, "", "</div>"];
+ *  out of a source document has no header row to trust. v2.0: `filter`
+ *  adds the class the script puts a type-to-filter box on (the box
+ *  appears only when the table has enough rows to need one). */
+const sortable = (lines, { filter = false } = {}) =>
+  [`<div class="sortable${filter ? " filterable" : ""}" markdown>`, "", ...lines, "", "</div>"];
 
-function docRow(fromPage, d) {
+/** Page-level front matter for Material's search plugin (v2.0):
+ *  `boost` scales a page's score, `exclude` keeps it out of the index
+ *  altogether. The aggregate pages — All documents, Recent, the kind
+ *  and catalog indexes, the case and figure catalogs — repeat every
+ *  title the document pages already carry, so they matched almost any
+ *  query and pushed the documents down; they are excluded. */
+const searchMeta = ({ boost, exclude } = {}) =>
+  exclude ? ["---", "search:", "  exclude: true", "---", ""]
+    : boost !== undefined ? ["---", "search:", `  boost: ${boost}`, "---", ""] : [];
+
+/** The breadcrumb line above a page's title (v2.0): `Home › Test
+ *  Plans`. Markdown links inside an md_in_html div, so MkDocs rewrites
+ *  them like any other link; on a phone, where the sidebar is hidden,
+ *  it is the one thing that says where the page sits. */
+const crumbs = (fromPage, trail) =>
+  ['<div class="lrs-crumbs" markdown>', "",
+    [link(fromPage, "index.md", "Home"), ...trail.map(([page, text]) => link(fromPage, page, text))].join(" › "),
+    "", "</div>", ""];
+
+function docRow(fromPage, d, { kind = false } = {}) {
   const title = d.meta.title || d.stem;
-  return `| ${link(fromPage, d.page, title)} | ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${cell(d.summary).slice(0, 160) || "—"} |`;
+  const kindCol = kind ? ` ${link(fromPage, `${d.kindDir}/index.md`, d.kind)} |` : "";
+  return `| ${link(fromPage, d.page, title)} |${kindCol} ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${cell(d.summary).slice(0, 160) || "—"} |`;
 }
 const DOC_TABLE_HEAD = "| Document | Product | Release | Edited | Summary |\n|---|---|---|---|---|";
+const DOC_TABLE_HEAD_KIND = "| Document | Kind | Product | Release | Edited | Summary |\n|---|---|---|---|---|---|";
 const byEdited = (a, b) => String(b.meta.last_edited).localeCompare(String(a.meta.last_edited));
 
-function docTable(fromPage, docs) {
+/** The document table. `kind` adds a Kind column (for a table that
+ *  mixes kinds: All documents, Recent, a catalog value's page);
+ *  `filter` marks it for the type-to-filter box. */
+function docTable(fromPage, docs, { kind = false, filter = false } = {}) {
   // v1.4: wrapped so the stylesheet can keep the short columns on one
   // line (md_in_html renders the table inside the div)
-  return ['<div class="doc-table" markdown>', "",
-    DOC_TABLE_HEAD, ...docs.slice().sort(byEdited).map((d) => docRow(fromPage, d)),
+  return [`<div class="doc-table${filter ? " filterable" : ""}" markdown>`, "",
+    kind ? DOC_TABLE_HEAD_KIND : DOC_TABLE_HEAD,
+    ...docs.slice().sort(byEdited).map((d) => docRow(fromPage, d, { kind })),
     "", "</div>"].join("\n");
 }
+
+const TABLE_HELP = "Type in the box to filter the table; click a column header to sort it.";
 
 function docPage(d, model) {
   const p = d.page;
@@ -638,13 +813,20 @@ function docPage(d, model) {
     ["Tools", m.tools.length ? cat("tools", m.tools) : ""],
   ];
   // v1.4: the table sits in a div the stylesheet turns into a card;
-  // the rows themselves are the format 3.1 contract and do not change
-  const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
+  // the rows themselves are the format 3.1 contract and do not change.
+  // v2.0: search boost (a document page is what a query is for), the
+  // breadcrumb line, and the "Open <file>" button under the card
+  const out = [...searchMeta({ boost: 2 }),
+    ...crumbs(p, [[`${d.kindDir}/index.md`, model.kindFolders[d.kind] || d.kind]]),
+    `# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v, always] of rows) {
     if (!always && (v === "" || v === "—")) continue;
     out.push(`| **${k}** | ${v === "" ? "—" : v} |`);
   }
   out.push("", META_CLOSE, "");
+  if (m.source_url) {
+    out.push(`[:material-open-in-new: Open ${linkText(m.source_file || "the original")}](<${m.source_url}>){ .md-button .lrs-open }`, "");
+  }
   if (d.summary) out.push("## Summary", "", normalize(toMkDocs(d.summary)), "");
   if (d.related.length) {
     out.push("## Related documents", "");
@@ -660,44 +842,95 @@ function docPage(d, model) {
   return out.join("\n");
 }
 
-function catalogIndex(section, title, groups, intro, model, kindLabel) {
+function catalogIndex({ section, title, intro, label }, groups, model) {
   const p = `${section}/index.md`;
-  const out = [`# ${title}`, "", intro, "",
-    '<div class="sortable" markdown>', "",
-    "| " + kindLabel + " | Documents |", "|---|---:|"];
-  for (const [value, docs] of groups) {
-    const extra = section === "keywords" && model.keywordKinds.get(value.toLowerCase())
-      ? ` (${model.keywordKinds.get(value.toLowerCase())})` : "";
-    out.push(`| ${link(p, catalogPage(section, value), value)}${extra} | ${docs.length} |`);
-  }
-  out.push("", "</div>");
+  const out = [...searchMeta({ exclude: true }), `# ${title}`, "", intro, "",
+    `${groups.size} ${groups.size === 1 ? label.toLowerCase() : title.toLowerCase()}. ${TABLE_HELP}`, "",
+    ...sortable([
+      "| " + label + " | Documents |", "|---|---:|",
+      ...[...groups].map(([value, docs]) => {
+        const extra = section === "keywords" && model.keywordKinds.get(value.toLowerCase())
+          ? ` (${model.keywordKinds.get(value.toLowerCase())})` : "";
+        return `| ${link(p, catalogPage(section, value), value)}${extra} | ${docs.length} |`;
+      }),
+    ], { filter: true })];
   return out.join("\n") + "\n";
 }
 
-function catalogValuePage(section, value, docs, model) {
+/** A catalog value's page (v2.0: one table with a Kind column rather
+ *  than one table per kind — sortable and filterable across the whole
+ *  set — under a facts line: the count, what the value is, the way back
+ *  to its catalog; a keyword's kind and the terms it travels with; a
+ *  person's roles; an issue's tracker link). */
+function catalogValuePage({ section, title }, value, docs, model) {
   const p = catalogPage(section, value);
-  const byKind = new Map();
-  for (const d of docs) {
-    if (!byKind.has(d.kind)) byKind.set(d.kind, []);
-    byKind.get(d.kind).push(d);
+  const facts = [`${docs.length} document${docs.length === 1 ? "" : "s"}`];
+  if (section === "keywords" && model.keywordKinds.get(value.toLowerCase())) {
+    facts.push(`a ${cell(model.keywordKinds.get(value.toLowerCase()))} keyword`);
   }
-  const out = [`# ${mdEscape(value)}`, "", `${docs.length} document${docs.length === 1 ? "" : "s"} · ${link(p, `${section}/index.md`, "all " + section)}`, ""];
+  if (section === "people") {
+    const roles = personRoles(value, docs);
+    if (roles) facts.push(roles);
+  }
+  facts.push(link(p, `${section}/index.md`, "all " + title.toLowerCase()));
+  const out = [...searchMeta({ boost: 1 }), ...crumbs(p, [[`${section}/index.md`, title]]),
+    `# ${mdEscape(value)}`, "", facts.join(" · "), ""];
   if (section === "issues" && model.issueUrls.get(value)) out.push(`Issue: <${model.issueUrls.get(value)}>`, "");
-  for (const [kind, ds] of [...byKind.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    out.push(`## ${mdEscape(kind)}`, "", docTable(p, ds), "");
+  if (section === "keywords") {
+    const co = coKeywords(value, docs);
+    if (co.length) {
+      out.push("Often tagged with: " + co.map((c) => `${link(p, catalogPage("keywords", c.value), c.value)} (${c.n})`).join(" · "), "");
+    }
   }
+  out.push(docTable(p, docs, { kind: true, filter: true }), "");
   return out.join("\n");
 }
 
 function kindIndex(kind, docs, model, kindFolders) {
   const dir = pageName(kindFolders[kind] || kind);
   const p = `${dir}/index.md`;
-  return [`# ${mdEscape(kindFolders[kind] || kind)}`, "", `${docs.length} document${docs.length === 1 ? "" : "s"}, newest edit first.`, "", docTable(p, docs), ""].join("\n");
+  return [...searchMeta({ exclude: true }), `# ${mdEscape(kindFolders[kind] || kind)}`, "",
+    `${docs.length} document${docs.length === 1 ? "" : "s"}, newest edit first. ${TABLE_HELP} ` +
+    `Or ${link(p, "documents/index.md", "see every kind in one table")}.`, "",
+    docTable(p, docs, { filter: true }), ""].join("\n");
+}
+
+/** Every document in one table (v2.0): the Documents tab's own page. */
+function allDocumentsPage(model) {
+  const p = "documents/index.md";
+  const kinds = kindOrder(model.kinds, model.kindFolders)
+    .map((k) => `${link(p, `${pageName(model.kindFolders[k] || k)}/index.md`, model.kindFolders[k] || k)} (${model.kinds.get(k).length})`);
+  return [...searchMeta({ exclude: true }), "# All documents", "",
+    `${model.docs.length} documents of every kind, newest edit first. ${TABLE_HELP}`, "",
+    `By kind: ${kinds.join(" · ")}.`, "",
+    docTable(p, model.docs, { kind: true, filter: true }), ""].join("\n");
+}
+
+/** v1.4: one Material card per catalog (md_in_html grid, emoji icons);
+ *  the link text and the count are what the gate looks for. */
+const card = (fromPage, icon, target, title, count, blurb) => [
+  `-   :material-${icon}:{ .lg .middle } ${link(fromPage, target, title)}${count == null ? "" : ` (${count})`}`, "",
+  "    ---", "", `    ${blurb}`, ""];
+
+const catalogCards = (fromPage, model) =>
+  CATALOGS.flatMap((c) => card(fromPage, c.icon, `${c.section}/index.md`, c.title, model[c.key].size, c.blurb));
+
+/** The Browse tab's own page (v2.0): the six catalogs as cards. */
+function browsePage(model) {
+  const p = "browse/index.md";
+  return [...searchMeta({ exclude: true }), "# Browse", "",
+    "Six ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here.", "",
+    '<div class="grid cards" markdown>', "", ...catalogCards(p, model), "</div>", ""].join("\n");
 }
 
 function casesPage(model) {
   const p = "cases/index.md";
-  const out = ["# Test cases", "", "Every test case the catalog's test plans carry, by plan (newest edit first); each row links the case's section on the plan's page.", ""];
+  const out = [...searchMeta({ exclude: true }), "# Test cases", "",
+    "Every test case the catalog's test plans carry, by plan (newest edit first); each row links the case's section on the plan's page.", ""];
+  const at = out.length;
+  // v2.0: one filter box for the whole page — a plan whose cases all
+  // fall out of the filter folds away with them
+  out.push('<div class="filter-all" markdown>', "");
   let total = 0;
   for (const d of (model.kinds.get("Test Plan") || []).slice().sort(byEdited)) {
     const cases = planCases(d.body);
@@ -710,13 +943,15 @@ function casesPage(model) {
       ]));
     out.push("");
   }
-  out.splice(3, 0, `${total} cases.`);
+  out.push("</div>", "");
+  out.splice(at, 0, `${total} cases. Type in the box to filter every plan's table at once.`, "");
   return out.join("\n");
 }
 
 function figuresPage(model) {
   const p = "figures/index.md";
-  const out = ["# Figures", "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
+  const out = [...searchMeta({ exclude: true }), "# Figures", "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
+  const at = out.length; // the count line goes here, once known
   let total = 0;
   for (const d of model.docs.slice().sort(byEdited)) {
     const figs = bodyFigures(d.body).filter((f) => !d.mediaMissing?.has(f.link));
@@ -735,51 +970,67 @@ function figuresPage(model) {
     }
     out.push("");
   }
-  out.splice(3, 0, `${total} figures.`);
+  out.splice(at, 0, `${total} figures.`);
   return out.join("\n");
 }
 
 function recentPage(model, n) {
   const p = "recent.md";
   const docs = model.docs.slice().sort(byEdited).slice(0, n);
-  return ["# Recent", "", `The ${docs.length} most recently edited source documents.`, "", docTable(p, docs), ""].join("\n");
+  return [...searchMeta({ exclude: true }), "# Recent", "",
+    `The ${docs.length} most recently edited source documents. ${TABLE_HELP}`, "",
+    docTable(p, docs, { kind: true, filter: true }), ""].join("\n");
 }
 
+const FRONT_RECENT = 8;
+
+/** The front page (v2.0 order): what the site is, how to find things,
+ *  the kinds with the All-documents link, the latest edits inline, and
+ *  the Browse cards. */
 function frontPage(model, kindFolders, opts, draftCount = 0) {
   const p = "index.md";
-  const out = [`# ${mdEscape(opts.siteName)}`, "",
+  const out = [...searchMeta({ exclude: true }), `# ${mdEscape(opts.siteName)}`, "",
     `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
+    admonition("tip",
+      "Search (press `/`) splits an id into its parts, so `TC-P01`, " +
+      "`ps-location-referencing#4855` and `merge-events` each find the pages that carry them. " +
+      "Every large table on the site filters as you type and sorts on a header click; " +
+      "the tabs across the top are the site's map, and the sidebar lists the pages of the tab you are in.",
+      { title: "Finding a document" }), "",
+    "## Documents", "",
+    `By kind — or ${link(p, "documents/index.md", "every document in one table")}.`, "",
     '<div class="sortable" markdown>', "",
     "| Kind | Documents |", "|---|---:|"];
-  for (const [kind, docs] of model.kinds) out.push(`| ${link(p, `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind)} | ${docs.length} |`);
+  for (const kind of kindOrder(model.kinds, kindFolders)) {
+    out.push(`| ${link(p, `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind)} | ${model.kinds.get(kind).length} |`);
+  }
   out.push("", "</div>");
-  // v1.4: one Material card per catalog (md_in_html grid, emoji
-  // icons); the link text and the count are what the gate looks for
-  const card = (icon, target, title, count, blurb) => [
-    `-   :material-${icon}:{ .lg .middle } ${link(p, target, title)}${count == null ? "" : ` (${count})`}`, "",
-    "    ---", "", `    ${blurb}`, ""];
-  out.push("", admonition("tip",
-    "Search (press `/`) splits an id into its parts, so `TC-P01`, " +
-    "`ps-location-referencing#4855` and `merge-events` each find the pages that carry them.",
-    { title: "Finding a document" }));
+  const recent = model.docs.slice().sort(byEdited).slice(0, FRONT_RECENT);
+  if (recent.length) {
+    out.push("", "## Recently edited", "",
+      `The ${recent.length} most recently edited source documents; ${link(p, "recent.md", "the Recent page")} goes further back.`, "",
+      docTable(p, recent, { kind: true }));
+  }
   out.push("", "## Browse", "", '<div class="grid cards" markdown>', "",
-    ...card("tag-multiple", "keywords/index.md", "Keywords", model.keywords.size, "The catalog's vocabulary after curation — an alias lands on its canonical term's page."),
-    ...card("hammer-wrench", "tools/index.md", "Tools", model.tools.size, "Official tool names the documents mention."),
-    ...card("package-variant", "products/index.md", "Products", model.products.size, "Product lines, as detected from names and text."),
-    ...card("rocket-launch", "releases/index.md", "Releases", model.releases.size, "Target releases the documents state."),
-    ...card("account-group", "people/index.md", "People", model.people.size, "Authors, product engineers and developers named on the documents."),
-    ...card("bug", "issues/index.md", "Issues", model.issues.size, "devtopia issues the documents reference, each with the documents that cite it."),
-    ...card("clipboard-check", "cases/index.md", "Test cases", null, "Every test case the test plans carry, by plan, linking its section."),
-    ...card("image-multiple", "figures/index.md", "Figures", null, "Every figure the bodies carry, by document."),
-    ...card("history", "recent.md", "Recent", null, "The most recently edited source documents."),
-    ...(draftCount ? card("file-document-edit", "drafts/index.md", "Test-plan drafts", draftCount, "Machine-generated, **unreviewed** — not catalog documents.") : []),
-    ...card("information", "about.md", "About", null, "What this site is, what it is not, and where each page's content comes from."),
+    ...catalogCards(p, model),
+    ...card(p, "clipboard-check", "cases/index.md", "Test cases", null, "Every test case the test plans carry, by plan, linking its section."),
+    ...card(p, "image-multiple", "figures/index.md", "Figures", null, "Every figure the bodies carry, by document."),
+    ...card(p, "history", "recent.md", "Recent", null, "The most recently edited source documents."),
+    ...(draftCount ? card(p, "file-document-edit", "drafts/index.md", "Test-plan drafts", draftCount, "Machine-generated, **unreviewed** — not catalog documents.") : []),
+    ...card(p, "information", "about.md", "About", null, "What this site is, what it is not, and where each page's content comes from."),
     "</div>", "");
   return out.join("\n");
 }
 
 function aboutPage(model, opts) {
   return ["# About this wiki", "",
+    // v2.0: the site's map, for the reader who wants it spelled out
+    admonition("note", defList([
+      ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's table, the pages under it are the documents. A document page links its original file, its catalog values and its related documents."],
+      ["Browse", "The six catalogs: keywords, tools, products, releases, people and issues. Every value is a page listing the documents that carry it."],
+      ["Test cases & figures", "What the sweep extracted from the bodies, each entry linking the section it came from."],
+      ["Search, filter, sort", "Search (`/`) indexes the document pages and catalog values, not the tables that repeat them. Every large table filters as you type and sorts on a header click."],
+    ]), { title: "How the site is organised", collapse: "open" }), "",
     `Generated by \`pipeline/wiki.mjs ${WIKI_VERSION}\` of the LRS Doc Index pipeline from the catalog's sidecar files${opts.sourceSite ? ` (the LRS Doc Index library on ${opts.sourceSite})` : ""}.`, "",
     admonition("info",
       "This site is a rendering, not a source: edit nothing here — the next run overwrites " +
@@ -801,17 +1052,61 @@ function aboutPage(model, opts) {
 
 // ---------------------------------------------------------------- site
 
-function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
+/** The nav (v2.0). Every page is in it: the tab bar is Home ·
+ *  Documents · Browse · Test cases & figures · Drafts (Recent and About
+ *  are top-level pages, which Material files under the first tab).
+ *  Each kind and each catalog is a section whose first entry is its
+ *  index page — `navigation.indexes` makes the section header open it
+ *  — followed by its pages by title. Sorted by title, not by edit
+ *  date: a sidebar is scanned like an index, and the table on the
+ *  section's page is the place to sort by anything else. */
+export function navFor(model, kindFolders, drafts = []) {
   const y = (s) => JSON.stringify(String(s));
-  // v1.4: three sections (navigation.sections shows them as sidebar
-  // headings) around the flat pages
-  const nav = [`  - Home: index.md`, "  - Documents:"];
-  for (const [kind] of model.kinds) nav.push(`      - ${y(kindFolders[kind] || kind)}: ${pageName(kindFolders[kind] || kind)}/index.md`);
-  nav.push("  - Catalogs:");
-  for (const [t, s] of [["Keywords", "keywords"], ["Tools", "tools"], ["Products", "products"], ["Releases", "releases"], ["People", "people"], ["Issues", "issues"]]) nav.push(`      - ${t}: ${s}/index.md`);
-  nav.push("  - Extracted:", "      - Test cases: cases/index.md", "      - Figures: figures/index.md");
-  if (draftCount) nav.push("  - Drafts: drafts/index.md");
+  const byTitle = (a, b) => (a.meta.title || a.stem).localeCompare(b.meta.title || b.stem, "en", { numeric: true, sensitivity: "base" });
+  const nav = ["  - Home: index.md", "  - Documents:", "      - documents/index.md"];
+  for (const kind of kindOrder(model.kinds, kindFolders)) {
+    const label = kindFolders[kind] || kind;
+    nav.push(`      - ${y(label)}:`, `          - ${pageName(label)}/index.md`);
+    for (const d of model.kinds.get(kind).slice().sort(byTitle)) nav.push(`          - ${y(d.meta.title || d.stem)}: ${d.page}`);
+  }
+  nav.push("  - Browse:", "      - browse/index.md");
+  for (const c of CATALOGS) {
+    nav.push(`      - ${c.title}:`, `          - ${c.section}/index.md`);
+    for (const [value] of model[c.key]) nav.push(`          - ${y(value)}: ${catalogPage(c.section, value)}`);
+  }
+  nav.push("  - Test cases & figures:", "      - Test cases: cases/index.md", "      - Figures: figures/index.md");
+  if (drafts.length) {
+    nav.push("  - Drafts:", "      - drafts/index.md");
+    for (const d of drafts) nav.push(`      - ${y(`${d.meta.title || d.stem}${d.when ? ` (${d.when})` : ""}`)}: ${d.page}`);
+  }
   nav.push("  - Recent: recent.md", "  - About: about.md");
+  return nav;
+}
+
+function mkdocsYml(model, kindFolders, opts, drafts = []) {
+  const y = (s) => JSON.stringify(String(s));
+  const nav = navFor(model, kindFolders, drafts);
+  // v2.0, from the MkDocs catalog review: `Org/repo#123` in a body (the
+  // related list's "shared issue …", a test plan's own references)
+  // links the tracker the corpus's issue links point at; a full
+  // tracker URL is shortened to that same form; bare http(s) URLs
+  // become links, as GitHub renders them. Without an issue host only
+  // the bare-URL part is on — shorthand would otherwise point at
+  // github.com.
+  const host = model.issueHost;
+  const hostLabel = host ? new URL(host).hostname.split(".")[0] : "";
+  const magiclink = host
+    ? ["  - pymdownx.magiclink:",
+      "      repo_url_shorthand: true",
+      "      repo_url_shortener: true",
+      "      normalize_issue_symbols: true",
+      `      provider: ${y(hostLabel)}`,
+      "      custom:",
+      `        ${y(hostLabel)}:`,
+      `          host: ${y(host)}`,
+      `          label: ${y(hostLabel)}`,
+      "          type: github"]
+    : ["  - pymdownx.magiclink"];
   return [
     `site_name: ${y(opts.siteName)}`,
     opts.siteUrl ? `site_url: ${y(opts.siteUrl)}` : "",
@@ -820,7 +1115,10 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "  name: material",
     "  icon:",
     "    logo: material/book-open-page-variant",
-    "  features: [navigation.sections, navigation.top, navigation.tracking, navigation.footer, search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, toc.follow]",
+    // v2.0: tabs + section indexes + prune replace navigation.sections
+    // (which would have listed every document under an always-open
+    // heading); the rest as v1.4
+    "  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.prune, navigation.top, navigation.tracking, navigation.footer, search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, toc.follow]",
     "  palette:",
     '    - media: "(prefers-color-scheme: light)"',
     "      scheme: default",
@@ -843,7 +1141,14 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     // camelCase too, so TC-P01, ps-location-referencing#4855 and
     // merge-events are found by their parts
     `      separator: '[\\s\\-,:!=\\[\\]()"\`/]+|\\.(?!\\d)|&[lg]t;|(?!\\b)(?=[A-Z][a-z])'`,
-    "  - glightbox",
+    // v2.0: the figure's alt text is its caption in the lightbox too
+    "  - glightbox:",
+    "      auto_caption: true",
+    "      caption_position: bottom",
+    // v2.0, opt-in: Material's own offline plugin, for a `site/` folder
+    // opened from disk rather than served (search needs it there). It
+    // forces `use_directory_urls: false`, hence off by default.
+    opts.offline ? "  - offline" : "",
     "  - panzoom:",
     // the plugin's own `images: true` is read off the GLOBAL config by
     // mkdocs-panzoom-plugin 0.5.2 (plugin.py: `config.get("images")`,
@@ -893,10 +1198,13 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "        - name: mermaid",
     "          class: mermaid",
     "          format: !!python/name:pymdownx.superfences.fence_code_format",
+    // v2.0: GFM's ~~strikethrough~~ (the dialect's, python-markdown has
+    // none); subscript off, so "~5 minutes" in a body stays text
+    "  - pymdownx.tilde:",
+    "      subscript: false",
+    ...magiclink,
     "nav:",
     ...nav,
-    "not_in_nav: |",
-    "  /*/*.md",
     "",
   ].filter((l) => l !== "").join("\n");
 }
@@ -964,7 +1272,108 @@ const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every re
     });
   }
 
-  function scan() { document.querySelectorAll(SELECTOR).forEach(makeSortable); }
+  /* ---- v2.0: type-to-filter ---------------------------------------
+     A ".filterable" wrapper gets one box for its table; a ".filter-all"
+     wrapper (the test-case catalog) gets one box for every table under
+     it, and a heading whose tables all emptied folds away with them.
+     Terms are ANDed, case-folded, matched against the row's text. */
+  var FILTER_MIN_ROWS = 6;
+
+  function rowsOf(table) { return table.tBodies[0] ? Array.prototype.slice.call(table.tBodies[0].rows) : []; }
+
+  function filterRows(table, terms) {
+    var shown = 0;
+    rowsOf(table).forEach(function (row) {
+      var text = (row.textContent || "").toLowerCase();
+      var hit = terms.every(function (t) { return text.indexOf(t) >= 0; });
+      row.hidden = !hit;
+      if (hit) shown++;
+    });
+    return shown;
+  }
+
+  function filterBox(total, apply) {
+    var box = document.createElement("div");
+    box.className = "lrs-filter";
+    var input = document.createElement("input");
+    input.type = "search";
+    input.placeholder = "Filter " + total + " rows\\u2026";
+    input.setAttribute("aria-label", "Filter the table rows");
+    input.autocomplete = "off";
+    input.spellcheck = false;
+    var count = document.createElement("span");
+    count.className = "lrs-filter__count";
+    count.setAttribute("aria-live", "polite");
+    input.addEventListener("input", function () {
+      var terms = input.value.toLowerCase().split(/\\s+/).filter(Boolean);
+      var shown = apply(terms);
+      count.textContent = terms.length ? shown + " of " + total : "";
+    });
+    box.appendChild(input);
+    box.appendChild(count);
+    return box;
+  }
+
+  function makeFilterable(wrap) {
+    var table = wrap.querySelector("table");
+    if (!table || wrap.dataset.lrsFilter) return;
+    var total = rowsOf(table).length;
+    if (total < FILTER_MIN_ROWS) return;
+    wrap.dataset.lrsFilter = "1";
+    wrap.insertBefore(filterBox(total, function (terms) { return filterRows(table, terms); }), wrap.firstChild);
+  }
+
+  function makeFilterAll(wrap) {
+    var tables = Array.prototype.slice.call(wrap.querySelectorAll("table"));
+    if (!tables.length || wrap.dataset.lrsFilter) return;
+    var total = tables.reduce(function (n, t) { return n + rowsOf(t).length; }, 0);
+    if (total < FILTER_MIN_ROWS) return;
+    wrap.dataset.lrsFilter = "1";
+    wrap.insertBefore(filterBox(total, function (terms) {
+      var shown = tables.reduce(function (n, t) { return n + filterRows(t, terms); }, 0);
+      /* a heading owns everything up to the next heading; fold the
+         group when none of its rows survived */
+      var head = null, group = [];
+      function flush() {
+        if (!head) return;
+        var any = group.some(function (el) {
+          return Array.prototype.some.call(el.querySelectorAll("tbody tr"), function (r) { return !r.hidden; });
+        });
+        var hide = terms.length > 0 && !any;
+        head.hidden = hide;
+        group.forEach(function (el) { el.hidden = hide; });
+      }
+      Array.prototype.forEach.call(wrap.children, function (el) {
+        if (/^H[1-6]$/.test(el.tagName)) { flush(); head = el; group = []; }
+        else if (head) group.push(el);
+      });
+      flush();
+      return shown;
+    }), wrap.firstChild);
+  }
+
+  /* ---- v2.0: external links open in a new tab ----------------------
+     The Source button, the issue tracker, the Esri documentation — a
+     reader following one should not lose their place in the wiki.
+     (mkdocs-open-in-new-tab does exactly this; it is a dozen lines,
+     so the render carries them rather than another package.) */
+  function externalLinks() {
+    Array.prototype.forEach.call(document.querySelectorAll(".md-content a[href]"), function (a) {
+      if (a.dataset.lrsExt) return;
+      a.dataset.lrsExt = "1";
+      if (/^https?:/i.test(a.getAttribute("href") || "") && a.hostname && a.hostname !== location.hostname) {
+        a.target = "_blank";
+        a.rel = "noopener";
+      }
+    });
+  }
+
+  function scan() {
+    document.querySelectorAll(SELECTOR).forEach(makeSortable);
+    document.querySelectorAll(".filterable").forEach(makeFilterable);
+    document.querySelectorAll(".filter-all").forEach(makeFilterAll);
+    externalLinks();
+  }
 
   /* Material re-renders the article on instant navigation; document$
      fires on every page. Without the theme's observable, run once. */
@@ -1086,9 +1495,40 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .doc-table th[aria-sort="ascending"]::after, .sortable th[aria-sort="ascending"]::after { border-bottom-color: currentColor; }
 .doc-table th[aria-sort="descending"]::after, .sortable th[aria-sort="descending"]::after { border-top-color: currentColor; }
 
-/* catalog tables: the short columns stay on one line, the summary is quiet */
-.doc-table td:nth-child(2), .doc-table td:nth-child(3), .doc-table td:nth-child(4) { white-space: nowrap; }
+/* catalog tables: the short columns stay on one line, the summary is quiet
+   (v2.0: every middle column, since a Kind column may be present) */
+.doc-table td:not(:first-child):not(:last-child) { white-space: nowrap; }
 .doc-table td:last-child { color: var(--md-default-fg-color--light); }
+
+/* the type-to-filter box (v2.0), in Material's own vocabulary */
+.lrs-filter { display: flex; align-items: center; gap: 0.6em; margin: 0 0 0.8em; }
+.lrs-filter input {
+  flex: 1 1 auto;
+  max-width: 24rem;
+  padding: 0.45em 0.8em;
+  font: inherit;
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color);
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--lrs-radius);
+}
+.lrs-filter input:focus {
+  outline: none;
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 0 0 0.1rem var(--md-accent-fg-color--transparent);
+}
+.lrs-filter__count { color: var(--md-default-fg-color--light); font-size: 0.64rem; white-space: nowrap; }
+.md-typeset tr[hidden], .filter-all > [hidden] { display: none !important; }
+
+/* the breadcrumb line above a page's title (v2.0) */
+.md-typeset .lrs-crumbs { margin: 0 0 -0.6em; color: var(--md-default-fg-color--light); font-size: 0.64rem; }
+.md-typeset .lrs-crumbs a { color: inherit; }
+.md-typeset .lrs-crumbs a:hover { color: var(--md-accent-fg-color); }
+
+/* the "Open <file>" button under the metadata card (v2.0) */
+.md-typeset .lrs-open { margin: -0.8em 0 1.4em; font-size: 0.7rem; }
+.md-typeset .lrs-open .twemoji { vertical-align: -0.15em; }
 
 /* the front page's cards */
 .md-typeset .grid.cards > ul > li { border-radius: var(--lrs-radius); }
@@ -1243,6 +1683,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     setupPython: w.setupPython === undefined ? true : !!w.setupPython,
     deploy: w.deploy || "artifact",
     recent: Number(w.recent) || 50,
+    offline: !!w.offline,
     sourceSite: w.sourceSite || cfg.sweep?.siteUrl || "",
     draftsDir: w.draftsDir || "",
   };
@@ -1250,6 +1691,11 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     throw new Error(`wiki.deploy must be one of ${DEPLOY_MODES.join(", ")}, got "${opts.deploy}"`);
   }
   const kindFolders = { ...KIND_FOLDERS, ...(cfg.sweep?.kindFolders || {}) };
+  for (const [kind, folder] of Object.entries(kindFolders)) {
+    if (RESERVED_DIRS.has(pageName(folder))) {
+      throw new Error(`sweep.kindFolders: "${kind}" -> "${folder}" would render into docs/${pageName(folder)}/, a folder the wiki reserves (${[...RESERVED_DIRS].sort().join(", ")})`);
+    }
+  }
   const readPhase = prog.phase("read");
   const docs = readLibrary(libDir, kindFolders);
   const kw = readKeywordMap(workDir);
@@ -1302,19 +1748,14 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     fs.unlinkSync(missingFile); // a clean run retires the stale list
   }
   for (const [kind, ds] of model.kinds) put(`${pageName(kindFolders[kind] || kind)}/index.md`, kindIndex(kind, ds, model, kindFolders));
-  const catalogs = [
-    ["keywords", "Keywords", model.keywords, "The catalog's vocabulary, canonical terms only, with the documents each one tags.", "Keyword"],
-    ["tools", "Tools", model.tools, "Official tool names the documents mention.", "Tool"],
-    ["products", "Products", model.products, "Product lines, as detected from names and text.", "Product"],
-    ["releases", "Releases", model.releases, "Target releases the documents state.", "Release"],
-    ["people", "People", model.people, "Authors, product engineers and developers named on the documents.", "Person"],
-    ["issues", "Issues", model.issues, "devtopia issues the documents reference.", "Issue"],
-  ];
-  for (const [section, title, groups, intro, label] of catalogs) {
-    put(`${section}/index.md`, catalogIndex(section, title, groups, intro, model, label));
-    for (const [value, ds] of groups) put(catalogPage(section, value), catalogValuePage(section, value, ds, model));
-    renderPhase.step(`${section} — ${groups.size} page(s)`);
+  put("documents/index.md", allDocumentsPage(model));
+  for (const c of CATALOGS) {
+    const groups = model[c.key];
+    put(`${c.section}/index.md`, catalogIndex(c, groups, model));
+    for (const [value, ds] of groups) put(catalogPage(c.section, value), catalogValuePage(c, value, ds, model));
+    renderPhase.step(`${c.section} — ${groups.size} page(s)`);
   }
+  put("browse/index.md", browsePage(model));
   if (drafts.length) {
     for (const d of drafts) put(d.page, draftPage(d, model));
     put("drafts/index.md", draftsIndex(drafts));
@@ -1327,7 +1768,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   put("index.md", frontPage(model, kindFolders, opts, drafts.length));
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
   write(docsDir, "javascripts/tables.js", TABLES_JS);
-  write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts.length));
+  write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts));
   write(outDir, ".github/workflows/pages.yml", pagesWorkflow(opts));
   write(outDir, "README.md", WIKI_README(opts));
   write(outDir, ".gitignore", "site/\n");
