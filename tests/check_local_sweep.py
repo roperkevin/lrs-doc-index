@@ -1147,13 +1147,23 @@ def main():
     check("the run closes with its elapsed time and its summary line",
           re.search(r"progress: sweep finished in \d+s — library_items_seen=", loud.stderr) is not None,
           loud.stderr[-600:])
-    # the stdout contract is untouched: same summary, no progress lines
+    # the stdout contract is untouched: same summary, no progress lines.
+    # The two runs name their own run log, and that stamp is only
+    # minute-resolution (sweep.mjs: toISOString ... slice(0, 15)), so
+    # two runs either side of a minute boundary legitimately print
+    # different filenames — redact the name before comparing, or this
+    # leg fails a few seconds in every sixty.
+    def _no_log_name(lines):
+        return [re.sub(r"sweep-\d{4}-\d{2}-\d{2}T\d{4}\.json", "sweep-<stamp>.json", ln)
+                for ln in lines]
+
     q_out = json.loads(quiet.stdout.splitlines()[0])
     l_out = json.loads(loud.stdout.splitlines()[0])
     check("narration never reaches stdout",
           "progress:" not in loud.stdout
           and q_out.get("processed") == l_out.get("processed")
-          and quiet.stdout.splitlines()[1:] == loud.stdout.splitlines()[1:],
+          and _no_log_name(quiet.stdout.splitlines()[1:])
+              == _no_log_name(loud.stdout.splitlines()[1:]),
           loud.stdout[:400])
     # config.progress carries the same three states, and the flags win
     prog_cfg = os.path.join(tmp, "progress-config.json")
