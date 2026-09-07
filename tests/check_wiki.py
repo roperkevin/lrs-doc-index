@@ -28,6 +28,11 @@ carry two alias → canonical merges — then renders the site and proves:
      admonitions, `<placeholder>` and a trailing `{brace}` run are
      escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
      carries the extensions the dialect needs
+  5c. the v1.5 admonitions: an alert's trailing text becomes the
+     block's title, Material's types beyond GFM's five map, a `-`
+     fold suffix makes the block collapsible, the composed pages
+     (draft, drafts catalog, About, front) carry their notices as
+     admonitions, and extra.css defines the custom `draft` type
   6. --push: a first push lands the tree on a bare repository; a
      second run over an unchanged library pushes nothing new; no
      wiki.repoUrl refuses with the fix; a missing library refuses
@@ -117,6 +122,12 @@ cut off at the first line break.
 > [!CAUTION]
 > A pass here is the described denial.
 > Never the edit succeeding.
+
+> [!IMPORTANT] Reviewer, start here
+> The merge path changed in 11.4.
+
+> [!EXAMPLE]-
+> A worked example the reader can unfold.
 
 Trailing text with a `code` span and a kept `<literal>` one.
 """
@@ -370,6 +381,13 @@ def main():
     check("GFM alerts become admonition blocks MkDocs renders",
           "!!! danger" in plan and "    A pass here is the described denial." in plan
           and "[!CAUTION]" not in plan, plan[-800:])
+    check("an alert's trailing text becomes the admonition's title",
+          '!!! info "Reviewer, start here"' in plan
+          and "    The merge path changed in 11.4." in plan
+          and "[!IMPORTANT]" not in plan, plan[-1400:])
+    check("a Material type beyond GFM's five maps, and a fold suffix collapses the block",
+          "??? example" in plan and "    A worked example the reader can unfold." in plan
+          and "[!EXAMPLE]" not in plan, plan[-1400:])
     check("a <placeholder> in body text is escaped, not swallowed as HTML",
           "&lt;RouteID>" in plan and "<RouteID>" not in plan, plan[-800:])
     check("a trailing brace run is escaped away from attr_list",
@@ -414,7 +432,25 @@ def main():
 
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
-          and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
+          and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg
+          and "- admonition" in ycfg and "pymdownx.details" in ycfg
+          and "pymdownx.superfences" in ycfg, ycfg)
+    # ---- 2d. the composed pages' own admonitions (v1.5) -----------
+    about = page("about.md")
+    front = page("index.md")
+    css = open(os.path.join(docs, "stylesheets", "extra.css"), encoding="utf-8").read()
+    check("the unreviewed notice is a draft admonition on both the draft page and its catalog",
+          '!!! draft "Unreviewed draft"' in dpage and "**unreviewed**" in dpage
+          and '!!! draft "Unreviewed"' in dindex, dpage[:1400])
+    check("About states the render-not-a-source rule in an admonition and folds its provenance list",
+          '!!! info "A render, not a source"' in about
+          and '???+ note "Where each page' in about
+          and "    - **Doc** ids are Doc Index list row ids" in about, about)
+    check("the front page opens Browse with a search tip",
+          '!!! tip "Finding a document"' in front and "## Browse" in front, front[-1400:])
+    check("extra.css defines the custom draft admonition (colour and icon)",
+          "--md-admonition-icon--draft" in css
+          and ".md-typeset .admonition.draft" in css, css[:200])
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------

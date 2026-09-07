@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.4 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.5 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -32,6 +32,19 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v1.5 — admonitions, the whole Material set
+ * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/).
+ * `mkdocs.yml` gains `pymdownx.details` (the collapsible `???` and
+ * `???+` forms) and `pymdownx.superfences` (a fenced block nested
+ * inside one), `extra.css` gives every type the site's own radius and
+ * defines the custom `draft` type, and `lib/mdlayout.mjs` v1.1 reads
+ * the whole alert vocabulary out of a body — a title after the marker,
+ * a `-`/`+` fold suffix, and Material's types beyond GFM's five. The
+ * pages this job COMPOSES use them too: the drafts catalog's and the
+ * draft page's "unreviewed" notice are `!!! draft` blocks rather than
+ * a bold run in a paragraph, the front page opens with a search tip,
+ * and About's provenance list is a `???+ note` a reader can fold away.
  *
  * v1.4 — the site's formatting. The page MARKDOWN is unchanged (the
  * metadata table, the catalog tables and the browse lines are the
@@ -103,11 +116,11 @@ import { createProgress, resolveProgress, secs, noProgress } from "./lib/progres
 import { bodySeamEnd } from "./lib/doclinks.mjs";
 import { caseSpans } from "./lib/caseindex.mjs";
 import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
-import { toMkDocs, normalize, splitAnchor } from "./lib/mdlayout.mjs";
+import { toMkDocs, normalize, splitAnchor, admonition } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.4";
+export const WIKI_VERSION = "v1.5";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -282,6 +295,12 @@ function draftPage(d, model) {
   const out = [`# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("", META_CLOSE, "");
+  // v1.5: the one thing a reader must not miss, in the site's own
+  // admonition type rather than a paragraph they can skim past
+  out.push(admonition("draft",
+    "Machine-generated and **unreviewed**: every case and every [VERIFY] item still needs a " +
+    "Product Engineer. This page is a render of the drafts folder — it is not a catalog " +
+    "document and joins no catalog.", { title: "Unreviewed draft" }), "");
   // everything under the draft's own metadata table — the callouts
   // included; "unreviewed" is the most important thing on the page —
   // translated for MkDocs like any other body
@@ -295,10 +314,11 @@ function draftPage(d, model) {
 function draftsIndex(drafts) {
   const p = "drafts/index.md";
   const out = ["# Test-plan drafts", "",
-    "Machine-generated test-plan drafts, newest first — **unreviewed**: " +
-    "every case and every [VERIFY] item still needs a Product Engineer. " +
-    "They are not catalog documents and do not appear in the kind, " +
-    "keyword or test-case catalogs.", "",
+    "Machine-generated test-plan drafts, newest first.", "",
+    admonition("draft",
+      "Every draft here is **unreviewed**: every case and every [VERIFY] item still " +
+      "needs a Product Engineer. Drafts are not catalog documents and do not appear " +
+      "in the kind, keyword or test-case catalogs.", { title: "Unreviewed" }), "",
     "| Draft | Generated | Status | From |", "|---|---|---|---|"];
   for (const d of drafts) {
     out.push(
@@ -607,6 +627,10 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
   const card = (icon, target, title, count, blurb) => [
     `-   :material-${icon}:{ .lg .middle } ${link(p, target, title)}${count == null ? "" : ` (${count})`}`, "",
     "    ---", "", `    ${blurb}`, ""];
+  out.push("", admonition("tip",
+    "Search (press `/`) splits an id into its parts, so `TC-P01`, " +
+    "`ps-location-referencing#4855` and `merge-events` each find the pages that carry them.",
+    { title: "Finding a document" }));
   out.push("", "## Browse", "", '<div class="grid cards" markdown>', "",
     ...card("tag-multiple", "keywords/index.md", "Keywords", model.keywords.size, "The catalog's vocabulary after curation — an alias lands on its canonical term's page."),
     ...card("hammer-wrench", "tools/index.md", "Tools", model.tools.size, "Official tool names the documents mention."),
@@ -625,13 +649,22 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
 
 function aboutPage(model, opts) {
   return ["# About this wiki", "",
-    `Generated by \`pipeline/wiki.mjs ${WIKI_VERSION}\` of the LRS Doc Index pipeline from the catalog's sidecar files${opts.sourceSite ? ` (the LRS Doc Index library on ${opts.sourceSite})` : ""}. It is a rendering, not a source: edit nothing here — the next run overwrites every page. To change a document's classification, keywords or related documents, change it in the catalog (the Doc Index lists) and let the nightly sweep rewrite the sidecar.`, "",
-    "- **Doc** ids are Doc Index list row ids (the id test-plan generation takes).",
-    "- **Keywords** are the catalog's vocabulary after curation: an alias merged by the librarian lands on its canonical page.",
-    "- **Related documents** are the sweep's ranking (shared issues, shared keywords, body similarity), newest ranking first.",
-    "- **Test cases** and **Figures** are read from the sidecar bodies with the same parsers that fill the Test Cases and Figures lists.",
-    "- **Test-plan drafts**, when the site publishes them, are machine-generated and unreviewed: they are not catalog documents and join no catalog.",
-    "", `Rendered ${fmtDate(new Date().toISOString())} · ${model.docs.length} documents.`, ""].join("\n");
+    `Generated by \`pipeline/wiki.mjs ${WIKI_VERSION}\` of the LRS Doc Index pipeline from the catalog's sidecar files${opts.sourceSite ? ` (the LRS Doc Index library on ${opts.sourceSite})` : ""}.`, "",
+    admonition("info",
+      "This site is a rendering, not a source: edit nothing here — the next run overwrites " +
+      "every page. To change a document's classification, keywords or related documents, " +
+      "change it in the catalog (the Doc Index lists) and let the nightly sweep rewrite the " +
+      "sidecar.", { title: "A render, not a source" }), "",
+    // a details block (pymdownx.details): open, so it reads as a list,
+    // but a reader who knows this can fold it away
+    admonition("note", [
+      "- **Doc** ids are Doc Index list row ids (the id test-plan generation takes).",
+      "- **Keywords** are the catalog's vocabulary after curation: an alias merged by the librarian lands on its canonical page.",
+      "- **Related documents** are the sweep's ranking (shared issues, shared keywords, body similarity), newest ranking first.",
+      "- **Test cases** and **Figures** are read from the sidecar bodies with the same parsers that fill the Test Cases and Figures lists.",
+      "- **Test-plan drafts**, when the site publishes them, are machine-generated and unreviewed: they are not catalog documents and join no catalog.",
+    ].join("\n"), { title: "Where each page's content comes from", collapse: "open" }), "",
+    `Rendered ${fmtDate(new Date().toISOString())} · ${model.docs.length} documents.`, ""].join("\n");
 }
 
 // ---------------------------------------------------------------- site
@@ -681,6 +714,11 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "  - attr_list",
     "  - md_in_html",
     "  - admonition",
+    // the collapsible admonition forms (??? / ???+) and a fenced block
+    // nested inside one — Material's own recommendation for the
+    // admonitions reference
+    "  - pymdownx.details",
+    "  - pymdownx.superfences",
     "  - fenced_code",
     "  - sane_lists",
     "  - pymdownx.tasklist:",
@@ -746,6 +784,33 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   font-weight: 600;
 }
 .md-typeset h3[id^="tc-"] .headerlink { font-weight: 400; }
+
+/* admonitions (v1.5): the site's radius, a quieter body, and one
+   custom type — draft — for machine-generated, unreviewed pages */
+.md-typeset .admonition, .md-typeset details {
+  border-radius: var(--lrs-radius);
+  border-width: 1px 1px 1px 0.2rem;
+  font-size: 0.7rem;
+}
+.md-typeset .admonition-title, .md-typeset summary {
+  border-radius: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.01em;
+}
+.md-typeset .admonition > :last-child, .md-typeset details > :last-child { margin-bottom: 0.6rem; }
+:root {
+  --lrs-draft: #d97706;
+  --md-admonition-icon--draft: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25Z"/></svg>');
+}
+.md-typeset .admonition.draft, .md-typeset details.draft { border-color: var(--lrs-draft); }
+.md-typeset .draft > .admonition-title, .md-typeset .draft > summary {
+  background-color: rgba(217, 119, 6, 0.1);
+}
+.md-typeset .draft > .admonition-title::before, .md-typeset .draft > summary::before {
+  background-color: var(--lrs-draft);
+  -webkit-mask-image: var(--md-admonition-icon--draft);
+          mask-image: var(--md-admonition-icon--draft);
+}
 
 /* catalog tables: the short columns stay on one line, the summary is quiet */
 .doc-table td:nth-child(2), .doc-table td:nth-child(3), .doc-table td:nth-child(4) { white-space: nowrap; }
