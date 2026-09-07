@@ -145,6 +145,12 @@
  * Usage:
  *   node --experimental-strip-types pipeline/wiki.mjs --config config.json            render only
  *   node --experimental-strip-types pipeline/wiki.mjs --config config.json --build    + `mkdocs build --strict`
+ *
+ * A body's image link whose file is not under <library>/media/ is
+ * rendered as an italic "(missing figure: alt)" marker, never as a
+ * link — `mkdocs build --strict` fails on every unresolved link — and
+ * every such link is listed by page in <workDir>/wiki-missing-media.txt
+ * (removed again by a run that finds none).
  *   node --experimental-strip-types pipeline/wiki.mjs --config config.json --push     + commit and push to wiki.repoUrl
  *
  * Config (`wiki`, all optional except repoUrl for --push):
@@ -440,6 +446,17 @@ export function buildModel(docs, kw, opts = {}) {
     d.issues = issueLinks(d.content);
     d.keywords = d.meta.keywords.map((k) => kw.canonical.get(k.toLowerCase()) || k);
     d.media = mediaLinksOf(d.body);
+    // the links whose file is not in the library. A page must not
+    // carry one: `mkdocs build --strict` fails on every unresolved
+    // link, and one night's run had 293 of them (560 warnings), all
+    // figures whose renamed file never reached the synced folder.
+    d.mediaMissing = new Set(
+      opts.libDir
+        ? d.media
+            .filter((m) => !fs.existsSync(path.join(opts.libDir, "media", m.dir, (m.legacyPrefix || "") + m.name)))
+            .map((m) => m.link)
+        : [] // no library to check against (a model built from bodies alone)
+    );
     if (d.meta.doc_id) byId.set(d.meta.doc_id, d);
     byFile.set(d.stem + ".md", d);
   }
@@ -496,6 +513,15 @@ export function planCases(body) {
     heading: headAt.get(s.start) || "",
     anchor: anchorAt.get(s.start) || "",
   }));
+}
+
+/** Replace each image link in `missing` (a Set of `../media/...`
+ *  links) with its alt text, marked, so the page says what is absent
+ *  without linking to it. */
+export function dropMissingMedia(body, missing) {
+  if (!missing || !missing.size) return body;
+  return String(body ?? "").replace(/!\[([^\]]*)\]\(<?(\.\.\/media\/[^)\s>]+)>?\)/g, (whole, alt, link) =>
+    missing.has(link) ? `*(missing figure${alt ? `: ${alt}` : ""})*` : whole);
 }
 
 /** Figures of a body: [{alt, link, anchor, heading}], one per image link. */
@@ -608,7 +634,7 @@ function docPage(d, model) {
     out.push("");
   }
   if (d.docsRegion) out.push(normalize(toMkDocs(stripComments(d.docsRegion))), "");
-  const body = normalize(toMkDocs(stripComments(d.body)));
+  const body = normalize(toMkDocs(stripComments(dropMissingMedia(d.body, d.mediaMissing))));
   if (body) out.push("---", "", body, "");
   return out.join("\n");
 }
@@ -672,7 +698,7 @@ function figuresPage(model) {
   const out = ["# Figures", "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
   let total = 0;
   for (const d of model.docs.slice().sort(byEdited)) {
-    const figs = bodyFigures(d.body);
+    const figs = bodyFigures(d.body).filter((f) => !d.mediaMissing?.has(f.link));
     if (!figs.length) continue;
     total += figs.length;
     out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "");
@@ -1154,7 +1180,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   const readPhase = prog.phase("read");
   const docs = readLibrary(libDir, kindFolders);
   const kw = readKeywordMap(workDir);
-  const model = buildModel(docs, kw, { kindFolders });
+  const model = buildModel(docs, kw, { kindFolders, libDir });
   const drafts = readDrafts(opts.draftsDir);
   readPhase.done(
     `${docs.length} sidecar(s) from ${libDir}, ${model.kinds.size} kind(s), ` +
@@ -1168,6 +1194,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   const docsDir = path.join(outDir, "docs");
   fs.mkdirSync(docsDir, { recursive: true });
   let pages = 0, mediaFiles = 0, mediaMissing = 0;
+  const missingReport = [];
   const put = (relPath, text) => { write(docsDir, relPath, text); pages++; };
 
   const docTick = prog.counter(docs.length, "document pages");
@@ -1177,13 +1204,30 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     for (const m of d.media) {
       const src = path.join(libDir, "media", m.dir, m.legacyPrefix ? m.legacyPrefix + m.name : m.name);
       const dst = path.join(docsDir, "media", m.dir, m.legacyPrefix ? m.legacyPrefix + m.name : m.name);
-      if (!fs.existsSync(src)) { mediaMissing++; continue; }
+      if (d.mediaMissing?.has(m.link) || !fs.existsSync(src)) {
+        mediaMissing++;
+        missingReport.push(`${d.page}\t${m.link}`);
+        continue;
+      }
       fs.mkdirSync(path.dirname(dst), { recursive: true });
       fs.copyFileSync(src, dst);
       mediaFiles++;
     }
   }
   renderPhase.step(`${mediaFiles} media file(s) copied, ${mediaMissing} missing — now the catalogs`);
+  // the missing list, by page, so the library can be chased: the
+  // pages themselves show only an italic marker where each one was
+  const missingFile = path.join(workDir || outDir, "wiki-missing-media.txt");
+  if (missingReport.length) {
+    fs.mkdirSync(path.dirname(missingFile), { recursive: true });
+    fs.writeFileSync(missingFile, "page\tlink\n" + missingReport.join("\n") + "\n");
+    process.stderr.write(
+      `wiki: ${mediaMissing} media link(s) have no file in the library — rendered as "(missing figure)" ` +
+      `markers, listed in ${missingFile}\n`
+    );
+  } else if (fs.existsSync(missingFile)) {
+    fs.unlinkSync(missingFile); // a clean run retires the stale list
+  }
   for (const [kind, ds] of model.kinds) put(`${pageName(kindFolders[kind] || kind)}/index.md`, kindIndex(kind, ds, model, kindFolders));
   const catalogs = [
     ["keywords", "Keywords", model.keywords, "The catalog's vocabulary, canonical terms only, with the documents each one tags.", "Keyword"],
