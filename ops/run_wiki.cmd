@@ -1,8 +1,10 @@
 @echo off
-rem The catalog wiki — render the sidecar library into the MkDocs tree
-rem and push it to the wiki repository (wiki.repoUrl). Schedule it
-rem after the nightly sweep (register ops\wiki_task.xml). Same shape
-rem as run_sweep.cmd: self-updating, log-rotating, one unquoted path.
+rem The catalog wiki — render the sidecar library into the MkDocs tree,
+rem build the static site (<outDir>\site — mkdocs build --strict, so
+rem IIS or any file server on this machine can serve it) and push the
+rem tree to the wiki repository (wiki.repoUrl). Schedule it after the
+rem nightly sweep (register ops\wiki_task.xml). Same shape as
+rem run_sweep.cmd: self-updating, log-rotating, one unquoted path.
 cd /d "%~dp0.."
 if not exist work mkdir work
 
@@ -14,4 +16,4 @@ rem self-update from the CI-promoted `deploy` branch (see run_sweep.cmd)
 git fetch origin deploy >> work\wiki-task.log 2>&1
 git merge --ff-only origin/deploy >> work\wiki-task.log 2>&1
 
-node --experimental-strip-types pipeline\wiki.mjs --config config.json --push >> work\wiki-task.log 2>&1
+node --experimental-strip-types pipeline\wiki.mjs --config config.json --build --push >> work\wiki-task.log 2>&1
