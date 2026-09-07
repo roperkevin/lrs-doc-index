@@ -153,7 +153,7 @@
  *
  * Usage:
  *   node --experimental-strip-types pipeline/wiki.mjs --config config.json            render only
- *   node --experimental-strip-types pipeline/wiki.mjs --config config.json --build    + `mkdocs build --strict`
+ *   node --experimental-strip-types pipeline/wiki.mjs --config config.json --build    + `python -m mkdocs build --strict`
  *
  * A body's image link whose file is not under <library>/media/ is
  * rendered as an italic "(missing figure: alt)" marker, never as a
@@ -186,6 +186,10 @@
  *              gh-deploy` force-pushes the site to the gh-pages
  *              branch (Pages source: Deploy from a branch, gh-pages,
  *              / (root)) — works on GHES and github.com alike
+ *   python     the interpreter `--build` runs mkdocs through (default
+ *              llm.python, else LRSDOC_PYTHON, else `python` on
+ *              Windows / `python3` elsewhere) — `python -m mkdocs`,
+ *              so mkdocs need not be on PATH
  *   siteName   the site title (default "LRS Doc Index")
  *   siteUrl    the published URL, for mkdocs.yml (default "")
  *   recent     rows on the Recent page (default 50)
@@ -1345,9 +1349,33 @@ function run(cmd, args, cwd) {
   return (r.stdout || "").trim();
 }
 
-/** `mkdocs build --strict` in outDir (mkdocs on PATH). */
-export function buildSite(outDir) {
-  return run("mkdocs", ["build", "--strict"], outDir);
+/** The interpreter `--build` runs mkdocs through: `wiki.python`, else
+ *  `llm.python`, else LRSDOC_PYTHON, else `python` on Windows and
+ *  `python3` elsewhere — the same rule as llm.mjs. */
+export function pythonFor(cfg) {
+  return cfg?.wiki?.python || cfg?.llm?.python || process.env.LRSDOC_PYTHON ||
+    (process.platform === "win32" ? "python" : "python3");
+}
+
+/** `python -m mkdocs build --strict` in outDir. Through the interpreter
+ *  rather than a bare `mkdocs`: on Windows pip drops mkdocs.exe into a
+ *  Scripts folder that is usually not on PATH ("spawnSync mkdocs
+ *  ENOENT"), while `python -m` finds the package wherever that
+ *  interpreter installed it — the same reason the generated pages.yml
+ *  runs it this way. */
+export function buildSite(outDir, python = pythonFor()) {
+  try {
+    return run(python, ["-m", "mkdocs", "build", "--strict"], outDir);
+  } catch (e) {
+    if (/No module named mkdocs/.test(e.message) || /ENOENT/.test(e.message)) {
+      throw new Error(
+        `${e.message}\nmkdocs is not installed for "${python}" — ` +
+        `${python} -m pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions ` +
+        "(or point wiki.python / LRSDOC_PYTHON at the interpreter that has it)"
+      );
+    }
+    throw e;
+  }
 }
 
 /** Commit the tree and push it to `repoUrl` (`branch`). The .git
@@ -1415,7 +1443,7 @@ async function main() {
     const buildPhase = prog.phase("mkdocs build --strict");
     const stopBuild = prog.heartbeat("waiting on mkdocs");
     try {
-      buildSite(cfg._out);
+      buildSite(cfg._out, pythonFor(cfg));
     } finally {
       stopBuild();
     }

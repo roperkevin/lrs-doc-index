@@ -1296,7 +1296,9 @@ Setup (after the sweep's §1–§4):
 2. Render and preview: `node --experimental-strip-types pipeline\wiki.mjs --config config.json`
    writes `<workDir>\wiki`; `pip install mkdocs-material` then
    `mkdocs serve` inside it previews the site locally (`--build`
-   runs `mkdocs build --strict` for you).
+   runs `python -m mkdocs build --strict` for you, through
+   `wiki.python` / `llm.python` / the default interpreter, so mkdocs
+   need not be on PATH — only installed for that interpreter).
 3. Push: `... wiki.mjs --config config.json --push` commits the tree
    and pushes it (an unchanged corpus makes no commit). The first
    push creates the branch; Pages builds within a minute.
