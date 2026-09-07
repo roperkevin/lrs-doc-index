@@ -1,6 +1,7 @@
 /**
- * ops.mjs v1.1 — shared op machinery for the Doc Index script runners.
- * (v1.1: maxCells guard tolerates a non-numeric value.)
+ * ops.mjs v1.2 — shared op machinery for the Doc Index script runners.
+ * (v1.1: maxCells guard tolerates a non-numeric value. v1.2: a source
+ * read failure names the file.)
  *
  * Extracted verbatim from run_job.mjs v2.0 so that both the PAD batch
  * runner (run_job.mjs) and the local sweep orchestrator
@@ -59,10 +60,22 @@ function jsonParam(op, key, v, required) {
   return JSON.stringify(v);
 }
 
+// a source read failure names the file (v1.2): Node's message for an
+// OS-level read error carries no path — `UNKNOWN: unknown error, read`
+// is all a OneDrive placeholder that failed to hydrate says — so a
+// night of them was otherwise anonymous in the error lane
+function readBytes(op, key, p) {
+  try {
+    return fs.readFileSync(String(p));
+  } catch (e) {
+    throw new Error(`op "${op.op}": cannot read ${key} "${p}": ${e.message}`);
+  }
+}
+
 function zipParam(op) {
   if (op.zipBase64 !== undefined) return strParam(op, "zipBase64", op.zipBase64, true);
   if (op.zipFile !== undefined) {
-    return fs.readFileSync(String(op.zipFile)).toString("base64");
+    return readBytes(op, "zipFile", op.zipFile).toString("base64");
   }
   throw new Error(`op "${op.op}": needs zipFile or zipBase64`);
 }
@@ -103,7 +116,7 @@ export function runOp(mains, op) {
         strParam(op, "title", op.title, false)
       );
     case "workbookdump": {
-      const grids = xlsxToGrids(fs.readFileSync(String(op.xlsxFile)));
+      const grids = xlsxToGrids(readBytes(op, "xlsxFile", op.xlsxFile));
       const mock = {
         getWorksheets: () =>
           grids.map((s) => ({

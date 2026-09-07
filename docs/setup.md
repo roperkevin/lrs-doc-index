@@ -401,6 +401,14 @@ Each is behavior-equivalent; all are exercised by the gate:
   reachable (no promptVersion bump, no corpus-wide AI respend). A
   doc IN scope whose file is missing on disk is treated as OneDrive
   sync lag: a retryable Error that clears itself when the file lands.
+  A doc IN scope whose file is on disk but cannot be read (v1.64:
+  `LastError` starts `source-read: source file exists but cannot be
+  read (UNKNOWN: unknown error, read)`) is a Files On-Demand
+  placeholder that did not hydrate — OneDrive paused, signed out or
+  not running, or the folder set to "Free up space". In OneDrive mark
+  the library "Always keep on this device"; the rows retry nightly
+  and clear once the files read. The summary counts them
+  (`unreadable_local`).
 - **Content-filter lane** (v1.28): the model can refuse a document's
   own text (`stop_reason: refusal` — decks that quote
   model-instruction-like content trip it), and the refusal is
@@ -476,6 +484,8 @@ Each is behavior-equivalent; all are exercised by the gate:
 - **Sync-lag fallback** (v1.33, optional):
   `sweep.graphDownloadFallback: true` fetches an in-scope-but-
   unsynced source through Graph instead of erroring for the night.
+  Since v1.64 it also covers a source that is on disk but unreadable
+  (a OneDrive placeholder that did not hydrate).
 - **OCR lane** (v1.36, optional): install Tesseract and Poppler's
   pdftoppm and set `sweep.tesseractPath`; image-only PDFs then index
   via OCR (lane `"ocr"`), and previously Skipped `plaintext`-lane
@@ -1216,6 +1226,15 @@ Setup, once:
    No tenant step, no AI spend. A `NORMALIZE SKIP … > maxInputChars`
    on a numbered-case plan is now expected to be unnecessary — check
    the plan's `## Test Cases` after the recase before raising the cap.
+10. **If a run ends with most documents at
+    `ziptext-pptx: UNKNOWN: unknown error, read`** (pre-v1.64) or
+    `source-read: source file exists but cannot be read` (sweep
+    v1.64): the OneDrive Files On-Demand placeholders did not hydrate.
+    Open OneDrive on the sweep machine, right-click the synced library
+    folder → **Always keep on this device**, wait for the hydration to
+    finish, and let the nightly run retry the Error rows — or set
+    `sweep.graphDownloadFallback: true` and let the fallback fetch
+    them through Graph. Nothing to reset in the lists.
 
 A column the tenant list lacks is dropped from the write and noted
 once per run (`figure_fields_dropped`; the v1.56 fail-soft, shared
