@@ -1,5 +1,46 @@
 # Local sweep — release notes
 
+## wiki v1.9 (2026-09-07 — a Pages workflow that runs on Enterprise Server)
+
+The wiki repository's own `pages.yml` built the site and then died on
+the upload:
+
+```
+Run actions/upload-pages-artifact@v3
+  ...
+##[error]@actions/artifact v2.0.0+, upload-artifact@v4+ and
+download-artifact@v4+ are not currently supported on GHES.
+```
+
+Nothing was wrong with the site — `mkdocs build --strict` had already
+tarred 5,000-odd files. The generated workflow published the
+github.com way (`configure-pages` → `upload-pages-artifact` →
+`deploy-pages`), and that route runs on the v4 artifact API, which
+Enterprise Server does not have. devtopia is Enterprise Server, so the
+wiki could never have published from that workflow; the two knobs
+already there for the same reason (`runsOn`, `setupPython`) got the
+job as far as the upload and no further.
+
+- **`wiki.pagesDeploy`** picks the publish route. `"actions"` (the
+  default) keeps the github.com workflow byte-for-byte as it was.
+  `"branch"` — what the sample config now sets — drops both artifact
+  actions and force-pushes `site/` to **`wiki.pagesBranch`** (default
+  `gh-pages`) with plain `git` and the job's own `GITHUB_TOKEN`: no
+  artifact API, and no third-party action to get allow-listed on the
+  instance. Point Pages at that branch once (Settings → Pages →
+  Source: Deploy from a branch). The branch is a rendering like every
+  other file the job writes — one commit, replaced every run.
+- The build steps (checkout, the four pip packages, `mkdocs build
+  --strict`) are now one shared block, so the plugin list cannot drift
+  between the two modes; an unknown `pagesDeploy` refuses by name
+  instead of quietly publishing the way that cannot work.
+- A `pagesBranch` equal to `wiki.branch` refuses: force-pushing the
+  build there would overwrite the source tree it was rendered from.
+- Gate: `check_wiki` 75 — the branch-mode workflow keeps the strict
+  build, carries no `upload-pages-artifact` / `deploy-pages` /
+  `configure-pages`, pushes to the configured branch, leaves no
+  placeholder behind, and both refusals fire.
+
 ## sweep v1.64 (2026-09-07 — a source on disk that cannot be read; ops v1.2)
 
 A dry run against the live library ended `processed=150 errors=127`,

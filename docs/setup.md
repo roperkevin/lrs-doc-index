@@ -1261,16 +1261,42 @@ keyword canonical map and kinds). No SharePoint call, no model call.
 the wiki cannot be its GitHub wiki or Pages site. It lives in a
 PRIVATE repository on devtopia —
 `https://devtopia.esri.com/kev14953/lrs-doc-index` — with Pages turned
-on there once (Settings → Pages → Source: **GitHub Actions**). The
-generated tree carries its own
+on there once. The generated tree carries its own
 `pages.yml` workflow (`pip install mkdocs-material`, `mkdocs build
---strict`, deploy), so every push publishes.
+--strict`, publish), so every push publishes.
+
+**How it publishes (`wiki.pagesDeploy`).** Two modes, because devtopia
+is Enterprise Server:
+
+- `"actions"` (the default) is the github.com way — `configure-pages`,
+  `upload-pages-artifact`, `deploy-pages`; Pages source **GitHub
+  Actions**. It cannot run on devtopia at all: `upload-pages-artifact`
+  tars the site and hands it to `upload-artifact@v4`, which refuses
+  with *"@actions/artifact v2.0.0+, upload-artifact@v4+ and
+  download-artifact@v4+ are not currently supported on GHES"*, and
+  `deploy-pages` needs the same artifact API. The build gets all the
+  way through `mkdocs build --strict` and then fails on the upload.
+- `"branch"` is the Enterprise Server way, and what the sample config
+  sets: the build force-pushes `site/` to `wiki.pagesBranch` (default
+  `gh-pages`) with plain `git` and the job's own `GITHUB_TOKEN` — no
+  artifact API, and no third-party action to get allow-listed on the
+  instance. Set Pages source to **Deploy from a branch → `gh-pages`
+  → `/ (root)`** once. That branch is a rendering like every other
+  file here: one commit, replaced on every run, never edited by hand.
+
+`runsOn` and `setupPython` are the other two devtopia knobs —
+`ubuntu-latest` never resolves without GitHub-hosted runners (the job
+queues forever), and `actions/setup-python` fails on a self-hosted
+Windows runner with no tool cache. All four are regenerated into
+`pages.yml` on every run, so editing that file in the wiki repository
+fixes nothing past the next push.
 
 Setup (after the sweep's §1–§4):
 
 1. Config: `"wiki": {"repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git"}`
    (the sample shows the optional keys: branch, outDir, siteName,
-   siteUrl, recent). Credentials come from the machine's git
+   siteUrl, recent, and the four workflow knobs above). Credentials
+   come from the machine's git
    credential helper — clone the repository once from a console so
    the helper caches them; nothing is stored in config.
 2. Render and preview: `node --experimental-strip-types pipeline\wiki.mjs --config config.json`

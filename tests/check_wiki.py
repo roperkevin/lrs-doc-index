@@ -342,6 +342,46 @@ def main():
     check("Pages workflow builds strict from the configured branch and deploys",
           "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf
           and "mkdocs-glightbox" in wf and "mkdocs-panzoom-plugin" in wf and "markdown-captions" in wf, wf[:400])
+    # pagesDeploy: "branch" — Enterprise Server has no Pages artifact
+    # API (upload-pages-artifact goes through upload-artifact@v4, which
+    # refuses on GHES), so that mode force-pushes the build to a branch
+    # instead. Same build steps, no artifact action anywhere.
+    bcfg = json.loads(json.dumps(cfg))
+    bcfg["wiki"].update({"pagesDeploy": "branch", "pagesBranch": "site-live",
+                         "runsOn": "self-hosted", "setupPython": False})
+    bcfg_path = os.path.join(tmp, "config-branch.json")
+    with open(bcfg_path, "w") as f:
+        json.dump(bcfg, f)
+    bout = os.path.join(work, "wiki-branch")
+    rb = run_job(bcfg_path, ["--out", bout])
+    bwf = open(os.path.join(bout, ".github", "workflows", "pages.yml"), encoding="utf-8").read()
+    check("branch mode: same strict build, force-pushed to pagesBranch, no artifact action",
+          rb.returncode == 0 and "branches: [wiki-main]" in bwf and "mkdocs build --strict" in bwf
+          and "mkdocs-glightbox" in bwf and "markdown-captions" in bwf
+          and "actions/upload-pages-artifact" not in bwf and "actions/deploy-pages" not in bwf
+          and "actions/configure-pages" not in bwf
+          and "contents: write" in bwf and "runs-on: self-hosted" in bwf
+          and "actions/setup-python" not in bwf
+          and "HEAD:refs/heads/site-live" in bwf and "git init -q -b site-live" in bwf, bwf)
+    check("branch mode: no PAGES_BRANCH/BUILD_STEPS placeholder survives substitution",
+          not any(t in bwf for t in ("PAGES_BRANCH", "BUILD_STEPS", "RUNS_ON", "SETUP_PYTHON")), bwf)
+    check("branch mode README points Pages at the branch",
+          "Deploy from a branch" in open(os.path.join(bout, "README.md"), encoding="utf-8").read())
+    badcfg = json.loads(json.dumps(cfg))
+    badcfg["wiki"]["pagesDeploy"] = "gh-pages"
+    with open(bcfg_path, "w") as f:
+        json.dump(badcfg, f)
+    rbad = run_job(bcfg_path, ["--out", bout])
+    samecfg = json.loads(json.dumps(cfg))
+    samecfg["wiki"].update({"pagesDeploy": "branch", "pagesBranch": samecfg["wiki"]["branch"]})
+    with open(bcfg_path, "w") as f:
+        json.dump(samecfg, f)
+    rsame = run_job(bcfg_path, ["--out", bout])
+    check("branch mode refuses to publish over its own source branch",
+          rsame.returncode != 0 and "wiki.pagesBranch must differ" in rsame.stderr, rsame.stderr[-300:])
+    check("an unknown wiki.pagesDeploy refuses and names the two modes",
+          rbad.returncode != 0 and "wiki.pagesDeploy" in rbad.stderr
+          and '"actions"' in rbad.stderr and '"branch"' in rbad.stderr, rbad.stderr[-300:])
     check("README says the tree is generated", "Do not edit here" in open(os.path.join(out, "README.md"), encoding="utf-8").read())
 
     # ---- 2. links -------------------------------------------------
