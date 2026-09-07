@@ -40,6 +40,17 @@ carry two alias → canonical merges — then renders the site and proves:
      fold suffix makes the block collapsible, the composed pages
      (draft, drafts catalog, About, front) carry their notices as
      admonitions, and extra.css defines the custom `draft` type
+  5c. the v2.0 organisation: every page in the nav (tabs, a section
+     per kind and catalog with its index page first, reader order,
+     no not_in_nav), the All-documents and Browse pages, the front
+     page's order, breadcrumbs and the Open button on a document page,
+     filterable tables and the case catalog's page-wide filter, the
+     Kind column, a keyword's co-tags and a person's roles, search
+     boost / exclude front matter, natural catalog order, the issue
+     host read off the corpus (magiclink), tilde, glightbox captions,
+     the offline knob, the reserved-folder refusal — and, when mkdocs
+     is present, the built tab bar, the Open button, the devtopia
+     issue link, strikethrough and the search index's contents
   6. --push: a first push lands the tree on a bare repository; a
      second run over an unchanged library pushes nothing new; no
      wiki.repoUrl refuses with the fix; a missing library refuses
@@ -136,7 +147,7 @@ cut off at the first line break.
 > [!EXAMPLE]-
 > A worked example the reader can unfold.
 
-Trailing text with a `code` span and a kept `<literal>` one.
+Trailing text with a `code` span, a kept `<literal>` one and ~~a struck run~~ at ~5 minutes.
 """
 
 STORY = """# Conflict Prevention Story
@@ -301,9 +312,14 @@ def main():
     out = os.path.join(work, "wiki")
     docs = os.path.join(out, "docs")
 
-    def page(rel):
+    def raw(rel):
         p = os.path.join(docs, rel)
         return open(p, encoding="utf-8").read() if os.path.isfile(p) else ""
+
+    def page(rel):
+        """A page minus its search front matter (v2.0) — the markdown
+        the contract below pins starts under it."""
+        return re.sub(r"\A---\nsearch:\n[^\n]*\n---\n\n?", "", raw(rel))
 
     # ---- 1. render ------------------------------------------------
     print("== render")
@@ -332,11 +348,39 @@ def main():
           not os.path.exists(os.path.join(docs, "keywords", "routes.md"))
           and not os.path.exists(os.path.join(docs, "keywords", "gantt-charts.md")))
     ycfg = open(os.path.join(out, "mkdocs.yml"), encoding="utf-8").read()
-    check("mkdocs.yml: site name, material theme, search, the nav with every kind and catalog",
+    # v2.0: every kind and every catalog is a SECTION whose first entry
+    # is its index page (navigation.indexes), with its pages under it
+    check("mkdocs.yml: site name, material theme, search, the nav with every kind and catalog as a section",
           'site_name: "LRS Doc Index (gate)"' in ycfg and "name: material" in ycfg and "- search" in ycfg
-          and '"Test Plans": test-plans/index.md' in ycfg and '"Design Spikes": design-spikes/index.md' in ycfg
-          and "Keywords: keywords/index.md" in ycfg and "Test cases: cases/index.md" in ycfg
-          and "Recent: recent.md" in ycfg, ycfg)
+          and '      - "Test Plans":\n          - test-plans/index.md\n          - "Merge Events Test Plan": test-plans/4855-merge-plan.md' in ycfg
+          and '      - "Design Spikes":\n          - design-spikes/index.md\n          - "Old Spike": design-spikes/old-spike-doc9.md' in ycfg
+          and '      - Keywords:\n          - keywords/index.md\n          - "gantt chart": keywords/gantt-chart.md' in ycfg
+          and '          - "ArcGISPro/ps-location-referencing#4855": issues/arcgispro-ps-location-referencing-4855.md' in ycfg
+          and "Test cases: cases/index.md" in ycfg and "Recent: recent.md" in ycfg, ycfg)
+    check("the nav is tabs: Home, Documents (landing on All documents), Browse (landing on the cards), Test cases & figures",
+          "  - Home: index.md\n  - Documents:\n      - documents/index.md\n" in ycfg
+          and "  - Browse:\n      - browse/index.md\n" in ycfg
+          and "  - Test cases & figures:\n      - Test cases: cases/index.md\n      - Figures: figures/index.md" in ycfg, ycfg)
+    check("kinds follow reader order in the nav (Test Plans before User Stories before Design Spikes), not the alphabet",
+          0 < ycfg.find('"Test Plans":') < ycfg.find('"User Stories":') < ycfg.find('"Design Spikes":'), ycfg)
+    check("every page is in the nav — nothing is left to not_in_nav",
+          "not_in_nav" not in ycfg
+          and all(p.endswith(".png") or f": {p}" in ycfg or f"- {p}" in ycfg
+                  for p in ["test-plans/4855-merge-plan.md", "keywords/locks.md", "people/someone-else.md",
+                            "products/pipeline-referencing.md", "releases/3-8.md", "tools/merge-events.md",
+                            "documents/index.md", "browse/index.md", "about.md"]), ycfg)
+    check("theme features: tabs, section indexes and pruning replace navigation.sections",
+          "navigation.tabs," in ycfg and "navigation.tabs.sticky" in ycfg and "navigation.indexes" in ycfg
+          and "navigation.prune" in ycfg and "navigation.sections" not in ycfg, ycfg)
+    # from the MkDocs catalog review (v2.0): magiclink on the corpus's
+    # own issue host, tilde without subscript, glightbox captions;
+    # offline off unless asked
+    check("mkdocs.yml: magiclink shorthand points at the issue host read off the corpus, tilde has no subscript, glightbox captions",
+          'provider: "devtopia"' in ycfg and 'host: "https://devtopia.esri.com"' in ycfg
+          and "repo_url_shorthand: true" in ycfg and "repo_url_shortener: true" in ycfg
+          and "- pymdownx.tilde:\n      subscript: false" in ycfg
+          and "- glightbox:\n      auto_caption: true" in ycfg
+          and "- offline" not in ycfg, ycfg)
     wf = open(os.path.join(out, ".github", "workflows", "pages.yml"), encoding="utf-8").read()
     check("Pages workflow builds strict from the configured branch and deploys",
           "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf
@@ -347,12 +391,23 @@ def main():
     # the GHES shape: self-hosted runner, no setup-python, gh-pages branch deploy
     cfg2 = json.loads(json.dumps(cfg))
     cfg2["wiki"].update({"runsOn": "self-hosted", "setupPython": False, "deploy": "branch",
-                         "outDir": os.path.join(work, "wiki-ghes")})
+                         "offline": True, "outDir": os.path.join(work, "wiki-ghes")})
     cfg2_path = os.path.join(tmp, "config-ghes.json")
     with open(cfg2_path, "w") as f:
         json.dump(cfg2, f)
     r2 = run_job(cfg2_path, [])
     check("render exit 0 (GHES shape)", r2.returncode == 0, r2.stderr[-600:])
+    ycfg2 = open(os.path.join(work, "wiki-ghes", "mkdocs.yml"), encoding="utf-8").read()
+    check("wiki.offline enables Material's offline plugin (v2.0)", "\n  - offline\n" in ycfg2, ycfg2)
+    cfg_res = json.loads(json.dumps(cfg))
+    cfg_res["sweep"] = {"kindFolders": {"Playbook": "Keywords"}}
+    cfg_res["wiki"]["outDir"] = os.path.join(work, "wiki-reserved")
+    with open(os.path.join(tmp, "config-reserved.json"), "w") as f:
+        json.dump(cfg_res, f)
+    r_res = run_job(os.path.join(tmp, "config-reserved.json"), [])
+    check("a kind folder that would land on a folder the wiki reserves is refused by name",
+          r_res.returncode != 0 and 'sweep.kindFolders: "Playbook" -> "Keywords"' in r_res.stderr
+          and "docs/keywords/" in r_res.stderr, r_res.stderr[-400:])
     wf2 = open(os.path.join(work, "wiki-ghes", ".github", "workflows", "pages.yml"), encoding="utf-8").read()
     check("deploy=branch: gh-deploy to gh-pages with contents: write, no artifact upload, no deploy job",
           "mkdocs gh-deploy --force --no-history --remote-branch gh-pages" in wf2
@@ -454,8 +509,8 @@ def main():
     print("== drafts")
     dpage = page("drafts/4855-conflict-story-draft-20260906-2300.md")
     dindex = page("drafts/index.md")
-    check("a draft becomes a page with its own head",
-          dpage.startswith("# Test Plan — Conflict Prevention")
+    check("a draft becomes a page with its own head, under a breadcrumb line",
+          dpage.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test-plan drafts](./index.md)\n\n</div>\n\n# Test Plan — Conflict Prevention')
           and "| **Doc** | draft · Test Plan · Pro |" in dpage
           and "| **Status** | Draft — 2 verifier finding(s) |" in dpage
           and "| **Generated** | pipeline/testplangen.mjs v1.24" in dpage, dpage[:600])
@@ -473,9 +528,18 @@ def main():
           and "drafts/" not in page("cases/index.md")
           and "drafts/" not in page("recent.md")
           and "drafts/" not in page("keywords/index.md"), page("test-plans/index.md")[:400])
-    check("the nav and the front page carry the Drafts section",
-          "- Drafts: drafts/index.md" in ycfg
+    check("the nav and the front page carry the Drafts section (a tab, each draft under it with its timestamp)",
+          '  - Drafts:\n      - drafts/index.md\n      - "Test Plan — Conflict Prevention (2026-09-06 23:00)": drafts/4855-conflict-story-draft-20260906-2300.md' in ycfg
           and "Test-plan drafts](./drafts/index.md) (1)" in page("index.md"), ycfg + page("index.md")[-400:])
+    check("a draft is damped in search, a document boosted, a catalog value neutral",
+          raw("drafts/4855-conflict-story-draft-20260906-2300.md").startswith("---\nsearch:\n  boost: 0.5\n---\n")
+          and raw("test-plans/4855-merge-plan.md").startswith("---\nsearch:\n  boost: 2\n---\n")
+          and raw("keywords/route.md").startswith("---\nsearch:\n  boost: 1\n---\n"), raw("drafts/index.md")[:80])
+    check("the aggregate pages are excluded from search",
+          all(raw(p).startswith("---\nsearch:\n  exclude: true\n---\n")
+              for p in ["index.md", "documents/index.md", "browse/index.md", "recent.md", "cases/index.md",
+                        "figures/index.md", "test-plans/index.md", "keywords/index.md", "drafts/index.md"])
+          and not raw("about.md").startswith("---"), raw("recent.md")[:80])
 
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
@@ -505,13 +569,26 @@ def main():
           "extra_javascript:" in ycfg and "- javascripts/tables.js" in ycfg
           and ".doc-table table, .sortable table" in tjs
           and "aria-sort" in tjs and "document$" in tjs, ycfg)
-    check("the composed catalog tables are wrapped for sorting",
-          '<div class="sortable" markdown>' in page("keywords/index.md")
+    # v2.0: the large tables are also `filterable` (a type-to-filter
+    # box); the front page's kind table and the per-plan case tables
+    # are not — the case catalog has one `filter-all` box for the page
+    check("the composed catalog tables are wrapped for sorting, the large ones for filtering too",
+          '<div class="sortable filterable" markdown>' in page("keywords/index.md")
           and '<div class="sortable" markdown>' in front
           and '<div class="sortable" markdown>' in page("cases/index.md")
-          and '<div class="sortable" markdown>' in dindex
-          and '<div class="doc-table" markdown>' in page("test-plans/index.md"),
+          and '<div class="filter-all" markdown>' in page("cases/index.md")
+          and '<div class="sortable filterable" markdown>' in dindex
+          and '<div class="doc-table filterable" markdown>' in page("test-plans/index.md")
+          and '<div class="doc-table filterable" markdown>' in page("recent.md")
+          and '<div class="doc-table filterable" markdown>' in page("documents/index.md")
+          and '<div class="doc-table" markdown>' in front and "filterable" not in front,
           page("keywords/index.md")[:400])
+    check("tables.js carries the filter, the page-wide filter and external links in a new tab",
+          "lrs-filter" in tjs and '".filterable"' in tjs and '".filter-all"' in tjs
+          and "FILTER_MIN_ROWS" in tjs and 'a.target = "_blank"' in tjs and 'a.rel = "noopener"' in tjs, tjs[:300])
+    check("extra.css styles the filter box, the breadcrumbs and the Open button",
+          ".lrs-filter input" in css and ".lrs-crumbs" in css and ".lrs-open" in css
+          and "tr[hidden]" in css, css[-600:])
     check("count and ordinal columns are right-aligned",
           "| Keyword | Documents |\n|---|---:|" in page("keywords/index.md")
           and "| Kind | Documents |\n|---|---:|" in front
@@ -555,9 +632,20 @@ def main():
     # ---- 3. keyword map -------------------------------------------
     print("== keywords")
     route = page("keywords/route.md")
-    check("alias docs land on the canonical page, grouped by kind",
-          "## Test Plan" in route and "## User Story" in route and "## Design Spike" in route
-          and "3 documents" in route, route)
+    # v2.0: one table with a Kind column (sortable and filterable across
+    # the whole set), not one table per kind
+    check("alias docs land on the canonical page, in one table with a Kind column",
+          "## Test Plan" not in route
+          and "| Document | Kind | Product | Release | Edited | Summary |" in route
+          and "| [Old Spike](../design-spikes/old-spike-doc9.md) | [Design Spike](../design-spikes/index.md) |" in route
+          and "| [Merge Events Test Plan](../test-plans/4855-merge-plan.md) | [Test Plan](../test-plans/index.md) |" in route
+          and "3 documents · a topic keyword · [all keywords](./index.md)" in route, route)
+    check("a keyword page says what it is most often tagged with, and opens with a breadcrumb line",
+          "Often tagged with: [gantt chart](./gantt-chart.md) (1) · [locks](./locks.md) (1) · [merge events](./merge-events.md) (1)" in route
+          and route.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Keywords](./index.md)\n\n</div>\n\n# route'), route[:400])
+    claire = page("people/claire-wang.md")
+    check("a person's page says in which roles they appear",
+          "2 documents · author of 1 · PE of 1 · [all people](./index.md)" in claire, claire[:400])
     kwi = page("keywords/index.md")
     check("keyword index shows the list's kinds and counts",
           "| [route](./route.md) (topic) | 3 |" in kwi and "| [gantt chart](./gantt-chart.md) (tool) | 1 |" in kwi, kwi)
@@ -602,6 +690,28 @@ def main():
               and "tc-p01" in linked and "tc-n01" in linked,
               f"linked={linked} missing={[f for f in linked if f not in built]}")
         check("the built page shows the figure", 'src="../../media/4855-merge-plan/fig-01-slide-03-merge.png"' in html, html[-2000:])
+        # v2.0, the built site: the tab bar, the sidebar listing the
+        # plan under its kind, the Open button, magiclink's issue link
+        # in the related list, GFM strikethrough, and a search index
+        # without the aggregate pages
+        tabs = html.split('class="md-tabs"')[1].split("</nav>")[0] if 'class="md-tabs"' in html else ""
+        chrome = html.split('class="md-content"')[0]
+        check("the built page has the tab bar (Documents, Browse, Test cases & figures) and lists itself in its kind's sidebar section",
+              "Documents" in tabs and "Browse" in tabs and "Test cases &amp; figures" in tabs
+              and "md-nav__link--active" in chrome and "Merge Events Test Plan" in chrome
+              and "Conflict Prevention Story" not in chrome,  # pruned: the other kinds' pages are not rendered
+              (tabs[:400], chrome[-1200:]))
+        check("the built page: Open button, shorthand issue link to devtopia, strikethrough, single tilde untouched",
+              'class="md-button lrs-open"' in html
+              and 'class="magiclink magiclink-devtopia magiclink-issue" href="https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855"' in html
+              and "<del>a struck run</del>" in html and "at ~5 minutes" in html, html[-2500:])
+        idx_path = os.path.join(out, "site", "search", "search_index.json")
+        idx = open(idx_path, encoding="utf-8").read() if os.path.isfile(idx_path) else ""
+        locs = set(re.findall(r'"location":\s*"([^"#]*)', idx))
+        check("the search index carries the document and catalog pages, not the aggregate pages",
+              "test-plans/4855-merge-plan/" in locs and "keywords/route/" in locs
+              and not any(l in locs for l in ["", "documents/", "recent/", "cases/", "figures/", "test-plans/", "keywords/", "browse/"]),
+              str(sorted(locs))[:600])
         cfg_nomk = json.loads(json.dumps(cfg))
         cfg_nomk["wiki"]["python"] = "no-such-interpreter-xyz"
         cfg_nomk["wiki"]["outDir"] = os.path.join(work, "wiki-nomk")
@@ -630,12 +740,72 @@ def main():
           and "author [Someone Else](../people/someone-else.md)" in spike
           and "[route](../keywords/route.md)" in spike and "Spike body." in spike, spike)
     recent = page("recent.md")
-    order = [m for m in re.findall(r"\| \[([^\]]+)\]\(", recent)]
-    check("recent: newest edit first", order == ["Conflict Prevention Story", "Merge Events Test Plan", "Old Spike"], str(order))
+    # the row's FIRST link is the document (v2.0 added a Kind link after it)
+    order = [m for m in re.findall(r"^\| \[([^\]]+)\]\(", recent, re.M)]
+    check("recent: newest edit first, with a Kind column", order == ["Conflict Prevention Story", "Merge Events Test Plan", "Old Spike"]
+          and "| [Merge Events Test Plan](./test-plans/4855-merge-plan.md) | [Test Plan](./test-plans/index.md) |" in recent, str(order))
     front = page("index.md")
     check("front page: counts per kind and the browse links",
           "3 documents" in front and "| [Test Plans](./test-plans/index.md) | 1 |" in front
           and "[Keywords](./keywords/index.md) (4)" in front and "[Issues](./issues/index.md) (1)" in front, front)
+    # ---- 5c. the v2.0 organisation ------------------------------------
+    print("== organisation")
+    check("front page: tip, Documents (reader order, All-documents link), Recently edited inline, then Browse",
+          0 < front.find('!!! tip "Finding a document"') < front.find("## Documents")
+          < front.find("[every document in one table](./documents/index.md)")
+          < front.find("| [Test Plans](./test-plans/index.md) | 1 |") < front.find("| [Design Spikes](./design-spikes/index.md) | 1 |")
+          < front.find("## Recently edited") < front.find("[the Recent page](./recent.md)")
+          < front.find("| [Conflict Prevention Story](./user-stories/4855-conflict-story.md) | [User Story](./user-stories/index.md) |")
+          < front.find("## Browse"), front)
+    alldocs = page("documents/index.md")
+    check("All documents: every document in one filterable table with a Kind column, kinds in reader order",
+          alldocs.startswith("# All documents") and "3 documents of every kind" in alldocs
+          and "By kind: [Test Plans](../test-plans/index.md) (1) · [User Stories](../user-stories/index.md) (1) · [Design Spikes](../design-spikes/index.md) (1)." in alldocs
+          and "| Document | Kind | Product | Release | Edited | Summary |" in alldocs
+          and len(re.findall(r"^\| \[", alldocs, re.M)) == 3, alldocs)
+    browse = page("browse/index.md")
+    check("Browse: the six catalogs as cards with counts",
+          browse.startswith("# Browse") and '<div class="grid cards" markdown>' in browse
+          and "[Keywords](../keywords/index.md) (4)" in browse and "[People](../people/index.md) (3)" in browse
+          and browse.count(":material-") == 6, browse)
+    check("a document page: breadcrumbs above the title, an Open button for the original under the card",
+          plan.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test Plans](./index.md)\n\n</div>\n\n# Merge Events Test Plan')
+          and "</div>\n\n[:material-open-in-new: Open Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .lrs-open }\n\n## Summary" in plan,
+          plan[:900])
+    check("a document without a source URL gets no Open button",
+          ".md-button" not in spike and "Open " not in spike.split("\n---\n")[0], spike[:600])
+    check("kind index and catalog index say how to filter and sort, and point at All documents",
+          "Type in the box to filter the table; click a column header to sort it. Or [see every kind in one table](../documents/index.md)." in page("test-plans/index.md")
+          and "4 keywords. Type in the box to filter the table" in kwi, page("test-plans/index.md")[:400])
+    check("About explains the organisation",
+          '???+ note "How the site is organised"' in about and "    Documents\n    :   One tab" in about
+          and "    Search, filter, sort\n" in about, about)
+    # the model's own rules, through the module: natural order for the
+    # catalogs, the issue host, a person's roles, a keyword's neighbours
+    unit = subprocess.run(
+        ["node", "--input-type=module", "-e", """
+import { buildModel, issueHostOf, personRoles, coKeywords } from "./pipeline/wiki.mjs";
+const doc = (title, release, kw, extra = {}) => ({
+  stem: title, content: "", kind: "Test Plan",
+  meta: { title, keywords: kw, tools: [], products: [], target_release: release, author: "", pe: "", dev: "", ...extra },
+});
+const docs = [doc("B", "3.10", ["b", "a"]), doc("a", "3.8", ["a", "c"], { author: "P", pe: "P" }), doc("C", "3.9", ["a", "b"], { dev: "P" })];
+const m = buildModel(docs, { canonical: new Map(), kinds: new Map() });
+const out = {
+  releases: [...m.releases.keys()], keywords: [...m.keywords.keys()],
+  host: issueHostOf(new Map([["x", "not a url"], ["y", "https://devtopia.esri.com/Org/repo/issues/9"]])),
+  none: issueHostOf(new Map()),
+  roles: personRoles("P", docs), co: coKeywords("a", docs),
+};
+console.log(JSON.stringify(out));
+"""], capture_output=True, text=True, cwd=REPO)
+    u = json.loads(unit.stdout.strip() or "{}") if unit.returncode == 0 else {}
+    check("catalog keys sort naturally and case-insensitively; issue host, roles and co-keywords",
+          u.get("releases") == ["3.8", "3.9", "3.10"] and u.get("keywords") == ["a", "b", "c"]
+          and u.get("host") == "https://devtopia.esri.com" and u.get("none") == ""
+          and u.get("roles") == "author of 1 · PE of 1 · developer of 1"
+          and u.get("co") == [{"value": "b", "n": 2}, {"value": "c", "n": 1}],
+          unit.stderr[-400:] or unit.stdout[-400:])
     issue = page("issues/arcgispro-ps-location-referencing-4855.md")
     check("issue page names the devtopia URL and both documents",
           "Issue: <https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855>" in issue

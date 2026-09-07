@@ -1361,6 +1361,23 @@ Setup (after the sweep's §1–§4):
    nightly `--build` refreshes it; the push keeps the `gh-pages`
    branch ready for the day Pages is switched on.
 
+**How the site is organised (wiki v2.0).** A tab bar — Home ·
+Documents · Browse · Test cases & figures · Drafts · Recent · About —
+and, in each tab, a sidebar of that tab's pages. Documents lands on
+one table of every document; each kind is a collapsible section whose
+header opens the kind's table and whose entries are its documents.
+Browse lands on the six catalogs as cards; each catalog is a section
+whose entries are its values. Every table of six rows or more filters
+as you type and sorts on a header click (the test-case catalog has one
+box for the whole page). A document page opens with a breadcrumb
+line and an **Open <file>** button for the original; external links
+open in a new tab. Search boosts document pages, damps drafts, and
+skips the aggregate pages that only repeat titles. `wiki.offline`
+(default false) enables Material's offline plugin for the day the
+built `site/` folder is opened from a file share instead of served
+(it switches the site to `.html` URLs — leave it off for Pages or
+IIS).
+
 The tree is a rendering: nothing in it is edited by hand, the next
 run overwrites every page. Change a document's classification,
 keywords or related documents in the catalog and the sweep's rewrite

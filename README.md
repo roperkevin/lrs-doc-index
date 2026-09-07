@@ -116,6 +116,10 @@ product, release, person and issue, the test cases and figures with
 anchors, a Recent page) and pushes the tree to a private devtopia
 repository whose Pages workflow serves it, plus — with
 `wiki.draftsDir` set — a Drafts section for the TestPlanGen drafts.
+v2.0 organises it for readers: a tab bar (Documents · Browse · Test
+cases & figures), every page in a collapsible sidebar section, one
+table of every document, type-to-filter on every large table,
+breadcrumbs and an Open-the-original button on each document page.
 Files in, files out: it reads the sidecar library and the sweep's list
 backup, never SharePoint or a model. The page is a *render* of the sidecar, not a
 copy: `pipeline/lib/mdlayout.mjs` translates the corpus' GitHub-flavored
