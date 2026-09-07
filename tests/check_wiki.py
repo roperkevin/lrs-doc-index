@@ -52,7 +52,6 @@ import gzip
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -582,8 +581,12 @@ def main():
           and '<a href="../test-plans/4855-merge-plan.md#tc-p01">'
               '<img src="../media/4855-merge-plan/fig-01-slide-03-merge.png" width="160" '
               'alt="Figure 1 — Merge before"></a>' in figs, figs)
-    if shutil.which("mkdocs"):
-        r = run_job(cfg_path, ["--build"])
+    have_mkdocs = subprocess.run([sys.executable, "-m", "mkdocs", "--version"], capture_output=True).returncode == 0
+    if have_mkdocs:
+        # --build runs `python -m mkdocs`, through the interpreter the
+        # config names — here this test's own, so the leg cannot pass
+        # by finding a stray mkdocs.exe on PATH
+        r = run_job(cfg_path, ["--build"], {"LRSDOC_PYTHON": sys.executable})
         check("mkdocs build --strict passes on the rendered tree", r.returncode == 0 and '"built":true' in r.stdout, r.stderr[-800:])
         html = open(os.path.join(out, "site", "test-plans", "4855-merge-plan", "index.html"), encoding="utf-8").read() \
             if os.path.isfile(os.path.join(out, "site", "test-plans", "4855-merge-plan", "index.html")) else ""
@@ -599,8 +602,17 @@ def main():
               and "tc-p01" in linked and "tc-n01" in linked,
               f"linked={linked} missing={[f for f in linked if f not in built]}")
         check("the built page shows the figure", 'src="../../media/4855-merge-plan/fig-01-slide-03-merge.png"' in html, html[-2000:])
+        cfg_nomk = json.loads(json.dumps(cfg))
+        cfg_nomk["wiki"]["python"] = "no-such-interpreter-xyz"
+        cfg_nomk["wiki"]["outDir"] = os.path.join(work, "wiki-nomk")
+        with open(os.path.join(tmp, "config-nomk.json"), "w") as f:
+            json.dump(cfg_nomk, f)
+        r = run_job(os.path.join(tmp, "config-nomk.json"), ["--build"])
+        check("--build through an interpreter without mkdocs fails naming the pip install",
+              r.returncode != 0 and "-m pip install mkdocs-material" in r.stderr and "wiki.python" in r.stderr,
+              r.stderr[-400:])
     else:
-        print("  (mkdocs not on PATH — the strict-build legs are skipped here; CI runs them)")
+        print("  (mkdocs not installed for this interpreter — the strict-build legs are skipped here; CI runs them)")
 
     # ---- 5. comments and legacy frames ----------------------------
     print("== hygiene")
