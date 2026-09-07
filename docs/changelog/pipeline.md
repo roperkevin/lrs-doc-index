@@ -44,11 +44,12 @@ official-term guard, seeding dry / live / idempotent;
 `test_lrsdoc.py` 54/54.
 
 Rollout: `git pull`. The committed file holds the toolbox overview's
-16 tools and the 36 Roads and Highways terms; run
+16 tools and the 36 terms both vocabulary pages define (Roads and
+Highways and Pipeline Referencing — the same 36, each entry naming
+both pages in `sources`); run
 `node --experimental-strip-types pipeline\doc_vocab.mjs` on the sweep
-machine to add the Configuration and Data Products toolsets and the
-Pipeline Referencing terms, commit the result, then
-`curate.mjs --seed-vocabulary --live`. Prompt 3.1.0 re-classifies the
+machine to add the Configuration and Data Products toolsets, commit
+the result, then `curate.mjs --seed-vocabulary --live`. Prompt 3.1.0 re-classifies the
 corpus at `maxDocsPerRun` per night; pin `sweep.promptVersion:
 "v3.0.0"` to defer.
 
