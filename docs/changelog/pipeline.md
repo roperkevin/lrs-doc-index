@@ -89,6 +89,61 @@ the built tab bar, the sidebar entry, the devtopia issue link,
 Rollout: `git pull` on the sweep machine; the next `ops\run_wiki.cmd`
 publishes the new organisation. Nothing to configure; `wiki.offline`
 only if the built folder is ever opened from disk.
+## curate v1.3 (2026-09-07 — the guard learns direction; review by list; unmerge --unreject)
+
+The first live runs of the v2.0 prompt looked right in the morning
+(37 proposals, every `why` carrying its rule code) and wrong by the
+afternoon: 39 proposals, all of them `A1`, all of them backwards —
+`'centerline' -> 'centerlines'`, `'3d measure' -> '3d measures'`. The
+cause was the DoNotPropose list. The morning's plurals were pending
+(Proposed) or had been bulk-rejected by `unmerge --reject`, and both
+states put the plural on the list as a title that "must never appear
+as an alias". The model obeyed to the letter and proposed the same
+merge the other way round, with the blocked plural as canonical. The
+guard had no opinion on direction, so every one landed in the queue.
+
+- **A pending row leaves the vocabulary.** A row with
+  `CurationStatus = Proposed` is an alias in waiting: it is now
+  absent from the Vocabulary block entirely (not merely blocked), so
+  it can be neither re-proposed nor made a canonical. Rejected rows
+  stay in the vocabulary and on the DoNotPropose list. The summary
+  line gains `pending=N`.
+- **`lib/curationguard.mjs`** — the deterministic half of the guard,
+  shared by the weekly run and the new review commands. Beyond the
+  flow's verbatim checks it drops: a canonical that is itself pending
+  review; a pair whose kinds differ; and a merge in the wrong
+  direction — the canonical is the plural side, the joined or
+  hyphenated form, or the initialism of the alias. Each drop is named.
+- **Prompt 2.1.0** says the same in the model's terms: a listed title
+  may be a canonical but never as a way around the list; the
+  direction is fixed by the forms, never by which title is available;
+  and the reverse-of-a-blocked-pair joins the NEVER MERGE list with
+  its count. The digest's `CurationPromptVersion` now defaults to the
+  prompt file's version (config pins another only deliberately).
+- **`curate --approve <ids-file>` / `--withdraw <ids-file>`** — the
+  review, by list. A 176-row queue is reviewed in a spreadsheet, not
+  row by row in SharePoint; the verdicts come back as files of row
+  IDs. `--approve` re-runs the guard against the live list and then
+  does exactly the librarian's click (CanonicalRef set, flow-owned
+  columns cleared); a chain is skipped with a note. `--withdraw`
+  clears a pending proposal without rejecting the row. Dry-run by
+  default; skips listed on stdout after the summary line.
+- **`unmerge --unreject`** — the undo's undo: the same selectors over
+  the Rejected rows, clearing the status, for the 2026-09-07 bulk
+  rejection that blocked 408 rows, most of them ordinary plurals the
+  v2 prompt merges correctly.
+
+Gates: `check_local_sweep.py` **372/372** (was 358: the guard's five
+drops by name, the pending row absent from both blocks, approve dry /
+live / refusals / chain, withdraw, unmerge --all --reject, --unreject
+dry / live / refusals), `test_lrsdoc.py` 54/54.
+
+Rollout: `git pull`; delete `curation.promptVersion` from
+`config.json` (or set `v2.1.0`). Then, in order: withdraw the
+wrong-way and mismatched proposals, `unmerge --unreject --all --live`,
+approve the reviewed list, `--repoint --live`, `sweep --rerank --live`,
+and a `--dry-run` curation to see what the 2.1.0 prompt proposes
+against the cleaned list.
 
 ## wiki v1.9 (2026-09-07 — publishing on devtopia)
 

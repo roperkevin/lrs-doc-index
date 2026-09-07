@@ -51,6 +51,7 @@ SWEEP = os.path.join(REPO, "pipeline", "sweep.mjs")
 with open(os.path.join(REPO, "prompts", "docindex_classify.md"), encoding="utf-8") as _f:
     STAMP = "v" + re.search(r"^version:\s*([0-9][^\s]*)\s*$", _f.read(), re.M).group(1)
 CURATE = os.path.join(REPO, "pipeline", "curate.mjs")
+UNMERGE = os.path.join(REPO, "pipeline", "unmerge.mjs")
 DOC_CRAWL = os.path.join(REPO, "pipeline", "doc_crawl.mjs")
 
 PASS = []
@@ -821,6 +822,13 @@ def run_node(args, **kw):
 def run_curate(cfg_path, extra):
     return run_node(
         ["node", "--experimental-strip-types", CURATE, "--config", cfg_path] + extra,
+        env=dict(os.environ, DOCINDEX_ALLOW_DEVICE_PROMPT="1"),
+    )
+
+
+def run_unmerge(cfg_path, extra):
+    return run_node(
+        ["node", "--experimental-strip-types", UNMERGE, "--config", cfg_path] + extra,
         env=dict(os.environ, DOCINDEX_ALLOW_DEVICE_PROMPT="1"),
     )
 
@@ -1862,14 +1870,16 @@ def main():
     cut_at = cur_user.find("Titles that must NEVER appear")
     req = {"Vocabulary": cur_user[:cut_at] if cut_at >= 0 else cur_user,
            "DoNotPropose": cur_user[cut_at:] if cut_at >= 0 else ""}
-    check("vocabulary lines 'title [kind]', canonical rows only",
+    check("vocabulary lines 'title [kind]': canonical rows, a pending row left out entirely",
           "centerlines [topic]" in req.get("Vocabulary", "")
-          and "sld [tool]" in req.get("Vocabulary", "")
+          and "rejected thing [topic]" in req.get("Vocabulary", "")
+          and "sld [tool]" not in req.get("Vocabulary", "")
           and "stale approved" not in req.get("Vocabulary", ""),
           req.get("Vocabulary", "")[:300])
-    check("blocked list carries rejected + pending titles",
+    check("blocked list carries the rejected title only (pending is out of the vocabulary)",
           "rejected thing" in req.get("DoNotPropose", "")
-          and "sld" in req.get("DoNotPropose", ""), req.get("DoNotPropose", "")[:200])
+          and "sld" not in req.get("DoNotPropose", ""), req.get("DoNotPropose", "")[:200])
+    check("summary counts the pending rows", "pending=1" in out.get("line", ""), str(out))
     check("valid proposal written to the alias row",
           kwrows[CUR["centerlines"]].get("CurationStatus") == "Proposed"
           and str(kwrows[CUR["centerlines"]].get("ProposedCanonical", "")).startswith("centerline — "),
@@ -1881,7 +1891,7 @@ def main():
     check("digest lists the proposal and the pending carryover",
           "- 'centerlines' → 'centerline' — plural of centerline" in digest
           and "(pending) 'sld'" in digest
-          and "CurationPromptVersion: v1.0" in digest, digest[:400])
+          and "CurationPromptVersion: v2.1.0" in digest, digest[:400])
     # week 2: librarian approves both; model proposes nothing
     kwrows[CUR["centerlines"]]["CanonicalRefLookupId"] = int(CUR["centerline"])
     kwrows[CUR["sld"]]["CanonicalRefLookupId"] = 1
@@ -1966,6 +1976,152 @@ def main():
     del cfg["curation"]["vocabChunk"]
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
+
+    # ---- leg 3d1: the deterministic guard --------------------------
+    # 2026-09-07: told a title may never be an ALIAS, the model proposed
+    # the reverse pair with it as CANONICAL (39 of 39 in one run). The
+    # guard now drops a merge in the wrong direction, a kind mismatch
+    # and a canonical that is itself pending review.
+    print("== guard leg")
+    cfg["curation"] = {}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    CUR["em"] = state.seed(LISTS["keywords"], {"Title": "error message", "Kind": "topic"})
+    CUR["ems"] = state.seed(LISTS["keywords"], {"Title": "error messages", "Kind": "topic",
+                                                "CurationStatus": "Rejected"})
+    CUR["rid"] = state.seed(LISTS["keywords"], {"Title": "route id", "Kind": "topic"})
+    CUR["routeid"] = state.seed(LISTS["keywords"], {"Title": "routeid", "Kind": "topic"})
+    CUR["ae"] = state.seed(LISTS["keywords"], {"Title": "add event", "Kind": "topic"})
+    CUR["aes"] = state.seed(LISTS["keywords"], {"Title": "add events", "Kind": "tool"})
+    CUR["pend"] = state.seed(LISTS["keywords"], {"Title": "pending alias", "Kind": "topic",
+                                                 "CurationStatus": "Proposed",
+                                                 "ProposedCanonical": "centerline — A1 test"})
+    CUR["pend2"] = state.seed(LISTS["keywords"], {"Title": "pending aliases", "Kind": "topic"})
+    CUR["sldx"] = state.seed(LISTS["keywords"], {"Title": "sld", "Kind": "tool"})
+    CUR["sldfull"] = state.seed(LISTS["keywords"], {"Title": "straight line diagram", "Kind": "tool"})
+    state.cur_response = {"proposals": [
+        {"alias": "error message", "canonical": "error messages", "why": "A1 reverse to dodge the list"},
+        {"alias": "route id", "canonical": "routeid", "why": "A3 joined side as canonical"},
+        {"alias": "add events", "canonical": "add event", "why": "A1 but kinds differ"},
+        {"alias": "pending aliases", "canonical": "pending alias", "why": "A1 canonical is pending"},
+        {"alias": "straight line diagram", "canonical": "sld", "why": "B backwards"},
+        {"alias": "sld", "canonical": "straight line diagram", "why": "B s-l-d"},
+    ]}
+    proc = run_curate(cfg_path, ["--live", "--progress"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("guard drops the wrong-way, mismatched-kind and pending-canonical pairs, keeps the right-way one",
+          proc.returncode == 0 and "written=1 dropped=5" in out.get("line", "")
+          and kwrows[CUR["sldx"]].get("CurationStatus") == "Proposed"
+          and not kwrows[CUR["em"]].get("CurationStatus")
+          and not kwrows[CUR["rid"]].get("CurationStatus")
+          and not kwrows[CUR["aes"]].get("CurationStatus")
+          and not kwrows[CUR["pend2"]].get("CurationStatus")
+          and not kwrows[CUR["sldfull"]].get("CurationStatus"),
+          str(out) + proc.stderr[-600:])
+    check("the guard names each reason",
+          "the canonical is the plural side" in proc.stderr
+          and "the canonical is the joined form" in proc.stderr
+          and "kinds differ ([tool] vs [topic])" in proc.stderr
+          and "itself pending review" in proc.stderr
+          and "the canonical is the abbreviation" in proc.stderr, proc.stderr[-900:])
+    check("the pending row is neither in the vocabulary nor in the blocked list",
+          "pending alias [topic]" not in mock.user_text(state.cur_last_request or {}).split("Titles that must NEVER")[0]
+          and "pending alias" not in mock.user_text(state.cur_last_request or {}).split("Titles that must NEVER")[1]
+          and "error messages" in mock.user_text(state.cur_last_request or {}).split("Titles that must NEVER")[1],
+          mock.user_text(state.cur_last_request or {})[-400:])
+
+    # ---- leg 3d1b: --approve / --withdraw, the review by list -------
+    print("== review-by-list leg")
+    CUR["pl"] = state.seed(LISTS["keywords"], {"Title": "polygon layer", "Kind": "topic"})
+    CUR["pls"] = state.seed(LISTS["keywords"], {"Title": "polygon layers", "Kind": "topic",
+                                                "CurationStatus": "Proposed",
+                                                "ProposedCanonical": "polygon layer — A1 plural of polygon layer"})
+    CUR["flip"] = state.seed(LISTS["keywords"], {"Title": "flip measure", "Kind": "topic",
+                                                 "CurationStatus": "Proposed",
+                                                 "ProposedCanonical": "flip measures — A1 singular vs plural"})
+    CUR["flips"] = state.seed(LISTS["keywords"], {"Title": "flip measures", "Kind": "topic"})
+    CUR["cx"] = state.seed(LISTS["keywords"], {"Title": "chain x", "Kind": "topic",
+                                               "CurationStatus": "Proposed",
+                                               "ProposedCanonical": "chain y — A2 typo"})
+    CUR["cy"] = state.seed(LISTS["keywords"], {"Title": "chain y", "Kind": "topic",
+                                               "CurationStatus": "Proposed",
+                                               "ProposedCanonical": "chain z — A2 typo"})
+    CUR["cz"] = state.seed(LISTS["keywords"], {"Title": "chain z", "Kind": "topic"})
+    ids_path = os.path.join(tmp, "approve-ids.txt")
+    with open(ids_path, "w") as f:
+        f.write(f"# reviewed 2026-09-07\n{CUR['pls']}\n{CUR['flip']}  # wrong way\n{CUR['cx']}\n{CUR['cy']}\n999999\n{CUR['pl']}\n")
+    proc = run_curate(cfg_path, ["--approve", ids_path])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("approve dry run plans without writing",
+          proc.returncode == 0 and out.get("dry_run") is True
+          and "mode=approve given=6 applied=2 skipped=4" in out.get("line", "")
+          and kwrows[CUR["pls"]].get("CurationStatus") == "Proposed"
+          and not kwrows[CUR["pls"]].get("CanonicalRefLookupId"), str(out) + proc.stdout[-500:])
+    proc = run_curate(cfg_path, ["--approve", ids_path, "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("approve applies the reviewed merges and clears the flow-owned columns",
+          proc.returncode == 0 and "applied=2 skipped=4" in out.get("line", "")
+          and kwrows[CUR["pls"]].get("CanonicalRefLookupId") == int(CUR["pl"])
+          and not kwrows[CUR["pls"]].get("CurationStatus") and not kwrows[CUR["pls"]].get("ProposedCanonical")
+          and kwrows[CUR["cy"]].get("CanonicalRefLookupId") == int(CUR["cz"]),
+          str(out) + str(kwrows[CUR["pls"]]) + str(kwrows[CUR["cy"]]))
+    check("approve refuses a wrong-way proposal, a chain, an unknown id and a row with nothing pending",
+          not kwrows[CUR["flip"]].get("CanonicalRefLookupId") and kwrows[CUR["flip"]].get("CurationStatus") == "Proposed"
+          and not kwrows[CUR["cx"]].get("CanonicalRefLookupId") and kwrows[CUR["cx"]].get("CurationStatus") == "Proposed"
+          and "the canonical is the plural side" in proc.stdout
+          and "is itself in the review list as an alias" in proc.stdout
+          and "999999: no such row" in proc.stdout
+          and "not pending" in proc.stdout
+          and "--repoint" in proc.stdout, proc.stdout[-900:])
+    wd_path = os.path.join(tmp, "withdraw-ids.txt")
+    with open(wd_path, "w") as f:
+        f.write(f"{CUR['flip']}\n{CUR['pl']}\n{CUR['pls']}\n")
+    proc = run_curate(cfg_path, ["--withdraw", wd_path, "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("withdraw clears a pending proposal and skips rows with nothing pending or already merged",
+          proc.returncode == 0 and "mode=withdraw given=3 applied=1 skipped=2" in out.get("line", "")
+          and not kwrows[CUR["flip"]].get("CurationStatus") and not kwrows[CUR["flip"]].get("ProposedCanonical")
+          and "already merged" in proc.stdout, str(out) + proc.stdout[-400:])
+    proc = run_curate(cfg_path, ["--approve", ids_path, "--withdraw", wd_path])
+    check("approve and withdraw are separate commands", proc.returncode != 0 and "separate commands" in proc.stderr, proc.stderr[-200:])
+
+    # ---- leg 3d1c: unmerge.mjs — the bulk undo, and its undo --------
+    print("== unmerge leg")
+    CUR["um"] = state.seed(LISTS["keywords"], {"Title": "unmerge me", "Kind": "topic",
+                                               "CanonicalRefLookupId": int(CUR["pl"])})
+    CUR["umr"] = state.seed(LISTS["keywords"], {"Title": "unmerge rejected", "Kind": "topic",
+                                                "CurationStatus": "Rejected"})
+    proc = run_unmerge(cfg_path, ["--all"])
+    check("unmerge without a selection refuses; dry --all plans and writes nothing",
+          run_unmerge(cfg_path, []).returncode != 0
+          and proc.returncode == 0 and '"dry_run":true' in proc.stdout.splitlines()[0]
+          and kwrows[CUR["um"]].get("CanonicalRefLookupId") == int(CUR["pl"]), proc.stdout[-300:])
+    proc = run_unmerge(cfg_path, ["--all", "--reject", "--live"])
+    check("unmerge --all --reject --live clears every CanonicalRef and marks the rows Rejected",
+          proc.returncode == 0 and not kwrows[CUR["um"]].get("CanonicalRefLookupId")
+          and kwrows[CUR["um"]].get("CurationStatus") == "Rejected"
+          and not kwrows[CUR["pls"]].get("CanonicalRefLookupId"), proc.stdout[-300:] + str(kwrows[CUR["um"]]))
+    proc = run_unmerge(cfg_path, ["--unreject", "--all"])
+    check("unreject dry run selects the Rejected rows and writes nothing",
+          proc.returncode == 0 and "mode=unreject" in proc.stdout and "cleared=" in proc.stdout
+          and kwrows[CUR["um"]].get("CurationStatus") == "Rejected", proc.stdout[-300:])
+    proc = run_unmerge(cfg_path, ["--unreject", "--all", "--live"])
+    check("unreject --live clears Rejected so the rows are candidates again",
+          proc.returncode == 0 and not kwrows[CUR["um"]].get("CurationStatus")
+          and not kwrows[CUR["umr"]].get("CurationStatus")
+          and not kwrows[CUR["ems"]].get("CurationStatus")
+          and "rows unblocked" in proc.stdout, proc.stdout[-300:] + str(kwrows[CUR["umr"]]))
+    check("unreject refuses --reject and --chains",
+          run_unmerge(cfg_path, ["--unreject", "--all", "--reject"]).returncode != 0
+          and run_unmerge(cfg_path, ["--unreject", "--chains"]).returncode != 0)
+    # restore the merges the repoint leg below relies on
+    kwrows[CUR["gantts"]]["CanonicalRefLookupId"] = int(CUR["gantt"])
+    kwrows[CUR["gantts"]]["CurationStatus"] = None
+    kwrows[CUR["wp"]]["CanonicalRefLookupId"] = int(CUR["workpackage"])
+    kwrows[CUR["cb"]]["CanonicalRefLookupId"] = int(CUR["cc"])
+    kwrows[CUR["wbs"]]["CanonicalRefLookupId"] = int(CUR["wbsfull"])
+    kwrows[CUR["pls"]]["CanonicalRefLookupId"] = int(CUR["pl"])
+    kwrows[CUR["cy"]]["CanonicalRefLookupId"] = int(CUR["cz"])
 
     # ---- leg 3d2: --repoint (the librarian junction backfill) ------
     # 'gantt charts' -> 'gantt chart' merged above; seed the historical
