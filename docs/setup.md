@@ -1442,3 +1442,63 @@ rewrite the corpus, in ONE pass; phases 5 and 6 are steps 7 and 8:
 Rollback is the standing pattern: the `format` value in the Extracted
 row says which shape a file carries, and `--reformat` re-emits from
 raw text, so nothing depends on re-running the model.
+
+## 17. The official vocabulary: tools and terms from the Esri documentation (doc_vocab.mjs)
+
+The classifier used to be asked for "official tool names" with six
+examples to go on, so it invented casing and variants ("Merge
+Centerline", "merge centerlines tool", "Append Route"), and every
+variant became its own Keywords row for curation to undo. Since
+sweep v1.65 the names come from the documentation itself:
+`pipeline/data/lrs_vocabulary.json` holds every tool of the Location
+Referencing toolbox (name, toolset, page, description — the toolbox
+overview page and each toolset overview it links) and every term of
+the "Essential Roads and Highways vocabulary" page (term, definition,
+page), plus a hand-kept `widgets` list for the Experience Builder
+widgets and Pro ribbon tools no toolbox lists.
+
+**Generating the file.** `doc.esri.com` must be reachable:
+
+    node --experimental-strip-types pipeline\doc_vocab.mjs
+
+fetches the default pages (the LR toolbox overview and its toolsets;
+the Roads and Highways and Pipeline Referencing vocabularies — a page
+that 404s is skipped with a note) and rewrites the JSON, carrying the
+`widgets` list over. Commit it. `--from-dir <dir>` reads pages saved
+there as `<slug>.html` instead of fetching (the note names the exact
+`curl.exe` for a missing one); `--dry-run` prints the counts. Re-run
+after a release adds tools. Widgets: edit the `widgets` array by hand
+(`{"name": "Straight Line Diagram", "url": "..."}`).
+
+**What it does, everywhere.**
+
+- **Classifier** (prompt 3.1.0, input `KnownTools`): the official list
+  goes into every classify call, and the rule is copy character for
+  character. The sweep then normalizes every returned tool name to
+  the official casing anyway (`"append route"`, `"the Update Measures
+  from LRS tool"` → `Append Routes`, `Update Measures From LRS`), and
+  the names it cannot match are kept as written, counted in the
+  summary (`tools_unknown`) and appended to `work\unknown-tools.txt`
+  (`name<TAB>document<TAB>date`). Read that file now and then: a real
+  widget goes into `widgets`, a made-up name is a prompt problem.
+- **Documentation links**: every official tool has its page, ahead of
+  the crawl inventory and the probe.
+- **Curation** (`curate.mjs`): an official term or tool name is the
+  canonical side of any pair — the guard drops a proposal that folds
+  one into an unofficial title. `--seed-vocabulary` (dry by default,
+  `--live` writes) creates a Keywords row for every term (`topic`) and
+  tool or widget (`tool`) that has none yet, Title lowercase, Notes
+  naming the page, so the classifier's ExistingKeywords spelling
+  reference carries the official spelling from then on. Expect the
+  next sweep to re-tag cases and figures that mention a newly seeded
+  term (one night of `cases_upserted`).
+
+Config: `sweep.vocabularyFile` points elsewhere (default the committed
+file). No file = the pre-v1.65 behaviour, with one stderr note.
+
+**Prompt 3.1.0 and the PromptVersion stamp.** The classify prompt's
+version is the reindex trigger (§7): every document re-classifies on
+its next sweep, at `maxDocsPerRun` per night, so the official names
+replace the invented ones across the corpus. Pin
+`sweep.promptVersion: "v3.0.0"` to defer that respend.
+

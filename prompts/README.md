@@ -11,7 +11,7 @@ read exactly this format.
 
 | File | Version | Called by | Output |
 |---|---|---|---|
-| `docindex_classify.md` | 3.0.0 | the nightly sweep, once per changed document | JSON, `schemas/docindex_classify.json` (nine fields) |
+| `docindex_classify.md` | 3.1.0 | the nightly sweep, once per changed document | JSON, `schemas/docindex_classify.json` (nine fields) |
 | `keyword_curation.md` | 2.1.0 | `curate.mjs`, once per vocabulary chunk, weekly | JSON, `schemas/keyword_curation.json` |
 | `testplan_draft.md` | 1.13.0 | `testplangen.mjs` — the one draft call | markdown between `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` |
 | `testplan_figures.md` | 0.4.0 | `testplangen.mjs --figures` | JSON between `[[[FIGURES BEGIN]]]` / `[[[FIGURES END]]]`, verified by `pipeline/lib/figurespec.mjs` |

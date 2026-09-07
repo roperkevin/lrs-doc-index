@@ -1,5 +1,58 @@
 # Local sweep — release notes
 
+## sweep v1.65 (2026-09-07 — the official vocabulary; curate v1.4, doc_vocab v1.0)
+
+"It doesn't do a great job of identifying tools." It did not: the
+classify prompt asked for official tool names with six examples, and
+the model supplied the rest from memory — "Merge Centerline",
+"Append Route", "merge centerlines tool" — each a Keywords row, each
+a curation proposal later. The documentation has the list; now the
+pipeline reads it.
+
+- **`pipeline/data/lrs_vocabulary.json`** — written by
+  `pipeline/doc_vocab.mjs` from the Esri help: every tool of the
+  Location Referencing toolbox (the overview page, then each toolset
+  overview it links; name, toolset, page, description) and every term
+  of the essential-vocabulary pages (term, definition, page), plus a
+  hand-kept `widgets` list. `--from-dir` reads saved pages; a missing
+  page is named with the `curl.exe` to save it; a run that parsed
+  nothing refuses to overwrite. `lib/vocabulary.mjs` holds the two
+  docfx parsers, the loader and `normalizeTools()`.
+- **Classifier prompt 3.1.0** gains the `KnownTools` input (the
+  official names, copy character for character; a name off the list
+  only for an explicitly named widget or ribbon tool). The sweep
+  normalizes every returned tool to the official casing regardless —
+  case, a trailing "tool", the last word's plural — and reports the
+  rest: `tools_unknown` in the summary, one line per name in
+  `work/unknown-tools.txt`. Each official tool's page is a curated
+  documentation link, ahead of the crawl inventory and the probe.
+- **Curation**: the official terms and tool names are the canonical
+  side of any pair (`curationguard` takes the set; a proposal folding
+  an official title into an unofficial one is dropped by name), and
+  `curate --seed-vocabulary` plants the missing terms and tools as
+  Keywords rows with the page in Notes, so the classifier's spelling
+  reference carries the official forms from then on.
+- `sweep.vocabularyFile` points elsewhere; no file = the old
+  behaviour with one stderr note.
+
+Gates: `check_vocabulary.py` (new, 13) — the parsers on docfx-shaped
+pages, the `--from-dir` run, widgets carried over, the refusals,
+`normalizeTools`; `check_local_sweep.py` **377/377** — the reply's
+"extend route tool" lands as `Extend Route`, "Realign Route" counted
+and written for review, the KnownTools block in the classify turn, the
+official-term guard, seeding dry / live / idempotent;
+`test_lrsdoc.py` 54/54.
+
+Rollout: `git pull`. The committed file holds the toolbox overview's
+16 tools and the 36 terms both vocabulary pages define (Roads and
+Highways and Pipeline Referencing — the same 36, each entry naming
+both pages in `sources`); run
+`node --experimental-strip-types pipeline\doc_vocab.mjs` on the sweep
+machine to add the Configuration and Data Products toolsets, commit
+the result, then `curate.mjs --seed-vocabulary --live`. Prompt 3.1.0 re-classifies the
+corpus at `maxDocsPerRun` per night; pin `sweep.promptVersion:
+"v3.0.0"` to defer.
+
 ## wiki v2.0 (2026-09-07 — the site reorganised for readers; the MkDocs catalog reviewed)
 
 The v1.x site was a flat sidebar of index pages with every document

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * curate.mjs v1.3 — the KeywordCuration cloud flow (v1.1) as a local
+ * curate.mjs v1.4 — the KeywordCuration cloud flow (v1.1) as a local
  * weekly job. The LAST Power Automate piece of the pipeline: with
  * this deployed and the cloud flow off, orchestration is 100% local.
  *
@@ -56,7 +56,8 @@ import { GraphClient } from "./graph.mjs";
 import { curateChunk } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
-import { proposalProblem, readIds } from "./lib/curationguard.mjs";
+import { proposalProblem, readIds, normalizeTitle } from "./lib/curationguard.mjs";
+import { loadVocabulary, VOCABULARY_FILE } from "./lib/vocabulary.mjs";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -86,6 +87,7 @@ function loadConfig(argv) {
     else if (a === "--repoint") args.flags.repoint = true;
     else if (a === "--approve") args.approve = argv[++i];
     else if (a === "--withdraw") args.withdraw = argv[++i];
+    else if (a === "--seed-vocabulary") args.flags.seed = true;
     else if (a === "--progress") args.flags.progress = true;
     else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
@@ -93,14 +95,14 @@ function loadConfig(argv) {
   if (!args.config) {
     throw new Error(
       "usage: curate.mjs --config <config.json> [--live|--dry-run|--drain|--repoint|" +
-      "--approve <ids-file>|--withdraw <ids-file>] [--progress|--no-progress]"
+      "--approve <ids-file>|--withdraw <ids-file>|--seed-vocabulary] [--progress|--no-progress]"
     );
   }
   if ((args.approve !== undefined && !args.approve) || (args.withdraw !== undefined && !args.withdraw)) {
     throw new Error("--approve / --withdraw take a file of Keywords row IDs, one per line (# comments allowed)");
   }
-  if ([args.approve, args.withdraw, args.flags.repoint].filter(Boolean).length > 1) {
-    throw new Error("--approve, --withdraw and --repoint are separate commands — run one at a time");
+  if ([args.approve, args.withdraw, args.flags.repoint, args.flags.seed].filter(Boolean).length > 1) {
+    throw new Error("--approve, --withdraw, --repoint and --seed-vocabulary are separate commands — run one at a time");
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -141,6 +143,7 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.curation.dryRun = true;
   cfg._drain = !!args.flags.drain;
   cfg._repoint = !!args.flags.repoint;
+  cfg._seed = !!args.flags.seed;
   cfg._approve = args.approve ? readIds(args.approve) : null;
   cfg._withdraw = args.withdraw ? readIds(args.withdraw) : null;
   cfg._progress = resolveProgress(cfg.progress, {
@@ -154,6 +157,14 @@ async function main() {
   const cfg = loadConfig(process.argv.slice(2));
   const prog = createProgress({ enabled: cfg._progress });
   cfg._prog = prog;
+  // the official vocabulary (lib/vocabulary.mjs): its terms and tool
+  // names are the canonical side of any pair the guard judges, and
+  // --seed-vocabulary plants them as Keywords rows
+  cfg._vocab = loadVocabulary(cfg.sweep?.vocabularyFile || VOCABULARY_FILE);
+  cfg._official = new Set(
+    [...cfg._vocab.terms.map((t) => t.term), ...cfg._vocab.tools.map((t) => t.name), ...cfg._vocab.widgets.map((t) => t.name)]
+      .map(normalizeTitle).filter(Boolean)
+  );
   const graph = new GraphClient(cfg.graph);
   const signIn = prog.phase("sign-in + site lookup");
   const stopSignIn = prog.heartbeat("waiting on Microsoft Graph sign-in");
@@ -167,6 +178,10 @@ async function main() {
   if (cfg._repoint) {
     prog(`curate --repoint — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}`);
     return runRepoint(cfg, graph, siteId);
+  }
+  if (cfg._seed) {
+    prog(`curate --seed-vocabulary — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}`);
+    return runSeed(cfg, graph, siteId);
   }
   if (cfg._approve || cfg._withdraw) {
     const mode = cfg._approve ? "approve" : "withdraw";
@@ -453,7 +468,7 @@ async function runCuration(cfg, graph, siteId) {
     const canonRow = byLower.get(canonLower);
     // the flow's verbatim checks, plus (lib/curationguard.mjs) a pending
     // canonical, a kind mismatch and a merge in the wrong direction
-    const problem = proposalProblem(aliasRow, canonRow);
+    const problem = proposalProblem(aliasRow, canonRow, cfg._official);
     if (problem) {
       dropped++;
       guard.step(`dropped '${String(p?.alias ?? "")}' → '${String(p?.canonical ?? "")}' — ${problem}`);
@@ -619,7 +634,7 @@ async function runReview(cfg, graph, siteId, mode, ids) {
       continue;
     }
     // the guard sees the alias as it will be judged: uncurated
-    const problem = proposalProblem({ ...row, CurationStatus: "" }, canonRow);
+    const problem = proposalProblem({ ...row, CurationStatus: "" }, canonRow, cfg._official);
     if (problem) { skip(id, row, `${problem} (→ '${canonTitle}')`); continue; }
     await patch(id, { CanonicalRefLookupId: canonRow.ID, CurationStatus: null, ProposedCanonical: null }, "approve");
     row.CanonicalRefId = canonRow.ID; // in-memory: never a canonical for a later row this run
@@ -646,6 +661,65 @@ async function runReview(cfg, graph, siteId, mode, ids) {
     );
   }
   return { applied, skipped };
+}
+
+/**
+ * --seed-vocabulary — plant the official vocabulary in the Keywords
+ * list: one row per essential term (Kind topic) and per official tool
+ * or widget (Kind tool) that has no row yet, Title in the catalog's
+ * lowercase form, Notes naming the documentation page. From then on
+ * the classifier's ExistingKeywords spelling reference carries the
+ * official spelling of every core term, so it stops minting variants,
+ * and the curation guard treats the row as the canonical side of any
+ * pair. A row that exists (any casing, or as an alias) is left alone.
+ * Honors dryRun like every other command.
+ */
+async function runSeed(cfg, graph, siteId) {
+  const sp = cfg.sharePoint;
+  const prog = cfg._prog || createProgress({ enabled: false });
+  const dry = !!cfg.curation.dryRun;
+  const listId = sp.lists.keywords;
+  const v = cfg._vocab;
+  if (!v.terms.length && !v.tools.length) {
+    throw new Error(`no official vocabulary at ${v.file} — run pipeline/doc_vocab.mjs first`);
+  }
+  const stopFetch = prog.heartbeat("fetching the Keywords list");
+  const rows = (
+    await graph.listItems(siteId, listId, { select: ["Title", "Kind", "CanonicalRefLookupId"] }).finally(stopFetch)
+  ).map((it) => ({ ID: num(it.id), Title: String(it.fields?.Title || ""), Kind: String(it.fields?.Kind || "") }));
+  const have = new Set(rows.map((r) => lower(r.Title).trim()));
+  const wanted = [
+    ...v.terms.map((t) => ({ title: lower(t.term).trim(), kind: "topic", url: t.url, what: "term" })),
+    ...v.tools.map((t) => ({ title: lower(t.name).trim(), kind: "tool", url: t.url, what: "tool" })),
+    ...v.widgets.map((t) => ({ title: lower(t.name).trim(), kind: "tool", url: t.url || "", what: "widget" })),
+  ].filter((w) => w.title);
+  const plan = [];
+  const phase = prog.phase("seeding");
+  const tick = prog.counter(wanted.length, "official names");
+  let created = 0;
+  let present = 0;
+  const seen = new Set();
+  for (const w of wanted) {
+    if (seen.has(w.title)) continue;
+    seen.add(w.title);
+    if (have.has(w.title)) { present++; tick(w.title, "present"); continue; }
+    const fields = { Title: w.title, Kind: w.kind, Notes: `Esri documentation ${w.what}${w.url ? `: ${w.url}` : ""}` };
+    plan.push({ action: "createRow", fields });
+    tick(w.title, `+ [${w.kind}]`);
+    if (!dry) await graph.createItem(siteId, listId, fields);
+    created++;
+  }
+  phase.done(`${created} ${dry ? "would be " : ""}created, ${present} already present`);
+  const line = `mode=seed-vocabulary official=${seen.size} created=${created} present=${present}`;
+  const logDir = cfg.paths?.workDir || ".";
+  fs.mkdirSync(logDir, { recursive: true });
+  const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+  const logFile = path.join(logDir, `curate-${stamp}.json`);
+  fs.writeFileSync(logFile, JSON.stringify({ line, dry_run: dry, plan }, null, 1));
+  process.stdout.write(JSON.stringify({ line, dry_run: dry, logFile }) + "\n");
+  process.stdout.write(line + "\n");
+  if (dry) process.stdout.write(`dry run: ${plan.length} planned row(s) recorded in ${logFile} — re-run with --live to create them\n`);
+  return { created, present };
 }
 
 main().catch((e) => {

@@ -88,6 +88,7 @@ import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
 import { createProgress, resolveProgress, secs, noProgress } from "./lib/progress.mjs";
+import { loadVocabulary, normalizeTools, VOCABULARY_FILE } from "./lib/vocabulary.mjs";
 
 // ---- flow v2.8 Config defaults (override via config.sweep) ----------
 
@@ -843,6 +844,21 @@ async function main() {
   const spo = new SpoClient(cfg.spo);
   const bodyIndex = new BodyIndex();
   const docLinks = loadDocLinks(sw);
+  // the official vocabulary (pipeline/data/lrs_vocabulary.json, written
+  // by doc_vocab.mjs from the Esri documentation): the classifier's
+  // KnownTools block, the casing every returned tool is normalized to,
+  // and a direct documentation link per tool — ahead of probing
+  const vocab = loadVocabulary(sw.vocabularyFile || VOCABULARY_FILE);
+  for (const t of [...vocab.tools, ...vocab.widgets]) {
+    if (t.url && !Object.keys(docLinks.tools).some((k) => k.toLowerCase() === String(t.name).toLowerCase())) {
+      docLinks.tools[t.name] = t.url;
+    }
+  }
+  if (vocab.tools.length) {
+    prog(`vocabulary — ${vocab.tools.length} official tool(s), ${vocab.widgets.length} widget(s), ${vocab.terms.length} term(s) from ${path.basename(vocab.file)}`);
+  } else {
+    process.stderr.write(`sweep: no official vocabulary at ${vocab.file} — tool names pass through unnormalized (run pipeline/doc_vocab.mjs)\n`);
+  }
   // crawled page inventory (doc_crawl.mjs) with section→product from
   // the probe templates, so matches prefer the right product's tree
   const sectionProducts = new Map();
@@ -1921,6 +1937,7 @@ async function main() {
     archived: 0,
     graph_downloads: 0,
     unreadable_local: 0,
+    tools_unknown: 0,
     cases_upserted: 0,
     cases_removed: 0,
     case_errors: 0,
@@ -2198,7 +2215,7 @@ async function main() {
       await indexDoc({
         cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures,
         item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
-        existing, existingKeywords, kwSnapshot,
+        existing, existingKeywords, kwSnapshot, vocab,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
         setStep: stepAt,
         progress: prog,
@@ -2501,7 +2518,7 @@ async function main() {
 // ---- per-doc pipeline (Try_index) -----------------------------------
 
 async function indexDoc(ctx) {
-  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, caches, setStep } = ctx;
+  const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, vocab, caches, setStep } = ctx;
   const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
   // the run's narrator, or a no-op for a caller that passes none
   const prog = ctx.progress || noProgress;
@@ -2589,10 +2606,28 @@ async function indexDoc(ctx) {
   let ai;
   try {
     ai = await classifyDoc(cfg.llm, {
-      fileName: name, docText: capped, existingKeywords,
+      fileName: name, docText: capped, existingKeywords, knownTools: vocab?.knownTools || "",
     });
   } finally {
     stopLlm();
+  }
+  // every tool name to its official casing; the ones the vocabulary
+  // does not know are kept as written, counted, and listed for review
+  // in <workDir>/unknown-tools.txt (a widget or ribbon tool the hand-
+  // kept `widgets` list should gain, or a name the model made up)
+  if (vocab?.official?.size) {
+    const norm = normalizeTools(ai.tools, vocab);
+    ai.tools = norm.tools;
+    if (norm.unknown.length) {
+      summary.tools_unknown += norm.unknown.length;
+      detail(`tool name(s) not in the official vocabulary: ${norm.unknown.map((t) => `'${t}'`).join(", ")}`);
+      try {
+        fs.appendFileSync(
+          path.join(cfg.paths?.workDir || ".", "unknown-tools.txt"),
+          norm.unknown.map((t) => `${t}\t${name}\t${new Date().toISOString().slice(0, 10)}\n`).join("")
+        );
+      } catch { /* best effort */ }
+    }
   }
   const docKind = DOC_KINDS.includes(ai.docKind) ? ai.docKind : "Other";
   const surface = SURFACES.includes(ai.surface) ? ai.surface : "Other";

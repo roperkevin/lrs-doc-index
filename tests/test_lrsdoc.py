@@ -159,11 +159,11 @@ def main():
     except prompts.PromptInputError as e:
         check("render refuses missing inputs", "missing" in str(e), e)
     try:
-        cls.render({"FileName": "a", "ExistingKeywords": "", "DocText": "", "Extra": "x"})
+        cls.render({"FileName": "a", "ExistingKeywords": "", "KnownTools": "", "DocText": "", "Extra": "x"})
         check("render refuses unknown inputs", False)
     except prompts.PromptInputError as e:
         check("render refuses unknown inputs", "unknown" in str(e), e)
-    sysm, usr = cls.render({"FileName": "x$'y.pptx", "ExistingKeywords": "{DocText}", "DocText": "BODY {FileName} $& end"})
+    sysm, usr = cls.render({"FileName": "x$'y.pptx", "ExistingKeywords": "{DocText}", "KnownTools": "", "DocText": "BODY {FileName} $& end"})
     check("render is single-pass and never expands $-patterns",
           "x$'y.pptx" in usr and "{DocText}" in usr and "BODY {FileName} $& end" in usr and usr.count("BODY") == 1, usr[:300])
     check("render puts the document text in the user turn and the rules in the system turn",
@@ -171,7 +171,7 @@ def main():
 
     # ---- 2. request shape -----------------------------------------
     print("== request shape")
-    req = llm.build_request(cls, {"FileName": "f", "ExistingKeywords": "k", "DocText": "d"})
+    req = llm.build_request(cls, {"FileName": "f", "ExistingKeywords": "k", "KnownTools": "", "DocText": "d"})
     check("system block carries cache_control, user turn is the rendered frame",
           req["system"][0]["cache_control"] == {"type": "ephemeral"} and req["messages"][0]["content"].startswith("File name: f"), req["system"][0].keys())
     check("classify: output_config has the schema format and the prompt's effort; no thinking key",
@@ -187,15 +187,16 @@ def main():
     from lrsdoc.tasks import classify as t_classify, generate as t_generate, curate as t_curate
     state.text = json.dumps({"title": "T", "docKind": "Test Plan", "surface": "Pro", "summary": "s", "pe": "", "dev": "",
                              "targetRelease": "", "tools": ["Merge Routes"], "keywords": ["routes"]})
-    res = t_classify({"FileName": "Alpha.pptx", "ExistingKeywords": "routes", "DocText": "text"}, {"max_retries": 0})
+    res = t_classify({"FileName": "Alpha.pptx", "ExistingKeywords": "routes", "KnownTools": "Append Routes", "DocText": "text"}, {"max_retries": 0})
     check("classify: non-streaming, schema-pinned, data parsed, api key header",
           res.data["docKind"] == "Test Plan" and res.data["tools"] == ["Merge Routes"] and not state.last_body.get("stream")
           and state.last_body["output_config"]["format"]["type"] == "json_schema"
-          and state.last_headers.get("x-api-key") == "mock-key" and res.prompt_version == "3.0.0"
+          and state.last_headers.get("x-api-key") == "mock-key" and res.prompt_version == "3.1.0"
           and res.stop_reason == "end_turn" and res.usage.get("output_tokens"), str(res.to_dict())[:300])
-    check("classify: the user turn carries the file name and the fenced document text",
-          "File name: Alpha.pptx" in mock.user_text(state.last_body) and "<<<DOCUMENT TEXT BEGIN>>>\ntext\n<<<DOCUMENT TEXT END>>>" in mock.user_text(state.last_body),
-          mock.user_text(state.last_body)[:200])
+    check("classify: the user turn carries the file name, the known tools and the fenced document text",
+          "File name: Alpha.pptx" in mock.user_text(state.last_body) and "<<<DOCUMENT TEXT BEGIN>>>\ntext\n<<<DOCUMENT TEXT END>>>" in mock.user_text(state.last_body)
+          and "Known tools (the official names — copy exactly):\nAppend Routes" in mock.user_text(state.last_body),
+          mock.user_text(state.last_body)[:400])
     state.text = json.dumps({"proposals": [{"alias": "centerlines", "canonical": "centerline", "why": "plural"}]})
     res = t_curate({"Vocabulary": "centerline [topic]\ncenterlines [topic]", "DoNotPropose": ""}, {"max_retries": 0})
     check("curate: proposals parsed", res.data["proposals"][0]["alias"] == "centerlines", res.data)
@@ -237,7 +238,7 @@ def main():
     state.stop_reason = "end_turn"
     state.text = "not json"
     try:
-        t_classify({"FileName": "f", "ExistingKeywords": "", "DocText": ""}, {"max_retries": 0})
+        t_classify({"FileName": "f", "ExistingKeywords": "", "KnownTools": "", "DocText": ""}, {"max_retries": 0})
         check("a non-JSON schema-pinned reply raises ContractError", False)
     except llm.ContractError as e:
         check("a non-JSON schema-pinned reply raises ContractError", e.exit_code == 4, e)
@@ -245,7 +246,7 @@ def main():
                              "targetRelease": "", "tools": [], "keywords": []})
     state.fail_first = 1
     calls_before = state.calls
-    res = t_classify({"FileName": "f", "ExistingKeywords": "", "DocText": ""}, {"max_retries": 2})
+    res = t_classify({"FileName": "f", "ExistingKeywords": "", "KnownTools": "", "DocText": ""}, {"max_retries": 2})
     check("a 529 is retried by the SDK", res.data["docKind"] == "Other" and state.calls - calls_before == 2, state.calls - calls_before)
     with tempfile.TemporaryDirectory() as dd:
         t_classify({"FileName": "dumped.pptx", "ExistingKeywords": "", "DocText": "body"}, {"max_retries": 0, "dump_dir": dd})

@@ -988,7 +988,7 @@ def main():
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
             "summary": "Covers lock acquisition.", "pe": "Claire Wang", "dev": "",
             "targetRelease": "3.8",
-            "tools": ["Reassign Routes", "Add Point Events", "Realign Route", "Extend Route"],
+            "tools": ["Reassign Routes", "Add Point Events", "Realign Route", "extend route tool"],
             # "offset" and "referent" both resolve to the SAME page
             # (the live bug) — the block must merge, not duplicate.
             # "calibration point" matches two pages equally — the
@@ -1057,6 +1057,20 @@ def main():
              "title": "Delete calibration points"},
         ]}, f)
 
+    # the official vocabulary fixture (lib/vocabulary.mjs): "Realign
+    # Route" is deliberately NOT in it, so the Alpha Plan classify reply
+    # exercises both the normalization and the unknown-tools report;
+    # the model's "extend route tool" must come back as "Extend Route"
+    vocab_path = os.path.join(tmp, "lrs_vocabulary.json")
+    with open(vocab_path, "w") as f:
+        json.dump({"generated": "2026-09-07T00:00:00Z", "sources": [],
+                   "tools": [{"name": "Extend Route", "toolset": "", "url": base + "/docsec/extend-a-route.html", "description": "x"},
+                             {"name": "Reassign Routes", "toolset": "", "url": base + "/docsec/reassign-routes.html", "description": "x"},
+                             {"name": "Append Routes", "toolset": "", "url": base + "/docsec/append-routes.html", "description": "x"}],
+                   "widgets": [{"name": "Add Point Events", "url": ""}],
+                   "terms": [{"term": "Calibration point", "definition": "d", "url": base + "/vocab.html#a"},
+                             # a term no fixture text contains: seeding it must not re-tag cases
+                             {"term": "Project stationing", "definition": "d", "url": base + "/vocab.html#b"}]}, f)
     cfg = {
         "sharePoint": {
             "hostname": "mock.example",
@@ -1084,6 +1098,7 @@ def main():
             "dryRun": True,
             "pdftotextPath": pdftotext_stub,
             "docLinksFile": doclinks_path,
+            "vocabularyFile": vocab_path,
         },
     }
     cfg_path = os.path.join(tmp, "config.json")
@@ -1215,6 +1230,10 @@ def main():
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
     check("live processed 12", out.get("processed") == 12, str(out))
+    check("one tool name the vocabulary does not know is counted and written for review",
+          out.get("tools_unknown") == 1
+          and "Realign Route\tAlpha Plan.pptx" in open(os.path.join(work_dir, "unknown-tools.txt"), encoding="utf-8").read(),
+          str(out) + (open(os.path.join(work_dir, "unknown-tools.txt")).read() if os.path.exists(os.path.join(work_dir, "unknown-tools.txt")) else "<no file>"))
     check("live errors 3 (corrupt.pptx, missing.txt, locked.pptx)", out.get("errors") == 3, str(out))
     check("live counted 2 out-of-scope docs", out.get("out_of_scope") == 2, str(out))
 
@@ -1552,10 +1571,11 @@ def main():
           and set((fmt.get("schema") or {}).get("required") or []) >= {"title", "docKind", "keywords"},
           str(state.llm_last_request.get("output_config"))[:300])
     user_last = mock.user_text(state.llm_last_request)
-    check("classify user turn carries the file name, the established keywords and the fenced text",
+    check("classify user turn carries the file name, the established keywords, the known tools and the fenced text",
           re.search(r"^File name: \S", user_last, re.M) is not None
           and "Established keywords" in user_last
-          and "<<<DOCUMENT TEXT BEGIN>>>" in user_last, user_last[:300])
+          and "Known tools (the official names — copy exactly):\nExtend Route\nReassign Routes\nAppend Routes\nAdd Point Events" in user_last
+          and "<<<DOCUMENT TEXT BEGIN>>>" in user_last, user_last[:600])
 
     # ---- case-index leg (Case_Index_Plan phase 2) ------------------
     # alpha (Test Plan) carries one case slide; beta (User Story)
@@ -2122,6 +2142,43 @@ def main():
     kwrows[CUR["wbs"]]["CanonicalRefLookupId"] = int(CUR["wbsfull"])
     kwrows[CUR["pls"]]["CanonicalRefLookupId"] = int(CUR["pl"])
     kwrows[CUR["cy"]]["CanonicalRefLookupId"] = int(CUR["cz"])
+
+    # ---- leg 3d1d: the official vocabulary in curation ---------------
+    # an official term (lib/vocabulary.mjs) is the canonical side: the
+    # guard drops a pair that folds it into an unofficial title, and
+    # --seed-vocabulary plants the missing terms and tools as rows
+    print("== vocabulary leg")
+    CUR["cpt"] = state.seed(LISTS["keywords"], {"Title": "calibration pt", "Kind": "topic"})
+    state.cur_response = {"proposals": [
+        {"alias": "calibration point", "canonical": "calibration pt", "why": "A2 official term as alias"},
+        {"alias": "calibration pt", "canonical": "calibration point", "why": "A2 the right way"},
+    ]}
+    proc = run_curate(cfg_path, ["--live", "--progress"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("guard: the official Esri term is never the alias of an unofficial title",
+          proc.returncode == 0 and "written=1 dropped=1" in out.get("line", "")
+          and "the alias is the official Esri term" in proc.stderr
+          and kwrows[CUR["cpt"]].get("CurationStatus") == "Proposed", str(out) + proc.stderr[-400:])
+    kw_before = len(kwrows)
+    proc = run_curate(cfg_path, ["--seed-vocabulary"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("seed-vocabulary dry run plans the missing rows and writes nothing",
+          proc.returncode == 0 and out.get("dry_run") is True
+          and "mode=seed-vocabulary official=6 created=2 present=4" in out.get("line", "")
+          and len(kwrows) == kw_before, str(out))
+    proc = run_curate(cfg_path, ["--seed-vocabulary", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    seeded = {r.get("Title"): r for r in kwrows.values() if str(r.get("Notes", "")).startswith("Esri documentation")}
+    check("seed-vocabulary --live creates the missing term and tool with the documentation page in Notes (the sweep's own rows count as present)",
+          proc.returncode == 0 and "created=2 present=4" in out.get("line", "")
+          and set(seeded) == {"project stationing", "append routes"}
+          and seeded["append routes"].get("Kind") == "tool"
+          and seeded["append routes"].get("Notes") == "Esri documentation tool: " + base + "/docsec/append-routes.html"
+          and seeded["project stationing"].get("Kind") == "topic"
+          and seeded["project stationing"].get("Notes") == "Esri documentation term: " + base + "/vocab.html#b",
+          str(out) + str(seeded))
+    proc = run_curate(cfg_path, ["--seed-vocabulary", "--live"])
+    check("a second seed run creates nothing", "created=0 present=6" in proc.stdout, proc.stdout[-200:])
 
     # ---- leg 3d2: --repoint (the librarian junction backfill) ------
     # 'gantt charts' -> 'gantt chart' merged above; seed the historical

@@ -1,12 +1,12 @@
 ---
 name: docindex_classify
-version: 3.0.0
+version: 3.1.0
 model: claude-opus-5
 effort: medium
 max_tokens: 4096
 output: json_schema
 schema: schemas/docindex_classify.json
-inputs: ["FileName", "ExistingKeywords", "DocText"]
+inputs: ["FileName", "ExistingKeywords", "KnownTools", "DocText"]
 ---
 
 ## System
@@ -88,10 +88,15 @@ targetRelease
   ("data from 2.4") is NOT a target release. Empty when ambiguous.
 
 tools
-- 0–6 official tool/widget names actually named in the document, in
-  official casing: e.g. "Merge Centerlines", "Retire Routes",
-  "Update Measures From LRS", "Append Routes", "LRS Identify",
-  "Straight Line Diagram". Full names only — never abbreviations,
+- 0–6 tool/widget names actually named in the document. KNOWN TOOLS
+  (in the user message) is the official list — geoprocessing tools of
+  the Location Referencing toolbox, Experience Builder widgets, Pro
+  ribbon tools. When the document names one of them, copy the name
+  from that list CHARACTER FOR CHARACTER: never re-case it, never
+  singularize or pluralize it, never add "tool". A name that is not
+  on the list may be returned only when the document names it
+  explicitly as a tool or widget (a new widget, a ribbon command) —
+  never a topic, a workflow, a layer or a product. Never abbreviations,
   never tools merely implied.
 
 keywords
@@ -154,6 +159,9 @@ centerline data tables)
 File name: {FileName}
 Established keywords (prefer these before inventing):
 {ExistingKeywords}
+
+Known tools (the official names — copy exactly):
+{KnownTools}
 
 <<<DOCUMENT TEXT BEGIN>>>
 {DocText}

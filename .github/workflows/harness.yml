@@ -43,6 +43,7 @@ jobs:
       - run: python3 check_storyprofile.py
       - run: python3 check_deckspec.py
       - run: python3 check_wiki.py
+      - run: python3 check_vocabulary.py
 
   full-format:
     runs-on: ubuntu-latest

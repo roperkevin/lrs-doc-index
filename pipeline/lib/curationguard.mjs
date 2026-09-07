@@ -54,10 +54,15 @@ export function isInitialism(short, long) {
  *   - the canonical is an initialism of the alias → the canonical is
  *     the abbreviation
  */
-export function directionProblem(alias, canonical) {
+export function directionProblem(alias, canonical, official = null) {
   const a = normalizeTitle(alias);
   const c = normalizeTitle(canonical);
   if (!a || !c) return "";
+  // the Esri documentation's own term is the catalog's canonical form:
+  // an official alias may only fold into another official term
+  if (official?.size && official.has(a) && !official.has(c)) {
+    return "the alias is the official Esri term — merge the other way";
+  }
   const hy = (s) => (String(s ?? "").match(/-/g) || []).length;
   if (a === c) {
     // the same words: only punctuation differs (A3) — the spaced,
@@ -90,8 +95,11 @@ export function directionProblem(alias, canonical) {
  * in the order curate.mjs reports them; "" when it passes. Rows are
  * the Keywords snapshot shape {ID, Title, Kind, CanonicalRefId,
  * CurationStatus}; either may be undefined (not a real row).
+ * `official` is the Set of normalized official terms and tool names
+ * (lib/vocabulary.mjs) — an official title is never the alias of an
+ * unofficial one.
  */
-export function proposalProblem(aliasRow, canonRow) {
+export function proposalProblem(aliasRow, canonRow, official = null) {
   if (!aliasRow) return "the alias is not a real row";
   if (!canonRow) return "the canonical is not a real row";
   if (aliasRow.ID === canonRow.ID) return "alias and canonical are the same row";
@@ -102,7 +110,7 @@ export function proposalProblem(aliasRow, canonRow) {
   if (aliasRow.Kind && canonRow.Kind && aliasRow.Kind !== canonRow.Kind) {
     return `kinds differ ([${aliasRow.Kind}] vs [${canonRow.Kind}])`;
   }
-  return directionProblem(aliasRow.Title, canonRow.Title);
+  return directionProblem(aliasRow.Title, canonRow.Title, official);
 }
 
 /** One row ID per line; blank lines and `#` comments ignored. Order kept. */
