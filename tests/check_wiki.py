@@ -28,6 +28,10 @@ carry two alias → canonical merges — then renders the site and proves:
      admonitions, `<placeholder>` and a trailing `{brace}` run are
      escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
      carries the extensions the dialect needs
+  5e. the v1.7 lists: the case grammar's bold-label field bullets
+     become a definition list (with the task list travelling into the
+     Steps definition), a plain bullet list is left alone, and
+     About's provenance list is composed as one
   5d. the v1.6 data tables: the tables the render COMPOSES carry the
      sortable wrapper and the sort script, count and ordinal columns
      are right-aligned, and the metadata card is left alone
@@ -448,7 +452,7 @@ def main():
     check("About states the render-not-a-source rule in an admonition and folds its provenance list",
           '!!! info "A render, not a source"' in about
           and '???+ note "Where each page' in about
-          and "    - **Doc** ids are Doc Index list row ids" in about, about)
+          and "    Doc ids\n    :   Doc Index list row ids" in about, about)
     check("the front page opens Browse with a search tip",
           '!!! tip "Finding a document"' in front and "## Browse" in front, front[-1400:])
     check("extra.css defines the custom draft admonition (colour and icon)",
@@ -473,6 +477,24 @@ def main():
           and "| Kind | Documents |\n|---|---:|" in front
           and "| # | Case |\n|---:|---|" in page("cases/index.md"),
           page("cases/index.md")[:500])
+    # ---- 2f. lists (v1.7) ------------------------------------------
+    check("mkdocs.yml enables def_list",
+          "- def_list" in ycfg and "clickable_checkbox" not in ycfg, ycfg)
+    check("a case's field bullets become a definition list",
+          "Group\n:   Normal Routes" in plan
+          and "Group\n:   Conflicts" in plan
+          and "- **Group:**" not in plan, plan[-1600:])
+    check("the task list travels into the Steps definition, still escaped",
+          "Steps\n:   - [ ] 1. Set &lt;RouteID> on the network" in plan
+          and "    - [ ] 2. Read the value in \\{measure}" in plan, plan[-1600:])
+    check("a plain bullet list is not a definition list",
+          "- [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue" in plan, plan[:2000])
+    check("the draft's own field bullets are translated too",
+          "Expected Result\n:   A lock is held." in dpage, dpage)
+    check("About's provenance list is a definition list, and says why nothing ticks",
+          "    Doc ids\n    :   Doc Index list row ids" in about
+          and "    The checkboxes\n    :   Rendered, never clickable." in about
+          and "- **Doc**" not in about, about)
     check("the metadata card is never sortable (its header row is hidden)",
           '<div class="sortable" markdown>' not in plan.split("\n---\n")[0]
           and '<div class="doc-meta" markdown>' in plan, plan[:400])

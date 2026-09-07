@@ -1,5 +1,5 @@
 /**
- * mdlayout.mjs v1.1 — the markdown layout kernel
+ * mdlayout.mjs v1.2 — the markdown layout kernel
  * (docs/design/Markdown_Layout_Plan.md §4.1, phase 2's inhabitant).
  *
  * The project writes ONE markdown dialect — GitHub-flavored: ATX
@@ -14,6 +14,7 @@
  * so the translation lives HERE and runs in that lane only — the files
  * on disk stay dialect-neutral:
  *
+ *   - **Group:** Normal   ->  Group / `:   Normal` (a definition list)
  *   > [!WARNING]          ->  !!! warning  + indented body
  *   > [!WARNING] Title    ->  !!! warning "Title"
  *   > [!NOTE]-            ->  ??? note       (collapsed; `+` opens it)
@@ -24,6 +25,15 @@
  *
  * Code spans and fenced blocks are never touched: `<` renders itself
  * there, and escaping would show the entity.
+ *
+ * v1.2 — definition lists
+ * (https://squidfunk.github.io/mkdocs-material/reference/lists/). The
+ * case grammar writes its fields as bold-label bullets — `- **Group:**
+ * Normal Routes` — because GFM has no definition list and GitHub, the
+ * SharePoint preview and `draft2docx` all read a bullet. MkDocs does
+ * have one, and a case's fields ARE definitions, so the lane
+ * translates them; `defList()` composes one for the pages a job
+ * writes. Nothing on disk changes shape.
  *
  * v1.1 — the whole admonition vocabulary Material documents
  * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/)
@@ -181,9 +191,66 @@ export function alertsToAdmonitions(text) {
   return out.join("\n").replace(/\n{3,}/g, "\n\n");
 }
 
+/** A bold-label field bullet: `- **Expected Result:** A lock is held.` */
+const FIELD_LINE = /^-[ \t]+\*\*(.+?):\*\*[ \t]*(.*)$/;
+
+/**
+ * One definition list, composed. `defList([["Doc", "the row id"], …])`
+ * -> `Doc` / `:   the row id`. A multi-line definition keeps its own
+ * shape, indented under the marker.
+ */
+export function defList(pairs) {
+  const out = [];
+  for (const [term, def] of pairs) {
+    // python-markdown reads a run of terms as ONE list only when a
+    // blank line separates the groups; without it the second term is
+    // swallowed into the first definition
+    if (out.length) out.push("");
+    out.push(String(term ?? "").trim());
+    const lines = String(def ?? "").split("\n").filter((l, i) => i === 0 || l.trim() !== "");
+    out.push(`:   ${(lines[0] || "").trim()}`);
+    for (const l of lines.slice(1)) out.push(`    ${l.replace(/^[ \t]{1,4}/, "")}`);
+  }
+  return out.join("\n");
+}
+
+/**
+ * A run of the case grammar's field bullets -> a definition list. The
+ * fields of a test case (Group, Case, Steps, Expected Result) are
+ * definitions, not list items; GFM has no way to say so, MkDocs does,
+ * and this is the lane that can tell the difference.
+ *
+ * Only a CONTIGUOUS run at the top level converts, and lines indented
+ * under a field — the task list under `- **Steps:**` — travel with it
+ * into the definition. Anything else, a plain bullet list included, is
+ * left exactly as it is.
+ */
+export function fieldsToDefList(text) {
+  const lines = String(text ?? "").split("\n");
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!FIELD_LINE.test(lines[i])) { out.push(lines[i]); continue; }
+    const fields = [];
+    for (; i < lines.length; i++) {
+      const m = FIELD_LINE.exec(lines[i]);
+      if (m) { fields.push([m[1].trim(), m[2].trim() ? [m[2].trim()] : []]); continue; }
+      // an indented line after a field belongs to that field — the
+      // task list under `- **Steps:**` travels into the definition
+      if (fields.length && /^[ \t]+\S/.test(lines[i])) {
+        fields[fields.length - 1][1].push(lines[i].replace(/^[ \t]{1,4}/, ""));
+        continue;
+      }
+      break;
+    }
+    i--;
+    out.push(defList(fields.map(([term, body]) => [term, body.join("\n")])), "");
+  }
+  return out.join("\n");
+}
+
 /** The MkDocs lane's full translation of a stretch of sidecar text. */
 export function toMkDocs(text) {
-  return escapeBodyText(alertsToAdmonitions(text));
+  return escapeBodyText(alertsToAdmonitions(fieldsToDefList(text)));
 }
 
 /** One trailing newline, no trailing whitespace, no blank-line runs. */

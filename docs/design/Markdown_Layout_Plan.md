@@ -352,7 +352,8 @@ The wiki lane therefore gains `toMkDocs(text)`, applied to bodies in
 | Construct | Translation |
 |---|---|
 | `> [!WARNING]` / `[!CAUTION]` / `[!IMPORTANT]` | `!!! warning` / `!!! danger` / `!!! info` admonition blocks (the `admonition` extension is already enabled) — fixes D1. **Extended in wiki v1.5 / mdlayout v1.1** to the whole set Material documents: every type and alias beyond GFM's five (`abstract`, `success`, `question`, `failure`, `bug`, `example`, `quote`, …), text after the marker as the block's title (`> [!IMPORTANT] Reviewer, start here` → `!!! info "Reviewer, start here"`; `""` for none), and a `-` / `+` fold suffix for the collapsible `???` / `???+` forms. GFM's own five keep the mapping above |
-| `- [ ] 1. …` | enable `pymdownx.tasklist: {custom_checkbox: true}` in `mkdocsYml` — fixes D2 |
+| `- [ ] 1. …` | enable `pymdownx.tasklist: {custom_checkbox: true}` in `mkdocsYml` — fixes D2. Rendered, never clickable: the site is a render, so a tick would not survive a reload |
+| `- **Group:** …` (the §4.3 case field lines) | a `def_list` definition list, the task list under `- **Steps:**` travelling into its definition (wiki v1.7 / mdlayout v1.2). The fields are definitions; the case grammar writes bullets only because GFM has no way to say so |
 | raw `<…>` / `{…}` in body text | escape outside code spans and fences before rendering — fixes D3 |
 | the `docs` region | rendered as its own `## Esri documentation` section on the page — fixes D4 |
 | `<!-- lrs:case … -->` | consumed: `shape`/`conf` become a small caption under the case heading, `src` a title attribute |

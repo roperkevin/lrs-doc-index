@@ -1,5 +1,44 @@
 # Local sweep — release notes
 
+## Lists: a case's fields are definitions (2026-09-07)
+
+`wiki` v1.7, `mdlayout` v1.2.
+[Material's lists reference](https://squidfunk.github.io/mkdocs-material/reference/lists/)
+was mostly already in place — task lists shipped in phase 2 with
+`custom_checkbox`, and ordered / unordered lists need no extension —
+so this is the one thing that was missing, `def_list`, put where it
+earns its place.
+
+- **A test case's fields render as definitions.** The case grammar
+  writes `- **Group:** Normal Routes`, `- **Steps:**`,
+  `- **Expected Result:** …` as bold-label bullets, and it writes them
+  that way because GFM has no definition list: GitHub, the SharePoint
+  preview and `draft2docx` all read a bullet. MkDocs does have one and
+  a case's fields ARE definitions, so `mdlayout.fieldsToDefList()`
+  translates them in that lane only. The task list under `Steps`
+  travels into its definition, checkboxes intact. Nothing on disk
+  changes shape — the same rule as the alerts.
+- **Only a contiguous run of field bullets converts.** A plain bullet
+  list — the related-documents list, a list extracted out of a source
+  document — is left exactly as it was.
+- **The fields are styled like the metadata card**: a quiet uppercase
+  label over its value, so a case block and the document header speak
+  the same visual language.
+- **About's provenance list is composed as a definition list**
+  (`mdlayout.defList()`), which is what it always was in prose.
+
+**`clickable_checkbox` is deliberately not enabled.** Material offers
+it, and it is the wrong thing here: this site is a *render* of the
+catalog, so a tick would not survive a reload, and a draft's whole
+premise is that a Product Engineer still has to review every case. A
+checkbox that looks like it records progress and does not is worse
+than one that plainly does not. About now says so on the page.
+
+Gate: `tests/check_wiki.py` 68 checks, six new, with the `mkdocs build
+--strict` legs run and the HTML checked — one `<dl>` per case block,
+the task list nested in the `Steps` definition, and the def list
+rendering correctly inside a collapsible admonition. No backfill.
+
 ## Data tables that sort (2026-09-07)
 
 `wiki` v1.6.
