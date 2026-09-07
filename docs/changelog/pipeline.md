@@ -1,5 +1,54 @@
 # Local sweep — release notes
 
+## wiki v1.9 (2026-09-07 — publishing on devtopia)
+
+The first pushes of the wiki to devtopia (GitHub Enterprise Server)
+failed one layer at a time: the Pages job sat at *Waiting for a
+runner* (GHES has no hosted runners), then `actions/setup-python`
+died on a self-hosted Windows runner with no tool cache, then
+`mkdocs` was not on the job shell's PATH, then `mkdocs build
+--strict` aborted with 560 warnings for media the library does not
+hold, and finally `actions/upload-pages-artifact@v3` refused with
+`@actions/artifact v2.0.0+, upload-artifact@v4+ and
+download-artifact@v4+ are not currently supported on GHES`. Each
+fix is a knob in `wiki`, because `pages.yml` is regenerated on every
+run and cannot be patched in the wiki repository.
+
+- **`runsOn`** (default `ubuntu-latest`) — the `runs-on` label; the
+  sample sets `self-hosted`, the label a runner registered from the
+  repository page advertises.
+- **`setupPython`** (default `true`) — `false` drops the
+  `actions/setup-python` step and uses the Python on the runner's
+  PATH. The pip and mkdocs steps run through `python -m`, so both
+  bind to that interpreter whatever the Scripts folder situation.
+- **`deploy`** (default `artifact`) — `branch` replaces the artifact
+  upload and the deploy job with one step, `mkdocs gh-deploy --force
+  --no-history --remote-branch gh-pages`, run under `contents: write`
+  with the checkout token and a fixed committer identity from the
+  `GIT_*` variables. Pages then serves the `gh-pages` branch
+  (Settings → Pages → Source: **Deploy from a branch**). No artifact
+  API is involved, so it works on GHES; the README the tree carries
+  names the matching Pages source for whichever mode rendered it. An
+  unknown value is refused by name.
+- **Missing media never becomes a link.** A body's `![…](../media/…)`
+  whose file the library lacks renders as an italic
+  `(missing figure: alt)` marker, the Figures catalog omits it, and
+  every such link is listed by page in `<workDir>/wiki-missing-media.txt`
+  (removed by a clean run) with one stderr line naming the count.
+
+Gates: `check_wiki.py` **79/79** (was 73: the GHES-shaped render —
+`self-hosted`, no setup-python, gh-deploy to gh-pages, no artifact
+upload, no deploy job — the two READMEs, the refused value, and the
+missing-figure marker, catalog omission and report file).
+
+Rollout: `git pull` on the sweep machine, set `"runsOn":
+"self-hosted"`, `"setupPython": false`, `"deploy": "branch"` in the
+`wiki` block, re-run `ops\run_wiki.cmd` (or `wiki.mjs --push`); after
+the first green run, switch the wiki repository's Pages source to
+**Deploy from a branch → gh-pages → / (root)**. The self-hosted runner
+must run as the user that owns the runner folder with Git for
+Windows (`Git\bin`, for bash and tar) on the machine PATH.
+
 ## sweep v1.64 (2026-09-07 — a source on disk that cannot be read; ops v1.2)
 
 A dry run against the live library ended `processed=150 errors=127`,

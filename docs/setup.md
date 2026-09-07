@@ -1260,17 +1260,37 @@ keyword canonical map and kinds). No SharePoint call, no model call.
 **Where it lives.** This repository is public (the PV-1 decision), so
 the wiki cannot be its GitHub wiki or Pages site. It lives in a
 PRIVATE repository on devtopia —
-`https://devtopia.esri.com/kev14953/lrs-doc-index` — with Pages turned
-on there once (Settings → Pages → Source: **GitHub Actions**). The
-generated tree carries its own
-`pages.yml` workflow (`pip install mkdocs-material`, `mkdocs build
---strict`, deploy), so every push publishes.
+`https://devtopia.esri.com/kev14953/lrs-docs` — with Pages turned on
+there once. The generated tree carries its own `pages.yml` workflow
+(`pip install mkdocs-material`, `mkdocs build --strict`, deploy), so
+every push publishes. Three config keys shape that workflow, because
+devtopia is GitHub Enterprise Server, not github.com:
+
+- `runsOn` (default `ubuntu-latest`): GHES has no hosted runners, so
+  the job waits forever for one — register a self-hosted runner on
+  the sweep machine (Settings → Actions → Runners → New, as the user
+  that owns the machine, `--runasservice`) and set `"self-hosted"`.
+- `setupPython` (default `true`): `actions/setup-python` needs a tool
+  cache the self-hosted Windows runner lacks; `false` uses the
+  Python already on PATH (the sweep's).
+- `deploy` (default `artifact`): the github.com way publishes through
+  `actions/upload-pages-artifact`, whose v4 artifact API GHES rejects
+  (`upload-artifact@v4+ ... not currently supported on GHES`).
+  `"branch"` has the workflow run `mkdocs gh-deploy`, which force-pushes
+  the built site to the `gh-pages` branch of the wiki repository;
+  set Pages to serve that branch (Settings → Pages → Source: **Deploy
+  from a branch**, `gh-pages`, `/ (root)`). With `artifact` the Pages
+  source is **GitHub Actions** instead.
+
+The sample config carries the devtopia values (`self-hosted`,
+`false`, `branch`). `pages.yml` is regenerated on every run, so
+none of this is fixed by editing the file in the wiki repository.
 
 Setup (after the sweep's §1–§4):
 
-1. Config: `"wiki": {"repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git"}`
+1. Config: `"wiki": {"repoUrl": "https://devtopia.esri.com/kev14953/lrs-docs.git"}`
    (the sample shows the optional keys: branch, outDir, siteName,
-   siteUrl, recent). Credentials come from the machine's git
+   siteUrl, recent, and the three workflow keys above). Credentials come from the machine's git
    credential helper — clone the repository once from a console so
    the helper caches them; nothing is stored in config.
 2. Render and preview: `node --experimental-strip-types pipeline\wiki.mjs --config config.json`

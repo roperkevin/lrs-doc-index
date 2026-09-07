@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v1.8 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v1.9 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -33,6 +33,15 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v1.9 — publishing on Enterprise Server. The generated pages.yml is
+ * shaped by three config keys (devtopia has no hosted runners, no
+ * tool cache and no v4 artifact API): `runsOn`, `setupPython` and
+ * `deploy` ("artifact" = upload-pages-artifact + deploy-pages, the
+ * github.com way; "branch" = `mkdocs gh-deploy` to gh-pages, which
+ * Pages serves as a branch source). Media a body links but the
+ * library lacks renders as a "(missing figure)" marker, never as a
+ * link, so `mkdocs build --strict` keeps passing.
  *
  * v1.8 — lists
  * (https://squidfunk.github.io/mkdocs-material/reference/lists/). Task
@@ -169,6 +178,14 @@
  *              actions/setup-python (default true). A self-hosted
  *              runner with no tool cache fails that step; set false to
  *              use the Python already on the runner's PATH
+ *   deploy     how the generated pages.yml publishes the built site
+ *              (default "artifact"): "artifact" = actions/
+ *              upload-pages-artifact + deploy-pages (Pages source:
+ *              GitHub Actions) — rides on upload-artifact@v4, which
+ *              Enterprise Server rejects; "branch" = `mkdocs
+ *              gh-deploy` force-pushes the site to the gh-pages
+ *              branch (Pages source: Deploy from a branch, gh-pages,
+ *              / (root)) — works on GHES and github.com alike
  *   siteName   the site title (default "LRS Doc Index")
  *   siteUrl    the published URL, for mkdocs.yml (default "")
  *   recent     rows on the Recent page (default 50)
@@ -190,7 +207,7 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList } from "./lib/mdl
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v1.8";
+export const WIKI_VERSION = "v1.9";
 
 const KIND_FOLDERS = {
   "Test Plan": "Test Plans",
@@ -1110,12 +1127,36 @@ const SETUP_PYTHON_STEP =
   "        with:\n" +
   "          python-version: '3.12'\n";
 
-const PAGES_WORKFLOW = `name: pages
+/* Two ways of publishing the built site, `wiki.deploy`:
+ *
+ *   "artifact" (default) — actions/upload-pages-artifact + deploy-pages,
+ *     the github.com way (Settings > Pages > Source: GitHub Actions).
+ *     upload-pages-artifact@v3 rides on upload-artifact@v4, and the v4
+ *     artifact API does not exist on GitHub Enterprise Server: the job
+ *     fails with "@actions/artifact v2.0.0+, upload-artifact@v4+ and
+ *     download-artifact@v4+ are not currently supported on GHES".
+ *   "branch" — `mkdocs gh-deploy` force-pushes the built site to the
+ *     gh-pages branch of the same repository, with the checkout step's
+ *     token (hence `contents: write`); Pages serves that branch
+ *     (Settings > Pages > Source: Deploy from a branch, gh-pages, /).
+ *     No artifact API, no deploy job, no environment — works on GHES
+ *     and on github.com alike. The commit identity comes from the
+ *     GIT_* variables so the runner needs no git config of its own. */
+const DEPLOY_MODES = ["artifact", "branch"];
+
+const PAGES_HEAD = `name: pages
 on:
   push:
     branches: [BRANCH]
   workflow_dispatch:
-permissions:
+`;
+
+const PAGES_BUILD_STEPS = `      - uses: actions/checkout@v4
+SETUP_PYTHON      - run: python -m pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions
+      - run: python -m mkdocs build --strict
+`;
+
+const PAGES_ARTIFACT = PAGES_HEAD + `permissions:
   contents: read
   pages: write
   id-token: write
@@ -1126,10 +1167,7 @@ jobs:
   build:
     runs-on: RUNS_ON
     steps:
-      - uses: actions/checkout@v4
-SETUP_PYTHON      - run: python -m pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions
-      - run: python -m mkdocs build --strict
-      - uses: actions/configure-pages@v5
+` + PAGES_BUILD_STEPS + `      - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -1144,12 +1182,39 @@ SETUP_PYTHON      - run: python -m pip install mkdocs-material mkdocs-glightbox 
         uses: actions/deploy-pages@v4
 `;
 
+const PAGES_BRANCH = PAGES_HEAD + `permissions:
+  contents: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: RUNS_ON
+    steps:
+` + PAGES_BUILD_STEPS + `      - run: python -m mkdocs gh-deploy --force --no-history --remote-branch gh-pages
+        env:
+          GIT_AUTHOR_NAME: pages workflow
+          GIT_AUTHOR_EMAIL: pages@users.noreply.localhost
+          GIT_COMMITTER_NAME: pages workflow
+          GIT_COMMITTER_EMAIL: pages@users.noreply.localhost
+`;
+
+/** The generated .github/workflows/pages.yml for these wiki options. */
+export function pagesWorkflow(opts) {
+  return (opts.deploy === "branch" ? PAGES_BRANCH : PAGES_ARTIFACT)
+    .replace("BRANCH", opts.branch)
+    .replaceAll("RUNS_ON", opts.runsOn)
+    .replace("SETUP_PYTHON", opts.setupPython ? SETUP_PYTHON_STEP : "");
+}
+
 const WIKI_README = (opts) => `# ${opts.siteName}
 
 A generated MkDocs site: every page is rendered from the LRS Doc Index catalog by \`pipeline/wiki.mjs\` and overwritten on the next run. Do not edit here.
 
 Local preview: \`pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions && mkdocs serve\`.
-Publishing: the \`pages\` workflow builds the site on every push to \`${opts.branch}\` and deploys it to this repository's GitHub Pages (Settings → Pages → Source: GitHub Actions, once).
+Publishing: the \`pages\` workflow builds the site on every push to \`${opts.branch}\` and ${opts.deploy === "branch"
+  ? "force-pushes it to the \`gh-pages\` branch, which this repository's GitHub Pages serves (Settings → Pages → Source: Deploy from a branch, gh-pages, / (root), once)"
+  : "deploys it to this repository's GitHub Pages (Settings → Pages → Source: GitHub Actions, once)"}.
 `;
 
 function rmDocs(outDir) {
@@ -1172,10 +1237,14 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     branch: w.branch || "main",
     runsOn: w.runsOn || "ubuntu-latest",
     setupPython: w.setupPython === undefined ? true : !!w.setupPython,
+    deploy: w.deploy || "artifact",
     recent: Number(w.recent) || 50,
     sourceSite: w.sourceSite || cfg.sweep?.siteUrl || "",
     draftsDir: w.draftsDir || "",
   };
+  if (!DEPLOY_MODES.includes(opts.deploy)) {
+    throw new Error(`wiki.deploy must be one of ${DEPLOY_MODES.join(", ")}, got "${opts.deploy}"`);
+  }
   const kindFolders = { ...KIND_FOLDERS, ...(cfg.sweep?.kindFolders || {}) };
   const readPhase = prog.phase("read");
   const docs = readLibrary(libDir, kindFolders);
@@ -1255,11 +1324,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
   write(docsDir, "javascripts/tables.js", TABLES_JS);
   write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts.length));
-  write(outDir, ".github/workflows/pages.yml",
-    PAGES_WORKFLOW
-      .replace("BRANCH", opts.branch)
-      .replaceAll("RUNS_ON", opts.runsOn)
-      .replace("SETUP_PYTHON", opts.setupPython ? SETUP_PYTHON_STEP : ""));
+  write(outDir, ".github/workflows/pages.yml", pagesWorkflow(opts));
   write(outDir, "README.md", WIKI_README(opts));
   write(outDir, ".gitignore", "site/\n");
   renderPhase.done(`${pages} page(s) and ${mediaFiles} media file(s) written to ${outDir}`);

@@ -343,6 +343,34 @@ def main():
           "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf
           and "mkdocs-glightbox" in wf and "mkdocs-panzoom-plugin" in wf and "markdown-captions" in wf, wf[:400])
     check("README says the tree is generated", "Do not edit here" in open(os.path.join(out, "README.md"), encoding="utf-8").read())
+    check("README: the Pages source for the artifact deploy",
+          "Source: GitHub Actions" in open(os.path.join(out, "README.md"), encoding="utf-8").read())
+    # the GHES shape: self-hosted runner, no setup-python, gh-pages branch deploy
+    cfg2 = json.loads(json.dumps(cfg))
+    cfg2["wiki"].update({"runsOn": "self-hosted", "setupPython": False, "deploy": "branch",
+                         "outDir": os.path.join(work, "wiki-ghes")})
+    cfg2_path = os.path.join(tmp, "config-ghes.json")
+    with open(cfg2_path, "w") as f:
+        json.dump(cfg2, f)
+    r2 = run_job(cfg2_path, [])
+    check("render exit 0 (GHES shape)", r2.returncode == 0, r2.stderr[-600:])
+    wf2 = open(os.path.join(work, "wiki-ghes", ".github", "workflows", "pages.yml"), encoding="utf-8").read()
+    check("deploy=branch: gh-deploy to gh-pages with contents: write, no artifact upload, no deploy job",
+          "mkdocs gh-deploy --force --no-history --remote-branch gh-pages" in wf2
+          and "contents: write" in wf2 and "GIT_COMMITTER_NAME" in wf2
+          and "mkdocs build --strict" in wf2 and "runs-on: self-hosted" in wf2
+          and "upload-pages-artifact" not in wf2 and "deploy-pages" not in wf2
+          and "setup-python" not in wf2 and "github-pages" not in wf2, wf2)
+    check("deploy=branch README names the gh-pages Pages source",
+          "Deploy from a branch" in open(os.path.join(work, "wiki-ghes", "README.md"), encoding="utf-8").read())
+    check("default workflow keeps setup-python and pages: write",
+          "actions/setup-python@v5" in wf and "pages: write" in wf and "gh-deploy" not in wf)
+    cfg2["wiki"]["deploy"] = "gh-pages"
+    with open(cfg2_path, "w") as f:
+        json.dump(cfg2, f)
+    r3 = run_job(cfg2_path, [])
+    check("an unknown wiki.deploy is refused by name",
+          r3.returncode != 0 and "wiki.deploy must be one of artifact, branch" in r3.stderr, r3.stderr[-300:])
 
     # ---- 2. links -------------------------------------------------
     print("== links")
