@@ -423,6 +423,9 @@ def main():
           "- markdown_captions" in ycfg and "- glightbox" in ycfg
           and "- panzoom:" in ycfg and 'include_selectors: ["img"]' in ycfg
           and "images: true" not in ycfg, ycfg)
+    check("mkdocs.yml carries Material's mermaid custom fence",
+          "pymdownx.superfences" in ycfg and "name: mermaid" in ycfg
+          and "format: !!python/name:pymdownx.superfences.fence_code_format" in ycfg, ycfg)
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------

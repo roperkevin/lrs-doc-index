@@ -673,6 +673,23 @@ function mkdocsYml(model, kindFolders, opts, draftCount = 0) {
     "  - toc:",
     "      permalink: true",
     '      toc_depth: "2-3"',
+    // Material's own diagram support (its `mermaid` custom fence), so a
+    // hand-written page can carry a ```mermaid block. It supersedes
+    // fenced_code for fenced blocks without changing how they render,
+    // and it is what makes the panzoom plugin above do the job it was
+    // built for — its default selectors are `.mermaid` and `.d2`.
+    // NOTE the diagram is drawn in the READER's browser from
+    // https://unpkg.com/mermaid@11 (Material lazy-loads it; nothing is
+    // bundled), so a viewer with no route to unpkg.com sees the block
+    // as text. Nothing in the generated corpus emits mermaid — the
+    // sidecars are rendered from Office documents, and generated
+    // figures stay SVG files, since those must also reach SharePoint,
+    // draft2docx/draft2pptx and svg2pptx.
+    "  - pymdownx.superfences:",
+    "      custom_fences:",
+    "        - name: mermaid",
+    "          class: mermaid",
+    "          format: !!python/name:pymdownx.superfences.fence_code_format",
     "nav:",
     ...nav,
     "not_in_nav: |",
