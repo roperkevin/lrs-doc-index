@@ -1303,7 +1303,16 @@ Setup (after the sweep's §1–§4):
 4. Schedule `ops\run_wiki.cmd` after the nightly sweep:
    `schtasks /create /tn "LRS Doc Index Wiki" /xml C:\Repos\lrs-doc-index\ops\wiki_task.xml /f`
    (daily 18:30 by default — the sweep starts at 17:00 and finishes
-   well inside the hour).
+   well inside the hour). The job runs `--build --push`, so besides
+   the push it leaves the built static site in `<outDir>\site`.
+5. If Pages is disabled on the Enterprise Server instance ("GitHub
+   Pages is disabled. Please contact your system administrator"),
+   serve that folder from the sweep machine instead — IIS ships with
+   Windows: enable the `IIS-WebServerRole` feature, point the Default
+   Web Site's physical path at `<outDir>\site`, open TCP 80 in the
+   firewall, and set `wiki.siteUrl` to `http://<machine>/`. The
+   nightly `--build` refreshes it; the push keeps the `gh-pages`
+   branch ready for the day Pages is switched on.
 
 The tree is a rendering: nothing in it is edited by hand, the next
 run overwrites every page. Change a document's classification,
