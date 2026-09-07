@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * curate.mjs v1.0 — the KeywordCuration cloud flow (v1.1) as a local
+ * curate.mjs v1.3 — the KeywordCuration cloud flow (v1.1) as a local
  * weekly job. The LAST Power Automate piece of the pipeline: with
  * this deployed and the cloud flow off, orchestration is 100% local.
  *
@@ -51,10 +51,23 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { GraphClient } from "./graph.mjs";
 import { curateChunk } from "./llm.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
+import { proposalProblem, readIds } from "./lib/curationguard.mjs";
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+/** "v<version>" of prompts/keyword_curation.md — the digest's
+ *  CurationPromptVersion stamp, unless curation.promptVersion pins it. */
+export function curationPromptStamp() {
+  const file = path.join(REPO_ROOT, "prompts", "keyword_curation.md");
+  const m = /^version:\s*["']?([0-9][^"'\s]*)["']?\s*$/m.exec(fs.readFileSync(file, "utf8"));
+  if (!m) throw new Error(`${file}: no "version:" line in the front matter`);
+  return "v" + m[1];
+}
 
 const num = (v) => {
   const n = Number(v);
@@ -71,12 +84,23 @@ function loadConfig(argv) {
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--drain") args.flags.drain = true;
     else if (a === "--repoint") args.flags.repoint = true;
+    else if (a === "--approve") args.approve = argv[++i];
+    else if (a === "--withdraw") args.withdraw = argv[++i];
     else if (a === "--progress") args.flags.progress = true;
     else if (a === "--no-progress") args.flags.noProgress = true;
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!args.config) {
-    throw new Error("usage: curate.mjs --config <config.json> [--live|--dry-run|--drain|--repoint] [--progress|--no-progress]");
+    throw new Error(
+      "usage: curate.mjs --config <config.json> [--live|--dry-run|--drain|--repoint|" +
+      "--approve <ids-file>|--withdraw <ids-file>] [--progress|--no-progress]"
+    );
+  }
+  if ((args.approve !== undefined && !args.approve) || (args.withdraw !== undefined && !args.withdraw)) {
+    throw new Error("--approve / --withdraw take a file of Keywords row IDs, one per line (# comments allowed)");
+  }
+  if ([args.approve, args.withdraw, args.flags.repoint].filter(Boolean).length > 1) {
+    throw new Error("--approve, --withdraw and --repoint are separate commands — run one at a time");
   }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
@@ -102,7 +126,9 @@ function loadConfig(argv) {
     // adjacent in the same chunk. Cross-chunk pairs (abbreviation vs
     // expansion far apart alphabetically) are the accepted miss.
     vocabChunk: 700,
-    promptVersion: "v1.0",
+    // the digest header's stamp: the prompt file's own version unless
+    // config pins another
+    promptVersion: curationPromptStamp(),
     // false = the flow's propose-then-approve contract (a human sets
     // CanonicalRef). true = guard-passing merges apply immediately,
     // pending proposals from manual mode included; the digest becomes
@@ -115,6 +141,8 @@ function loadConfig(argv) {
   if (args.flags.dry) cfg.curation.dryRun = true;
   cfg._drain = !!args.flags.drain;
   cfg._repoint = !!args.flags.repoint;
+  cfg._approve = args.approve ? readIds(args.approve) : null;
+  cfg._withdraw = args.withdraw ? readIds(args.withdraw) : null;
   cfg._progress = resolveProgress(cfg.progress, {
     on: args.flags.progress, off: args.flags.noProgress,
   });
@@ -139,6 +167,11 @@ async function main() {
   if (cfg._repoint) {
     prog(`curate --repoint — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}`);
     return runRepoint(cfg, graph, siteId);
+  }
+  if (cfg._approve || cfg._withdraw) {
+    const mode = cfg._approve ? "approve" : "withdraw";
+    prog(`curate --${mode} — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}, ${(cfg._approve || cfg._withdraw).length} row id(s)`);
+    return runReview(cfg, graph, siteId, mode, cfg._approve || cfg._withdraw);
   }
   prog(
     `curate — ${cfg.curation.dryRun ? "DRY RUN (no writes)" : "LIVE"}, ` +
@@ -328,16 +361,23 @@ async function runCuration(cfg, graph, siteId) {
   cleanup.done(`${cleared} approved row(s) cleared`);
 
   // 2) vocabulary + blocked lines (from the run-start snapshot, as
-  // the flow reads Get_keywords_all's body throughout)
+  // the flow reads Get_keywords_all's body throughout). A row pending
+  // review (Proposed) is an alias in waiting: it leaves the vocabulary
+  // ENTIRELY, so the model can neither re-propose it nor — as it did on
+  // 2026-09-07 when told only "never as an alias" — make it the
+  // canonical of the reverse pair. A Rejected row stays a legitimate
+  // canonical and is blocked from the alias side only.
   const canon = rows.filter((r) => !r.CanonicalRefId);
-  const blockedRows = canon.filter((r) => r.CurationStatus);
+  const pendingRows = canon.filter((r) => r.CurationStatus === "Proposed");
+  const vocabRows = canon.filter((r) => r.CurationStatus !== "Proposed");
+  const blockedRows = vocabRows.filter((r) => r.CurationStatus);
   const blockedLines = blockedRows.map((r) => r.Title).join("\n");
 
   // 3) the curation prompt (prompts/keyword_curation.md through the
   // Python layer, schema-pinned) — one call per alphabetical vocabulary
   // chunk (see vocabChunk above); per-chunk cap applies, proposals
   // concatenate across chunks
-  const canonSorted = [...canon].sort((a, b) =>
+  const canonSorted = [...vocabRows].sort((a, b) =>
     lower(a.Title) < lower(b.Title) ? -1 : lower(a.Title) > lower(b.Title) ? 1 : 0
   );
   const chunkSize = Math.max(1, Number(cur.vocabChunk) || 700);
@@ -347,7 +387,7 @@ async function runCuration(cfg, graph, siteId) {
   const callPhase = prog.phase("model calls");
   callPhase.step(
     `${canonSorted.length} canonical keyword(s) in ${chunks} chunk(s) of ${chunkSize}, ` +
-    `${blockedRows.length} blocked from proposal`
+    `${blockedRows.length} blocked from proposal, ${pendingRows.length} pending review (left out)`
   );
   const chunkTick = prog.counter(chunks, "");
   for (let i = 0; i < canonSorted.length; i += chunkSize) {
@@ -411,23 +451,12 @@ async function runCuration(cfg, graph, siteId) {
     const canonLower = lower(String(p?.canonical ?? "").trim());
     const aliasRow = byLower.get(aliasLower);
     const canonRow = byLower.get(canonLower);
-    const valid =
-      aliasRow && canonRow &&
-      aliasLower !== canonLower &&
-      !aliasRow.CanonicalRefId &&
-      !aliasRow.CurationStatus &&
-      !canonRow.CanonicalRefId;
-    if (!valid) {
+    // the flow's verbatim checks, plus (lib/curationguard.mjs) a pending
+    // canonical, a kind mismatch and a merge in the wrong direction
+    const problem = proposalProblem(aliasRow, canonRow);
+    if (problem) {
       dropped++;
-      guard.step(
-        `dropped '${String(p?.alias ?? "")}' → '${String(p?.canonical ?? "")}' — ` +
-        (!aliasRow ? "the alias is not a real row"
-          : !canonRow ? "the canonical is not a real row"
-          : aliasLower === canonLower ? "alias and canonical are the same row"
-          : aliasRow.CanonicalRefId ? "the alias is already merged"
-          : aliasRow.CurationStatus ? `the alias is ${aliasRow.CurationStatus}`
-          : "the canonical is itself an alias")
-      );
+      guard.step(`dropped '${String(p?.alias ?? "")}' → '${String(p?.canonical ?? "")}' — ${problem}`);
       continue;
     }
     const why = String(p.why ?? "").replaceAll('"', "").replaceAll("\n", " ").slice(0, 160);
@@ -477,7 +506,7 @@ async function runCuration(cfg, graph, siteId) {
 
   // 7) summary + run log
   const line =
-    `canon=${canon.length} blocked=${blockedRows.length} ` +
+    `canon=${canon.length} blocked=${blockedRows.length} pending=${pendingRows.length} ` +
     `proposed_by_model=${proposals.length} written=${written} ` +
     `dropped=${dropped} cleared=${cleared}` +
     (cur.autoApprove ? ` merged=${merged}` : "");
@@ -495,6 +524,128 @@ async function runCuration(cfg, graph, siteId) {
   process.stdout.write(line + "\n");
   if (dry) process.stdout.write(`dry run: ${plan.length} planned writes recorded in ${logFile}\n`);
   return { written, merged, dropped, cleared };
+}
+
+/**
+ * --approve <ids-file> / --withdraw <ids-file> — the review, by list.
+ * The digest's contract is one row at a time in SharePoint (set
+ * CanonicalRef to approve, CurationStatus = Rejected to reject); a
+ * hundred-row queue reviewed in a spreadsheet wants the same two
+ * verdicts applied from a file of row IDs.
+ *
+ *   approve  — for each pending row (CurationStatus = Proposed): resolve
+ *              the canonical from ProposedCanonical's "<title> — <why>",
+ *              re-run the guard against the LIVE list (a real canonical
+ *              row, not itself an alias or pending, same kind, right
+ *              direction), then set CanonicalRef and clear the
+ *              flow-owned columns — exactly the librarian's click.
+ *              A row whose canonical is also in the list as an alias is
+ *              skipped (it would chain): approve the far end, then
+ *              re-propose the near one against the final canonical.
+ *   withdraw — clear CurationStatus + ProposedCanonical on each pending
+ *              row: the proposal never happened, the row is an ordinary
+ *              candidate again (unlike Rejected, which blocks it).
+ *
+ * Both honor dryRun exactly like the weekly job (plan only unless
+ * --live), record the plan in the curate-<stamp>.json run log, and
+ * touch NO other row. The digest is not rewritten here — the next
+ * weekly run does that from the list. After approving, run --repoint.
+ */
+async function runReview(cfg, graph, siteId, mode, ids) {
+  const sp = cfg.sharePoint;
+  const cur = cfg.curation;
+  const prog = cfg._prog || createProgress({ enabled: false });
+  const dry = !!cur.dryRun;
+  const listId = sp.lists.keywords;
+  const plan = [];
+  const patch = async (id, fields, what) => {
+    plan.push({ action: "patchRow", id, fields, what });
+    if (!dry) await graph.updateItemFields(siteId, listId, id, fields);
+  };
+
+  const stopFetch = prog.heartbeat("fetching the Keywords list");
+  const rows = (
+    await graph.listItems(siteId, listId, {
+      select: ["Title", "Kind", "CanonicalRefLookupId", "CurationStatus", "ProposedCanonical"],
+    }).finally(stopFetch)
+  ).map((it) => {
+    const f = it.fields || {};
+    return {
+      ID: num(it.id) ?? num(f.id),
+      Title: String(f.Title || ""),
+      Kind: String(f.Kind || ""),
+      CanonicalRefId: num(f.CanonicalRefLookupId),
+      CurationStatus: String(f.CurationStatus || ""),
+      ProposedCanonical: String(f.ProposedCanonical || ""),
+    };
+  });
+  const byId = new Map(rows.map((r) => [r.ID, r]));
+  const byLower = new Map(rows.map((r) => [lower(r.Title), r]));
+  const listed = new Set(ids);
+  prog(`Keywords snapshot — ${rows.length} row(s), ${rows.filter((r) => !r.CanonicalRefId && r.CurationStatus === "Proposed").length} pending review`);
+
+  const phase = prog.phase(mode);
+  const tick = prog.counter(ids.length, "row ids");
+  let applied = 0;
+  let skipped = 0;
+  const notes = []; // printed after the summary JSON line (stdout's first line is the contract)
+  const skip = (id, row, why) => {
+    skipped++;
+    plan.push({ action: "skip", id, title: row?.Title ?? "", why });
+    tick(row ? `'${row.Title}'` : `#${id}`, `skipped — ${why}`);
+    notes.push(`skip ${id}${row ? ` '${row.Title}'` : ""}: ${why}`);
+  };
+  for (const id of ids) {
+    const row = byId.get(id);
+    if (!row) { skip(id, null, "no such row"); continue; }
+    if (row.CanonicalRefId) { skip(id, row, "already merged"); continue; }
+    if (row.CurationStatus !== "Proposed") {
+      skip(id, row, row.CurationStatus ? `not pending (${row.CurationStatus})` : "not pending (no proposal on the row)");
+      continue;
+    }
+    if (mode === "withdraw") {
+      await patch(id, { CurationStatus: null, ProposedCanonical: null }, "withdraw");
+      applied++;
+      tick(`'${row.Title}'`, `withdrawn — was → ${row.ProposedCanonical}`);
+      continue;
+    }
+    const canonTitle = row.ProposedCanonical.split(" — ")[0].trim();
+    const canonRow = byLower.get(lower(canonTitle));
+    if (canonRow && !canonRow.CanonicalRefId && canonRow.CurationStatus === "Proposed") {
+      // a chain: its canonical is pending as an alias itself (in this
+      // list or not) — approving it here would point at a row that is
+      // about to become an alias
+      skip(id, row, `its canonical '${canonRow.Title}' is itself ${listed.has(canonRow.ID) ? "in the review list" : "pending review"} as an alias — approve that first, then re-propose this one against the final canonical`);
+      continue;
+    }
+    // the guard sees the alias as it will be judged: uncurated
+    const problem = proposalProblem({ ...row, CurationStatus: "" }, canonRow);
+    if (problem) { skip(id, row, `${problem} (→ '${canonTitle}')`); continue; }
+    await patch(id, { CanonicalRefLookupId: canonRow.ID, CurationStatus: null, ProposedCanonical: null }, "approve");
+    row.CanonicalRefId = canonRow.ID; // in-memory: never a canonical for a later row this run
+    applied++;
+    tick(`'${row.Title}'`, `→ '${canonRow.Title}'`);
+  }
+  phase.done(`${applied} ${mode === "approve" ? "approved" : "withdrawn"}, ${skipped} skipped`);
+
+  const line = `mode=${mode} given=${ids.length} applied=${applied} skipped=${skipped}`;
+  const logDir = cfg.paths?.workDir || ".";
+  fs.mkdirSync(logDir, { recursive: true });
+  const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
+  const logFile = path.join(logDir, `curate-${stamp}.json`);
+  fs.writeFileSync(logFile, JSON.stringify({ line, dry_run: dry, plan }, null, 1));
+  process.stdout.write(JSON.stringify({ line, dry_run: dry, logFile }) + "\n");
+  process.stdout.write(line + "\n");
+  for (const n of notes) process.stdout.write(n + "\n");
+  if (dry) {
+    process.stdout.write(`dry run: ${plan.filter((p) => p.action === "patchRow").length} planned write(s) recorded in ${logFile} — re-run with --live to apply\n`);
+  } else if (mode === "approve" && applied) {
+    process.stdout.write(
+      "merges applied — run `curate.mjs --repoint --live` to re-point the historical Doc Keywords rows, " +
+      "then `sweep.mjs --rerank --live`; the next weekly run rewrites the digest\n"
+    );
+  }
+  return { applied, skipped };
 }
 
 main().catch((e) => {
