@@ -133,7 +133,7 @@ setup, if someone with Entra rights ever provisions one): set
 LocationReferencing) or `Sites.ReadWrite.All`. The gate covers both
 modes. The model call needs no Entra identity at all (§3).
 
-## 3. The AI step — the Anthropic API through `lrsdoc`
+## 3. The AI step — the tenant model / the Anthropic API through `lrsdoc`
 
 Every model call — the sweep's classify step, `--normalize-cases`,
 keyword curation, test-plan drafting and its figures/deck passes —
@@ -158,10 +158,67 @@ Setup (one-time, on the machine that runs the jobs):
    does), or leave `llm.apiKey` out and let the SDK pick up
    `ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` from the environment.
    The scheduled tasks inherit the machine's user environment, so a
-   user-level variable is enough.
+   user-level variable is enough. With a tenant model configured
+   (below) this key is what stands behind it.
 3. Smoke: `python -m lrsdoc prompts` lists the six prompt files;
    `tests/test_lrsdoc.py` exercises the layer against a mock server.
    A live check is one document: `sweep.mjs --live --only "<doc>"`.
+
+### The tenant's own model, with the Claude API behind it
+
+The company runs its own Claude deployment on Microsoft Foundry — the
+same tenant the SharePoint side signs into (§2), but a separate
+credential; the model call itself still needs no Entra identity.
+Point the pipeline at it with an `llm.tenant` block:
+
+```json
+"llm": {
+  "apiKey": {"$env": "ANTHROPIC_API_KEY"},
+  "tenant": {
+    "provider": "foundry",
+    "resource": "my-company-ai",
+    "apiKey": {"$env": "ANTHROPIC_FOUNDRY_API_KEY"}
+  }
+}
+```
+
+`resource` is the Foundry resource name — `my-company-ai` for
+`https://my-company-ai.services.ai.azure.com/anthropic/`; `baseUrl`
+names the endpoint instead when the deployment does not sit at the
+default address. Two optional keys: `model` is the deployment's model
+id for tenants whose deployment is not named after the public model
+(it replaces the prompt file's model on this backend only, so the same
+prompt still runs on the Claude API behind it), and `fallback: false`
+makes the tenant model the only backend.
+
+**What falls back.** Every call goes to the tenant model first. When
+that backend cannot serve it — the key is rejected (401/403), the
+deployment is not there (404), the endpoint is unreachable or times
+out, it is out of capacity (429) or it 5xxs — the call is sent again
+to the Claude API on `llm.apiKey`, and one `progress:` line names the
+switch:
+
+```
+progress: lrsdoc docindex_classify — the tenant model (foundry) could not
+          serve this call (API 401: ...) — falling back to the Claude API
+```
+
+What does *not* fall back is an answer about the request itself: a 400,
+a refusal, a truncation, a reply that misses its schema. The Claude API
+would only reproduce it, and re-asking would double the spend and the
+egress. Neither does a reply whose stream has already
+started arriving: the caller may have seen text, a second attempt would
+repeat it, and the SDK reports a broken stream as a transport error
+rather than one of its own. Every result records which backend answered (`backend`:
+`foundry` or `anthropic`), and `python -m lrsdoc ... --output` writes it
+with the rest.
+
+Without config, the layer reads the same setting from the environment —
+`LRSDOC_TENANT=foundry` plus the SDK's own `ANTHROPIC_FOUNDRY_API_KEY`
+and `ANTHROPIC_FOUNDRY_RESOURCE` (or `ANTHROPIC_FOUNDRY_BASE_URL`),
+with `LRSDOC_TENANT_MODEL` and `LRSDOC_TENANT_FALLBACK=0` as the other
+two knobs — so a machine that always uses the tenant model needs no
+config change at all. A `llm.tenant` block wins over all of them.
 
 Knobs (`llm.*`, all optional): `model` and `effort` override every
 prompt's front matter; `maxRetries` (4) and `timeoutMs` (600000) are
@@ -181,7 +238,9 @@ implication.
 
 Data egress: document text goes to the Anthropic API under its data
 terms — the decision the owner recorded when the AI Builder lane was
-retired (`docs/history.md`, D2).
+retired (`docs/history.md`, D2). With an `llm.tenant` block it goes to
+the company's own Foundry deployment instead, and reaches the Anthropic
+API only on the calls that fall back.
 
 ## 4. Configure + first run
 

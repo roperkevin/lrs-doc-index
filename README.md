@@ -167,9 +167,19 @@ through the official Anthropic SDK and prints a JSON-lines result
   machine. `LRSDOC_DUMP_DIR` dumps every rendered request for
   debugging.
 
+- **The tenant's model first, the Claude API behind it.** With an
+  `llm.tenant` block (`docs/setup.md` §3) every call goes to the
+  company's own Claude deployment on Microsoft Foundry — the SDK's
+  `AnthropicFoundry` client on its own credentials — and falls back to
+  the Anthropic API when that backend will not authenticate, has no
+  such deployment, is unreachable, is out of capacity or 5xxs. An
+  answer *about the request* (a 400, a refusal, a truncation) is never
+  re-asked, and neither is a reply that has started streaming. Each result records the backend that served it.
+
 Credentials: `llm.apiKey` in config (ideally `{"$env":
 "ANTHROPIC_API_KEY"}`), or whatever the SDK finds in the environment
-(`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`).
+(`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`); the tenant model brings
+its own (`llm.tenant.apiKey` / `ANTHROPIC_FOUNDRY_API_KEY`).
 
 ## Running it
 

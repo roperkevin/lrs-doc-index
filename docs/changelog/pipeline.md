@@ -220,6 +220,45 @@ only lane that applies it.
 Gate: `tests/check_wiki.py` (40 checks, 7 of them new and all failing
 on wiki v1.0). No corpus backfill — the site is regenerated on every
 run.
+## llm v2.1 / lrsdoc v1.1.0 — the tenant's own model, the Claude API behind it (2026-09-06)
+
+The company runs its own Claude deployment on Microsoft Foundry. The
+model layer now sends every call there first and keeps the Anthropic
+API key as the fallback, so a tenant outage is a slower night, not a
+stopped one.
+
+- **`llm.tenant` in config** (`docs/setup.md` §3): `provider`
+  (`foundry`), `resource` (the Foundry resource name) or `baseUrl`,
+  `apiKey` as `{"$env": "..."}`, and two optional keys — `model`, the
+  deployment's model id when it is not named after the public model
+  (it replaces the prompt file's model on that backend only, so the
+  same prompt still runs on the Claude API behind it), and
+  `fallback: false` to make the tenant model the only backend. No
+  block, no change: the call goes straight to the Claude API as
+  before.
+- **`lrsdoc.llm` resolves a chain of backends**, not one client. The
+  tenant backend is the SDK's own `AnthropicFoundry` client on its own
+  `ANTHROPIC_FOUNDRY_*` credentials — no second HTTP client, no
+  hand-rolled auth. `pipeline/llm.mjs` maps the config block onto
+  those variables and `LRSDOC_TENANT`; a machine that always uses the
+  tenant model can set them itself and skip the config.
+- **What falls back is a backend that cannot serve the call**: the key
+  is rejected (401/403), the deployment is not there (404), the
+  endpoint is unreachable or times out, it is out of capacity (429),
+  it 5xxs. What does not is an answer about the request — a 400, a
+  refusal, a truncation, a schema miss — which the Claude API would
+  only reproduce at double the spend and the egress. Neither does a
+  reply whose stream has already started arriving: the caller may have
+  seen that text, and a second attempt would repeat it.
+- **The run says which backend answered.** One `progress:` line names
+  the switch when it happens, the request-shape line names the backend
+  it is talking to, and every result carries `backend` (`foundry` /
+  `anthropic`) beside its model and usage.
+- **Gate**: `tests/test_lrsdoc.py` grew a fifth leg — a second mock
+  server as the tenant deployment, the fallback for each failure
+  class, the two guards that must *not* fall back, the mid-stream cut,
+  `LRSDOC_TENANT_FALLBACK=0`, the unknown-provider message, and the
+  config → environment mapping `pipeline/llm.mjs` does.
 
 ## progress v1.0 — run narration across every job (2026-09-06)
 

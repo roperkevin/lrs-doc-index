@@ -10,7 +10,7 @@
     "sourceSitePath": "/sites/LocationReferencing",
     "docKeyStrip": "/sites/LocationReferencing/",
     "libraryRootSegment": "Shared Documents",
-    "syncedSubfolder": "",
+    "syncedSubfolder": "General",
     "$comment_syncedSubfolder": "Set when the OneDrive sync roots at a library CHILD rather than the library itself — e.g. \"General\" when paths.sourceLibrary is the Teams channel folder 'Location Referencing - General'. The segment is stripped from local source paths (Shared Documents/General/Test Plans/x.pptx -> <sourceLibrary>/Test Plans/x.pptx); documents outside it keep taking the Graph download fallback (sweep.graphDownloadFallback). Scope (libraryRootSegment) is unaffected.",
     "lists": {
       "docIndex": "b98fb2a1-1c91-48f9-9b9b-323656557171",
@@ -20,7 +20,7 @@
       "docLinks": "c49367dc-c267-4f5b-8935-4fad47fb0d34",
       "issueRefs": "4d0e6561-80e3-49f4-aa20-e5889cc88414",
       "testCases": "ae9374ab-295a-4321-8afa-a83a08e17711",
-      "figures": "<create the Figures list per schemas/SPList_Figures.csv (docs/setup.md §14) and paste its GUID; absent = figures not indexed>",
+      "figures": "a8446677-e32f-4d8b-8265-fe42f20201d9",
       "sourceLibrary": "c8784e70-c536-4064-91e9-14b8b6535a03"
     }
   },
@@ -39,14 +39,23 @@
 
   "llm": {
     "$comment": "Every model call goes through the Python layer (lrsdoc/, the official Anthropic SDK; pipeline/llm.mjs spawns it). apiKey: the API key, ideally {\"$env\": \"ANTHROPIC_API_KEY\"}; leave it out to let the SDK use ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN from the environment (or an `ant auth login` profile). Optional: model and effort override every prompt file's front-matter defaults (prompts/*.md); maxRetries (4) and timeoutMs (600000) are the SDK's retry count and per-request timeout; baseUrl redirects the API endpoint (the gates' mock server); python names the interpreter that runs lrsdoc (default python3, python on Windows; LRSDOC_PYTHON in the environment overrides) — docs/setup.md.",
-    "apiKey": {"$env": "ANTHROPIC_API_KEY"}
+    "apiKey": {"$env": "ANTHROPIC_API_KEY"},
+    "$comment_tenant": "The company's own model, tried first (docs/setup.md §3). Optional: with no tenant block every call goes straight to the Claude API on apiKey above. provider: \"foundry\" — Claude on Microsoft Foundry, the SDK's own AnthropicFoundry client. resource: the Foundry resource name, e.g. \"my-company-ai\" for https://my-company-ai.services.ai.azure.com/anthropic/ (or baseUrl for the endpoint itself). apiKey: its key, as {\"$env\": \"...\"}. model: the deployment's model id, when it is not named after the public model — it replaces the prompt's model on this backend only. fallback: false makes the tenant model the only backend; by default the Claude API above stands behind it and takes the call when the tenant backend will not authenticate, has no such deployment, is unreachable, is out of capacity or 5xxs — one `progress:` line names the switch, and the result records which backend answered. A 400, a refusal or a truncation is an answer about the request, not a fallback. The block itself, added next to apiKey: \"tenant\": {\"provider\": \"foundry\", \"resource\": \"my-company-ai\", \"apiKey\": {\"$env\": \"ANTHROPIC_FOUNDRY_API_KEY\"}}",
+    "$tenant_example": {
+      "$comment": "Rename to \"tenant\" (and drop this line) to send every call to the company's model first. Keys starting with $ are never read, so this block is inert as it stands.",
+      "provider": "foundry",
+      "resource": "my-company-ai",
+      "apiKey": {"$env": "ANTHROPIC_FOUNDRY_API_KEY"},
+      "model": "claude-opus-5",
+      "fallback": true
+    }
   },
 
   "wiki": {
     "$comment": "The catalog as a wiki (pipeline/wiki.mjs — docs/setup.md §15): every sidecar rendered into an MkDocs site and pushed to a PRIVATE git repository whose Pages workflow serves it (devtopia — this repository is public, the sidecars are internal). Optional; the job reads paths.sidecarLibrary and the newest list backup in paths.workDir, never SharePoint or a model. repoUrl = the clone URL of the wiki repository (credentials from the machine's git credential helper; with --push the tree is committed and pushed, unchanged corpus = no commit); branch = the branch its Pages workflow builds (main); outDir = where the tree is rendered (<workDir>/wiki); siteName / siteUrl land in mkdocs.yml; recent = rows on the Recent page. draftsDir (Markdown_Layout_Plan phase 5, wiki v1.3) publishes the TestPlanGen drafts too — set it to the LOCAL path of the Test Plan Drafts folder (the synced 'Shared Documents/Test Plan Drafts'); each draft becomes a page plus a Drafts catalog, marked unreviewed and joining NO catalog (not kinds, not keywords, not test cases). Empty (the default) = no Drafts section at all. Schedule ops\\run_wiki.cmd after the nightly sweep (ops\\wiki_task.xml).",
-    "repoUrl": "https://devtopia.esri.com/kev14953/lrs-doc-index.git",
+    "repoUrl": "https://devtopia.esri.com/kev14953/lrs-docs.git",
     "branch": "main",
-    "siteName": "LRS Doc Index",
+    "siteName": "LRS Docs",
     "draftsDir": ""
   },
 
