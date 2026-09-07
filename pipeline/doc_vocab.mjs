@@ -101,18 +101,23 @@ async function main() {
     for (const ts of page.toolsets) queue.push(ts.url);
   }
   const terms = [];
-  const seenTerms = new Set();
+  const seenTerms = new Map();
   for (const url of args.vocabs) {
     say(`vocabulary page: ${url}`);
     const html = await pageHtml(url, args.fromDir);
     if (!html) continue;
     const page = parseVocabularyPage(html, url);
     sources.push({ url, title: page.title, terms: page.terms.length });
+    // the Roads and Highways and Pipeline Referencing pages define most
+    // terms twice, nearly verbatim: one entry per term, every page that
+    // defines it in `sources`, the first page's definition and url
     for (const t of page.terms) {
       const key = t.term.toLowerCase();
-      if (seenTerms.has(key)) continue;
-      seenTerms.add(key);
-      terms.push({ term: t.term, definition: t.definition, url: t.url, source: page.title });
+      const prev = seenTerms.get(key);
+      if (prev) { prev.sources.push(page.title); continue; }
+      const entry = { term: t.term, definition: t.definition, url: t.url, sources: [page.title] };
+      seenTerms.set(key, entry);
+      terms.push(entry);
     }
     say(`   ${page.title}: ${page.terms.length} term(s)`);
   }
