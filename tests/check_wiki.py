@@ -120,6 +120,7 @@ cut off at the first line break.
 ### TC-N01 — Lock conflict refuses { #tc-n01 }
 <!-- lrs:case det=S1 conf=high src="slide 4" -->
 - **Group:** Conflicts
+![Figure 2 — Lock dialog](../media/4855-merge-plan/fig-02-slide-04-lock.png)
 - **Steps:**
   - [ ] 1. Set <RouteID> on the network
   - [ ] 2. Read the value in {measure}
@@ -310,8 +311,9 @@ def main():
     r = run_job(cfg_path, [])
     check("render exit 0", r.returncode == 0, r.stderr[-600:])
     summ = json.loads(r.stdout.splitlines()[0]) if r.stdout.strip() else {}
-    check("summary JSON: 3 docs, aliases merged from the list backup, one media file",
+    check("summary JSON: 3 docs, aliases merged from the list backup, one media file, one missing",
           summ.get("docs") == 3 and summ.get("keyword_aliases_merged") == 2 and summ.get("media_files") == 1
+          and summ.get("media_missing") == 1
           and summ.get("list_backup", "").startswith("list-backup-"), r.stdout[:300])
     check("Wiki_summary line", "Wiki_summary: docs=3 pages=" in r.stdout and "pushed=0" in r.stdout, r.stdout[-200:])
     expected = ["index.md", "about.md", "recent.md", "test-plans/index.md", "test-plans/4855-merge-plan.md",
@@ -371,6 +373,16 @@ def main():
           and "- Gone Doc — 1 shared keyword: route" in plan, plan)
     check("the body follows a rule, media link unchanged (resolves through docs/media)",
           "\n---\n\n## Test Cases" in plan and "![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png)" in plan, plan[-600:])
+    # a link whose file is not in the library never reaches the page:
+    # `mkdocs build --strict` fails on an unresolved link, so the render
+    # leaves a marker with the alt text where the figure was
+    check("a media link with no file behind it is rendered as a marker, not a link",
+          "fig-02-slide-04-lock.png" not in plan and "*(missing figure: Figure 2 — Lock dialog)*" in plan, plan[-900:])
+    report = os.path.join(work, "wiki-missing-media.txt")
+    check("the missing media are listed by page in <workDir>/wiki-missing-media.txt",
+          os.path.isfile(report)
+          and "test-plans/4855-merge-plan.md\t../media/4855-merge-plan/fig-02-slide-04-lock.png" in open(report, encoding="utf-8").read()
+          and "media link(s) have no file in the library" in r.stderr, r.stderr[-400:])
     check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
     check("a case's own attr_list anchor survives the body escape",
           "### TC-P01 — Merge preserves measures { #tc-p01 }" in plan
@@ -537,8 +549,8 @@ def main():
     # markdown image into a <figure>, emptying the anchor around it and
     # moving `width=160` onto the figure. Raw HTML keeps link + width +
     # alt and takes neither a caption nor a panzoom box.
-    check("figure catalog: the image, thumbnail-sized, linking its section",
-          "1 figures." in figs
+    check("figure catalog: the image, thumbnail-sized, linking its section; the missing one absent",
+          "1 figures." in figs and "fig-02-slide-04-lock" not in figs
           and '<a href="../test-plans/4855-merge-plan.md#tc-p01">'
               '<img src="../media/4855-merge-plan/fig-01-slide-03-merge.png" width="160" '
               'alt="Figure 1 — Merge before"></a>' in figs, figs)
