@@ -14,7 +14,8 @@
  * the vocabulary and every FUTURE junction row; the folded ones stay
  * until their documents reindex.
  *
- * Selection (at least one is required — there is no implicit "all"):
+ * Selection (at least one is required — there is no implicit "all";
+ * with --unreject the same selectors pick among the Rejected rows):
  *   --all              every row whose CanonicalRef is set
  *   --modified <date>  rows whose Modified falls on this UTC date
  *                      (YYYY-MM-DD) — one bad batch, by the day it ran
@@ -30,12 +31,23 @@
  *                      (curate.mjs's guard drops an alias that carries
  *                      any CurationStatus). Without it a cleared row is
  *                      an ordinary candidate again.
+ *   --unreject         the other undo: the selection is over rows that
+ *                      carry CurationStatus = Rejected (and no
+ *                      CanonicalRef) instead of over aliases, and the
+ *                      write clears that status, so the curation prompt
+ *                      may judge the row again. For a bulk --reject that
+ *                      was too broad — 2026-09-07's blocked 400 rows,
+ *                      most of them ordinary plurals the v2 prompt would
+ *                      merge correctly, and the model answered by
+ *                      proposing the reverse pairs. Not with --reject or
+ *                      --chains.
  *   --live             perform the writes (default: dry run, plan only)
  *   --progress         narrate phases to stderr
  *
  * Usage:
  *   node --experimental-strip-types pipeline/unmerge.mjs --config config.json --modified 2026-08-14
  *   node --experimental-strip-types pipeline/unmerge.mjs --config config.json --modified 2026-08-14 --reject --live
+ *   node --experimental-strip-types pipeline/unmerge.mjs --config config.json --unreject --modified 2026-09-07 --live
  *
  * Writes a run log (`unmerge-<stamp>.json`) beside the curate logs in
  * paths.workDir; a dry run records the full plan there.
@@ -46,6 +58,7 @@ import path from "node:path";
 import { GraphClient } from "./graph.mjs";
 import { assertNodeVersion, validateConfig, CURATE_REQUIRED } from "./lib/config.mjs";
 import { createProgress, resolveProgress, secs } from "./lib/progress.mjs";
+import { readIds } from "./lib/curationguard.mjs";
 
 const num = (v) => {
   const n = Number(v);
@@ -62,6 +75,7 @@ function loadConfig(argv) {
     else if (a === "--modified") args.modified = argv[++i];
     else if (a === "--ids-file") args.idsFile = argv[++i];
     else if (a === "--reject") args.flags.reject = true;
+    else if (a === "--unreject") args.flags.unreject = true;
     else if (a === "--live") args.flags.live = true;
     else if (a === "--dry-run") args.flags.dry = true;
     else if (a === "--progress") args.flags.progress = true;
@@ -71,7 +85,7 @@ function loadConfig(argv) {
   if (!args.config) {
     throw new Error(
       "usage: unmerge.mjs --config <config.json> (--all | --modified <YYYY-MM-DD> | --chains | --ids-file <path>) " +
-      "[--reject] [--live|--dry-run] [--progress|--no-progress]"
+      "[--reject | --unreject] [--live|--dry-run] [--progress|--no-progress]"
     );
   }
   if (!args.flags.all && !args.flags.chains && !args.modified && !args.idsFile) {
@@ -83,6 +97,10 @@ function loadConfig(argv) {
   if (args.modified && !/^\d{4}-\d{2}-\d{2}$/.test(args.modified)) {
     throw new Error(`--modified wants a YYYY-MM-DD date, got "${args.modified}"`);
   }
+  if (args.flags.unreject && args.flags.reject) throw new Error("--unreject and --reject contradict each other");
+  if (args.flags.unreject && args.flags.chains) {
+    throw new Error("--chains selects among aliases; with --unreject use --all, --modified or --ids-file");
+  }
   assertNodeVersion();
   const cfg = JSON.parse(fs.readFileSync(args.config, "utf8"));
   validateConfig(cfg, CURATE_REQUIRED, args.config);
@@ -93,30 +111,17 @@ function loadConfig(argv) {
   cfg.graph.tokenCache = cfg.graph.tokenCache || path.join(authDir, "graph.json");
   cfg._dry = !args.flags.live || !!args.flags.dry;
   cfg._reject = !!args.flags.reject;
+  cfg._unreject = !!args.flags.unreject;
   cfg._select = {
     all: !!args.flags.all,
     chains: !!args.flags.chains,
     modified: args.modified || "",
-    ids: args.idsFile ? readIds(args.idsFile) : null,
+    ids: args.idsFile ? new Set(readIds(args.idsFile)) : null,
   };
   cfg._progress = resolveProgress(cfg.progress, {
     on: args.flags.progress, off: args.flags.noProgress,
   });
   return cfg;
-}
-
-/** One row ID per line; blank lines and `#` comments ignored. */
-function readIds(file) {
-  const ids = new Set();
-  for (const raw of fs.readFileSync(file, "utf8").split(/\r?\n/)) {
-    const line = raw.replace(/#.*$/, "").trim();
-    if (!line) continue;
-    const n = num(line);
-    if (n === undefined) throw new Error(`${file}: "${raw.trim()}" is not a row ID`);
-    ids.add(n);
-  }
-  if (!ids.size) throw new Error(`${file}: no row IDs found`);
-  return ids;
 }
 
 async function main() {
@@ -137,7 +142,7 @@ async function main() {
   }
   signIn.done(cfg.sharePoint.sitePath);
 
-  prog(`unmerge — ${dry ? "DRY RUN (no writes)" : "LIVE"}${cfg._reject ? ", marking Rejected" : ""}`);
+  prog(`unmerge${cfg._unreject ? " --unreject" : ""} — ${dry ? "DRY RUN (no writes)" : "LIVE"}${cfg._reject ? ", marking Rejected" : ""}`);
 
   const stopFetch = prog.heartbeat("fetching the Keywords list");
   const rows = (
@@ -155,8 +160,15 @@ async function main() {
     };
   });
   const byId = new Map(rows.map((r) => [r.ID, r]));
-  const aliases = rows.filter((r) => r.CanonicalRefId);
-  prog(`Keywords snapshot — ${rows.length} row(s), ${aliases.length} carrying a CanonicalRef`);
+  // the pool the selectors pick from: alias rows, or with --unreject
+  // the canonical rows a rejection blocks
+  const aliases = cfg._unreject
+    ? rows.filter((r) => !r.CanonicalRefId && r.CurationStatus === "Rejected")
+    : rows.filter((r) => r.CanonicalRefId);
+  prog(
+    `Keywords snapshot — ${rows.length} row(s), ` +
+    (cfg._unreject ? `${aliases.length} Rejected` : `${aliases.length} carrying a CanonicalRef`)
+  );
 
   // ---- selection
   const why = new Map();
@@ -170,7 +182,7 @@ async function main() {
   const targets = aliases.filter((r) => why.has(r.ID));
   const selPhase = prog.phase("selection");
   selPhase.done(
-    `${targets.length} of ${aliases.length} alias row(s) selected` +
+    `${targets.length} of ${aliases.length} ${cfg._unreject ? "rejected" : "alias"} row(s) selected` +
     (sel.ids ? ` (ids-file: ${sel.ids.size} id(s) given)` : "")
   );
   if (!targets.length) {
@@ -180,21 +192,24 @@ async function main() {
 
   // ---- writes
   const plan = [];
-  const clearPhase = prog.phase("clearing CanonicalRef");
-  const tick = prog.counter(targets.length, "alias rows");
+  const clearPhase = prog.phase(cfg._unreject ? "clearing Rejected" : "clearing CanonicalRef");
+  const tick = prog.counter(targets.length, cfg._unreject ? "rejected rows" : "alias rows");
   let cleared = 0;
   let errors = 0;
   for (const r of targets) {
     const canon = byId.get(r.CanonicalRefId);
-    const fields = { CanonicalRefLookupId: null };
+    const fields = cfg._unreject
+      ? { CurationStatus: null, ProposedCanonical: null }
+      : { CanonicalRefLookupId: null };
     if (cfg._reject) {
       fields.CurationStatus = "Rejected";
       fields.ProposedCanonical = null;
     }
-    tick(r.Title, `was → '${canon?.Title ?? `#${r.CanonicalRefId}`}' (${why.get(r.ID)})`);
+    const was = cfg._unreject ? "Rejected" : `→ '${canon?.Title ?? `#${r.CanonicalRefId}`}'`;
+    tick(r.Title, `was ${was} (${why.get(r.ID)})`);
     plan.push({
       action: "patchRow", id: r.ID, title: r.Title,
-      was: canon?.Title ?? String(r.CanonicalRefId), reason: why.get(r.ID), fields,
+      was: cfg._unreject ? "Rejected" : (canon?.Title ?? String(r.CanonicalRefId)), reason: why.get(r.ID), fields,
     });
     if (dry) { cleared++; continue; }
     try {
@@ -209,9 +224,10 @@ async function main() {
   clearPhase.done(`${cleared} row(s) ${dry ? "would be" : ""} cleared, ${errors} error(s)`);
 
   // ---- summary + run log
-  const line =
-    `mode=unmerge aliases=${aliases.length} selected=${targets.length} ` +
-    `cleared=${cleared} errors=${errors} rejected=${cfg._reject ? cleared : 0}`;
+  const line = cfg._unreject
+    ? `mode=unreject rejected=${aliases.length} selected=${targets.length} cleared=${cleared} errors=${errors}`
+    : `mode=unmerge aliases=${aliases.length} selected=${targets.length} ` +
+      `cleared=${cleared} errors=${errors} rejected=${cfg._reject ? cleared : 0}`;
   const logDir = cfg.paths?.workDir || ".";
   fs.mkdirSync(logDir, { recursive: true });
   const stamp = new Date().toISOString().replaceAll(":", "").slice(0, 15);
@@ -228,6 +244,8 @@ async function main() {
     process.stdout.write(
       `dry run: ${plan.length} planned write(s) recorded in ${logFile} — re-run with --live to apply\n`
     );
+  } else if (cleared && cfg._unreject) {
+    process.stdout.write("rows unblocked — the next curation run may propose them again\n");
   } else if (cleared) {
     process.stdout.write(
       "vocabulary restored — Doc Keywords rows written while the merges stood still name the " +

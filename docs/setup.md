@@ -549,11 +549,56 @@ drops anything not matching real, uncurated rows verbatim — but
 nothing reviews semantic judgment before it lands; default is false.
 
 A prompt change is an edit to `prompts/keyword_curation.md` with a
-version bump (`prompts/README.md`); update `curation.promptVersion`
-in config so the digest header reports it. The reply is schema-pinned
-(`prompts/schemas/keyword_curation.json`); everything else is
-action-for-action from the retired flow's definition
-(`docs/history.md`, G2).
+version bump (`prompts/README.md`); the digest header reports that
+version (`curation.promptVersion` in config only pins another). The
+reply is schema-pinned (`prompts/schemas/keyword_curation.json`);
+everything else is action-for-action from the retired flow's
+definition (`docs/history.md`, G2).
+
+**What the model sees, and what the guard refuses** (curate v1.3,
+2026-09-07). The vocabulary sent to the model is the canonical rows
+that are NOT pending review: a row with `CurationStatus = Proposed`
+is an alias in waiting and leaves the list entirely, so it can be
+neither re-proposed nor — as happened when it was merely blocked as
+an alias — made the canonical of the reverse pair. Rejected rows stay
+in the vocabulary as canonicals and go on the DoNotPropose list. The
+guard (`pipeline/lib/curationguard.mjs`) then drops, besides the
+flow's verbatim checks, a canonical that is itself pending, a pair
+whose `[kind]`s differ, and a merge in the wrong direction: the
+plural, joined, hyphenated or abbreviated side is always the alias.
+Every drop is named on stderr (`--progress`).
+
+**Review by list.** The digest's contract is one row at a time in
+SharePoint. For a long queue, export the Keywords list (Curation
+queue view) to a spreadsheet, decide, and apply the verdicts from
+files of row IDs (one per line, `#` comments allowed; dry-run by
+default, `--live` writes):
+
+- `curate.mjs --config config.json --withdraw <ids-file> --live`
+  clears CurationStatus + ProposedCanonical on each listed pending
+  row. The proposal never happened; the row is an ordinary candidate
+  again. (Rejecting — `CurationStatus = Rejected` — is still by hand,
+  and blocks the row for good.)
+- `curate.mjs --config config.json --approve <ids-file> --live` sets
+  CanonicalRef on each listed pending row to the canonical named in
+  its ProposedCanonical, after re-running the guard against the live
+  list: a real canonical, not itself an alias or pending, same kind,
+  right direction. A row whose canonical is itself pending is skipped
+  with a note — approve the far end first, and let the next run
+  re-propose the near one against the final canonical. Skips are
+  listed on stdout after the summary line; nothing else is touched.
+  Withdraw before approving when the queue holds both directions of
+  a pair.
+
+Then `--repoint --live` and `sweep.mjs --rerank --live` as below.
+
+**Undo, in bulk** (`pipeline/unmerge.mjs`): `--all | --modified
+<YYYY-MM-DD> | --chains | --ids-file <path>` selects alias rows and
+clears CanonicalRef (`--reject` also marks them Rejected so they are
+never re-proposed). `--unreject` turns the same selectors on the
+Rejected rows and clears that status instead — for a bulk `--reject`
+that was too broad. Dry-run by default; run log
+`work\unmerge-<stamp>.json`.
 
 **`--repoint` — the librarian junction backfill** (2026-09-03, from
 Curation_Setup's queued follow-ons): after approving merges (or an
