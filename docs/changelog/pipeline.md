@@ -1,5 +1,49 @@
 # Local sweep — release notes
 
+## Admonitions, the whole Material set (2026-09-07)
+
+`wiki` v1.5, `mdlayout` v1.1. Phase 2 taught the wiki five admonition
+types and no way to title one; the rest of
+[Material's reference set](https://squidfunk.github.io/mkdocs-material/reference/admonitions/)
+is now reachable from the dialect and from the pages the render
+composes.
+
+- **The whole alert vocabulary maps.** Beyond GFM's five (whose
+  meanings are fixed — `IMPORTANT` is an aside, `CAUTION` the
+  strongest), a body that carries `> [!EXAMPLE]`, `> [!QUESTION]`,
+  `> [!SUCCESS]`, `> [!FAILURE]`, `> [!ABSTRACT]`, `> [!BUG]` or
+  `> [!QUOTE]` — with Material's documented aliases — gets the right
+  block instead of a blockquote whose first line reads the marker.
+- **An alert can carry a title.** `> [!IMPORTANT] Reviewer, start
+  here` becomes `!!! info "Reviewer, start here"`. Before, a marker
+  with anything after it matched nothing and reached the page as raw
+  text. `> [!NOTE] ""` is Material's no-title form.
+- **Collapsible blocks.** A `-` or `+` after the marker gives `???`
+  (collapsed) or `???+` (open), and `mkdocs.yml` gains
+  `pymdownx.details` for them and `pymdownx.superfences` so a fenced
+  block nested inside an admonition still renders.
+- **`mdlayout.admonition()`** composes one directly. Text a job writes
+  *for the MkDocs lane only* has no GitHub or SharePoint consumer, so
+  it is not bound by the dialect — decision D2 constrains the files on
+  disk, not the render's own pages.
+- **The composed pages use them.** The draft page and the Drafts
+  catalog carry their unreviewed notice as a `!!! draft` block rather
+  than a bold run in a paragraph a reader skims past; About states the
+  render-not-a-source rule in an `!!! info` and folds its provenance
+  list into a `???+ note`; the front page opens Browse with a search
+  tip. `draft` is a custom type — its colour and icon are defined in
+  `extra.css`, the way Material documents — and every type picks up
+  the site's radius and a quieter body.
+
+Gate: `tests/check_wiki.py` 58 checks, six of them new and all failing
+on wiki v1.4, with the `mkdocs build --strict` legs run and the
+rendered HTML checked for `admonition draft`, `details.note[open]` and
+`details.example`. The gates that share `mdlayout` are green
+unchanged: `check_testplangen` 243, `check_local_sweep` 355,
+`check_caseindex` 107, `check_figureindex` 61, `check_draft2pptx` 43,
+`check_draft2docx` 24. No backfill — the site is regenerated on every
+run, and no file on disk changes shape.
+
 ## The wiki dressed for reading (2026-09-07)
 
 `wiki` v1.4. The page **markdown is unchanged** — the format 3.1
