@@ -320,7 +320,8 @@ def main():
           and "Recent: recent.md" in ycfg, ycfg)
     wf = open(os.path.join(out, ".github", "workflows", "pages.yml"), encoding="utf-8").read()
     check("Pages workflow builds strict from the configured branch and deploys",
-          "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf, wf[:300])
+          "branches: [wiki-main]" in wf and "mkdocs build --strict" in wf and "actions/deploy-pages" in wf
+          and "mkdocs-glightbox" in wf and "mkdocs-panzoom-plugin" in wf and "markdown-captions" in wf, wf[:400])
     check("README says the tree is generated", "Do not edit here" in open(os.path.join(out, "README.md"), encoding="utf-8").read())
 
     # ---- 2. links -------------------------------------------------
@@ -415,6 +416,16 @@ def main():
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
           and "sane_lists" in ycfg and 'toc_depth: "2-3"' in ycfg, ycfg)
+    # v1.5: the three figure-presentation plugins. panzoom takes
+    # include_selectors, NOT `images: true` — mkdocs-panzoom-plugin 0.5.2
+    # reads that key off the global config, so it never fires.
+    check("mkdocs.yml wires captions, lightbox and pan/zoom for figures",
+          "- markdown_captions" in ycfg and "- glightbox" in ycfg
+          and "- panzoom:" in ycfg and 'include_selectors: ["img"]' in ycfg
+          and "images: true" not in ycfg, ycfg)
+    check("mkdocs.yml carries Material's mermaid custom fence",
+          "pymdownx.superfences" in ycfg and "name: mermaid" in ycfg
+          and "format: !!python/name:pymdownx.superfences.fence_code_format" in ycfg, ycfg)
     check("the story links back to the plan", "[Merge Events Test Plan](../test-plans/4855-merge-plan.md)" in story, story)
 
     # ---- 3. keyword map -------------------------------------------
@@ -437,9 +448,15 @@ def main():
           and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures) |" in cases
           and "#tc-n01) |" in cases, cases)
     figs = page("figures/index.md")
+    # v1.5: raw HTML, not markdown — markdown_captions would turn a
+    # markdown image into a <figure>, emptying the anchor around it and
+    # moving `width=160` onto the figure. Raw HTML keeps link + width +
+    # alt and takes neither a caption nor a panzoom box.
     check("figure catalog: the image, thumbnail-sized, linking its section",
           "1 figures." in figs
-          and "[![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png){ width=160 }](../test-plans/4855-merge-plan.md#tc-p01)" in figs, figs)
+          and '<a href="../test-plans/4855-merge-plan.md#tc-p01">'
+              '<img src="../media/4855-merge-plan/fig-01-slide-03-merge.png" width="160" '
+              'alt="Figure 1 — Merge before"></a>' in figs, figs)
     if shutil.which("mkdocs"):
         r = run_job(cfg_path, ["--build"])
         check("mkdocs build --strict passes on the rendered tree", r.returncode == 0 and '"built":true' in r.stdout, r.stderr[-800:])

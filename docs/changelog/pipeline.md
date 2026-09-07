@@ -1,5 +1,71 @@
 # Local sweep — release notes
 
+## Figures get their reader affordances, and the sweep gate stops hanging (2026-09-07)
+
+`wiki` v1.5, `tests/check_local_sweep.py` hardening.
+
+**wiki v1.5 — three MkDocs plugins for the corpus's pictures.** (v1.4 is #177's
+styling pass, recorded below; the two landed in parallel.)
+`mkdocs.yml` now enables `markdown_captions` (a body image renders as
+`<figure>` with its alt text as a visible `<figcaption>` — the figure
+index already mints `Figure N — <title>` alt texts, so the captions
+come for free), `glightbox` (click a picture, get it full size) and
+`panzoom` (alt-drag to pan, alt-scroll to zoom, plus full screen, for
+the wide route-measure and matrix figures). Material's own `mermaid`
+custom fence joins them via `pymdownx.superfences`, so a hand-written
+page can carry a diagram — note it is drawn in the READER's browser
+from unpkg.com, and nothing in the generated corpus emits mermaid.
+
+Two things had to be got right:
+
+- **panzoom's `images: true` is inert.** mkdocs-panzoom-plugin 0.5.2
+  reads that key off the *global* mkdocs config rather than the
+  plugin's own, so it never adds the `img` selector and the plugin
+  ships its CSS/JS to pan/zoom nothing. `include_selectors: ["img"]`
+  is read correctly and is what we set. Its matcher also takes only
+  element/class selectors — `img[src$=".svg"]` silently matches
+  nothing.
+- **`mkdocs-img2fig-plugin` is not usable here**, though it is the
+  catalog's better-known captioner. It regex-rewrites raw markdown in
+  `on_page_markdown`, so it mangles `![...](...)` inside fenced code
+  blocks — `docs/design/Figure_Index_Plan.md` documents the SC-4 link
+  shape in one — and it captures the angle-bracket form
+  `![alt](<path with spaces>)` brackets and all, yielding a broken
+  `src`. It also rewrites before the markdown extensions run, which
+  destroys panzoom's wrapper outright.
+
+The figure catalog's thumbnails move to raw HTML for the same reason
+in reverse: `markdown_captions` turns a markdown image into a
+`<figure>`, which cannot live inside a link — the anchor came out
+empty and the figure escaped it, losing the link into the case section
+— and `{ width=160 }` landed on the `<figure>` instead of sizing the
+image. Raw HTML is invisible to both markdown extensions, so a
+thumbnail keeps its link, width and alt, takes no caption or pan/zoom
+chrome, and keeps glightbox from hijacking its navigation link.
+
+**The gate stops hanging.** Every child `check_local_sweep.py` spawns
+is a node job driven by the mock Graph/LLM server and should finish in
+seconds, but all six `subprocess.run` calls had no timeout and — since
+`capture_output=True` redirects stdout and stderr but NOT stdin —
+inherited the gate's own stdin. So a job stuck on a network read (an
+egress proxy that stalls a request rather than refusing it), or one
+that reached the device-code prompt the `DOCINDEX_ALLOW_DEVICE_PROMPT`
+legs deliberately allow, blocked the whole gate forever with no output
+and nothing to say what it was waiting on.
+
+All six now go through one `run_node()` helper: stdin is `/dev/null`,
+so a prompt reads EOF and the job fails fast, and a job that overruns
+`GATE_TIMEOUT` (default 300s, raise it with the env var on a slow
+machine) comes back as an ordinary non-zero result whose stderr names
+the timeout — so the leg that ran it FAILS with its own name. Verified
+both ways: a normal run is 355/355 in about two minutes, and
+`GATE_TIMEOUT=1` fails at "dry run exit 0" with
+`GATE TIMEOUT: node … exceeded 1s` instead of hanging.
+
+The same shape (no timeout, inherited stdin) is still present in the
+other gates — `check_wiki.py`, `check_testplangen.py`,
+`check_draft2pptx.py` and the rest — and is worth the same treatment.
+
 ## The wiki dressed for reading (2026-09-07)
 
 `wiki` v1.4. The page **markdown is unchanged** — the format 3.1

@@ -1,6 +1,36 @@
 /**
- * figurespec.mjs v1.3 — generated figures for TestPlanGen drafts
- * (`prompts/testplan_figures.md` v0.4, testplangen.mjs `--figures`).
+ * figurespec.mjs v1.4 — generated figures for TestPlanGen drafts
+ * (`prompts/testplan_figures.md` v0.5, testplangen.mjs `--figures`).
+ *
+ * v1.4 (two more kinds — docs/changelog/testplangen.md v2.44): the
+ * eight kinds gain "record-diff" and "calibration-chart", each with
+ * its own selection rule, closed vocabulary, grounding check and
+ * renderer, in the v1.3 mould.
+ *
+ *   record-diff (R10) — a field-by-field before/after of the records
+ *     an edit rewrites: one block per record, a row per field, the
+ *     value before and the value after side by side, each row toned
+ *     by what happened to it (changed / same / added / removed). The
+ *     kind route-measure could never carry: an LRS split or merge
+ *     asserts ATTRIBUTE behaviour (a field duplicated onto both
+ *     halves, a length proportioned between them, a field blanked)
+ *     as much as it asserts geometry, and those cases used to fall to
+ *     X1 or take a route-measure that draws the extents correctly and
+ *     says nothing about the fields.
+ *   calibration-chart (R11) — measure against distance for one route,
+ *     one polyline per series (typically before and after a
+ *     re-calibration) with the calibration points as its vertices and
+ *     labelled markers for the ones the case names. The relationship
+ *     itself is the assertion here, which a ruler cannot show: on a
+ *     route-measure figure a calibration point is a labelled tick,
+ *     so a case about a measure/distance slope changing has nowhere
+ *     to put the change.
+ *
+ * Both draw with the elements already in the SlideFigures vocabulary
+ * (rect / line / circle / path / text against the existing palette
+ * classes), so FIG_STYLE is unchanged and svg2pptx / deck2pptx need
+ * no change — they convert the two new kinds as editable shapes with
+ * the code they already have.
  *
  * v1.3 (figure variety — docs/changelog/testplangen.md v2.43): five more
  * figure KINDS beside route-measure / topology / sequence, each with
@@ -89,8 +119,14 @@
 export const FIGURES_BEGIN = "[[[FIGURES BEGIN]]]";
 export const FIGURES_END = "[[[FIGURES END]]]";
 
-export const KINDS = ["route-measure", "topology", "sequence", "timeline", "state", "matrix", "wireframe", "workflow"];
-export const RULES = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9"]; // v1.3: R6 lifecycle, R7 combinations, R8 UI, R9 procedure
+export const KINDS = ["route-measure", "topology", "sequence", "timeline", "state", "matrix", "wireframe", "workflow", "record-diff", "calibration-chart"];
+export const RULES = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11"]; // v1.3: R6 lifecycle, R7 combinations, R8 UI, R9 procedure; v1.4: R10 attributes, R11 calibration
+// v1.4: what happened to one field between before and after. The tone
+// follows the framework's meaning, never taste — cool is the thing the
+// case edits, green a correct new state, red something taken away,
+// muted context that did not move.
+const CHANGE_KINDS = ["changed", "same", "added", "removed"];
+const CHANGE_TONE = { changed: "cool", same: "muted", added: "green", removed: "red" };
 const CONTROL_KINDS = ["field", "dropdown", "button", "checkbox", "radio", "table", "list", "message", "map", "text"];
 const FRAME_KINDS = ["pane", "dialog", "window"];
 const STATE_SHAPES = ["ellipse", "box"];
@@ -114,6 +150,9 @@ const LIMITS = {
   rowsMin: 2, rowsMax: 8, colsMin: 2, colsMax: 6, cells: 48, cellValue: 12,
   controlsMin: 2, controlsMax: 12, controlLabel: 40, messageLabel: 80, columns: 5,
   flowMin: 3, flowMax: 10, flowLabel: 32, flowEdgesMin: 2, flowEdgesMax: 14, flowEdgeLabel: 16,
+  // v1.4
+  recordsMin: 1, recordsMax: 3, fieldsMin: 2, fieldsMax: 12, fieldName: 28, fieldValue: 24,
+  seriesMin: 1, seriesMax: 3, calPointsMin: 2, calPointsMax: 8, calMarkers: 6,
 };
 
 /** The reply's JSON object, fail closed. */
@@ -164,7 +203,13 @@ export function draftCorpus(draft) {
 
 const esc = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const wordIn = (corpus, id) => new RegExp(`(?<![A-Za-z0-9_])${esc(id)}(?![A-Za-z0-9_])`).test(corpus);
-const numIn = (corpus, n) => new RegExp(`(?<![0-9.])${esc(String(n))}(?![0-9.])`).test(corpus);
+// v1.4: a dot only makes a number longer when a DIGIT sits on the far
+// side of it. The old guards were `(?<![0-9.])` / `(?![0-9.])`, which
+// also refused a value that ends a sentence — "carries measure 60."
+// grounded as nothing, so a figure quoting a number the plan states in
+// prose was dropped as invented. Every rejection the old form made is
+// kept: 16 still fails to ground against 16.5, 3.16, 160 and 216.
+const numIn = (corpus, n) => new RegExp(`(?<![0-9])(?<![0-9]\\.)${esc(String(n))}(?![0-9])(?!\\.[0-9])`).test(corpus);
 // v1.3: a whole-word phrase, case-insensitive — states, UI labels, matrix axes
 const phraseIn = (corpus, s) => new RegExp(`(?<![A-Za-z0-9_])${esc(String(s).trim())}(?![A-Za-z0-9_])`, "i").test(corpus);
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -182,7 +227,7 @@ export function verifyFigureSpec(spec, corpus) {
   const section = corpus.cases.get(id);
   if (!section) return [`${id}: not a TC case in the plan`];
   const text = `${corpus.title}\n${corpus.setup}\n${section}`;
-  if (!RULES.includes(String(spec.rule ?? ""))) say("rule is not R1..R9");
+  if (!RULES.includes(String(spec.rule ?? ""))) say(`rule is not ${RULES[0]}..${RULES[RULES.length - 1]}`);
   if (!KINDS.includes(spec.kind)) say(`kind "${spec.kind}" is not one of ${KINDS.join(" | ")}`);
   if (!isStr(spec.title, 160) || !spec.title.startsWith(id)) say("title must start with the case id");
   if (!isStr(spec.caption, LIMITS.caption) || !spec.caption.trim()) say(`caption missing or over ${LIMITS.caption} chars`);
@@ -476,6 +521,100 @@ export function verifyFigureSpec(spec, corpus) {
       if (!ids.has(e.to)) say(`edge to "${e.to}" is not a node id`);
       label(e.label, `edge ${e.from}→${e.to}`, LIMITS.flowEdgeLabel);
       if (e.style !== undefined && !["solid", "dashed"].includes(e.style)) say(`edge ${e.from}→${e.to} style must be solid | dashed`);
+    }
+  } else if (spec.kind === "record-diff") {
+    // v1.4: every field NAME and every non-blank value is a phrase or a
+    // number the case or the Setup tables write. A blank ("") is the
+    // one value that needs no grounding — it says the field carries
+    // nothing on that side — and it is only legal on the side the
+    // change makes empty, so "added" cannot claim a before value and
+    // "removed" cannot claim an after one. "same" with two different
+    // values is a contradiction the renderer would draw as fact.
+    const records = Array.isArray(spec.records) ? spec.records : [];
+    if (records.length < LIMITS.recordsMin || records.length > LIMITS.recordsMax) say("records: 1 to 3 required");
+    const recIds = new Set();
+    for (const r of records) {
+      if (!r || typeof r !== "object") { say("record is not an object"); continue; }
+      groundId(r.id, "record");
+      if (recIds.has(r.id)) say(`record id "${r.id}" repeats`);
+      recIds.add(r.id);
+      label(r.label, `record ${r.id}`);
+      if (r.tone !== undefined && !EVENT_TONES.includes(r.tone)) say(`record ${r.id} tone "${r.tone}" is not a tone`);
+    }
+    const fields = Array.isArray(spec.fields) ? spec.fields : [];
+    if (fields.length < LIMITS.fieldsMin || fields.length > LIMITS.fieldsMax) say("fields: 2 to 12 required");
+    const seen = new Set();
+    for (const fl of fields) {
+      if (!fl || typeof fl !== "object") { say("field is not an object"); continue; }
+      const where = `field "${fl.name}"`;
+      if (!isStr(fl.name, LIMITS.fieldName) || !fl.name.trim()) { say(`field name missing or over ${LIMITS.fieldName} chars`); continue; }
+      if (!phraseIn(text, fl.name)) say(`${where} is not in the case or the Setup tables`);
+      if (records.length > 1 && !recIds.has(fl.record)) say(`${where} record "${fl.record}" is not a record id`);
+      else if (records.length === 1 && fl.record !== undefined && !recIds.has(fl.record)) say(`${where} record "${fl.record}" is not a record id`);
+      const key = `${fl.record ?? (records[0] || {}).id}\u0000${fl.name}`;
+      if (seen.has(key)) say(`${where} repeats on the same record`);
+      seen.add(key);
+      if (!CHANGE_KINDS.includes(fl.change)) say(`${where} change "${fl.change}" is not ${CHANGE_KINDS.join(" | ")}`);
+      const side = (v, name) => {
+        if (v === undefined) { say(`${where} ${name} missing`); return; }
+        if (!isStr(v, LIMITS.fieldValue)) { say(`${where} ${name} must be a string of at most ${LIMITS.fieldValue} chars`); return; }
+        if (v === "") return; // a blank side is the absence of a value, not a claim about one
+        if (!phraseIn(text, v) && !numIn(text, v)) say(`${where} ${name} "${v}" is not in the case or the Setup tables`);
+      };
+      side(fl.before, "before");
+      side(fl.after, "after");
+      if (fl.change === "added" && fl.before !== "") say(`${where} is "added", so its before value must be blank`);
+      if (fl.change === "removed" && fl.after !== "") say(`${where} is "removed", so its after value must be blank`);
+      if (fl.change === "same" && fl.before !== fl.after) say(`${where} is "same", but its before and after values differ`);
+      if (fl.change === "changed" && fl.before === fl.after) say(`${where} is "changed", but its before and after values are identical`);
+    }
+  } else if (spec.kind === "calibration-chart") {
+    // v1.4: every distance and every measure is a number the plan
+    // writes. A series is a function of distance, so its points must
+    // step forward in distance — a chart drawn from unordered pairs
+    // would zigzag and assert a relationship the case does not state.
+    const rt = spec.route;
+    if (!rt || typeof rt !== "object") say("route missing");
+    else {
+      groundId(rt.id, "route");
+      label(rt.distanceLabel, "route distanceLabel");
+      label(rt.measureLabel, "route measureLabel");
+    }
+    const series = Array.isArray(spec.series) ? spec.series : [];
+    if (series.length < LIMITS.seriesMin || series.length > LIMITS.seriesMax) say("series: 1 to 3 required");
+    const sIds = new Set();
+    for (const se of series) {
+      if (!se || typeof se !== "object") { say("series is not an object"); continue; }
+      if (!isStr(se.id, 40) || !se.id.trim()) { say("series id missing"); continue; }
+      if (sIds.has(se.id)) say(`series id "${se.id}" repeats`);
+      sIds.add(se.id);
+      // "Before"/"After" are the renderer's own panel words (the
+      // route-measure precedent); any other id names a thing the plan
+      // writes — a date, a route id, a state
+      if (!["Before", "After"].includes(se.id) && !phraseIn(text, se.id)) say(`series "${se.id}" must be Before, After, or a phrase written in the plan`);
+      label(se.label, `series ${se.id}`);
+      if (se.tone !== undefined && !EVENT_TONES.includes(se.tone)) say(`series ${se.id} tone "${se.tone}" is not a tone`);
+      const pts = Array.isArray(se.points) ? se.points : [];
+      if (pts.length < LIMITS.calPointsMin || pts.length > LIMITS.calPointsMax) { say(`series ${se.id} points: 2 to 8 required`); continue; }
+      let prev = -Infinity;
+      pts.forEach((pt, i) => {
+        if (!pt || typeof pt !== "object") { say(`series ${se.id} point ${i + 1} is not an object`); return; }
+        const okD = groundNum(pt.distance, `series ${se.id} point ${i + 1} distance`);
+        groundNum(pt.measure, `series ${se.id} point ${i + 1} measure`);
+        if (okD) {
+          if (pt.distance <= prev) say(`series ${se.id} point ${i + 1}: distance ${pt.distance} does not follow the point before it`);
+          prev = pt.distance;
+        }
+      });
+    }
+    const markers = Array.isArray(spec.markers) ? spec.markers : [];
+    if (spec.markers !== undefined && (!Array.isArray(spec.markers) || markers.length > LIMITS.calMarkers)) say("markers: at most 6");
+    for (const mk of markers) {
+      if (!mk || typeof mk !== "object" || !mk.at || typeof mk.at !== "object") { say("marker is not an object with an \"at\""); continue; }
+      groundNum(mk.at.distance, `marker "${mk.label}" distance`);
+      groundNum(mk.at.measure, `marker "${mk.label}" measure`);
+      if (!isStr(mk.label, LIMITS.label) || !mk.label.trim()) say(`marker label missing or over ${LIMITS.label} chars`);
+      if (mk.tone !== undefined && !EVENT_TONES.includes(mk.tone)) say(`marker "${mk.label}" tone "${mk.tone}" is not a tone`);
     }
   }
   return f;
@@ -1245,6 +1384,117 @@ function renderWorkflow(spec, out) {
 }
 
 /** The SVG for a verified spec. */
+/** kind "record-diff" (v1.4): one block per record — a header row, then
+ *  a row per field carrying its name, its before value and its after
+ *  value. The row's tone is its change, so the eye reads WHICH fields
+ *  moved before it reads any value; a blank side prints an en dash so
+ *  an empty cell is never mistaken for a missing row. */
+function renderRecordDiff(spec, out) {
+  const records = spec.records;
+  const fields = spec.fields || [];
+  const single = records.length === 1;
+  const rect = (cls, x, y, w, h) => `<rect class="${cls}" x="${fmt(x)}" y="${fmt(y)}" width="${fmt(w)}" height="${fmt(h)}"/>`;
+  const gridW = Math.min(DRAW_W, 560);
+  const left = Math.floor((DRAW_W - gridW) / 2);
+  const nameW = Math.floor(gridW * 0.4);
+  const valW = Math.floor((gridW - nameW) / 2);
+  const rowH = 28;
+  const nameCap = Math.floor((nameW - 12) / CHAR_W.nlabel);
+  const valCap = Math.floor((valW - 12) / CHAR_W.nlabel);
+  let y = 0;
+  for (const rec of records) {
+    const mine = fields.filter((fl) => (single && fl.record === undefined) || fl.record === rec.id);
+    if (!mine.length) continue;
+    // the record's own caption band, toned by the record
+    const tone = rec.tone || "cool";
+    out.push(rect(`node t-${tone}`, left, y, gridW, rowH));
+    out.push(text(`nlabel f-${tone}`, left + 8, y + rowH / 2, cut(rec.label || rec.id, Math.floor((gridW - 16) / CHAR_W.nlabel)), "start"));
+    y += rowH;
+    // the header row — Field | Before | After
+    out.push(rect("cell", left, y, nameW, rowH));
+    out.push(text("legend", left + 8, y + rowH / 2, "Field", "start"));
+    out.push(rect("cell", left + nameW, y, valW, rowH));
+    out.push(text("legend", left + nameW + valW / 2, y + rowH / 2, "Before"));
+    out.push(rect("cell", left + nameW + valW, y, valW, rowH));
+    out.push(text("legend", left + nameW + valW * 1.5, y + rowH / 2, "After"));
+    y += rowH;
+    for (const fl of mine) {
+      const t = CHANGE_TONE[fl.change] || "plain";
+      out.push(rect("cell", left, y, nameW, rowH));
+      out.push(text("nlabel", left + 8, y + rowH / 2, cut(fl.name, nameCap), "start"));
+      out.push(rect(`node t-${t}`, left + nameW, y, valW, rowH));
+      out.push(text("nlabel", left + nameW + valW / 2, y + rowH / 2, cut(fl.before === "" ? "—" : fl.before, valCap)));
+      out.push(rect(`node t-${t}`, left + nameW + valW, y, valW, rowH));
+      out.push(text(`nlabel f-${t === "muted" ? "muted" : t}`, left + nameW + valW * 1.5, y + rowH / 2, cut(fl.after === "" ? "—" : fl.after, valCap)));
+      y += rowH;
+    }
+    y += 14; // the gap between one record's block and the next
+  }
+  return y + 4;
+}
+
+/** kind "calibration-chart" (v1.4): measure (y) against distance (x) for
+ *  one route — one polyline per series with its calibration points as
+ *  vertices, plus the markers the case names. Both axes are drawn to
+ *  the data's own range with the extremes labelled, so a slope change
+ *  between two series is visible rather than normalised away. */
+function renderCalibrationChart(spec, out) {
+  const series = spec.series;
+  const markers = spec.markers || [];
+  const pts = series.flatMap((se) => se.points);
+  const all = [...pts, ...markers.map((m) => m.at)];
+  const dMin = Math.min(...all.map((p) => p.distance)), dMax = Math.max(...all.map((p) => p.distance));
+  const mMin = Math.min(...all.map((p) => p.measure)), mMax = Math.max(...all.map((p) => p.measure));
+  const x0 = 56, x1 = DRAW_W - 24, yTop = 16, yBot = 200;
+  // a zero-width range would divide by zero; centre the single value
+  const sx = (d) => (dMax === dMin ? (x0 + x1) / 2 : x0 + ((d - dMin) / (dMax - dMin)) * (x1 - x0));
+  const sy = (m) => (mMax === mMin ? (yTop + yBot) / 2 : yBot - ((m - mMin) / (mMax - mMin)) * (yBot - yTop));
+  const placer = boundedPlacer();
+  // axes
+  out.push(`<line class="ln edge" x1="${fmt(x0)}" y1="${fmt(yBot)}" x2="${fmt(x1 + 14)}" y2="${fmt(yBot)}" marker-end="url(#ae)"/>`);
+  out.push(`<line class="ln edge" x1="${fmt(x0)}" y1="${fmt(yBot)}" x2="${fmt(x0)}" y2="${fmt(yTop - 14)}" marker-end="url(#ae)"/>`);
+  placer.reserve({ x0: x0 - 2, x1: x1 + 16, y0: yBot - 2, y1: yBot + 2 });
+  placer.reserve({ x0: x0 - 2, x1: x0 + 2, y0: yTop - 16, y1: yBot });
+  // the extremes of each axis, and the axis names
+  for (const [v, x] of [[dMin, sx(dMin)], [dMax, sx(dMax)]]) {
+    out.push(`<line class="ln tick maj" x1="${fmt(x)}" y1="${fmt(yBot)}" x2="${fmt(x)}" y2="${fmt(yBot + 6)}"/>`);
+    out.push(text("measure", x, yBot + 15, fmt(v)));
+  }
+  for (const [v, y] of [[mMin, sy(mMin)], [mMax, sy(mMax)]]) {
+    out.push(`<line class="ln tick maj" x1="${fmt(x0 - 6)}" y1="${fmt(y)}" x2="${fmt(x0)}" y2="${fmt(y)}"/>`);
+    out.push(text("measure", x0 - 10, y, fmt(v), "end"));
+  }
+  const rt = spec.route || {};
+  out.push(text("legend", (x0 + x1) / 2, yBot + 32, cut(rt.distanceLabel || "Distance", 40)));
+  out.push(text("legend", x0, yTop - 24, cut(rt.measureLabel || "Measure", 40), "start"));
+  if (rt.id) out.push(text("id f-ink", x1 + 14, yTop - 24, String(rt.id), "end"));
+  // one polyline per series, vertices as dots
+  series.forEach((se, i) => {
+    const tone = se.tone || (i === 0 ? "cool" : i === 1 ? "green" : "violet");
+    const d = se.points.map((pt, j) => `${j ? "L" : "M"}${fmt(sx(pt.distance))} ${fmt(sy(pt.measure))}`).join(" ");
+    out.push(`<path class="ln free s-${tone}" d="${d}"/>`);
+    for (const pt of se.points) {
+      out.push(`<circle class="node t-${tone} s-${tone}" cx="${fmt(sx(pt.distance))}" cy="${fmt(sy(pt.measure))}" r="3.4"/>`);
+    }
+    const last = se.points[se.points.length - 1];
+    placer.place(out, `id f-${tone}`, se.label || se.id, [
+      { x: sx(last.distance) + 8, y: sy(last.measure), anchor: "start" },
+      { x: sx(last.distance), y: sy(last.measure) - 12, anchor: "middle" },
+      { x: sx(se.points[0].distance) - 8, y: sy(se.points[0].measure), anchor: "end" },
+    ]);
+  });
+  for (const mk of markers) {
+    const tone = mk.tone || "red";
+    const mx = sx(mk.at.distance), my = sy(mk.at.measure);
+    out.push(`<circle class="splitdot" cx="${fmt(mx)}" cy="${fmt(my)}" r="5"/>`);
+    placer.reserve({ x0: mx - 6, x1: mx + 6, y0: my - 6, y1: my + 6 });
+    placer.place(out, `id f-${tone}`, mk.label, [
+      { x: mx, y: my - 15, anchor: "middle" }, { x: mx + 9, y: my - 13, anchor: "start" }, { x: mx - 9, y: my - 13, anchor: "end" },
+    ]);
+  }
+  return Math.max(yBot + 40, placer.maxY + 10);
+}
+
 export function renderFigureSvg(spec) {
   const body = [];
   const meta = {};
@@ -1256,6 +1506,8 @@ export function renderFigureSvg(spec) {
   else if (spec.kind === "matrix") y = renderMatrix(spec, body);
   else if (spec.kind === "wireframe") y = renderWireframe(spec, body);
   else if (spec.kind === "workflow") y = renderWorkflow(spec, body);
+  else if (spec.kind === "record-diff") y = renderRecordDiff(spec, body);
+  else if (spec.kind === "calibration-chart") y = renderCalibrationChart(spec, body);
   else y = renderSequence(spec, body);
   // legend + notes ride below the drawing; v1.2: a figure that drew
   // prior-state ghosts adds its own key after the spec's items
@@ -1267,6 +1519,9 @@ export function renderFigureSvg(spec) {
     for (const sp of spec.spans || []) tones.push([sp.id, sp.tone || "cool"]);
     for (const pt of spec.points || []) tones.push([pt.id, pt.tone || "green"]);
     for (const st of spec.states || []) tones.push([st.id, st.tone || "plain"]);
+    // v1.4: a record-diff's records and a calibration chart's series
+    for (const rc of spec.records || []) tones.push([rc.id, rc.tone || "cool"]);
+    (spec.series || []).forEach((se, i) => tones.push([se.id, se.tone || (i === 0 ? "cool" : i === 1 ? "green" : "violet")]));
     let lx = 0;
     y += 6;
     for (const item of legend) {

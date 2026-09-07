@@ -1,3 +1,77 @@
+# TestPlanGen v2.45 — two more figure kinds: record-diff and calibration-chart (figurespec v1.4, prompt v0.5)
+
+The eight figure kinds become ten. Both new ones are built the way the
+v1.3 five were — a selection rule, a closed vocabulary, a grounding
+check that DROPS rather than repairs, and a renderer — and both draw
+with elements already in the SlideFigures vocabulary, so `FIG_STYLE`
+is unchanged and `svg2pptx` / `deck2pptx` convert them to editable
+PowerPoint shapes with no change at all.
+
+**`record-diff` (rule R10)** — a field-by-field before/after of the
+records an edit rewrites: one block per record (1 to 3), a row per
+field (2 to 12) carrying the field name, its value before and its
+value after, each row toned by what happened to it — `changed` cool,
+`same` muted, `added` green, `removed` red.
+
+This is the figure `route-measure` could never carry. An LRS split or
+merge asserts ATTRIBUTE behaviour — a field duplicated onto both
+halves, a length proportioned between them, a field blanked on the new
+record — as much as it asserts geometry, and those cases used to fall
+to X1 ("words are clearer") or take a route-measure that draws the
+extents correctly and says nothing about the fields. R2 and R10 both
+fire on such a case; the KIND CHOICE table sends it to route-measure
+when the measures changed and to record-diff when the fields did, and
+never both.
+
+The grounding is stricter than a table's: every field name and every
+non-blank value must be written in the case or the Setup tables, and
+the `change` must agree with the two values — `added` requires an
+empty before, `removed` an empty after, `same` requires them equal and
+`changed` requires them different. A spec claiming a field is
+unchanged while showing two different values is a contradiction the
+renderer would otherwise draw as fact, so it drops.
+
+**`calibration-chart` (rule R11)** — measure against distance for one
+route: one polyline per series (1 to 3, typically before and after a
+re-calibration) with the calibration points as its vertices, plus up
+to 6 labelled markers. Both axes are drawn to the data's own range, so
+a slope change between two series is visible rather than normalised
+away.
+
+A ruler cannot show this. On a route-measure figure a calibration
+point is a labelled tick, so a case about the measure/distance
+relationship itself — a measure that no longer matches its distance, a
+re-calibrated stretch — had nowhere to put the change. Series points
+must step forward in distance: a chart drawn from unordered pairs
+would zigzag and assert a relationship the case does not state.
+
+**Ranking.** X6's variety budget ranks
+`R2 > R10 > R3 > R7 > R6 > R8 > R9 > R1 > R11 > R4 > R5`. R10 sits
+just behind R2 because an attribute assertion is as strong as a
+state-change one; R11 sits behind R1 because it is a narrower case of
+the same geometry evidence.
+
+**A grounding fix that came out of it (figurespec v1.4).** `numIn`
+guarded both sides of a number with `(?<![0-9.])` / `(?![0-9.])`,
+which also refused a value that ENDS A SENTENCE: "…and the marker
+carries measure 60." grounded as nothing, so a figure quoting a number
+the plan states in prose was dropped as invented. A dot only makes a
+number longer when a digit sits on the far side of it, so the guards
+are now `(?<![0-9])(?<![0-9]\.)` / `(?![0-9])(?!\.[0-9])`. Every
+rejection the old form made is kept — 16 still fails to ground against
+16.5, 3.16, 160 and 216 — and only the false negative goes. This
+affects all ten kinds, but it bites the two new ones hardest: they
+read values out of Expected Result prose, where route-measure mostly
+reads them out of the Setup tables.
+
+Gates: `tests/check_testplangen.py` 244/244 — the variety leg now
+grounds, renders and converts seven kinds (no unknown element for
+svg2pptx), four more ungrounded / self-contradictory specs drop with
+their named findings, and a new leg pins the `numIn` fix from both
+sides. `check_deck2pptx` 56/56, `check_svg2pptx`, `check_draft2pptx`
+43/43, `check_typecheck`, `check_figureindex` 61/61, `check_caseindex`
+107/107 and `check_local_sweep` 355/355 all green.
+
 # TestPlanGen v2.44 — the progress lines become the pipeline's shared narration (testplangen.mjs v1.23)
 
 The v1.5 progress posture — narrate on stderr, keep stdout's JSON +

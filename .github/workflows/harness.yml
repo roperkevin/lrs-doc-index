@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: pip install PyYAML anthropic mkdocs-material
+      - run: pip install PyYAML anthropic mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions
       - run: python3 test_lrsdoc.py
       - run: python3 check_related.py
       - run: python3 check_regex.py

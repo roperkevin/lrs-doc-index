@@ -778,10 +778,48 @@ def make_gantt_xlsx(fpath):
                ["123", "Lock acquisition rework", "Claire Wang", "Dev One", "Testing", "Yes"]]))
 
 
+# Every child here is a node job driven by the mock Graph/LLM server, so
+# it should finish in seconds. Two things used to let one hang the whole
+# gate with no output and no way to tell what it was waiting on:
+#
+#   - no timeout, so a child stuck on a network read (an egress proxy
+#     that stalls a request instead of refusing it) blocked forever;
+#   - capture_output=True redirects stdout/stderr but NOT stdin, so a
+#     child that reached an interactive prompt — the device-code sign-in
+#     the DOCINDEX_ALLOW_DEVICE_PROMPT legs deliberately allow — sat on
+#     the gate's own stdin waiting for a human who is not there.
+#
+# run_node() closes both holes: stdin is /dev/null, so a prompt reads
+# EOF and the job fails fast, and a job that overruns GATE_TIMEOUT
+# (default 300s, raise it with the env var on a slow machine) comes back
+# as an ordinary non-zero result whose stderr names the timeout, so the
+# leg that ran it FAILS with its own name instead of hanging.
+GATE_TIMEOUT = int(os.environ.get("GATE_TIMEOUT", "300"))
+
+
+def run_node(args, **kw):
+    kw.setdefault("capture_output", True)
+    kw.setdefault("text", True)
+    kw.setdefault("cwd", REPO)
+    kw["stdin"] = subprocess.DEVNULL
+    try:
+        return subprocess.run(args, timeout=GATE_TIMEOUT, **kw)
+    except subprocess.TimeoutExpired as e:
+        out = e.stdout or ""
+        err = e.stderr or ""
+        if isinstance(out, bytes):
+            out = out.decode("utf-8", "replace")
+        if isinstance(err, bytes):
+            err = err.decode("utf-8", "replace")
+        return subprocess.CompletedProcess(
+            args, 124, out,
+            f"{err}\nGATE TIMEOUT: {' '.join(str(a) for a in args)} exceeded "
+            f"{GATE_TIMEOUT}s (raise GATE_TIMEOUT= to allow longer)")
+
+
 def run_curate(cfg_path, extra):
-    return subprocess.run(
+    return run_node(
         ["node", "--experimental-strip-types", CURATE, "--config", cfg_path] + extra,
-        capture_output=True, text=True, cwd=REPO,
         env=dict(os.environ, DOCINDEX_ALLOW_DEVICE_PROMPT="1"),
     )
 
@@ -793,9 +831,9 @@ def run_sweep(cfg_path, extra, env=None, env_extra=None):
     e.setdefault("DOCINDEX_ALLOW_DEVICE_PROMPT", "1")
     if env_extra:
         e.update(env_extra)
-    return subprocess.run(
+    return run_node(
         ["node", "--experimental-strip-types", SWEEP, "--config", cfg_path] + extra,
-        capture_output=True, text=True, cwd=REPO, env=e,
+        env=e,
     )
 
 
@@ -2752,11 +2790,10 @@ def main():
     # ---- leg 3f: doc_crawl — page inventory for link matching ------
     print("== doc crawl leg")
     pages_out = os.path.join(tmp, "pages.json")
-    proc = subprocess.run(
+    proc = run_node(
         ["node", "--experimental-strip-types", DOC_CRAWL,
          "--section", base + "/docsec/", "--section", base + "/docsec2/",
          "--out", pages_out],
-        capture_output=True, text=True, cwd=REPO,
     )
     check("doc crawl exit 0", proc.returncode == 0, proc.stderr[-300:])
     inv = json.load(open(pages_out))
@@ -3038,10 +3075,10 @@ def main():
         json.dump(cfg, f)
     env = dict(os.environ, ANTHROPIC_AUTH_TOKEN="stub-oauth-token")
     env.pop("ANTHROPIC_API_KEY", None)
-    proc = subprocess.run(
+    proc = run_node(
         ["node", "--experimental-strip-types", SWEEP, "--config", cfg_path,
          "--live", "--only", "notes.txt"],
-        capture_output=True, text=True, cwd=REPO, env=env,
+        env=env,
     )
     check("bearer-token run exit 0", proc.returncode == 0, proc.stderr[-600:])
     check("bearer token sent as Authorization, no api key",
@@ -3242,9 +3279,9 @@ def main():
         json.dump(gantt_cfg, f)
 
     def run_gantt(extra):
-        return subprocess.run(
+        return run_node(
             ["node", "--experimental-strip-types", GANTT, "--config", gantt_cfg_path] + extra,
-            capture_output=True, text=True, cwd=REPO, env=dict(os.environ))
+            env=dict(os.environ))
 
     # a sync rooted at a library child (sharePoint.syncedSubfolder): the
     # schedule under "General/" must resolve to <sourceLibrary>/<file>
@@ -3262,9 +3299,9 @@ def main():
     sub_cfg_path = os.path.join(tmp, "gantt-sub-config.json")
     with open(sub_cfg_path, "w") as f:
         json.dump(sub_cfg, f)
-    proc = subprocess.run(
+    proc = run_node(
         ["node", "--experimental-strip-types", GANTT, "--config", sub_cfg_path, "--dry-run", "--only", "schedule2.xlsx"],
-        capture_output=True, text=True, cwd=REPO, env=dict(os.environ))
+        env=dict(os.environ))
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
     check("gantt honours sharePoint.syncedSubfolder when locating a schedule",
           proc.returncode == 0 and out.get("issues_created") == 2, str(out) + proc.stderr[-300:])
