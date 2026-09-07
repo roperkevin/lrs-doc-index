@@ -1,5 +1,56 @@
 # Local sweep — release notes
 
+## sweep v1.64 (2026-09-07 — a source on disk that cannot be read; ops v1.2)
+
+A dry run against the live library ended `processed=150 errors=127`,
+every error the same anonymous line:
+`ziptext-pptx: UNKNOWN: unknown error, read`. The files were all on
+disk — `existsSync`/`statSync` succeed, the size is right — and every
+read failed. That is the OneDrive **Files On-Demand placeholder** that
+did not hydrate (OneDrive paused, signed out or not running, or the
+library folder set to "Free up space"): Windows answers the read with a
+cloud-files error libuv cannot map, Node reports it as `UNKNOWN`, and
+because `readFileSync` fails on the `read` syscall rather than `open`,
+the message carries no path. A night of those tells you nothing.
+
+- **The sweep probes the source before extracting it** (the first
+  64 KiB, one retry after 1.5 s for a transient sync lock). A file on
+  disk that cannot be read now takes the same route as a file missing
+  from disk: with `sweep.graphDownloadFallback: true` its bytes come
+  through Graph and it indexes this run (`--reformat` too); without
+  the fallback it lands a retryable Error whose `LastError` names the
+  file, the cause and both fixes —
+  `source-read: source file exists but cannot be read (UNKNOWN:
+  unknown error, read) — on a OneDrive-synced library this is a Files
+  On-Demand placeholder that did not hydrate (…): in OneDrive mark the
+  library "Always keep on this device", or set
+  sweep.graphDownloadFallback: true … : C:\…\x.pptx`. Error rows
+  retry nightly as before, so once the library hydrates (or the
+  fallback is on) the backlog clears itself; no stamp changes.
+- **The run says how many.** The summary gains `unreadable_local`, the
+  index phase line appends `N on disk but unreadable (OneDrive
+  placeholders?)` when it is non-zero, and each one is noted on stderr
+  with its path as it happens.
+- **ops v1.2 — a read failure names the file.** The shared runner's
+  `zipFile` / `xlsxFile` reads rethrow as
+  `op "ziptext": cannot read zipFile "<path>": <os message>`, so the
+  PAD runner and any lane the probe does not front (a file that turns
+  unreadable between probe and extract) are never anonymous either.
+
+Gates: `check_local_sweep.py` **358/358** (was 355; a directory
+wearing a `.pptx` name is the fixture — it exists, stats and fails
+every read on any OS: Error lane with the named file and cause,
+`unreadable_local` counted, the streak advances on the second night,
+and the Graph-fallback leg indexes it from the served bytes),
+`check_pad_runner.py` 28/28, `check_shapes.py` green.
+
+Rollout: none in code. On the sweep machine open OneDrive, right-click
+the synced library folder → **Always keep on this device**, and let it
+finish hydrating before the next 17:00 run (or set
+`sweep.graphDownloadFallback: true` in `config.json` and let the
+fallback carry the placeholders). The 127 Error rows retry on their
+own; nothing to reset.
+
 ## Lists: a case's fields are definitions (2026-09-07)
 
 `wiki` v1.8, `mdlayout` v1.2.

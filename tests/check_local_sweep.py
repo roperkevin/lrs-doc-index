@@ -6,7 +6,8 @@ end-to-end with the cloud replaced by mocks:
   1. dry-run leg: full compute, zero writes — plan recorded, DocKey
      calibration reported, mock stores untouched
   2. live leg against a mock Graph + mock LLM (stdlib http.server):
-     pptx/txt indexed, pdf skipped, corrupt pptx -> Error lane;
+     pptx/txt indexed, pdf skipped, corrupt pptx -> Error lane,
+     unreadable-on-disk pptx -> Error lane naming the file;
      Doc Index rows carry the v2.8 field set (Products, TextPreview,
      PromptVersion stamped by the URL patch); sidecars written with
      the v2.8 header (info table, <!-- metadata --> comment frame,
@@ -862,6 +863,12 @@ def main():
         f.write(b"%PDF-1.4 image-only (stub pdftotext returns nothing)")
     with open(os.path.join(src_dir, "corrupt.pptx"), "wb") as f:
         f.write(b"this is not a zip archive")
+    # a source that exists on disk but cannot be read (sweep v1.64): on
+    # the real library this is a OneDrive Files On-Demand placeholder
+    # that fails to hydrate — existsSync/statSync succeed, every read
+    # fails with a path-less `UNKNOWN: unknown error, read`. A directory
+    # wearing the file's name reproduces that shape on any OS (EISDIR).
+    os.makedirs(os.path.join(src_dir, "locked.pptx"))
     with open(os.path.join(src_dir, "guide.html"), "w") as f:
         f.write("<html><head><title>x</title><script>var sneaky=1;</script>"
                 "<style>p{color:red}</style></head><body>"
@@ -919,6 +926,7 @@ def main():
         src_item(18, "outside.pdf", "2026-08-05T10:00:00Z", seg="Shared Documents"),
         src_item(19, "guide.html", "2026-08-04T10:00:00Z"),
         src_item(20, "filtered.txt", "2026-08-03T10:00:00Z"),
+        src_item(21, "locked.pptx", "2026-08-02T10:00:00Z"),
     ]
 
     state = MockState()
@@ -1082,7 +1090,7 @@ def main():
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
     check("dry run processed 11 (incl. the PDF-rescued spec.pdf)",
-          out.get("processed") == 11, str(out))
+          out.get("processed") == 12, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run planned the ghost archive without executing",
           out.get("archived") == 1
@@ -1188,15 +1196,15 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 11", out.get("processed") == 11, str(out))
-    check("live errors 2 (corrupt.pptx, missing.txt)", out.get("errors") == 2, str(out))
+    check("live processed 12", out.get("processed") == 12, str(out))
+    check("live errors 3 (corrupt.pptx, missing.txt, locked.pptx)", out.get("errors") == 3, str(out))
     check("live counted 2 out-of-scope docs", out.get("out_of_scope") == 2, str(out))
 
     rows = state.lists[LISTS["docIndex"]]
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 11 docs + the ghost", len(by_name) == 12, str(sorted(by_name)))
+    check("doc index rows for all 12 docs + the ghost", len(by_name) == 13, str(sorted(by_name)))
 
     _, html = by_name.get("guide.html", (None, {}))
     check("html indexed via the htmltotext lane",
@@ -1271,6 +1279,16 @@ def main():
     check("corrupt doc -> Error row", bad.get("IndexStatus") == "Error", str(bad)[:200])
     check("error names the failing step",
           str(bad.get("LastError", "")).startswith("ziptext-pptx:"), str(bad.get("LastError"))[:120])
+    _, locked = by_name.get("locked.pptx", (None, {}))
+    locked_err = str(locked.get("LastError", ""))
+    check("unreadable-on-disk source -> retryable Error naming the file and the OneDrive cause (v1.64)",
+          locked.get("IndexStatus") == "Error"
+          and locked_err.startswith("source-read: source file exists but cannot be read (")
+          and "OneDrive" in locked_err and "graphDownloadFallback" in locked_err
+          and locked_err.rstrip().endswith("locked.pptx"), locked_err[:400])
+    check("unreadable source counted and noted on stderr",
+          out.get("unreadable_local") == 1 and "locked.pptx: local copy unreadable (" in proc.stderr,
+          str(out.get("unreadable_local")) + " " + proc.stderr[-400:])
 
     # sidecars on disk
     md_files = {f: os.path.join(r, f)
@@ -1312,7 +1330,7 @@ def main():
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "11 processed, 2 errors" in status and "corrupt.pptx" in status,
+          "12 processed, 3 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
@@ -1647,8 +1665,8 @@ def main():
             f.write("{}")
     proc = run_sweep(cfg_path, ["--live"])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("second run reprocesses only the two Error docs (not the stamped out-of-scope Skip)",
-          out.get("processed") == 2 and out.get("out_of_scope") == 0
+    check("second run reprocesses only the three Error docs (not the stamped out-of-scope Skip)",
+          out.get("processed") == 3 and out.get("out_of_scope") == 0
           and out.get("archived") == 0, str(out))
     check("no extra LLM calls for stamped docs", state.llm_calls == llm_before,
           f"{state.llm_calls} vs {llm_before}")
@@ -1700,7 +1718,8 @@ def main():
     check("error streaks advance on full runs",
           "Nights stuck" in status2
           and "| corrupt.pptx | 2 |" in status2
-          and "| missing.txt | 2 |" in status2, status2[:600])
+          and "| missing.txt | 2 |" in status2
+          and "| locked.pptx | 2 |" in status2, status2[:600])
     # (same-minute gate runs share one log stamp, so only the newest
     # run of this minute survives as a row — assert shape, not count)
     check("status page carries the recent-runs trend table (v1.34)",
@@ -2835,6 +2854,23 @@ def main():
           str(out) + " " + str(row)[:200])
     check("fallback downloaded the right item",
           state.content_downloads == ["16"], str(state.content_downloads))
+    # the same fallback covers a source that is ON disk but unreadable
+    # (v1.64, the OneDrive placeholder shape): locked.pptx has sat in the
+    # Error lane since leg 2; with its real bytes served through Graph
+    # it indexes this run instead of erroring another night
+    locked_real = os.path.join(tmp, "locked-real.pptx")
+    make_pptx(locked_real, "Locked deck whose local copy never hydrated, fetched through Graph")
+    state.content_bytes["21"] = open(locked_real, "rb").read()
+    proc = run_sweep(cfg_path, ["--live", "--only", "locked.pptx"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    row = [f_ for f_ in state.lists[LISTS["docIndex"]].values()
+           if f_.get("FileName") == "locked.pptx"][0]
+    check("unreadable local copy indexed via Graph download",
+          proc.returncode == 0 and out.get("graph_downloads") == 1
+          and out.get("unreadable_local") == 1 and out.get("errors") == 0
+          and row.get("IndexStatus") == "Indexed" and row.get("LastError", "") == ""
+          and state.content_downloads == ["16", "21"],
+          str(out) + " " + str(row)[:200] + " " + str(state.content_downloads))
     # --reformat takes the same fallback: the alpha source is moved away,
     # the reformat still re-extracts it through Graph (no REFORMAT ERROR)
     alpha_candidates = [os.path.join(cfg["paths"]["sourceLibrary"], "General", "Alpha Plan.pptx"),

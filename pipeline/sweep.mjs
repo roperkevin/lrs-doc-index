@@ -172,6 +172,51 @@ const KNOWN_EXT = ["pptx", "docx", "xlsx", "pdf", "msg", "txt", "html"];
 const IMAGE_EXT = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"];
 
 /**
+ * probeSourceRead — a source that EXISTS on disk can still be
+ * unreadable (sweep v1.64). On a OneDrive-synced library a Files
+ * On-Demand placeholder that fails to hydrate (OneDrive paused, signed
+ * out or not running, the folder set to "Free up space") passes
+ * existsSync/statSync — the placeholder carries the real size — and
+ * then every read fails with Node's `UNKNOWN: unknown error, read`
+ * (the Windows cloud-files error libuv cannot map), a message with no
+ * path in it. One live night did that to 127 of 150 documents, each
+ * stamped an anonymous `ziptext-pptx: UNKNOWN: unknown error, read`.
+ * Reading the first bytes here, before extraction, catches it while
+ * the path is still known: one retry covers a transient sync lock,
+ * then the caller either downloads through Graph
+ * (sweep.graphDownloadFallback, the v1.33 sync-lag route) or lands a
+ * LastError that names the file and the cause. Returns null when the
+ * file reads, else the Error.
+ */
+async function probeSourceRead(localPath, { retries = 1, delayMs = 1500 } = {}) {
+  const buf = Buffer.alloc(65536);
+  for (let attempt = 0; ; attempt++) {
+    let fd = -1;
+    try {
+      fd = fs.openSync(localPath, "r");
+      fs.readSync(fd, buf, 0, buf.length, 0);
+      return null;
+    } catch (e) {
+      if (attempt >= retries) return e;
+    } finally {
+      if (fd >= 0) { try { fs.closeSync(fd); } catch { /* already closed */ } }
+    }
+    await new Promise((r) => setTimeout(r, delayMs));
+  }
+}
+
+/** The LastError for an on-disk source that cannot be read: the OS
+ *  message, the likely cause on a synced library, the two fixes, and
+ *  the path (Node's own message omits it). */
+function unreadableSourceMessage(localPath, e) {
+  return `source file exists but cannot be read (${e.message}) — on a OneDrive-synced ` +
+    `library this is a Files On-Demand placeholder that did not hydrate (OneDrive paused, ` +
+    `signed out or not running, or the folder set to "Free up space"): in OneDrive mark the ` +
+    `library "Always keep on this device", or set sweep.graphDownloadFallback: true to fetch ` +
+    `such files through Graph. Retries nightly until it reads: ${localPath}`;
+}
+
+/**
  * extractDocText — the flow's Switch_ext lane dispatch, shared by
  * indexDoc and the `--reformat` pass (which re-extracts without
  * spending an AI call). withMedia=false skips media extraction:
@@ -1875,6 +1920,7 @@ async function main() {
     out_of_scope: 0,
     archived: 0,
     graph_downloads: 0,
+    unreadable_local: 0,
     cases_upserted: 0,
     cases_removed: 0,
     case_errors: 0,
@@ -1969,12 +2015,19 @@ async function main() {
         // IS the library's "General" child so the path doubles a segment)
         // downloads on demand instead of erroring every reformat
         let rfPath = localPath;
-        if (sw.graphDownloadFallback && !fs.existsSync(rfPath)) {
+        const rfOnDisk = fs.existsSync(rfPath);
+        // ...and a source on disk that cannot be read (v1.64: the
+        // OneDrive placeholder shape) takes the same route
+        const rfReadErr = rfOnDisk ? await probeSourceRead(rfPath) : null;
+        if (rfReadErr) rfsum.unreadable_local = (rfsum.unreadable_local || 0) + 1;
+        if (sw.graphDownloadFallback && (!rfOnDisk || rfReadErr)) {
           const buf = await graph.getItemContentBuffer(srcSiteId, sp.lists.sourceLibrary, item.id);
           rfPath = path.join(tmpDir, "dl", `${srcItemId}-${name}`);
           fs.mkdirSync(path.dirname(rfPath), { recursive: true });
           fs.writeFileSync(rfPath, buf);
           rfsum.graph_downloads = (rfsum.graph_downloads || 0) + 1;
+        } else if (rfReadErr) {
+          throw new Error(unreadableSourceMessage(rfPath, rfReadErr));
         }
         const { docText: rfRaw, lane: rfLane, srcAuthor, srcEditor, srcEdited, mediaFiles, drawings: rfDrawings } = extractDocText({
           sw, cfg, op, writer, pdfTool, ocrTools, setStep: () => {},
@@ -2117,13 +2170,29 @@ async function main() {
       // scope but not on disk yet — fetch its bytes through Graph into
       // a temp file and index from there, instead of an Error night.
       let effPath = localPath;
-      if (sw.graphDownloadFallback && inScope && !fs.existsSync(localPath)) {
+      const onDisk = fs.existsSync(localPath);
+      // a source that IS on disk can still be unreadable (v1.64): a
+      // OneDrive Files On-Demand placeholder that will not hydrate
+      // passes existsSync/statSync and fails every read with a
+      // path-less `UNKNOWN: unknown error, read`. Probe it here, while
+      // the path is known: the Graph fallback covers it exactly like a
+      // missing file; without the fallback the Error names the file
+      // and the cause instead of the extractor's anonymous message.
+      const readErr = inScope !== false && onDisk ? await probeSourceRead(localPath) : null;
+      if (readErr) {
+        summary.unreadable_local++;
+        process.stderr.write(`note: ${name}: local copy unreadable (${readErr.message}) — ${localPath}\n`);
+      }
+      if (sw.graphDownloadFallback && inScope && (!onDisk || readErr)) {
         stepAt("graph-download");
         const buf = await graph.getItemContentBuffer(srcSiteId, sp.lists.sourceLibrary, item.id);
         effPath = path.join(tmpDir, "dl", `${srcItemId}-${name}`);
         fs.mkdirSync(path.dirname(effPath), { recursive: true });
         fs.writeFileSync(effPath, buf);
         summary.graph_downloads++;
+      } else if (readErr) {
+        stepAt("source-read");
+        throw new Error(unreadableSourceMessage(localPath, readErr));
       }
       stepAt("extract");
       await indexDoc({
@@ -2244,7 +2313,10 @@ async function main() {
   if (!sw.smokeFile && files.length > 0) {
     indexPhase.done(
       `${summary.processed} document(s) processed, ${summary.errors} error(s), ` +
-      `${summary.graph_downloads} downloaded through Graph`
+      `${summary.graph_downloads} downloaded through Graph` +
+      (summary.unreadable_local
+        ? `, ${summary.unreadable_local} on disk but unreadable (OneDrive placeholders?)`
+        : "")
     );
     const ghostPhase = prog.phase("ghost reconciliation");
     const liveKeys = new Set();
@@ -2324,7 +2396,10 @@ async function main() {
   } else {
     indexPhase.done(
       `${summary.processed} document(s) processed, ${summary.errors} error(s), ` +
-      `${summary.graph_downloads} downloaded through Graph`
+      `${summary.graph_downloads} downloaded through Graph` +
+      (summary.unreadable_local
+        ? `, ${summary.unreadable_local} on disk but unreadable (OneDrive placeholders?)`
+        : "")
     );
   }
 
