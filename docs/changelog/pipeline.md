@@ -28,7 +28,10 @@ pipeline reads it.
   documentation link, ahead of the crawl inventory and the probe.
 - **Curation**: the official terms and tool names are the canonical
   side of any pair (`curationguard` takes the set; a proposal folding
-  an official title into an unofficial one is dropped by name), and
+  an official title into an unofficial one is dropped by name, and an
+  official canonical is the right side whatever its shape — "Apply
+  Event Behaviors" is the tool's name, so its singular folds into the
+  plural against the A1 rule), and
   `curate --seed-vocabulary` plants the missing terms and tools as
   Keywords rows with the page in Notes, so the classifier's spelling
   reference carries the official forms from then on.

@@ -59,9 +59,13 @@ export function directionProblem(alias, canonical, official = null) {
   const c = normalizeTitle(canonical);
   if (!a || !c) return "";
   // the Esri documentation's own term is the catalog's canonical form:
-  // an official alias may only fold into another official term
-  if (official?.size && official.has(a) && !official.has(c)) {
-    return "the alias is the official Esri term — merge the other way";
+  // an official alias may only fold into another official term, and an
+  // official canonical is the right side whatever its shape — "Apply
+  // Event Behaviors" is the tool's name, so 'apply event behavior' folds
+  // into the plural, against the A1 rule below
+  if (official?.size) {
+    if (official.has(a) && !official.has(c)) return "the alias is the official Esri term — merge the other way";
+    if (official.has(c)) return "";
   }
   const hy = (s) => (String(s ?? "").match(/-/g) || []).length;
   if (a === c) {
