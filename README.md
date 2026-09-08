@@ -119,7 +119,10 @@ surface / product / release in tabs, the latest edits, the catalogs as
 cards — `docs/design/Wiki_Home_Page.md`); v2.6 adds the theme's
 breadcrumbs, a document page's head as tabs, a glossary from the
 official vocabulary (tooltips on every page, a Glossary page) and
-facet bars on the small catalogs. Renders every sidecar into an
+facet bars on the small catalogs; v2.7 a Coverage page (stories and
+the plans citing their issues), cases by tool with hover previews,
+redirects across renames, a History link, a stale badge, a print
+run sheet and a pinned toolchain. Renders every sidecar into an
 MkDocs site (one page per document, catalogs by kind, keyword,
 product, surface, release, person and issue, the test cases and figures with
 anchors, a Recent page) and pushes the tree to a private devtopia

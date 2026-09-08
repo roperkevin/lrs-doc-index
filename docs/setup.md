@@ -1429,6 +1429,24 @@ pymdown's Blocks syntax (`//// html | div.lrs-case` around a
 `/// admonition` — nesting by slash count); the sidecars on disk are
 unchanged.
 
+**After the next pages (wiki v2.7).** Set `wiki.siteUrl` to the
+published URL (the render says so on stderr while it is empty): the
+sitemap it produces drives instant prefetch and the hover previews on
+the case catalogs. The Test cases tab holds three pages — by plan, by
+tool (every case whose words name the tool, across plans) and
+Coverage (every user story with the test plans that cite its issues,
+by release, the gaps first and amber). A document page's facts strip
+carries a History link to the page's commit history in the wiki
+repository when `wiki.repoUrl` is an http(s) URL. A document not
+edited in `wiki.staleDays` (365) carries the clock badge, and the
+Recent page ends with them. A test plan prints as its run sheet. A
+renamed source keeps its old page as a redirect: `slugs.json` in the
+tree remembers every document's previous pages, and mkdocs.yml
+carries a `redirect_maps` entry for each. The generated workflow, the
+README and the `--build` hint pin `mkdocs-material>=9.7,<10` and
+`mkdocs<2` and install `mkdocs-redirects` with the other plugins —
+install the same set on the sweep machine's interpreter.
+
 **The next pages (wiki v2.6).** Breadcrumbs are the theme's
 (`navigation.path`), each crumb linking its index page. A document
 page's summary, related documents and Esri documentation links are one

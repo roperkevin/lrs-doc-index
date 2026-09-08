@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v2.6 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v2.7 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -35,6 +35,48 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v2.7 — the recommendations after v2.6 (docs/design/Wiki_Home_Page.md §6):
+ *
+ *   - COVERAGE (`coverage.md`, in the Test cases tab): every user
+ *     story with the test plans that cite one of its issues, by
+ *     release, the stories with none first and marked — the question
+ *     a QA lead asks most, answered from the sidecars' own issue
+ *     references, no model and no digest.
+ *   - CASES BY TOOL (`cases/by-tool.md`): for every tool the corpus
+ *     names, the cases of every plan whose text names it — a case is
+ *     read across plans — and, on both case catalogs, Material's hover
+ *     previews (`navigation.instant.preview`, `{ data-preview }` on
+ *     the link) so a reader sees the case without leaving the list.
+ *   - STABLE LINKS ACROSS RENAMES: `slugs.json` in the output tree
+ *     remembers every document id's page and its previous pages
+ *     between runs (it is committed with the tree, so a fresh clone
+ *     keeps it); a page that moved gets a redirect from every previous
+ *     page through the mkdocs-redirects plugin, unless another
+ *     document now lives there.
+ *   - A HISTORY LINK beside Open on a document page: the wiki
+ *     repository's commit history of that page (`wiki.repoUrl`, the
+ *     web form) — every nightly push is a commit, so the diff of what
+ *     the sweep changed is already there. Only for an http(s) remote.
+ *   - A STALE BADGE (`wiki.staleDays`, default 365): a document not
+ *     edited in that long carries the clock in the sidebar, the
+ *     Recent page ends with them oldest first, and the front page
+ *     says how many.
+ *   - PRINT: a test plan prints as its run sheet — no header, tabs,
+ *     sidebars or footer; the facts strip, the summary, the cases
+ *     with their badges and checkboxes, a case never split across a
+ *     page break.
+ *   - THE TOOLCHAIN PINNED (`PIP_PACKAGES`): Material is in
+ *     maintenance and MkDocs 2 is incompatible with it, so the
+ *     generated workflow, the README and the --build hint install
+ *     `mkdocs-material>=9.7,<10` and `mkdocs<2`, plus mkdocs-redirects.
+ *   - `wiki.siteUrl`: the render says so on stderr when it is empty —
+ *     instant prefetch and the hover previews read the sitemap, which
+ *     needs it.
+ *   - NOTES AND QUESTIONS as admonitions (`wrapSections`): a body
+ *     section headed "Notes", "Test notes", "Automation Notes" is a
+ *     `note` block, one headed "Open Questions" or "Questions" a
+ *     `question` block, titled with the heading and keeping its id.
  *
  * v2.6 — the next pages (docs/design/Wiki_Home_Page.md §5):
  *
@@ -437,11 +479,19 @@ import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 import { loadVocabulary, TOOL_KINDS } from "./lib/vocabulary.mjs";
 
-export const WIKI_VERSION = "v2.6";
+export const WIKI_VERSION = "v2.7";
 
 /** Days after its last edit a document counts as new (v2.1): the
  *  `new` badge in the sidebar. */
 export const NEW_DAYS = 14;
+/** Days without an edit after which a document is stale (v2.7): the
+ *  `stale` badge; `wiki.staleDays` overrides. */
+export const STALE_DAYS = 365;
+/** What the generated workflow, the README and the --build hint
+ *  install (v2.7): Material pinned below 10 (9.7 is its last feature
+ *  line, in maintenance), MkDocs below 2 (incompatible with it), and
+ *  the four plugins the site uses. */
+export const PIP_PACKAGES = '"mkdocs-material>=9.7,<10" "mkdocs<2" mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions mkdocs-redirects';
 
 // Declaration order is READER order (v2.0): the nav, the front page
 // and the All-documents table list kinds this way, test plans first,
@@ -695,7 +745,7 @@ function draftPage(d, model) {
   // translated for MkDocs like any other body
   let bodyAt = 0;
   for (const m of d.content.matchAll(/^\| \*\*[A-Za-z]+\*\* \|.*\|$/gm)) bodyAt = m.index + m[0].length;
-  let body = normalize(wrapCases(toMkDocs(stripComments(d.content.slice(bodyAt)))));
+  let body = normalize(wrapSections(wrapCases(toMkDocs(stripComments(d.content.slice(bodyAt))))));
   // v1.6: the one thing a reader must not miss, in the site's own
   // admonition type rather than a paragraph they can skim past.
   // v2.1: ONE box, not two — the generator's own banner (the warning
@@ -832,6 +882,9 @@ export function buildModel(docs, kw, opts = {}) {
     // v2.6: the official vocabulary's glossary entries (none without
     // the file — the About and Browse cards then say so by their count)
     glossary: opts.glossary || [],
+    // v2.7
+    staleDays: Number(opts.staleDays) || STALE_DAYS,
+    history: opts.history || "",
   };
 }
 
@@ -880,17 +933,23 @@ export function personRoles(name, docs) {
 }
 
 /** Material's page status for a document (v2.1): "new" when its last
- *  edit is within NEW_DAYS of `now`, else "". `lastEdited` is the
+ *  edit is within NEW_DAYS of `now`, "stale" (v2.7) when it is more
+ *  than `staleDays` ago, else "". `lastEdited` is the
  *  metadata row's `2026-08-01 10:00` (or an ISO stamp); a date that
  *  does not parse is never new. */
-export function pageStatus(lastEdited, now = Date.now()) {
+export function pageStatus(lastEdited, now = Date.now(), staleDays = STALE_DAYS) {
   const s = String(lastEdited || "").trim();
   if (!s) return "";
   const iso = s.replace(" ", "T");
   const t = Date.parse(iso + (iso.includes("T") && !/(Z|[+-]\d\d:?\d\d)$/.test(iso) ? "Z" : ""));
   if (isNaN(t)) return "";
-  return (now - t) / 86400000 <= NEW_DAYS ? "new" : "";
+  const days = (now - t) / 86400000;
+  // v2.7: `stale` past staleDays — the clock badge
+  return days <= NEW_DAYS ? "new" : days > staleDays ? "stale" : "";
 }
+/** "a year" for the default, else "N days". */
+const staleLabel = (days) => (days === 365 ? "a year" : `${days} days`);
+const staleHeading = (days) => `Not edited in ${staleLabel(days)}`;
 
 /** Test cases of a plan body: [{ordinal, heading, anchor}] with the
  *  anchors MkDocs will give the headings. */
@@ -910,6 +969,8 @@ export function planCases(body) {
     ordinal: s.ordinal,
     heading: headAt.get(s.start) || "",
     anchor: anchorAt.get(s.start) || "",
+    // v2.7: the case's own words (heading and body), for the by-tool catalog
+    text: stripComments(lines.slice(s.start, s.end).join("\n")),
   }));
 }
 
@@ -1000,6 +1061,54 @@ export function wrapCases(body) {
   return out.join("\n");
 }
 
+/** A Notes or a Questions section as the admonition of that name
+ *  (v2.7): a heading whose text starts or ends with "note(s)" — the
+ *  slide notes the case grammar sets aside, "Test notes", "Automation
+ *  Notes" — becomes a `note` block titled with the heading, and one
+ *  that starts or ends with "question(s)" — "Open Questions" — a
+ *  `question` block; the block holds the section up to the next
+ *  heading of the same or a higher level and carries the heading's
+ *  id, so a link to the section still lands. Blocks admonition, five
+ *  slashes (a case card inside would be four). Runs AFTER `wrapCases`:
+ *  a case's span ends at the next heading, and a Notes heading must
+ *  still be one when the spans are read, or the last case would
+ *  swallow the block. The ids are derived from the heading's text
+ *  content, as MkDocs derives them (the case badge's span stripped). */
+const NOTES_HEAD = /^notes?\b|\bnotes?$/i;
+const QUESTIONS_HEAD = /^questions?\b|\bquestions?$/i;
+
+export function wrapSections(body) {
+  const lines = String(body ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const taken = new Set();
+  const heads = [];
+  let fence = false;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^```/.test(lines[i])) { fence = !fence; continue; }
+    if (fence) continue;
+    const hm = /^(#{1,6}) (.+)$/.exec(lines[i]);
+    if (!hm) continue;
+    const h = headingId(hm[2].replace(/<[^>]+>/g, ""), taken);
+    heads.push({ at: i, level: hm[1].length, text: h.text, id: h.id });
+  }
+  const out = [];
+  let at = 0;
+  for (let k = 0; k < heads.length; k++) {
+    const h = heads[k];
+    if (h.at < at) continue; // inside a section already wrapped
+    const type = NOTES_HEAD.test(h.text) ? "note" : QUESTIONS_HEAD.test(h.text) ? "question" : "";
+    if (!type || h.level < 2) continue;
+    let end = lines.length;
+    for (let j = k + 1; j < heads.length; j++) if (heads[j].level <= h.level) { end = heads[j].at; break; }
+    out.push(...lines.slice(at, h.at));
+    if (out.length && out[out.length - 1].trim() !== "") out.push("");
+    out.push(block("admonition", lines.slice(h.at + 1, end).join("\n"),
+      { title: h.text, depth: 5, options: { type, attrs: `{id: ${h.id}}` } }), "");
+    at = end;
+  }
+  out.push(...lines.slice(at));
+  return out.join("\n");
+}
+
 /** Figures of a body: [{alt, link, anchor, heading}], one per image link. */
 export function bodyFigures(body) {
   const lines = String(body || "").replace(/\r\n?/g, "\n").split("\n");
@@ -1084,12 +1193,14 @@ const byEdited = (a, b) => String(b.meta.last_edited).localeCompare(String(a.met
 /** The document table. `kind` adds a Kind column (for a table that
  *  mixes kinds: All documents, Recent, a catalog value's page);
  *  `filter` marks it for the type-to-filter box. */
-function docTable(fromPage, docs, { kind = false, filter = false } = {}) {
+function docTable(fromPage, docs, { kind = false, filter = false, oldest = false } = {}) {
   // v1.4: wrapped so the stylesheet can keep the short columns on one
   // line (md_in_html renders the table inside the div)
+  const sorted = docs.slice().sort(byEdited);
+  if (oldest) sorted.reverse();
   return [`<div class="doc-table${filter ? " filterable" : ""}" markdown>`, "",
     kind ? DOC_TABLE_HEAD_KIND : DOC_TABLE_HEAD,
-    ...docs.slice().sort(byEdited).map((d) => docRow(fromPage, d, { kind })),
+    ...sorted.map((d) => docRow(fromPage, d, { kind })),
     "", "</div>"].join("\n");
 }
 
@@ -1199,7 +1310,11 @@ function docPage(d, model) {
   const openLink = m.source_url
     ? `[:material-open-in-new: ${ext ? `Open the .${ext[1].toLowerCase()}` : "Open the original"}](<${m.source_url}>){ .md-button .lrs-open }`
     : "";
-  const strip1 = [m.tools.length ? m.tools.map((t) => pill(p, t)).join(" ") : "", openLink].filter(Boolean).join(" ");
+  // v2.7: the page's history in the wiki repository — every nightly
+  // push is a commit, so the diff of what the sweep changed is there
+  const historyLink = model.history
+    ? `[:material-history: History](<${model.history}${d.page}>){ .md-button .lrs-open }` : "";
+  const strip1 = [m.tools.length ? m.tools.map((t) => pill(p, t)).join(" ") : "", openLink, historyLink].filter(Boolean).join(" ");
   const edited = cell(m.last_edited).slice(0, 10);
   const strip2 = [
     kindLink,
@@ -1217,7 +1332,7 @@ function docPage(d, model) {
   }
   // v2.6: the theme's breadcrumbs (navigation.path) say where the
   // page sits — the v2.0 crumb line is gone
-  const out = [...pageMeta({ boost: 2, status: pageStatus(m.last_edited) }),
+  const out = [...pageMeta({ boost: 2, status: pageStatus(m.last_edited, Date.now(), model.staleDays) }),
     `# ${mdEscape(m.title || d.stem)}`, "",
     '<div class="lrs-doc-facts" markdown>', "",
     ...(strip1 ? [strip1, ""] : []),
@@ -1235,7 +1350,7 @@ function docPage(d, model) {
   if (d.docsRegion) head.push({ tab: "Esri documentation", icon: "book-open-variant", md: docsList(d.docsRegion), block: docsBlock(d.docsRegion) });
   if (head.length >= 2) out.push(headTabs(head), "");
   else for (const h of head) out.push(h.block, "");
-  const body = normalize(wrapCases(toMkDocs(stripComments(dropMissingMedia(d.body, d.mediaMissing)))));
+  const body = normalize(wrapSections(wrapCases(toMkDocs(stripComments(dropMissingMedia(d.body, d.mediaMissing))))));
   if (body) out.push("---", "", body, "");
   return out.join("\n");
 }
@@ -1533,10 +1648,115 @@ function browsePage(model) {
     "</div>", ""].join("\n");
 }
 
+/** A case's link with Material's hover preview (v2.7,
+ *  `navigation.instant.preview` + `{ data-preview }`). */
+const caseLink = (fromPage, d, c) =>
+  `[${linkText(c.heading)}](${rel(fromPage, d.page).replace(/ /g, "%20")}#${c.anchor}){ data-preview }`;
+
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Cases by tool (v2.7): for every tool the corpus names, the cases of
+ *  every plan whose own words name it — whole word, any casing — so a
+ *  case is read across plans. A tool no case names is listed at the
+ *  end; the plan-level view is the kind ledger. */
+function casesByToolPage(model) {
+  const p = "cases/by-tool.md";
+  const plans = (model.kinds.get("Test Plan") || []).slice().sort(byEdited);
+  const cases = new Map(plans.map((d) => [d, planCases(d.body)]));
+  const out = [...pageMeta({ exclude: true, title: "Cases by tool", icon: "hammer-wrench" }), h1("hammer-wrench", "Cases by tool"), "",
+    `Every test case that names a tool, under that tool — read across plans, whichever plan carries it; hover a case to preview it. ${link(p, "cases/index.md", "By plan")} is the other order.`, ""];
+  const at = out.length;
+  out.push('<div class="filter-all" markdown>', "");
+  let total = 0, nTools = 0;
+  const unmatched = [];
+  for (const [tool] of model.tools) {
+    const re = new RegExp(`(^|[^A-Za-z0-9])${escapeRe(tool)}(?![A-Za-z0-9])`, "i");
+    const hits = [];
+    for (const d of plans) for (const c of cases.get(d)) if (re.test(c.text)) hits.push({ d, c });
+    if (!hits.length) { unmatched.push(tool); continue; }
+    total += hits.length;
+    nTools++;
+    out.push(`## ${link(p, catalogPage("tools", tool), tool)} <small>${hits.length} case${hits.length === 1 ? "" : "s"}</small>`, "",
+      ...sortable([
+        "| Plan | # | Case |", "|---|---:|---|",
+        ...hits.map(({ d, c }) => `| ${link(p, d.page, d.meta.title || d.stem)} | ${c.ordinal} | ${caseLink(p, d, c)} |`),
+      ]), "");
+  }
+  out.push("</div>", "");
+  if (unmatched.length) {
+    out.push(`Named by a document but by none of the cases: ${unmatched.map((t) => link(p, catalogPage("tools", t), t)).join(" · ")}.`, "");
+  }
+  out.splice(at, 0, `${total} case${total === 1 ? "" : "s"} under ${nTools} tool${nTools === 1 ? "" : "s"}. Type in the box to filter every tool's table at once.`, "");
+  return out.join("\n");
+}
+
+/** Coverage (v2.7): every user story with the test plans that cite one
+ *  of its issues, by release; a story with no such plan is a gap, a
+ *  story that cites no issue cannot be matched and says so. Read off
+ *  the sidecars' own Issues rows — the same shared-issue edge the
+ *  sweep's related ranking uses. */
+function coveragePage(model) {
+  const p = "coverage.md";
+  const stories = model.kinds.get("User Story") || [];
+  const plans = model.kinds.get("Test Plan") || [];
+  const plansByIssue = new Map();
+  for (const d of plans) for (const i of d.issues) {
+    if (!plansByIssue.has(i.ref)) plansByIssue.set(i.ref, []);
+    if (!plansByIssue.get(i.ref).includes(d)) plansByIssue.get(i.ref).push(d);
+  }
+  const rows = stories.map((story) => {
+    const refs = [...new Set(story.issues.map((i) => i.ref))];
+    const covering = [...new Set(refs.flatMap((r) => plansByIssue.get(r) || []))].sort(byEdited);
+    return { story, refs, covering };
+  });
+  const nCovered = rows.filter((r) => r.covering.length).length;
+  const nNoRef = rows.filter((r) => !r.refs.length).length;
+  const nGap = rows.length - nCovered - nNoRef;
+  const out = [...pageMeta({ exclude: true, title: "Coverage", icon: "shield-check" }), h1("shield-check", "Coverage"), "",
+    "Every user story with the test plans that cite one of its issues, by release — a plan covers a story when the two reference the same devtopia issue. A story with no such plan is listed first in its release and marked; a story that cites no issue cannot be matched and says so.", ""];
+  if (!rows.length) {
+    out.push(admonition("info", "The catalog has no user stories, so there is nothing to cover.", { title: "No stories" }), "");
+    return out.join("\n");
+  }
+  out.push(`${rows.length} user stor${rows.length === 1 ? "y" : "ies"} · ${nCovered} with a test plan · ` +
+    `<span class="lrs-gap">${nGap} without</span>` + (nNoRef ? ` · ${nNoRef} with no issue reference` : "") +
+    ". Type in the box to filter every release at once.", "");
+  const NO_RELEASE = "\u0000none";
+  const byRelease = new Map();
+  for (const r of rows) {
+    const key = r.story.meta.target_release || NO_RELEASE;
+    if (!byRelease.has(key)) byRelease.set(key, []);
+    byRelease.get(key).push(r);
+  }
+  const releases = [...byRelease.keys()].sort((a, b) =>
+    (a === NO_RELEASE) - (b === NO_RELEASE) || a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
+  const rank = (r) => (r.covering.length ? 2 : r.refs.length ? 0 : 1);
+  out.push('<div class="filter-all" markdown>', "");
+  for (const release of releases) {
+    const rs = byRelease.get(release).slice().sort((a, b) =>
+      rank(a) - rank(b) || (a.story.meta.title || a.story.stem).localeCompare(b.story.meta.title || b.story.stem, "en", { numeric: true, sensitivity: "base" }));
+    const gaps = rs.filter((r) => rank(r) === 0).length;
+    const head = release === NO_RELEASE ? "No release" : `Release ${link(p, catalogPage("releases", release), release)}`;
+    out.push(`## ${head} <small>${rs.length} stor${rs.length === 1 ? "y" : "ies"}${gaps ? ` · ${gaps} without a test plan` : ""}</small>`, "",
+      ...sortable([
+        "| Story | Issues | Test plans |", "|---|---|---|",
+        ...rs.map((r) => {
+          const issues = r.refs.length ? r.refs.map((ref) => link(p, catalogPage("issues", ref), ref)).join(" · ") : "—";
+          const covered = r.covering.length
+            ? r.covering.map((d) => link(p, d.page, d.meta.title || d.stem)).join(" · ")
+            : r.refs.length ? '<span class="lrs-gap">none</span>' : '<span class="lrs-gap lrs-gap--noref">no issue reference</span>';
+          return `| ${link(p, r.story.page, r.story.meta.title || r.story.stem)} | ${issues} | ${covered} |`;
+        }),
+      ]), "");
+  }
+  out.push("</div>", "");
+  return out.join("\n");
+}
+
 function casesPage(model) {
   const p = "cases/index.md";
   const out = [...pageMeta({ exclude: true, title: "Test cases", icon: "clipboard-check" }), h1("clipboard-check", "Test cases"), "",
-    "Every test case the catalog's test plans carry, by plan (newest edit first); each row links the case's section on the plan's page.", ""];
+    `Every test case the catalog's test plans carry, by plan (newest edit first); each row links the case's section on the plan's page — hover a case to preview it. Or ${link(p, "cases/by-tool.md", "the same cases by the tool they exercise")}, and ${link(p, "coverage.md", "which stories have a plan")}.`, ""];
   const at = out.length;
   // v2.0: one filter box for the whole page — a plan whose cases all
   // fall out of the filter folds away with them
@@ -1549,7 +1769,7 @@ function casesPage(model) {
     out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "",
       ...sortable([
         "| # | Case |", "|---:|---|",
-        ...cases.map((c) => `| ${c.ordinal} | [${linkText(c.heading)}](${rel(p, d.page).replace(/ /g, "%20")}#${c.anchor}) |`),
+        ...cases.map((c) => `| ${c.ordinal} | ${caseLink(p, d, c)} |`),
       ]));
     out.push("");
   }
@@ -1586,12 +1806,26 @@ function figuresPage(model) {
   return out.join("\n");
 }
 
+/** The documents past `staleDays` (v2.7), oldest first. */
+function staleDocs(model, now = Date.now()) {
+  return model.docs.filter((d) => pageStatus(d.meta.last_edited, now, model.staleDays) === "stale")
+    .sort(byEdited).reverse();
+}
+
 function recentPage(model, n) {
   const p = "recent.md";
   const docs = model.docs.slice().sort(byEdited).slice(0, n);
-  return [...pageMeta({ exclude: true, title: "Recent", icon: "history" }), h1("history", "Recent"), "",
+  const out = [...pageMeta({ exclude: true, title: "Recent", icon: "history" }), h1("history", "Recent"), "",
     `The ${docs.length} most recently edited source documents. ${TABLE_HELP}`, "",
-    docTable(p, docs, { kind: true, filter: true }), ""].join("\n");
+    docTable(p, docs, { kind: true, filter: true }), ""];
+  // v2.7: the other end of the clock
+  const stale = staleDocs(model);
+  if (stale.length) {
+    out.push(`## ${staleHeading(model.staleDays)}`, "",
+      `${stale.length} document${stale.length === 1 ? "" : "s"} whose last edit is more than ${staleLabel(model.staleDays)} ago, oldest first; each carries the clock badge in the sidebar. ${TABLE_HELP}`, "",
+      docTable(p, stale, { kind: true, filter: true, oldest: true }), "");
+  }
+  return out.join("\n");
 }
 
 const FRONT_RECENT = 8;
@@ -1710,6 +1944,12 @@ function frontPage(model, kindFolders, opts, drafts = []) {
     out.push("## Recently edited", "",
       `The ${recent.length} most recently edited source documents; ${link(p, "recent.md", "the Recent page")} goes further back.`, "",
       recentFeed(p, recent, model), "");
+    // v2.7: the other end of the clock, in one line
+    const nStale = staleDocs(model).length;
+    if (nStale) {
+      out.push(`${nStale} document${nStale === 1 ? " has" : "s have"} not been edited in ${staleLabel(model.staleDays)} — ` +
+        `[see them](${rel(p, "recent.md")}#${mkdocsSlug(staleHeading(model.staleDays))}).`, "");
+    }
   }
   out.push("## Browse", "",
     "Seven catalogs over the same documents — every value is a page listing the documents that carry it.", "",
@@ -1717,7 +1957,8 @@ function frontPage(model, kindFolders, opts, drafts = []) {
     ...catalogCards(p, model),
     "</div>", "",
     "## More", "", '<div class="grid cards" markdown>', "",
-    ...card(p, "clipboard-check", "cases/index.md", "Test cases", nCases || null, "Every test case the test plans carry, by plan, linking its section."),
+    ...card(p, "clipboard-check", "cases/index.md", "Test cases", nCases || null, "Every test case the test plans carry, by plan, linking its section — or by the tool it exercises."),
+    ...card(p, "shield-check", "coverage.md", "Coverage", null, "Every user story and the test plans that cite its issues, by release; the stories with none, marked."),
     ...card(p, "image-multiple", "figures/index.md", "Figures", nFigures || null, "Every figure the bodies carry, by document."),
     ...card(p, "book-alphabet", "glossary.md", "Glossary", model.glossary.length || null, "The official vocabulary — tools, widgets, terms — with the definitions the tooltips show."),
     ...card(p, "history", "recent.md", "Recent", null, "The most recently edited source documents."),
@@ -1734,11 +1975,12 @@ function aboutPage(model, opts) {
       ["The front page", "The corpus in numbers — every tile links the page it counts — a Search button (or `/`), the documents by kind, surface, product and release in tabs, the latest edits, and the catalogs as cards."],
       ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's ledger: its documents by surface, then by the tools they name, each row opening to the facts and the summary. A document page links its original file, its catalog values and its related documents."],
       // v2.1: what the blocks on a document page are, and the badges
-      ["A document page", "The breadcrumbs, then the facts strip — the tools as pills, the Open link, kind · surface · product · release · edited — with the full metadata table folded under Details; the summary, the related documents and the Esri documentation links as tabs; then, under the rule, the extracted text — the test cases as a checklist: the id a badge (green positive, amber negative) beside the title, the steps, the Expected result the green line, a group a divider over its cases."],
-      ["Badges", `A page edited in the last ${NEW_DAYS} days carries a New badge in the sidebar; a draft carries the pencil.`],
+      ["A document page", "The breadcrumbs, then the facts strip — the tools as pills, the Open link and the page's History in the wiki repository, kind · surface · product · release · edited — with the full metadata table folded under Details; the summary, the related documents and the Esri documentation links as tabs; then, under the rule, the extracted text — the test cases as a checklist: the id a badge (green positive, amber negative) beside the title, the steps, the Expected result the green line, a group a divider over its cases."],
       ["Browse", "The seven catalogs: keywords, tools, products, surfaces, releases, people and issues. Every value is a page listing the documents that carry it. Surfaces, products and releases are facet bars; the others are tables."],
       ["Glossary", "The official vocabulary from the Esri documentation. Wherever a page names a tool, a widget or a multi-word term, hovering it shows the definition; the Glossary page lists them all."],
-      ["Test cases", "Every case the sweep read out of the test plans, each entry linking the section it came from. The Figures catalog is its sibling, reached from the Browse card below."],
+      ["Test cases", "Every case the sweep read out of the test plans, each entry linking the section it came from — by plan, or by the tool the case names; hover a case to preview it. The Figures catalog is its sibling, reached from the Browse card below."],
+      ["Coverage", "Every user story with the test plans that cite one of its issues, by release; a story with none is a gap and is listed first."],
+      ["Badges", `A page edited in the last ${NEW_DAYS} days carries a New badge in the sidebar; one not edited in ${staleLabel(model.staleDays)} carries the clock, and the Recent page ends with them; a draft carries the pencil.`],
       ["Search, filter, sort", "Search (`/`) indexes the document pages and catalog values, not the tables that repeat them. Every large table filters as you type and sorts on a header click."],
     ]), { title: "How the site is organised", collapse: "open" }), "",
     `Generated by \`pipeline/wiki.mjs ${WIKI_VERSION}\` of the LRS Doc Index pipeline from the catalog's sidecar files${opts.sourceSite ? ` (the LRS Doc Index library on ${opts.sourceSite})` : ""}.`, "",
@@ -1789,7 +2031,8 @@ export function navFor(model, kindFolders, drafts = []) {
   // v2.3: the Figures catalog leaves the nav (it stays a page, reached
   // from the front page's Browse card and from About); the tab is the
   // Test cases page, its section header opening it
-  nav.push("  - Test cases:", "      - cases/index.md");
+  // v2.7: the Test cases tab holds the by-tool order and Coverage
+  nav.push("  - Test cases:", "      - cases/index.md", '      - "By tool": cases/by-tool.md', "      - Coverage: coverage.md");
   if (drafts.length) {
     nav.push("  - Drafts:", "      - drafts/index.md");
     for (const d of drafts) nav.push(`      - ${y(`${d.meta.title || d.stem}${d.when ? ` (${d.when})` : ""}`)}: ${d.page}`);
@@ -1798,7 +2041,7 @@ export function navFor(model, kindFolders, drafts = []) {
   return nav;
 }
 
-function mkdocsYml(model, kindFolders, opts, drafts = []) {
+function mkdocsYml(model, kindFolders, opts, drafts = [], redirects = new Map()) {
   const y = (s) => JSON.stringify(String(s));
   const nav = navFor(model, kindFolders, drafts);
   // v2.0, from the MkDocs catalog review: `Org/repo#123` in a body (the
@@ -1843,6 +2086,7 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // matter) — `new` is the theme's own, `draft` the site's
     "    status:",
     "      draft: material/pencil",
+    "      stale: material/clock-alert-outline",
     // v2.0: tabs + section indexes + prune replace navigation.sections
     // (which would have listed every document under an always-open
     // heading); the rest as v1.4. v2.1: instant navigation (the site
@@ -1851,7 +2095,7 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // file:// page cannot be fetched — and Material's tooltips.
     // v2.5: prefetch on hover and footnote tooltips — Insiders features
     // until Material 9.7 made every one of them free
-    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.path, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, navigation.instant.prefetch, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, content.footnote.tooltips, toc.follow]`,
+    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.path, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, navigation.instant.prefetch, navigation.instant.preview, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, content.footnote.tooltips, toc.follow]`,
     // v2.1: the site's own colours (extra.css defines the variables
     // `primary: custom` leaves to the site, for both schemes)
     "  palette:",
@@ -1870,6 +2114,7 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     "  status:",
     `    new: ${y(`Edited in the last ${NEW_DAYS} days`)}`,
     '    draft: "Machine-generated, unreviewed"',
+    `    stale: ${y(`Not edited in ${staleLabel(opts.staleDays)}`)}`,
     "extra_css:",
     "  - stylesheets/extra.css",
     "extra_javascript:",
@@ -1889,6 +2134,9 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // opened from disk rather than served (search needs it there). It
     // forces `use_directory_urls: false`, hence off by default.
     opts.offline ? "  - offline" : "",
+    // v2.7: a page that moved redirects from where it was
+    ...(redirects.size ? ["  - redirects:", "      redirect_maps:",
+      ...[...redirects].map(([from, to]) => `        ${y(from)}: ${y(to)}`)] : []),
     "  - panzoom:",
     // the plugin's own `images: true` is read off the GLOBAL config by
     // mkdocs-panzoom-plugin 0.5.2 (plugin.py: `config.get("images")`,
@@ -2603,6 +2851,7 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   font-weight: 500;
 }
 .md-typeset .lrs-open:hover { border-color: var(--md-accent-fg-color); color: var(--md-accent-fg-color); background: none; }
+.md-typeset .lrs-doc-facts .lrs-open ~ .lrs-open { margin-left: 0.3em; }
 .md-typeset .lrs-open .twemoji { vertical-align: -0.15em; margin-right: 0.15em; }
 .md-typeset details.lrs-doc-meta { margin: 0 0 1em; border-color: var(--md-default-fg-color--lightest); box-shadow: none; }
 .md-typeset details.lrs-doc-meta > summary { padding-left: 2rem; background: none; font-weight: 500; color: var(--md-default-fg-color--light); }
@@ -2843,6 +3092,40 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .md-typeset .lrs-feed > ul > li > small { flex: 1 1 auto; color: var(--md-default-fg-color--light); font-size: 0.66rem; }
 .md-typeset .lrs-feed > ul > li > .lrs-when { margin-left: auto; font-size: 0.66rem; }
 
+/* coverage (v2.7): a gap is amber */
+.md-typeset .lrs-gap { color: #9a4a00; font-weight: 600; }
+.md-typeset .lrs-gap--noref { color: var(--md-default-fg-color--light); font-weight: 400; font-style: italic; }
+[data-md-color-scheme="slate"] .md-typeset .lrs-gap { color: #ffc27a; }
+
+/* print (v2.7): a test plan prints as its run sheet — the page alone,
+   the facts, the summary, the cases with their badges and checkboxes,
+   a case never split across pages */
+@media print {
+  .md-header, .md-tabs, .md-sidebar, .md-footer, .md-path, .md-top, .md-search,
+  .md-typeset .lrs-open, .md-typeset details.lrs-doc-meta, .md-typeset .lrs-filter,
+  .md-typeset .headerlink, .lrs-hero__actions { display: none !important; }
+  .md-main__inner { margin: 0; }
+  .md-content { max-width: none; }
+  .md-typeset { font-size: 0.7rem; }
+  .md-typeset .lrs-doc-facts { border-left-color: #000; background: none; }
+  .md-typeset .lrs-head .tabbed-labels { display: none; }
+  .md-typeset .lrs-head .tabbed-content { display: block; }
+  .md-typeset .lrs-head .tabbed-block { display: block !important; page-break-inside: avoid; }
+  .md-typeset .lrs-group-head { page-break-after: avoid; break-after: avoid; }
+  .md-typeset h3[id^="tc-"] { page-break-after: avoid; break-after: avoid; }
+  .md-typeset .lrs-case { page-break-inside: avoid; break-inside: avoid; }
+  .md-typeset .lrs-tc { border: 1px solid #999; }
+  .md-typeset .lrs-tc--p, .md-typeset .lrs-tc--n { background: none; color: #000; }
+  .md-typeset .lrs-case .admonition.success { background: none; border: 1px solid #ccc; }
+  .md-typeset .task-list-indicator::before { border: 1px solid #999; }
+  .md-typeset a { color: inherit; text-decoration: none; }
+  .md-typeset abbr { border-bottom: 0; }
+  .lrs-hero { color: #000; background: none; padding: 0.6rem 0; }
+  .lrs-hero__title, .lrs-hero__lead, .lrs-hero__eyebrow, .lrs-hero__hint { color: #000; }
+  .lrs-hero__stats a { color: #000; border-color: #ccc; background: none; }
+  .lrs-hero__stats span { color: #444; }
+}
+
 /* the cards (the front page, Browse, the figure catalog) */
 .md-typeset .grid.cards > ul > li {
   border-radius: var(--lrs-radius);
@@ -2967,7 +3250,7 @@ on:
 `;
 
 const PAGES_BUILD_STEPS = `      - uses: actions/checkout@v4
-SETUP_PYTHON      - run: python -m pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions
+SETUP_PYTHON      - run: python -m pip install ${PIP_PACKAGES}
       - run: python -m mkdocs build --strict
 `;
 
@@ -3026,11 +3309,52 @@ const WIKI_README = (opts) => `# ${opts.siteName}
 
 A generated MkDocs site: every page is rendered from the LRS Doc Index catalog by \`pipeline/wiki.mjs\` and overwritten on the next run. Do not edit here.
 
-Local preview: \`pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions && mkdocs serve\`.
+Local preview: \`pip install ${PIP_PACKAGES} && mkdocs serve\`.
 Publishing: the \`pages\` workflow builds the site on every push to \`${opts.branch}\` and ${opts.deploy === "branch"
   ? "force-pushes it to the \`gh-pages\` branch, which this repository's GitHub Pages serves (Settings → Pages → Source: Deploy from a branch, gh-pages, / (root), once)"
   : "deploys it to this repository's GitHub Pages (Settings → Pages → Source: GitHub Actions, once)"}.
 `;
+
+/** slugs.json (v2.7): every document id's page and its previous pages,
+ *  kept in the output tree between runs — and committed with it, so a
+ *  fresh clone of the wiki repository keeps the memory. */
+const SLUGS_FILE = "slugs.json";
+
+export function readSlugs(outDir) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(outDir, SLUGS_FILE), "utf8"));
+    return j && typeof j === "object" && !Array.isArray(j) ? j : {};
+  } catch { return {}; }
+}
+
+/** The new slug map and the redirects it implies: a document whose
+ *  page moved redirects from every page it had, unless another
+ *  document now renders there. Documents without an id are not
+ *  tracked (nothing stable to key on). */
+export function redirectsFor(docs, previous = {}) {
+  const live = new Set(docs.map((d) => d.page));
+  const slugs = {};
+  const redirects = new Map();
+  for (const d of docs) {
+    if (!d.meta.doc_id) continue;
+    const id = String(d.meta.doc_id);
+    const prev = previous[id] && typeof previous[id] === "object" ? previous[id] : null;
+    const was = [...(Array.isArray(prev?.previous) ? prev.previous : []), ...(prev?.page ? [prev.page] : [])]
+      .filter((pg) => typeof pg === "string" && pg && pg !== d.page && !live.has(pg));
+    const entry = { page: d.page };
+    if (was.length) entry.previous = [...new Set(was)];
+    slugs[id] = entry;
+    for (const pg of entry.previous || []) redirects.set(pg, d.page);
+  }
+  return { slugs, redirects };
+}
+
+/** `https://host/org/repo` from a clone URL, "" for a local path. */
+export function repoWebUrl(repoUrl) {
+  const u = String(repoUrl || "").trim();
+  if (!/^https?:\/\//i.test(u)) return "";
+  return u.replace(/\.git$/i, "").replace(/\/+$/, "");
+}
 
 function rmDocs(outDir) {
   const docs = path.join(outDir, "docs");
@@ -3058,7 +3382,12 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     sourceSite: w.sourceSite || cfg.sweep?.siteUrl || "",
     draftsDir: w.draftsDir || "",
     kindLayout: w.kindLayout || "ledger",
+    staleDays: Number(w.staleDays) || STALE_DAYS,
+    repoUrl: w.repoUrl || "",
   };
+  if (!opts.siteUrl && !opts.offline) {
+    process.stderr.write("wiki: wiki.siteUrl is empty — set it to the published URL: instant prefetch and the case previews read the sitemap, which needs it\n");
+  }
   if (!DEPLOY_MODES.includes(opts.deploy)) {
     throw new Error(`wiki.deploy must be one of ${DEPLOY_MODES.join(", ")}, got "${opts.deploy}"`);
   }
@@ -3076,7 +3405,11 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   const kw = readKeywordMap(workDir);
   const vocab = loadVocabulary();
   const glossary = glossaryEntries(vocab);
-  const model = buildModel(docs, kw, { kindFolders, libDir, glossary });
+  const web = repoWebUrl(opts.repoUrl);
+  const model = buildModel(docs, kw, {
+    kindFolders, libDir, glossary, staleDays: opts.staleDays,
+    history: web ? `${web}/commits/${opts.branch}/docs/` : "",
+  });
   const drafts = readDrafts(opts.draftsDir);
   readPhase.done(
     `${docs.length} sidecar(s) from ${libDir}, ${model.kinds.size} kind(s), ` +
@@ -3140,6 +3473,8 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     renderPhase.step(`drafts — ${drafts.length} page(s)`);
   }
   put("cases/index.md", casesPage(model));
+  put("cases/by-tool.md", casesByToolPage(model));
+  put("coverage.md", coveragePage(model));
   put("figures/index.md", figuresPage(model));
   put("recent.md", recentPage(model, opts.recent));
   put("glossary.md", glossaryPage(glossary, model, vocab));
@@ -3149,15 +3484,19 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
   write(outDir, "overrides/home.html", HOME_HTML);
   write(docsDir, "javascripts/tables.js", TABLES_JS);
-  write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts));
+  // v2.7: a page that moved redirects from where it was
+  const { slugs, redirects } = redirectsFor(docs, readSlugs(outDir));
+  write(outDir, SLUGS_FILE, JSON.stringify(slugs, null, 1) + "\n");
+  write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts, redirects));
   write(outDir, ".github/workflows/pages.yml", pagesWorkflow(opts));
   write(outDir, "README.md", WIKI_README(opts));
   write(outDir, ".gitignore", "site/\n");
-  renderPhase.done(`${pages} page(s) and ${mediaFiles} media file(s) written to ${outDir}`);
+  renderPhase.done(`${pages} page(s) and ${mediaFiles} media file(s) written to ${outDir}` +
+    (redirects.size ? `, ${redirects.size} redirect(s)` : ""));
   return {
     docs: docs.length, drafts: drafts.length,
     kinds: model.kinds.size, keywords: model.keywords.size,
-    keyword_aliases_merged: kw.canonical.size, glossary: glossary.length,
+    keyword_aliases_merged: kw.canonical.size, glossary: glossary.length, redirects: redirects.size,
     pages, media_files: mediaFiles, media_missing: mediaMissing,
     list_backup: kw.file ? path.basename(kw.file) : "",
   };
@@ -3193,7 +3532,7 @@ export function buildSite(outDir, python = pythonFor()) {
     if (/No module named mkdocs/.test(e.message) || /ENOENT/.test(e.message)) {
       throw new Error(
         `${e.message}\nmkdocs is not installed for "${python}" — ` +
-        `${python} -m pip install mkdocs-material mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions ` +
+        `${python} -m pip install ${PIP_PACKAGES} ` +
         "(or point wiki.python / LRSDOC_PYTHON at the interpreter that has it)"
       );
     }

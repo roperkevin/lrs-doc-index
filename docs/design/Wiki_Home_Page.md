@@ -149,11 +149,35 @@ v2.6 (`docs/changelog/pipeline.md`):
    products, releases); the tables stay for keywords, tools, people,
    issues.
 
-What the review still leaves on the table, for a later pass: a
-`navigation.instant.preview` on the case-catalog links (hover shows the
-case), a tags-style `icon:` on the catalog VALUE pages (a person, a
-release), and the `mkdocs-redirects` plugin once the sweep records a
-document's previous slug.
+## 6. After the next pages — shipped as wiki v2.7
+
+The recommendations made after v2.6, in the order they were given;
+all but the Figures tab (declined) are wired in v2.7
+(`docs/changelog/pipeline.md`):
+
+1. **`wiki.siteUrl`** — the render says on stderr when it is empty;
+   the sample config carries the key. Instant prefetch and the case
+   previews read the sitemap, which needs it.
+2. **The toolchain pinned** — `mkdocs-material>=9.7,<10`, `mkdocs<2`,
+   one `PIP_PACKAGES` constant behind the workflow, the README and the
+   `--build` hint; the harness workflow installs the same set.
+3. **Print** — a test plan prints as its run sheet.
+4. **A History link** per document page, into the wiki repository's
+   commit history of that page.
+5. **The stale badge** (`wiki.staleDays`, 365) with the Recent page's
+   closing section and the front page's line. The "release has
+   shipped" half of the idea was left out: nothing in the catalog
+   records which releases have shipped.
+6. **Coverage** — stories and the plans citing their issues, by
+   release, the gaps first.
+7. **Cases by tool** with hover previews (`navigation.instant.preview`)
+   on both case catalogs.
+8. **Stable links across renames** — `slugs.json` and the
+   `mkdocs-redirects` plugin.
+
+Declined: the Figures tab on the document head. Still on the table: a
+`icon:` on the catalog VALUE pages (a person, a release), and a
+"release shipped" signal once the catalog carries one.
 
 ## 6. How to see it
 
