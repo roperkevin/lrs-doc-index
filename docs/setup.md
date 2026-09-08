@@ -1383,7 +1383,8 @@ in Material's admonition vocabulary: on a document page the summary
 is an abstract block, the related documents a foldable block with the
 link icon (open by default, titled with the count), the Esri
 documentation links a block with the book icon, and every test
-case's Expected Result a green success block under its steps. A
+case one card — its heading the head, its fields a label/value grid,
+its Expected Result the green row. A
 document edited in the last 14 days carries a New badge in the
 sidebar; a draft carries the pencil and one amber "Unreviewed draft"
 box (the generator's own banner, retyped). The front page's kinds are

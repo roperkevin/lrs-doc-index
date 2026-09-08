@@ -474,6 +474,17 @@ def main():
           and "test-plans/4855-merge-plan.md\t../media/4855-merge-plan/fig-02-slide-04-lock.png" in open(report, encoding="utf-8").read()
           and "media link(s) have no file in the library" in r.stderr, r.stderr[-400:])
     check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
+    # v2.1: every TC case's content sits in a .lrs-case wrapper under
+    # its heading (one card), deck sections do not; a def list after an
+    # image line starts its own block
+    check("each TC case's content is wrapped for the card, up to the next heading",
+          plan.count('<div class="lrs-case" markdown>') == 3 and plan.count("</div>") == plan.count("<div")
+          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n<div class=\"lrs-case\" markdown>\n\nGroup\n:   Normal Routes" in plan
+          and "</div>\n\n## Notes | pipes" in plan
+          and "*(missing figure: Figure 2 — Lock dialog)*\n\nSteps\n:" in plan
+          and page("drafts/4855-conflict-story-draft-20260906-2300.md").count('<div class="lrs-case" markdown>') == 1
+          and '\n\n!!! success "Expected result"' in page("drafts/4855-conflict-story-draft-20260906-2300.md")
+          and "</div>\n\n## Issue Trace" in page("drafts/4855-conflict-story-draft-20260906-2300.md"), plan[-1800:])
     check("a case's own attr_list anchor survives the body escape",
           "### TC-P01 — Merge preserves measures { #tc-p01 }" in plan
           and "\\{ #tc-p01 }" not in plan, plan[-900:])
@@ -729,8 +740,10 @@ def main():
               '<div class="admonition abstract">' in html and '<p class="admonition-title">Summary</p>' in html
               and '<details class="related" open="open">' in html and "Related documents (2)" in html
               and '<div class="admonition docs">' in html and 'data-md-color-primary="custom"' in html, html[-3000:])
-        check("the built draft page: a success block per Expected result, the draft badge with its tooltip in the nav",
+        check("the built draft page: a success block per Expected result inside the case card, the draft badge with its tooltip in the nav",
               '<div class="admonition success">' in dhtml and '<p class="admonition-title">Expected result</p>' in dhtml
+              and dhtml.count('<div class="lrs-case">') == 1 and html.count('<div class="lrs-case">') == 3
+              and dhtml.find('<div class="lrs-case">') < dhtml.find('<div class="admonition success">')
               and 'class="md-status md-status--draft" title="Machine-generated, unreviewed"' in dhtml, dhtml[-2500:])
         idx_path = os.path.join(out, "site", "search", "search_index.json")
         idx = open(idx_path, encoding="utf-8").read() if os.path.isfile(idx_path) else ""
@@ -850,7 +863,8 @@ def main():
           and "--md-admonition-icon--related" in css and ".md-typeset .admonition.related" in css
           and "--md-admonition-icon--docs" in css and ".md-typeset .admonition.docs" in css
           and ".md-typeset figcaption" in css and "tbody tr:nth-child(even)" in css
-          and ".md-typeset .lrs-facts" in css and ".md-typeset .lrs-figures" in css, css[:300])
+          and ".md-typeset .lrs-facts" in css and ".md-typeset .lrs-figures" in css
+          and ".md-typeset .lrs-case dl {\n  display: grid;" in css and ".md-typeset .lrs-case .admonition.success" in css, css[:300])
     # the model's own rules, through the module: natural order for the
     # catalogs, the issue host, a person's roles, a keyword's neighbours
     unit = subprocess.run(

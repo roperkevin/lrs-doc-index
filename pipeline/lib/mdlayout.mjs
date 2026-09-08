@@ -261,16 +261,22 @@ export function fieldsToDefList(text) {
       break;
     }
     i--;
-    // the run, split around the fields that are admonitions
+    // the run, split around the fields that are admonitions. Each
+    // block starts after a blank line: python-markdown reads the line
+    // before a `:   definition` as its term (an image line just above
+    // the fields became a term) and a `!!!` line glued to a paragraph
+    // as more of that paragraph
+    const sep = () => { if (out.length && out[out.length - 1].trim() !== "") out.push(""); };
     let pending = [];
     const flush = () => {
-      if (pending.length) out.push(defList(pending.map(([term, body]) => [term, body.join("\n")])), "");
+      if (pending.length) { sep(); out.push(defList(pending.map(([term, body]) => [term, body.join("\n")])), ""); }
       pending = [];
     };
     for (const [term, body] of fields) {
       const adm = FIELD_ADMONITIONS[term.toLowerCase()];
       if (!adm) { pending.push([term, body]); continue; }
       flush();
+      sep();
       out.push(admonition(adm[0], body.join("\n"), { title: adm[1] }));
     }
     flush();

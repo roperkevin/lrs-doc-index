@@ -27,7 +27,17 @@ links are unchanged — the format 3.1 contract the gate pins holds.
   the same way; Group, Case, Steps and Trace stay a definition list,
   split around it. `FIELD_ADMONITIONS` is the whole rule; the files on
   disk keep the bold-label bullet GitHub and the SharePoint preview
-  read.
+  read. And **every case is one card**: `wrapCases` puts the content
+  under a `### TC-…` heading in a `.lrs-case` div (after the
+  translation, whose escape would otherwise turn the div into text;
+  deck-shaped `## Slide N` cases stay sections), and the stylesheet
+  draws the heading as the card's head, the fields as a label/value
+  grid with a shared label column, and the Expected result as a green
+  row of that grid rather than a boxed admonition inside a box. A
+  definition list or an admonition the translator emits now always
+  starts after a blank line — python-markdown read an image line just
+  above the fields as the first term, and a `!!!` line glued to a
+  paragraph as more of it.
 - **One draft box, not two.** A draft page carried the render's own
   "Unreviewed draft" block and, under the rule, the generator's own
   `> [!WARNING]` banner saying the same thing. The banner is now
