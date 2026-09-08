@@ -12,8 +12,9 @@ from __future__ import annotations
 from .classify import classify
 from .curate import curate
 from .generate import generate
+from .review import review
 
-TASKS = {"classify": classify, "curate": curate, "generate": generate}
+TASKS = {"classify": classify, "curate": curate, "review": review, "generate": generate}
 
 
 def run(task: str, payload: dict, on_delta=None):

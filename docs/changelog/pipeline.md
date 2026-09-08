@@ -1,5 +1,48 @@
 # Local sweep — release notes
 
+## curate v1.5 (2026-09-08 — the second reader; keyword_review 1.0.0)
+
+Two rounds of review by list — 176 proposals, then 52 — were the same
+work each time: run the deterministic guard, read what survived by
+eye under the word test, write the approve and withdraw files, apply
+them. The reading is a model's job too, and a model that did not
+make the proposal is the right one to check it.
+
+- **`prompts/keyword_review.md` 1.0.0** — the second reader. Input:
+  the pending queue as `<id> | <alias> [kind] -> <canonical> [kind] |
+  <reason>` lines plus the official vocabulary; output one verdict per
+  id — approve / withdraw / hold — under the same word test as the
+  proposer, with the official title always the canonical, the
+  proposer's reason a claim to check rather than evidence, and hold
+  reserved for a pair that passes the test but whose side is unclear.
+  `lrsdoc/tasks/review.py` coerces ids, holds an unknown verdict,
+  drops a bad id.
+- **`curate --review`** — the pass over the pending queue: the guard
+  first (a failing pair withdrawn without a model call; a chain held),
+  then the reader in chunks of `curation.review.chunk`; approvals
+  apply like `--approve` (canonical re-checked at apply time, far end
+  of a chain before the near), withdrawals like `--withdraw`, holds and
+  missing verdicts stay pending. The digest lists APPROVED, WITHDRAWN
+  and held rows with the reader's reason; the run log every outcome.
+- **`curation.review.enabled`** — the weekly run ends with the pass
+  over this run's proposals and the carryover (`review_*` counters on
+  the summary line), and `ops/run_curate.cmd` follows with
+  `--repoint --live` and `sweep --rerank --live`. The Saturday job is
+  hands-off; `unmerge --ids-file` is the undo.
+- `writeDigest()` factored out; a written proposal is now reflected
+  in memory so a pass in the same run sees it.
+
+Gates: `check_local_sweep.py` **386/386** (was 378: the review turn's
+shape, guard-decided and chained pairs never reaching the model, dry
+vs live, approve / withdraw / hold / no-verdict outcomes, the digest,
+the enabled weekly run), `test_lrsdoc.py` 56/56 (seven prompts; the
+review task's coercions).
+
+Rollout: `git pull`; add `"review": {"enabled": true}` to the
+`curation` block (the sample carries it). The next Saturday run
+proposes, reviews, merges, re-points and re-ranks on its own; read
+the digest on Monday.
+
 ## sweep v1.65 (2026-09-07 — the official vocabulary; curate v1.4, doc_vocab v1.0)
 
 "It doesn't do a great job of identifying tools." It did not: the

@@ -592,6 +592,29 @@ default, `--live` writes):
 
 Then `--repoint --live` and `sweep.mjs --rerank --live` as below.
 
+**The second reader** (curate v1.5, `prompts/keyword_review.md`) is
+the review by list without the list: every pending proposal is
+judged again, by a model that did not make it, under the same word
+test — approve, withdraw or hold — and the verdicts apply exactly as
+`--approve` / `--withdraw` would. The deterministic guard runs first
+(a wrong-way or mismatched pair is withdrawn without a model call; a
+chain is held), then the rest go to the reader in chunks of
+`curation.review.chunk` (100) with the official vocabulary alongside.
+An approval sets CanonicalRef; a withdrawal clears the proposal; a
+hold, or a proposal the reader returned no verdict for, stays pending
+for you, and the digest lists all three with the reader's reason.
+
+- `"review": {"enabled": true}` in the `curation` block makes every
+  weekly run end with the pass, and `ops\run_curate.cmd` follows it
+  with `--repoint --live` and `sweep.mjs --rerank --live` (no-ops when
+  nothing merged). The Saturday job is then hands-off; the digest is
+  its audit log, and `unmerge.mjs --ids-file` undoes a wrong call.
+- `curate.mjs --config config.json --review [--live]` runs the pass
+  alone over the current queue (dry by default, model still called).
+- `model` / `effort` / `maxTokens` under `review` override `llm.*`
+  for the reader's call only — a different model is a real second
+  opinion.
+
 **Undo, in bulk** (`pipeline/unmerge.mjs`): `--all | --modified
 <YYYY-MM-DD> | --chains | --ids-file <path>` selects alias rows and
 clears CanonicalRef (`--reject` also marks them Rejected so they are
