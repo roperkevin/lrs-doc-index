@@ -22,6 +22,9 @@ revision bug survived two review rounds. This pins the whole
   6. docRevision: [Vv]\\d{1,2} opening a token at the very end of the
      base filename — TestPlanV1/Report_V4/spec_v2 match; trailing
      _1, 2_35, and 3+-digit runs don't
+  7. products: the four product lines from full names and standalone
+     acronyms (RH / APR / UN / ADM, the ADMRH and UNAPR compounds), the
+     date, camelCase and prose traps
 
 Cases are inline (no binary fixtures), so this suite runs anywhere
 Python + Node 22 exist — it is part of the fixture-free CI job.
@@ -111,6 +114,10 @@ CASES = [
     {'file': 'AprToken.pptx', 'title': '', 'content': 'APR event layers only'},
     {'file': 'CamelTrap.pptx', 'title': '', 'content': 'RHLabels and UNAPRx are words'},
     {'file': 'LowerTrap.docx', 'title': '', 'content': 'un rh apr as lowercase prose'},
+    # -- 8 (v1.6): Address Data Management ---------------------------------
+    {'file': 'ADM_Site_Addresses.docx', 'title': '', 'content': ''},
+    {'file': 'AdmFull.pptx', 'title': 'Address Data Management workflows', 'content': ''},
+    {'file': 'AdmCamel.pptx', 'title': '', 'content': 'ADMSettings and adm lowercase are not the product'},
 ]
 
 json.dump(CASES, open('rex_cases.json', 'w', encoding='utf-8'))
@@ -172,10 +179,14 @@ for f, want in (('TestPlanV1.docx', 'V1'), ('Report_V4.pptx', 'V4'),
     check(byfile[f]['docRevision'] == want,
           f"docRevision: {f} -> {want!r} (got {byfile[f]['docRevision']!r})")
 
-# -- 7: products (v1.4, PD-1) ---------------------------------------------
-RH, APR, UN = 'Roads & Highways', 'Pipeline Referencing', 'Utility Network'
+# -- 7: products (v1.4, PD-1; v1.6 ADM) ------------------------------------
+RH, APR, UN, ADM = 'Roads & Highways', 'Pipeline Referencing', 'Utility Network', 'Address Data Management'
 for f, want in (('RH_Roundabouts_TestPlan.pptx', [RH]),
-                ('Compound.pptx', [RH, APR, UN]),
+                # v1.6: ADMRH is the ADM + RH pairing, so it claims both
+                ('Compound.pptx', [RH, APR, UN, ADM]),
+                ('ADM_Site_Addresses.docx', [ADM]),
+                ('AdmFull.pptx', [ADM]),
+                ('AdmCamel.pptx', []),
                 ('FullNames.docx', [APR, UN]),
                 ('AndName.docx', [RH]),
                 ('DateTrap.pptx', []),

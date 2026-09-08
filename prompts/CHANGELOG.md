@@ -5,6 +5,24 @@ front-matter format (2026-09-06) are the ones the old file headers
 carried; their per-round notes are in `docs/history/patches-README.md`,
 `docs/changelog/testplangen.md` and `docs/changelog/pipeline.md`.
 
+- 2026-09-08 — docindex_classify **4.0.0**: the classification
+  reads the pipeline's own evidence and says more. Two new inputs —
+  `Folder` (the source-library folder the file sits in) and `Signals`
+  (the block `pipeline/lib/docsignals.mjs` assembles: the folder's
+  kind, the products and known tools the text names literally, the
+  scored surface evidence) — and two new outputs, `surfaces` (every
+  surface the document covers, primary first) and `products` (from
+  the closed four-name list, Address Data Management new). `surface`
+  gains **REST** (the Linear Referencing Service API) beside Pro /
+  Experience Builder / Server / Enterprise, with rules that say what
+  each means and which is dominant; `docKind`'s Doc Review rule names
+  the signs (help-topic titles with comments, Topic / Comment / Status
+  columns, "doc review" in the name) and makes the team's Doc Reviews
+  folder the default; `tools` rises to 0–10, must include every known
+  tool the signals list, and reads the KnownTools block grouped by
+  kind with the surface each implies. Schema: eleven required fields.
+  The stamp becomes `v4.0.0`; the sweep reconciles the reply with the
+  signals after the call (docs/setup.md §18).
 - 2026-09-08 — keyword_curation **2.2.0**: at most 100 proposals per
   call (was 50) — the second reader checks every one and `--drain`
   passes see whatever was left out, so a smaller cap only added

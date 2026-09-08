@@ -206,9 +206,12 @@ export async function generate(cfg, promptName, inputs, opts = {}) {
  * object (schema-pinned). Throws on transport failure, refusal,
  * truncation or unparseable output — the Error lane, as in the flow.
  */
-export async function classifyDoc(cfg, { fileName, docText, existingKeywords, knownTools = "" }) {
+export async function classifyDoc(cfg, { fileName, docText, existingKeywords, knownTools = "", folder = "", signals = "" }) {
   const res = await runTask(cfg, "classify", {
-    inputs: { FileName: fileName, ExistingKeywords: existingKeywords, KnownTools: knownTools || "(none)", DocText: docText },
+    inputs: {
+      FileName: fileName, Folder: folder || "(library root)", Signals: signals || "(none)",
+      ExistingKeywords: existingKeywords, KnownTools: knownTools || "(none)", DocText: docText,
+    },
     options: bridgeOptions(cfg),
   });
   return res.data;

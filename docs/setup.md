@@ -1396,7 +1396,7 @@ Documents · Browse · Test cases & figures · Drafts · Recent · About —
 and, in each tab, a sidebar of that tab's pages. Documents lands on
 one table of every document; each kind is a collapsible section whose
 header opens the kind's table and whose entries are its documents.
-Browse lands on the six catalogs as cards; each catalog is a section
+Browse lands on the seven catalogs as cards; each catalog is a section
 whose entries are its values. Every table of six rows or more filters
 as you type and sorts on a header click (the test-case catalog has one
 box for the whole page). A document page opens with a breadcrumb
@@ -1547,9 +1547,76 @@ after a release adds tools. Widgets: edit the `widgets` array by hand
 Config: `sweep.vocabularyFile` points elsewhere (default the committed
 file). No file = the pre-v1.65 behaviour, with one stderr note.
 
-**Prompt 3.1.0 and the PromptVersion stamp.** The classify prompt's
-version is the reindex trigger (§7): every document re-classifies on
-its next sweep, at `maxDocsPerRun` per night, so the official names
-replace the invented ones across the corpus. Pin
-`sweep.promptVersion: "v3.0.0"` to defer that respend.
+**The prompt version and the PromptVersion stamp.** The classify
+prompt's version is the reindex trigger (§7): every document
+re-classifies on its next sweep, at `maxDocsPerRun` per night, so the
+official names replace the invented ones across the corpus. Pin
+`sweep.promptVersion` to the deployed stamp to defer that respend.
+
+## 18. Classification signals: folder, surfaces, products, tools (docsignals.mjs)
+
+Sweep v1.66 / classifier **4.0.0** answer four complaints at once:
+documentation reviews landing in `Other`, no way to filter by REST,
+products missed when the text never abbreviates them, and tools the
+document names left off the row. Each has evidence a regex can see
+before the model runs, and a rule the sweep applies after it
+(`pipeline/lib/docsignals.mjs`, gated by `tests/check_docsignals.py`).
+
+- **The folder is a kind.** The document's folder under the source
+  library root reaches the classifier as `Library folder:` and, when
+  a segment of it matches `sweep.folderKinds` (default: `Doc
+  Reviews`, `Doc Review`, `Documentation Reviews` → `Doc Review`;
+  case, spacing and depth insensitive), the prompt says so and the
+  sweep applies it: with `folderKindWins` (the default) the folder's
+  kind replaces whatever the model said — the team's own filing
+  outranks a reading of the text; `false` replaces only `Other`. A
+  config `folderKinds` REPLACES the default map, so a `"Test Plans":
+  "Test Plan"` entry needs the doc-review entries beside it. The
+  summary counts `kind_from_folder`.
+- **REST is a surface, and a document can have several.** `Surface`
+  (the choice, the sidecar's Doc row, the wiki page) is the PRIMARY
+  surface — one of Pro, Experience Builder, REST, Server, Enterprise,
+  Other; `Surfaces` (a new Doc Index column, a sidecar row printed
+  when there is more than one, the wiki's seventh catalog) is every
+  surface the document covers, primary first. The prompt's rules say
+  what each means (REST: the Linear Referencing Service operations,
+  endpoint paths, request/response JSON; Server: the service itself;
+  Enterprise: the portal). The sweep scores the text's own evidence —
+  `ArcGIS Pro`, `Experience Builder`, `ExB`, `/rest/services`,
+  `LRServer`, `f=json`, an operation name, the widgets and GP tools it
+  names, the file name — and a surface at STRONG that the model left
+  out is appended; when the model said Other, the strongest stands in
+  (`surface_from_signals`). Add the REST choice and the `Surfaces`
+  column to the live list first (`schemas/SPList_DocIndex.csv`,
+  `docs/sharepoint-notes.md`); until the column exists rows are
+  written without it (`doc_fields_dropped`).
+- **Products: the regex floor plus the model's reading.**
+  `RegexExtract` v1.6 detects the four lines from names and acronyms
+  (RH, APR, UN, **ADM** — Address Data Management, new; `ADMRH` is ADM
+  + RH); the classifier returns `products` from the same closed list
+  when the text implies one without naming it (stationing → Pipeline
+  Referencing, site addresses → Address Data Management). The row
+  carries the union in canonical order (`products_from_model`).
+- **Tools: the text's names plus the model's.** `lib/vocabulary.mjs`
+  scans the text for every official name — official casing, or any
+  casing followed by "tool" / "widget" / "operation", an alias (`SLD`,
+  `DynSeg`, `RCE`), a REST operation as a case-sensitive token
+  (`applyEdits`; a lowercase one such as `translate` only as a path
+  segment or before "operation" / "request") — longest first, and
+  the sweep unions them with the model's normalized list
+  (`tools_from_text`). The prompt lists what the text names as a
+  signal and the KnownTools block is grouped by kind with the surface
+  each implies (GP tools and ribbon → Pro, widgets → Experience
+  Builder, REST operations → REST). The hand-kept part of
+  `lrs_vocabulary.json` now carries a `kind` per entry (`widget`,
+  `ribbon`, `app`, `rest`) and an `aliases` map; `doc_vocab.mjs`
+  carries both over.
+
+The narration shows each document's signals (`signals — …`) and what
+they changed (`classified in 4s — Doc Review / REST + Experience
+Builder, 4 keyword(s), 2 tool(s) (kind from the folder, 2 surface(s)
+from the text)`); the summary JSON carries the four counters.
+Rollout: add the choice value and the column, `git pull`, and let the
+4.0.0 stamp backfill the corpus at `maxDocsPerRun` a night — pin
+`sweep.promptVersion: "v3.1.0"` (or the deployed stamp) to defer.
 

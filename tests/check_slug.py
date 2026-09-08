@@ -90,9 +90,10 @@ def main():
             "S.mintStem({title:'X',fileName:'x.pptx',kind:'Other',ids:[{repo:'a',number:12,source:'url'}]}, new Set()),"
             "S.mintStem({title:'X',fileName:'x.pptx',kind:'Other',products:['Utility Network']}, new Set(['x'])),"
             "S.mintStem({title:'X',fileName:'x.pptx',kind:'Other',products:['Utility Network'],docRevision:'V3'}, new Set(['x','x-un'])),"
-            "S.mintStem({title:'X',fileName:'x.pptx',kind:'Other'}, new Set(['x']))]))")
-    check("incremental: issue prefix, product, product+rev, numeric suffix",
-          g == ["12-x", "x-un", "x-un-v3", "x-2"], str(g))
+            "S.mintStem({title:'X',fileName:'x.pptx',kind:'Other'}, new Set(['x'])),"
+            "S.mintStem({title:'X',fileName:'x.pptx',kind:'Other',products:['Roads & Highways','Address Data Management']}, new Set(['x']))]))")
+    check("incremental: issue prefix, product, product+rev, numeric suffix, the adm qualifier",
+          g == ["12-x", "x-un", "x-un-v3", "x-2", "x-rh-adm"], str(g))
     docs = [
         {"rowId": 2, "title": "Event Behavior for Route Retirement", "fileName": "EB retire APR 5633.docx",
          "kind": "Other", "products": ["Pipeline Referencing"], "lastEdited": "2024-02-29"},

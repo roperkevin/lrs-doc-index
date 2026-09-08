@@ -92,6 +92,7 @@ PLAN = """# Merge Events Test Plan
 | Field | Value |
 | --- | --- |
 | **Doc** | 17 · Test Plan · Pro |
+| **Surfaces** | Pro · REST |
 | **Product** | Roads & Highways |
 | **Release** | 3.8 |
 | **Issues** | [ArcGISPro/ps-location-referencing#4855](https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855) |
@@ -344,6 +345,7 @@ def main():
                 "design-spikes/index.md", "design-spikes/old-spike-doc9.md",
                 "keywords/index.md", "keywords/route.md", "keywords/gantt-chart.md", "keywords/merge-events.md", "keywords/locks.md",
                 "tools/index.md", "tools/merge-events.md", "products/index.md", "products/roads-and-highways.md",
+                "surfaces/index.md", "surfaces/pro.md", "surfaces/rest.md",
                 "releases/index.md", "releases/3-8.md", "people/index.md", "people/mac-christmas.md", "people/someone-else.md",
                 "issues/index.md", "issues/arcgispro-ps-location-referencing-4855.md",
                 "cases/index.md", "figures/index.md", "media/4855-merge-plan/fig-01-slide-03-merge.png"]
@@ -449,8 +451,12 @@ def main():
                     broken.append((os.path.relpath(p, docs), t))
     check("every relative .md link on every page resolves", not broken, str(broken[:6]))
     plan = page("test-plans/4855-merge-plan.md")
-    check("metadata table links into the catalogs (kind, product, release, issue, people, keywords, tools)",
+    check("metadata table links into the catalogs (kind, surface, product, release, issue, people, keywords, tools)",
           "[Test Plan](./index.md)" in plan and "[Roads & Highways](../products/roads-and-highways.md)" in plan
+          and "| **Doc** | 17 · [Test Plan](./index.md) · [Pro](../surfaces/pro.md) |" in plan
+          and "| **Surfaces** | [Pro](../surfaces/pro.md) · [REST](../surfaces/rest.md) |" in plan
+          and "4855-merge-plan.md" in page("surfaces/rest.md") and "4855-conflict-story.md" not in page("surfaces/rest.md")
+          and "4855-conflict-story.md" in page("surfaces/pro.md")
           and "[3.8](../releases/3-8.md)" in plan
           and "[ArcGISPro/ps-location-referencing#4855](../issues/arcgispro-ps-location-referencing-4855.md) ([open](https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855))" in plan
           and "PE [Claire Wang](../people/claire-wang.md)" in plan
@@ -782,7 +788,7 @@ def main():
     check("no HTML comment, yaml frame or yaml key reaches any page", not leaked, str(leaked))
     spike = page("design-spikes/old-spike-doc9.md")
     check("legacy sidecar: title, id, kind, author and keyword read from the yaml frame",
-          "| **Doc** | 9 · [Design Spike](./index.md) · Pro |" in spike
+          "| **Doc** | 9 · [Design Spike](./index.md) · [Pro](../surfaces/pro.md) |" in spike
           and "author [Someone Else](../people/someone-else.md)" in spike
           and "[route](../keywords/route.md)" in spike and "Spike body." in spike, spike)
     recent = page("recent.md")
@@ -810,10 +816,11 @@ def main():
           and "| Document | Kind | Product | Release | Edited |" in alldocs
           and len(re.findall(r"^\| \[", alldocs, re.M)) == 3, alldocs)
     browse = page("browse/index.md")
-    check("Browse: the six catalogs as cards with counts",
+    check("Browse: the seven catalogs as cards with counts (Surfaces: Pro and REST)",
           browse.startswith("# :material-compass-outline: Browse") and '<div class="grid cards" markdown>' in browse
           and "[Keywords](../keywords/index.md) (4)" in browse and "[People](../people/index.md) (3)" in browse
-          and browse.split('<div class="grid cards" markdown>')[1].count(":material-") == 6, browse)
+          and "[Surfaces](../surfaces/index.md) (2)" in browse
+          and browse.split('<div class="grid cards" markdown>')[1].count(":material-") == 7, browse)
     check("a document page: breadcrumbs above the title, an Open button for the original under the card",
           plan.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test Plans](./index.md)\n\n</div>\n\n# Merge Events Test Plan')
           and "</div>\n\n[:material-open-in-new: Open Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .md-button--primary .lrs-open }\n\n!!! abstract" in plan,

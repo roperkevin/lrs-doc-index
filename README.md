@@ -72,8 +72,11 @@ the documents whose `SourceModified` or `PromptVersion` stamp is
 stale (at most `maxDocsPerRun`, default 150), and for each one:
 extracts text (pptx/docx/xlsx through the extractors, PDF through
 `pdftotext` and optionally OCR, `.msg` natively, html/txt/md), pulls
-issue and story ids, classifies it with the `docindex_classify`
-prompt, writes the sidecar and its media, upserts the Doc Index /
+issue and story ids, reads the deterministic signals (the library
+folder's kind, the surfaces, products and tools the text names —
+`pipeline/lib/docsignals.mjs`), classifies it with the
+`docindex_classify` prompt and reconciles the two, writes the sidecar
+and its media, upserts the Doc Index /
 Keywords / Doc Keywords / Doc IDs rows, ranks related documents
 (keywords, id edges, body similarity) and patches both sides'
 sidecars, indexes test cases and figures into their lists, and
@@ -112,7 +115,7 @@ Links, which RelatedRank already weights.
 
 **`wiki.mjs` — the catalog as a wiki.** Renders every sidecar into an
 MkDocs site (one page per document, catalogs by kind, keyword,
-product, release, person and issue, the test cases and figures with
+product, surface, release, person and issue, the test cases and figures with
 anchors, a Recent page) and pushes the tree to a private devtopia
 repository whose Pages workflow serves it, plus — with
 `wiki.draftsDir` set — a Drafts section for the TestPlanGen drafts.

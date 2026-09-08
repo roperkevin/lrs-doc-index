@@ -17,8 +17,23 @@
  *
  * The data file (pipeline/data/lrs_vocabulary.json) is written by
  * pipeline/doc_vocab.mjs from the live pages and committed; the sweep
- * and curate read it from disk and never fetch. Two parsers here
- * understand the docfx page shapes the Esri help uses:
+ * and curate read it from disk and never fetch.
+ *
+ * v1.1 (sweep v1.66 — "identify tools better"): the hand-kept entries
+ * carry a `kind` — `widget` (Experience Builder), `ribbon` (the Pro
+ * Location Referencing tab), `app` (Event Editor, Roadway
+ * Characteristics Editor), `rest` (the Linear Referencing Service
+ * operations: geometryToMeasure, applyEdits, …) — and the file gains
+ * an `aliases` map (SLD → Straight Line Diagram). Three things come
+ * of it: the KnownTools block the classifier reads is GROUPED by
+ * kind with the surface each group implies, so a REST operation is
+ * never returned as a Pro tool; `normalizeTools` resolves aliases and
+ * strips "widget" / "operation" / "pane" the way it strips "tool";
+ * and `toolsNamedIn` scans the document text itself for the official
+ * names, so a tool the document names is on the row even when the
+ * model left it out (the sweep unions the two lists).
+ *
+ * Two parsers here understand the docfx page shapes the Esri help uses:
  *
  *   parseToolboxPage(html, pageUrl)    the toolbox / toolset overview:
  *       a table whose rows are <a href="<slug>.html"><strong>Tool
@@ -140,17 +155,30 @@ export function parseVocabularyPage(html, pageUrl) {
   return { title, terms };
 }
 
+/** The hand-kept kinds, in the order the KnownTools block lists them,
+ *  with the surface each implies (docsignals reads this too). */
+export const TOOL_KINDS = [
+  { kind: "tool", label: "Geoprocessing tools of the Location Referencing toolbox", surface: "Pro" },
+  { kind: "ribbon", label: "ArcGIS Pro ribbon tools (the Location Referencing tab)", surface: "Pro" },
+  { kind: "widget", label: "Experience Builder widgets", surface: "Experience Builder" },
+  { kind: "app", label: "Web apps", surface: "" },
+  { kind: "rest", label: "REST operations of the Linear Referencing Service", surface: "REST" },
+];
+
 /**
  * The committed vocabulary as the sweep and curate use it. Missing or
  * unparseable file = empty vocabulary (the pre-vocabulary behaviour:
  * no normalization, no seeding, nothing counted).
  *   tools      [{ name, toolset, url, description }]
- *   widgets    [{ name, url? }] hand-kept
+ *   widgets    [{ name, kind, url? }] hand-kept (kind defaults to widget)
+ *   aliases    { alias: official } hand-kept
  *   terms      [{ term, definition, url }]
- *   official   Map lowercase name → official casing, tools + widgets
+ *   official   Map lowercase key → official casing, tools + widgets +
+ *              aliases (an alias key maps to its official name)
+ *   kindOf     Map official name → kind (tool / ribbon / widget / app / rest)
  *   termSet    Set of lowercase terms (the curation canonical side)
- *   knownTools the KnownTools prompt block (one official name per
- *              line, tools then widgets), "" when empty
+ *   knownTools the KnownTools prompt block: one official name per
+ *              line under a heading per kind (tools first), "" when empty
  */
 export function loadVocabulary(file = VOCABULARY_FILE) {
   let raw = {};
@@ -160,14 +188,44 @@ export function loadVocabulary(file = VOCABULARY_FILE) {
   const tools = Array.isArray(raw.tools) ? raw.tools.filter((t) => t && t.name) : [];
   const widgets = Array.isArray(raw.widgets) ? raw.widgets.filter((t) => t && t.name) : [];
   const terms = Array.isArray(raw.terms) ? raw.terms.filter((t) => t && t.term) : [];
+  const aliases = raw.aliases && typeof raw.aliases === "object" ? raw.aliases : {};
   const official = new Map();
-  for (const t of [...tools, ...widgets]) {
+  const kindOf = new Map();
+  for (const t of tools) {
     const key = toolKey(t.name);
     if (key && !official.has(key)) official.set(key, String(t.name));
+    if (!kindOf.has(String(t.name))) kindOf.set(String(t.name), "tool");
+  }
+  for (const t of widgets) {
+    const key = toolKey(t.name);
+    if (key && !official.has(key)) official.set(key, String(t.name));
+    const kind = TOOL_KINDS.some((k) => k.kind === t.kind) ? t.kind : "widget";
+    if (!kindOf.has(String(t.name))) kindOf.set(String(t.name), kind);
+  }
+  for (const [alias, name] of Object.entries(aliases)) {
+    const key = toolKey(alias);
+    const target = official.get(toolKey(name)) || String(name);
+    if (key && !official.has(key)) official.set(key, target);
   }
   const termSet = new Set(terms.map((t) => lower(t.term).trim()).filter(Boolean));
-  const knownTools = [...tools, ...widgets].map((t) => String(t.name)).join("\n");
-  return { file, generated: raw.generated || "", tools, widgets, terms, official, termSet, knownTools };
+  const knownTools = knownToolsBlock(tools, widgets, kindOf);
+  return { file, generated: raw.generated || "", tools, widgets, aliases, terms, official, kindOf, termSet, knownTools };
+}
+
+/** The KnownTools block: a heading per kind that has names (with the
+ *  surface it implies), the official names under it, one per line.
+ *  Tools first, then the hand-kept kinds in TOOL_KINDS order. */
+function knownToolsBlock(tools, widgets, kindOf) {
+  const groups = new Map(TOOL_KINDS.map((k) => [k.kind, []]));
+  for (const t of tools) groups.get("tool").push(String(t.name));
+  for (const w of widgets) groups.get(kindOf.get(String(w.name)) || "widget").push(String(w.name));
+  const out = [];
+  for (const k of TOOL_KINDS) {
+    const names = groups.get(k.kind);
+    if (!names.length) continue;
+    out.push(`${k.label}${k.surface ? ` — surface ${k.surface}` : ""}:`, ...names);
+  }
+  return out.join("\n");
 }
 
 /** The matching key for a tool name: lowercase, "&"→"and", any run of
@@ -209,7 +267,12 @@ export function normalizeTools(list, vocab) {
 function matchOfficial(name, official) {
   let key = toolKey(name);
   if (official.has(key)) return official.get(key);
-  const stripped = key.replace(/\s+(gp\s+)?tools?$/, "").replace(/^the\s+/, "");
+  // "the Append Routes tool", "Straight Line Diagram widget", "the
+  // applyEdits operation", "Event Editor app", "geometryToMeasure REST
+  // operation" — the noun the writer added is not part of the name
+  const stripped = key
+    .replace(/\s+(?:gp\s+|geoprocessing\s+|rest\s+)?(?:tools?|widgets?|operations?|panes?|commands?|buttons?|apps?|endpoints?)$/, "")
+    .replace(/^(?:the|a|an)\s+/, "");
   if (stripped !== key && official.has(stripped)) return official.get(stripped);
   key = stripped;
   // last-word plural/singular swap: "append route" ~ "append routes"
@@ -223,4 +286,62 @@ function matchOfficial(name, official) {
     }
   }
   return null;
+}
+
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * The official names a document's text literally carries, in order of
+ * first appearance — the deterministic floor under the classifier's
+ * tools list (v1.1). Longest names first, and a matched span is blanked
+ * before the shorter names look, so "Create LRS Network" never also
+ * yields "Create LRS". What counts as naming a tool:
+ *   - a GP / ribbon / widget / app name written in its official casing
+ *     ("Append Routes"), or in any casing when a tool noun follows
+ *     ("append routes tool", "the append routes GP tool", "… widget");
+ *   - an alias in its own casing ("SLD", "DynSeg") as a whole token;
+ *   - a REST operation as a case-sensitive token — camelCase names
+ *     ("applyEdits") anywhere; an all-lowercase one ("translate") only
+ *     as a path segment ("/translate") or followed by operation /
+ *     request / endpoint / call, so the English verb never counts.
+ * An empty vocabulary yields [].
+ */
+export function toolsNamedIn(text, vocab) {
+  const src = String(text ?? "");
+  if (!src || !vocab?.official?.size) return [];
+  const names = [...new Set(vocab.official.values())];
+  const kindOf = vocab.kindOf || new Map();
+  const aliasOf = new Map();
+  for (const [alias, name] of Object.entries(vocab.aliases || {})) aliasOf.set(String(alias), String(name));
+  const found = new Map(); // name -> first index
+  let work = src;
+  const claim = (re, name) => {
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(work)) !== null) {
+      const at = m.index + (m[1] ? m[1].length : 0);
+      const hit = m[2] ?? m[0];
+      if (!found.has(name) || found.get(name) > at) found.set(name, at);
+      work = work.slice(0, at) + " ".repeat(hit.length) + work.slice(at + hit.length);
+    }
+  };
+  const byLength = [...names].sort((a, b) => b.length - a.length);
+  for (const name of byLength) {
+    const kind = kindOf.get(name) || "widget";
+    const esc = escapeRe(name).replace(/\\ /g, "\\s+");
+    if (kind === "rest") {
+      if (/[A-Z]/.test(name)) claim(new RegExp(`(^|[^A-Za-z0-9_])(${esc})(?![A-Za-z0-9_])`, "g"), name);
+      else claim(new RegExp(`(\\/)(${esc})(?![A-Za-z0-9_])|(^|[^A-Za-z0-9_/])(${esc})(?=\\s+(?:operation|request|endpoint|call)s?\\b)`, "g"), name);
+      continue;
+    }
+    // official casing, as a whole phrase
+    claim(new RegExp(`(^|[^A-Za-z0-9])(${esc})(?![A-Za-z0-9])`, "g"), name);
+    // any casing when the tool noun follows
+    claim(new RegExp(`(^|[^A-Za-z0-9])(${esc})(?=\\s+(?:gp\\s+|geoprocessing\\s+)?(?:tool|widget|pane|command|app)s?\\b)`, "gi"), name);
+  }
+  for (const [alias, name] of [...aliasOf.entries()].sort((a, b) => b[0].length - a[0].length)) {
+    const esc = escapeRe(alias).replace(/\\ /g, "\\s+");
+    claim(new RegExp(`(^|[^A-Za-z0-9])(${esc})(?![A-Za-z0-9])`, "g"), vocab.official.get(toolKey(name)) || name);
+  }
+  return [...found.entries()].sort((a, b) => a[1] - b[1]).map(([n]) => n);
 }

@@ -1,9 +1,14 @@
-# Q&A Agent Instructions — v1.5
+# Q&A Agent Instructions — v1.6
 
 System instructions for the **LRS Doc Index Q&A** Copilot Studio agent
 (deployment: `agent/QA_Agent_Setup.md`). Paste the delimited block below
 into the agent's Instructions field verbatim, then record
-`AgentInstructionsVersion: v1.5` in `agent/CHANGES.md`.
+`AgentInstructionsVersion: v1.6` in `agent/CHANGES.md`.
+
+v1.6 supersedes v1.5 (sweep v1.66, classifier 4.0.0): the Doc row's
+surface list gains **REST**, a **Surfaces** row follows Doc when a
+document covers more than one surface, and the Product row gains
+**Address Data Management** (ADM). Everything else is v1.5's text.
 
 v1.5 supersedes v1.4: the SIDECAR STRUCTURE section describes the
 **format 3.1** layout (`docs/design/Markdown_Layout_Plan.md` phase 4).
@@ -70,16 +75,25 @@ List values are separated by " · ":
   id in the Doc Index list (use it when someone needs a doc id, e.g.
   for test-plan generation). kind is exactly one of: Test Plan, User
   Story, Design Spike, Data Template, Schedule, Doc Review, Other.
-  surface is exactly one of: Pro, Experience Builder, Server,
-  Enterprise, Other.
+  surface is the PRIMARY surface, exactly one of: Pro, Experience
+  Builder, REST (the Linear Referencing Service API — applyEdits,
+  geometryToMeasure and the other operations), Server, Enterprise,
+  Other.
+- Surfaces — present only when the document covers MORE than one
+  surface: every surface it covers, primary first ("Pro · REST"). A
+  document with no Surfaces row is on its Doc row's surface alone.
+  "Which REST test plans..." means the Doc row's surface OR an entry in
+  the Surfaces row.
 - Status — the catalog's state for this document: "Indexed" normally;
   another value means the sweep could not finish it. Not a property of
   the document itself — never answer a content question from it.
 - Product — the LRS product lines the document belongs to, detected
   from its name and text: "Roads & Highways", "Pipeline Referencing",
-  "Utility Network" (any subset). Acronyms in document text map to
-  these: RH and ADMRH → Roads & Highways; APR and UNAPR → Pipeline
-  Referencing; UN and UNAPR → Utility Network.
+  "Utility Network", "Address Data Management" (any subset). Acronyms
+  in document text map to these: RH → Roads & Highways; APR → Pipeline
+  Referencing; UN → Utility Network; ADM → Address Data Management;
+  ADMRH → Address Data Management + Roads & Highways; UNAPR → Utility
+  Network + Pipeline Referencing.
 - Release — the release the work targets (e.g. "3.8"), when stated.
 - Issues — devtopia issue references ("repo#number"), each linked.
 - Source — the ORIGINAL document's file name, linked to the original
@@ -153,8 +167,9 @@ CITATIONS
   see-also pointers when the user seems to want more.
 
 ESRI TERMINOLOGY
-- Official product casing: ArcGIS Pro, ArcGIS Server, Experience
-  Builder, Roads and Highways, Pipeline Referencing.
+- Official product casing: ArcGIS Pro, ArcGIS Server, ArcGIS
+  Enterprise, Experience Builder, Roads and Highways, Pipeline
+  Referencing, Utility Network, Address Data Management.
 - Domain terms: LRS Network, LRM, route, measure, referent,
   calibration point, centerline, event; measure behaviors: Stay Put,
   Move, Retire, Snap, Cover.

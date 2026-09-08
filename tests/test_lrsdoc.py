@@ -143,8 +143,8 @@ def main():
               p.placeholders() == set(p.inputs) and len(p.version.split(".")) == 3 and p.model
               and p.output in prompts.OUTPUT_KINDS and p.system and p.user, (p.inputs, p.placeholders()))
     cls = prompts.load("docindex_classify")
-    check("classify schema: nine required fields, closed",
-          cls.schema and sorted(cls.schema["required"]) == sorted(["title", "docKind", "surface", "summary", "pe", "dev", "targetRelease", "tools", "keywords"])
+    check("classify schema: eleven required fields, closed",
+          cls.schema and sorted(cls.schema["required"]) == sorted(["title", "docKind", "surface", "surfaces", "products", "summary", "pe", "dev", "targetRelease", "tools", "keywords"])
           and cls.schema.get("additionalProperties") is False, cls.schema)
     cur = prompts.load("keyword_curation")
     check("curation schema: proposals of alias/canonical/why",
@@ -159,11 +159,11 @@ def main():
     except prompts.PromptInputError as e:
         check("render refuses missing inputs", "missing" in str(e), e)
     try:
-        cls.render({"FileName": "a", "ExistingKeywords": "", "KnownTools": "", "DocText": "", "Extra": "x"})
+        cls.render({"FileName": "a", "Folder": "", "Signals": "", "ExistingKeywords": "", "KnownTools": "", "DocText": "", "Extra": "x"})
         check("render refuses unknown inputs", False)
     except prompts.PromptInputError as e:
         check("render refuses unknown inputs", "unknown" in str(e), e)
-    sysm, usr = cls.render({"FileName": "x$'y.pptx", "ExistingKeywords": "{DocText}", "KnownTools": "", "DocText": "BODY {FileName} $& end"})
+    sysm, usr = cls.render({"FileName": "x$'y.pptx", "Folder": "", "Signals": "", "ExistingKeywords": "{DocText}", "KnownTools": "", "DocText": "BODY {FileName} $& end"})
     check("render is single-pass and never expands $-patterns",
           "x$'y.pptx" in usr and "{DocText}" in usr and "BODY {FileName} $& end" in usr and usr.count("BODY") == 1, usr[:300])
     check("render puts the document text in the user turn and the rules in the system turn",
@@ -171,7 +171,7 @@ def main():
 
     # ---- 2. request shape -----------------------------------------
     print("== request shape")
-    req = llm.build_request(cls, {"FileName": "f", "ExistingKeywords": "k", "KnownTools": "", "DocText": "d"})
+    req = llm.build_request(cls, {"FileName": "f", "Folder": "", "Signals": "", "ExistingKeywords": "k", "KnownTools": "", "DocText": "d"})
     check("system block carries cache_control, user turn is the rendered frame",
           req["system"][0]["cache_control"] == {"type": "ephemeral"} and req["messages"][0]["content"].startswith("File name: f"), req["system"][0].keys())
     check("classify: output_config has the schema format and the prompt's effort; no thinking key",
@@ -185,18 +185,29 @@ def main():
     # ---- 3. calls against the mock --------------------------------
     print("== calls")
     from lrsdoc.tasks import classify as t_classify, generate as t_generate, curate as t_curate
-    state.text = json.dumps({"title": "T", "docKind": "Test Plan", "surface": "Pro", "summary": "s", "pe": "", "dev": "",
-                             "targetRelease": "", "tools": ["Merge Routes"], "keywords": ["routes"]})
-    res = t_classify({"FileName": "Alpha.pptx", "ExistingKeywords": "routes", "KnownTools": "Append Routes", "DocText": "text"}, {"max_retries": 0})
+    state.text = json.dumps({"title": "T", "docKind": "Test Plan", "surface": "Pro", "surfaces": ["Pro"], "products": ["Roads & Highways"],
+                             "summary": "s", "pe": "", "dev": "", "targetRelease": "", "tools": ["Merge Routes"], "keywords": ["routes"]})
+    res = t_classify({"FileName": "Alpha.pptx", "Folder": "General/Test Plans", "Signals": "Products named in the text: Roads & Highways",
+                      "ExistingKeywords": "routes", "KnownTools": "Append Routes", "DocText": "text"}, {"max_retries": 0})
     check("classify: non-streaming, schema-pinned, data parsed, api key header",
-          res.data["docKind"] == "Test Plan" and res.data["tools"] == ["Merge Routes"] and not state.last_body.get("stream")
+          res.data["docKind"] == "Test Plan" and res.data["tools"] == ["Merge Routes"] and res.data["surfaces"] == ["Pro"]
+          and res.data["products"] == ["Roads & Highways"] and not state.last_body.get("stream")
           and state.last_body["output_config"]["format"]["type"] == "json_schema"
-          and state.last_headers.get("x-api-key") == "mock-key" and res.prompt_version == "3.1.0"
+          and state.last_headers.get("x-api-key") == "mock-key" and res.prompt_version == "4.0.0"
           and res.stop_reason == "end_turn" and res.usage.get("output_tokens"), str(res.to_dict())[:300])
-    check("classify: the user turn carries the file name, the known tools and the fenced document text",
-          "File name: Alpha.pptx" in mock.user_text(state.last_body) and "<<<DOCUMENT TEXT BEGIN>>>\ntext\n<<<DOCUMENT TEXT END>>>" in mock.user_text(state.last_body)
-          and "Known tools (the official names — copy exactly):\nAppend Routes" in mock.user_text(state.last_body),
+    check("classify: the user turn carries the file name, the folder, the signals, the known tools and the fenced document text",
+          "File name: Alpha.pptx\nLibrary folder: General/Test Plans\n" in mock.user_text(state.last_body)
+          and "Signals (evidence the pipeline extracted — not answers):\nProducts named in the text: Roads & Highways\n" in mock.user_text(state.last_body)
+          and "<<<DOCUMENT TEXT BEGIN>>>\ntext\n<<<DOCUMENT TEXT END>>>" in mock.user_text(state.last_body)
+          and "Known tools (the official names, grouped by kind — copy exactly):\nAppend Routes" in mock.user_text(state.last_body),
           mock.user_text(state.last_body)[:400])
+    state.text = json.dumps({"title": "T", "docKind": "Other", "surface": "Other", "surfaces": None, "products": "x",
+                             "summary": "s", "pe": None, "dev": "", "targetRelease": "", "tools": [], "keywords": []})
+    res = t_classify({"FileName": "f", "ExistingKeywords": "", "KnownTools": "", "DocText": ""}, {"max_retries": 0})
+    check("classify: the shape guard makes the four lists lists and the strings strings; Folder and Signals default to their placeholders",
+          res.data["surfaces"] == [] and res.data["products"] == [] and res.data["pe"] == ""
+          and "Library folder: (library root)\n" in mock.user_text(state.last_body)
+          and "not answers):\n(none)\n" in mock.user_text(state.last_body), str(res.data))
     state.text = json.dumps({"proposals": [{"alias": "centerlines", "canonical": "centerline", "why": "plural"}]})
     res = t_curate({"Vocabulary": "centerline [topic]\ncenterlines [topic]", "DoNotPropose": ""}, {"max_retries": 0})
     check("curate: proposals parsed", res.data["proposals"][0]["alias"] == "centerlines", res.data)

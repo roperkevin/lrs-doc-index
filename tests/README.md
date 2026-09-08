@@ -24,6 +24,7 @@ python3 check_local_sweep.py                # any single gate
 | `check_caseindex.py` | fixture-free | `pipeline/lib/caseindex.mjs` + `casegrammar.mjs`: the six case detectors, the one case block (explicit anchors, the `lrs:case` mark, H4 unit headings), per-case metadata, the replace-set planner | Node |
 | `check_figureindex.py` | fixture-free | `pipeline/lib/figureindex.mjs`: figure naming rule, parser, rows and planner | Node |
 | `check_slug.py` | fixture-free | `pipeline/lib/slug.mjs`: sidecar stem rules | Node |
+| `check_docsignals.py` | fixture-free | `pipeline/lib/docsignals.mjs`: the folder → kind rule, the scored surface evidence (REST, Experience Builder, Pro, Server, Enterprise), the prompt's Signals block, and every reconcile rule (folder kind, surfaces, tools from the text, products regex ∪ model) | Node |
 | `check_progress.py` | fixture-free | `pipeline/lib/progress.mjs`: the shared run narration — flag/config precedence, the `progress: ...` line shapes, counter thinning, heartbeats, stdout left alone | Node |
 | `check_storyprofile.py` | fixture-free | `pipeline/lib/storyprofile.mjs`: the User Story body profile | Node |
 | `check_deckspec.py` | fixture-free | `pipeline/lib/designsystem.mjs` + `deckspec.mjs`: tokens, grid, grounding, layout | Node |

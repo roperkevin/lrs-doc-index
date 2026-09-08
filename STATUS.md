@@ -14,17 +14,17 @@ Last updated: **2026-09-06** (the cleanup branch — see
 
 | Piece | On the sweep machine (`C:\Repos\lrs-doc-index`, self-updates from the `deploy` branch) | Authored (this tree) |
 |---|---|---|
-| Nightly sweep | `sweep.mjs` DEPLOYED 2026-08-14 (scheduled task "LRS Doc Index Sweep", daily 17:00, `ops\run_sweep.cmd`). **Not running since the device-code refresh token expired** (Conditional Access `AADSTS53003`, open action 1). Corpus stamped `PromptVersion` **v2.0.2** by the AI Builder classifier | sweep v1.64 + this branch; classifier `docindex_classify` 3.0.0 through the Anthropic API — stamp `v3.0.0` once the machine's pin is removed (open action 3) |
+| Nightly sweep | `sweep.mjs` DEPLOYED 2026-08-14 (scheduled task "LRS Doc Index Sweep", daily 17:00, `ops\run_sweep.cmd`). **Not running since the device-code refresh token expired** (Conditional Access `AADSTS53003`, open action 1). Corpus stamped `PromptVersion` **v2.0.2** by the AI Builder classifier | sweep v1.66 + this branch; classifier `docindex_classify` 4.0.0 through the Anthropic API (folder, surfaces incl. REST, products incl. ADM, tools from the text — `docs/setup.md` §18) — stamp `v4.0.0` once the machine's pin is removed (open action 3) |
 | Weekly curation | `curate.mjs` DEPLOYED 2026-08-15 ("LRS Keyword Curation", Saturday 08:00, `curation.autoApprove: true` — merges apply, the digest is an audit log); first run canon=1880, two merges | curate v1.11.1 + this branch (`keyword_curation` 1.1.0 through the Anthropic API) |
-| The wiki | `devtopia.esri.com/kev14953/lrs-doc-index` (private), first push pending (open action 9) | `wiki.mjs` v2.1 + `lib/mdlayout.mjs` v1.4, `tests/check_wiki.py` 119 checks |
+| The wiki | `devtopia.esri.com/kev14953/lrs-doc-index` (private), first push pending (open action 9) | `wiki.mjs` v2.2 (the Surfaces catalog) + `lib/mdlayout.mjs` v1.4, `tests/check_wiki.py` 110 checks |
 | Run narration | not yet on the machine (it ships with this branch) | `pipeline/lib/progress.mjs` v1.0 — every job narrates its phases, documents and model calls on stderr; on at a console, `--progress` / `config.progress` for a scheduled night; `tests/check_progress.py` |
 | Test-plan drafting | `testplangen.mjs` on the machine (manual runs; `--auto` INERT until `testplangen.autoDraft: true`) | testplangen.mjs v1.23, `testplan_draft` 1.13.0, `testplan_figures` 0.4.0, `testplan_deck` 0.1.0 |
 | Schedules → Issue Refs | `gantt.mjs` never run live; the Issue Refs list GUID is verified (`docs/sharepoint-notes.md`) | gantt v1.0 |
 | Extractors | the seven `extract/*.ts` run in-process by every deploy (ZipTextExtract v2.7, RegexExtract v1.5, ShapeExtract v1.1, SidecarPatch v1.8, RelatedRank v2.2, WorkbookDump, MediaExtract) | same |
 | SharePoint | eight lists on lrsworkspace (`schemas/SPList_*.csv`; GUIDs in `docs/sharepoint-notes.md`), the LRS Doc Index library with `media/` and the kind folders; sidecar format 3.0 authored, the corpus still carries the 2.x layout until the reformat pass (open action 4) | — |
-| Q&A agent (Copilot Studio) | instructions v1.1 pasted (re-paste date unconfirmed) | v1.4 (`docs/qa-agent-instructions.md`) — paste + smoke (open action 7) |
+| Q&A agent (Copilot Studio) | instructions v1.1 pasted (re-paste date unconfirmed) | v1.6 (`docs/qa-agent-instructions.md`) — paste + smoke (open action 7) |
 | Cloud flows, Office Scripts, AI Builder prompts, the TestPlanGen agent | OFF / retired; nothing orchestrated or model-hosted remains on Power Platform. Definitions live in git history only (`docs/history.md` §4) | — |
-| Gates | CI green on every push; `main` promotes `deploy` when all three jobs pass | `tests/` — sweep 341, testplangen 238, deck2pptx 56, deckspec 99, lrsdoc 35, progress 24, and the rest |
+| Gates | CI green on every push; `main` promotes `deploy` when all three jobs pass | `tests/` — sweep 394, testplangen 238, deck2pptx 56, deckspec 99, lrsdoc 57, docsignals 16, progress 24, and the rest |
 
 ## Deploying this branch on the machine
 
@@ -69,7 +69,16 @@ The cleanup changed what the machine needs. In order, from a console:
 3. **Classifier backfill** — step 5 above: remove the
    `sweep.promptVersion` pin once the one-doc smoke looks right;
    watch the first nights' `processed`/`errors` counts and the
-   Skipped rows (`content filter:`).
+   Skipped rows (`content filter:`). **Before the backfill** (sweep
+   v1.66): on the live Doc Index list add **REST** to the `Surface`
+   choices and the `Surfaces` single-line-text column
+   (`schemas/SPList_DocIndex.csv`, `docs/sharepoint-notes.md`) — a
+   REST-primary row cannot be written until the value exists, and
+   rows are written without `Surfaces` (`doc_fields_dropped`) until
+   the column does. Then watch `kind_from_folder`,
+   `surface_from_signals`, `tools_from_text`, `products_from_model`
+   in the first nights' summaries, and re-paste the Q&A agent
+   instructions v1.6 (action 7).
 4. **Reformat pass** — `ops\run_sweep.cmd --reformat` once (no model
    spend): sidecar format 3.0 (the metadata table), the current
    extractors' bodies (diagram captions, case headings, standardized
