@@ -404,7 +404,7 @@ def main():
     # the GHES shape: self-hosted runner, no setup-python, gh-pages branch deploy
     cfg2 = json.loads(json.dumps(cfg))
     cfg2["wiki"].update({"runsOn": "self-hosted", "setupPython": False, "deploy": "branch",
-                         "offline": True, "outDir": os.path.join(work, "wiki-ghes")})
+                         "offline": True, "kindLayout": "table", "outDir": os.path.join(work, "wiki-ghes")})
     cfg2_path = os.path.join(tmp, "config-ghes.json")
     with open(cfg2_path, "w") as f:
         json.dump(cfg2, f)
@@ -412,6 +412,10 @@ def main():
     check("render exit 0 (GHES shape)", r2.returncode == 0, r2.stderr[-600:])
     ycfg2 = open(os.path.join(work, "wiki-ghes", "mkdocs.yml"), encoding="utf-8").read()
     check("wiki.offline enables Material's offline plugin (v2.0)", "\n  - offline\n" in ycfg2, ycfg2)
+    # v2.4: wiki.kindLayout = table keeps the v2.0 kind table
+    check("wiki.kindLayout = table keeps the sortable, filterable kind table",
+          '<div class="doc-table filterable" markdown>' in open(os.path.join(work, "wiki-ghes", "docs", "test-plans", "index.md"), encoding="utf-8").read()
+          and "lrs-entries" not in open(os.path.join(work, "wiki-ghes", "docs", "test-plans", "index.md"), encoding="utf-8").read())
     cfg_res = json.loads(json.dumps(cfg))
     cfg_res["sweep"] = {"kindFolders": {"Playbook": "Keywords"}}
     cfg_res["wiki"]["outDir"] = os.path.join(work, "wiki-reserved")
@@ -438,6 +442,13 @@ def main():
     r3 = run_job(cfg2_path, [])
     check("an unknown wiki.deploy is refused by name",
           r3.returncode != 0 and "wiki.deploy must be one of artifact, branch" in r3.stderr, r3.stderr[-300:])
+    cfg2["wiki"]["deploy"] = "branch"
+    cfg2["wiki"]["kindLayout"] = "cards"
+    with open(cfg2_path, "w") as f:
+        json.dump(cfg2, f)
+    r4 = run_job(cfg2_path, [])
+    check("an unknown wiki.kindLayout is refused by name",
+          r4.returncode != 0 and "wiki.kindLayout must be one of ledger, table" in r4.stderr, r4.stderr[-300:])
 
     # ---- 2. links -------------------------------------------------
     print("== links")
@@ -487,21 +498,42 @@ def main():
     # Blocks wrapper under its heading (one card), deck sections do
     # not; the Expected result is a three-slash block nested in it; a
     # def list after an image line starts its own block
+    # v2.4: the heading carries the id as a badge; a count line opens
+    # the cases, a divider opens each run of a group
     check("each TC case's content is wrapped for the card in a four-slash Blocks html block, up to the next heading",
-          plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 3
-          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\n/// html | div.lrs-group\n\nNormal Routes\n///" in plan
+          plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 4  # 3 cards + the folded metadata card
+          and '### <span class="lrs-tc lrs-tc--p">TC-P01</span> Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\n/// html | div.lrs-group\n\nNormal Routes\n///' in plan
           and "////\n\n## Notes | pipes" in plan and "lrs-case\" markdown" not in plan
           and "*(missing figure: Figure 2 — Lock dialog)*\n\n/// html | div.lrs-steps\n\n- [ ] 1." in plan, plan[-1800:])
+    check("the checklist: a count line before the first case, a divider with its count where the group changes, the negative case's badge",
+          '## Test Cases\n\n<p class="lrs-cases-count">3 cases · 2 positive · 1 negative</p>\n\n<div class="lrs-group-head">Normal Routes <small>1 case</small></div>\n\n### <span class="lrs-tc lrs-tc--p">TC-P01</span>' in plan
+          and '<div class="lrs-group-head">Conflicts <small>1 case</small></div>\n\n### <span class="lrs-tc lrs-tc--n">TC-N01</span> Lock conflict refuses { #tc-n01 }' in plan
+          and plan.count('class="lrs-group-head"') == 3 and plan.count("lrs-cases-count") == 1, plan[-2200:])
     dblocks = page("drafts/4855-conflict-story-draft-20260906-2300.md")
     check("the Expected result nests in the card as a three-slash admonition block, body unindented",
           dblocks.count("//// html | div.lrs-case") == 1
           and "\n\n/// admonition | Expected result\n    type: success\n\nA lock is held.\n///\n" in dblocks
           and dblocks.find("//// html | div.lrs-case") < dblocks.find("/// admonition | Expected result") < dblocks.find("\n////\n")
           and "////\n\n## Issue Trace" in dblocks and "!!! success" not in dblocks, dblocks)
-    check("mkdocs.yml enables the Blocks extensions the card uses",
-          "\n  - pymdownx.blocks.html\n  - pymdownx.blocks.admonition\n" in ycfg, ycfg)
+    check("mkdocs.yml enables the Blocks extensions the card, the ledger and the folded table use",
+          "\n  - pymdownx.blocks.html\n  - pymdownx.blocks.admonition\n  - pymdownx.blocks.details\n" in ycfg, ycfg)
+    # v2.4: the ledger — a surface section (open), a tool head, a closed
+    # row per document with its OTHER tools as pills and the edit date;
+    # the row opens to the facts line and the summary
+    tp = page("test-plans/index.md")
+    check("the kind page is a ledger: a surface section per surface the plan covers, open; the tool head; the row without the head's own pill",
+          tp.count("///// details | ") == 2
+          and "///// details | [Pro](../surfaces/pro.md) <small>1 document</small>\n    open: true\n    attrs: {class: \"lrs-section\"}\n\n" in tp
+          and "///// details | [REST](../surfaces/rest.md) <small>1 document</small>" in tp
+          and tp.find("[Pro](../surfaces/pro.md) <small>") < tp.find("[REST](../surfaces/rest.md) <small>")
+          and '<div class="lrs-tool-head" markdown="span">[Merge Events](../tools/merge-events.md) <small>1</small></div>\n\n//// details | [Merge Events Test Plan](./4855-merge-plan.md) *2026-08-01*{ .lrs-when }\n    attrs: {class: "lrs-entry"}\n\n' in tp
+          and '<div class="lrs-entry__facts" markdown>[Roads & Highways](../products/roads-and-highways.md) · release [3.8](../releases/3-8.md) · [Pro](../surfaces/pro.md) · [REST](../surfaces/rest.md) · 3 cases · PE [Claire Wang](../people/claire-wang.md)</div>\n\nCovers merging line events across routes, with the lock conflict case.' in tp
+          and "lrs-pill" not in tp and tp.rstrip().endswith("////\n\n/////\n\n</div>"), tp)
+    check("a kind whose documents name no tool: the row under 'No tool named'; the story's other tools would be pills",
+          '<div class="lrs-tool-head" markdown="span">No tool named <small>1</small></div>\n\n//// details | [Conflict Prevention Story](./4855-conflict-story.md) *2026-08-05*{ .lrs-when }' in page("user-stories/index.md"),
+          page("user-stories/index.md"))
     check("a case's own attr_list anchor survives the body escape",
-          "### TC-P01 — Merge preserves measures { #tc-p01 }" in plan
+          '<span class="lrs-tc lrs-tc--p">TC-P01</span> Merge preserves measures { #tc-p01 }' in plan
           and "\\{ #tc-p01 }" not in plan, plan[-900:])
 
     # ---- 2b. the MkDocs dialect translation (v1.1) ----------------
@@ -617,13 +649,14 @@ def main():
           and '<div class="sortable" markdown>' in page("cases/index.md")
           and '<div class="filter-all" markdown>' in page("cases/index.md")
           and '<div class="sortable filterable" markdown>' in dindex
-          and '<div class="doc-table filterable" markdown>' in page("test-plans/index.md")
+          and '<div class="lrs-entries" markdown>' in page("test-plans/index.md") and "doc-table" not in page("test-plans/index.md")
           and '<div class="doc-table filterable" markdown>' in page("recent.md")
           and '<div class="doc-table filterable" markdown>' in page("documents/index.md")
           and '<div class="doc-table" markdown>' in front and "filterable" not in front,
           page("keywords/index.md")[:400])
-    check("tables.js carries the filter, the page-wide filter and external links in a new tab",
+    check("tables.js carries the filter, the page-wide filter, the ledger's filter and external links in a new tab",
           "lrs-filter" in tjs and '".filterable"' in tjs and '".filter-all"' in tjs
+          and '".lrs-entries"' in tjs and "details.lrs-section" in tjs and ".lrs-tool-head" in tjs
           and "FILTER_MIN_ROWS" in tjs and 'a.target = "_blank"' in tjs and 'a.rel = "noopener"' in tjs, tjs[:300])
     check("extra.css styles the filter box, the breadcrumbs and the Open button",
           ".lrs-filter input" in css and ".lrs-crumbs" in css and ".lrs-open" in css
@@ -638,8 +671,9 @@ def main():
     # v2.3 (mdlayout v1.5): Group and Steps lose their labels — the
     # content alone in a class-named html block; Case (and Trace) stay
     # a definition list, label and value
-    check("a case's Case field becomes a definition; Group and Steps stand alone in class-named blocks, no label",
-          "Case\n:   The merge is refused while another user holds the lock" in plan
+    check("a case's Group, Case and Steps stand alone in class-named blocks, no label (mdlayout v1.6)",
+          "/// html | div.lrs-case-text\n\nThe merge is refused while another user holds the lock\n///" in plan
+          and "Case\n:" not in plan
           and "/// html | div.lrs-group\n\nNormal Routes\n///" in plan
           and "/// html | div.lrs-group\n\nConflicts\n///" in plan
           and "Group\n:" not in plan and "Steps\n:" not in plan
@@ -658,9 +692,12 @@ def main():
           "    Doc ids\n    :   Doc Index list row ids" in about
           and "    The checkboxes\n    :   Rendered, never clickable." in about
           and "- **Doc**" not in about, about)
-    check("the metadata card is never sortable (its header row is hidden)",
+    # v2.4: the card sits folded under Details — Blocks html inside
+    # Blocks details, the nesting in the slash count
+    check("the metadata card is never sortable (its header row is hidden), and sits folded under Details",
           '<div class="sortable" markdown>' not in plan.split("\n---\n")[0]
-          and '<div class="doc-meta" markdown>' in plan, plan[:400])
+          and "///// details | Details\n    attrs: {class: lrs-doc-meta}\n\n//// html | div.doc-meta\n\n| Field | Value |\n| --- | --- |\n| **Doc** | 17" in plan
+          and "\n////\n/////\n\n!!! abstract" in plan, plan[:1400])
     # v1.5: the three figure-presentation plugins. panzoom takes
     # include_selectors, NOT `images: true` — mkdocs-panzoom-plugin 0.5.2
     # reads that key off the global config, so it never fires.
@@ -748,13 +785,21 @@ def main():
               and "Conflict Prevention Story" not in chrome,  # pruned: the other kinds' pages are not rendered
               (tabs[:400], chrome[-1200:]))
         check("the built page: Open button, shorthand issue link to devtopia, strikethrough, single tilde untouched",
-              'class="md-button md-button--primary lrs-open"' in html
+              'class="md-button lrs-open"' in html and "md-button--primary" not in html
               and 'class="magiclink magiclink-devtopia magiclink-issue" href="https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855"' in html
               and "<del>a struck run</del>" in html and "at ~5 minutes" in html, html[-2500:])
         # v2.1, built: the summary/related/docs blocks, the success block
         # and the draft badge in the nav, the custom palette attribute
         dhtml_path = os.path.join(out, "site", "drafts", "4855-conflict-story-draft-20260906-2300", "index.html")
         dhtml = open(dhtml_path, encoding="utf-8").read() if os.path.isfile(dhtml_path) else ""
+        kp_path = os.path.join(out, "site", "test-plans", "index.html")
+        kp = open(kp_path, encoding="utf-8").read() if os.path.isfile(kp_path) else ""
+        check("the built kind page: the surface section open, the row closed, the folded Details on the document page, the badge in the heading",
+              '<details class="lrs-section" open="open">' in kp and '<details class="lrs-entry">' in kp
+              and '<details class="lrs-doc-meta">' in html and '<div class="doc-meta">' in html
+              and '<h3 id="tc-p01"><span class="lrs-tc lrs-tc--p">TC-P01</span> Merge preserves measures' in html
+              and '<span class="lrs-tc lrs-tc--n">TC-N01</span>' in html
+              and 'class="lrs-cases-count"' in html, (kp[-1500:], html[-2500:]))
         check("the built page carries the abstract, related (open) and docs blocks and the custom palette",
               '<div class="admonition abstract">' in html and '<p class="admonition-title">Summary</p>' in html
               and '<details class="related" open="open">' in html and "Related documents (2)" in html
@@ -828,14 +873,17 @@ def main():
           and "[Keywords](../keywords/index.md) (4)" in browse and "[People](../people/index.md) (3)" in browse
           and "[Surfaces](../surfaces/index.md) (2)" in browse
           and browse.split('<div class="grid cards" markdown>')[1].count(":material-") == 7, browse)
-    check("a document page: breadcrumbs above the title, an Open button for the original under the card",
-          plan.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test Plans](./index.md)\n\n</div>\n\n# Merge Events Test Plan')
-          and "</div>\n\n[:material-open-in-new: Open Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .md-button--primary .lrs-open }\n\n!!! abstract" in plan,
+    # v2.4: the facts strip under the title — the pills and the Open
+    # link on the first row, the facts on the second — then Details
+    check("a document page: breadcrumbs above the title, then the facts strip with the pills, the Open link and the facts",
+          plan.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test Plans](./index.md)\n\n</div>\n\n# Merge Events Test Plan\n\n<div class="lrs-doc-facts" markdown>\n\n'
+                          "[Merge Events](../tools/merge-events.md){ .lrs-pill } [:material-open-in-new: Open the .pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .lrs-open }\n\n"
+                          "[Test Plan](./index.md) · [Pro](../surfaces/pro.md) · [REST](../surfaces/rest.md) · [Roads & Highways](../products/roads-and-highways.md) · release [3.8](../releases/3-8.md) · edited *2026-08-01*{ .lrs-when } by [Mac Christmas](../people/mac-christmas.md)\n\n</div>\n\n///// details | Details"),
           plan[:900])
     check("a document without a source URL gets no Open button",
           ".md-button" not in spike and "Open " not in spike.split("\n---\n")[0], spike[:600])
-    check("kind index and catalog index say how to filter and sort, and point at All documents",
-          "Type in the box to filter the table; click a column header to sort it. Or [see every kind in one table](../documents/index.md)." in page("test-plans/index.md")
+    check("kind index and catalog index say how to filter, and point at All documents",
+          "1 document by surface, then by the tools they name — a document is listed under every tool it names. Type in the box to filter every group at once; open a row for the document's facts and summary. Or [see every kind in one table](../documents/index.md)." in page("test-plans/index.md")
           and "4 keywords. Type in the box to filter the table" in kwi, page("test-plans/index.md")[:400])
     check("About explains the organisation",
           '???+ note "How the site is organised"' in about and "    Documents\n    :   One tab" in about
@@ -846,7 +894,7 @@ def main():
           "!!! warning\n\n    No AI summary was generated for this document." in spike
           and "!!! abstract" not in spike, spike)
     check("the document tables carry no Summary column (title, kind, product, release, edited)",
-          "Summary" not in recent and "| Document | Product | Release | Edited |\n|---|---|---|---|" in page("test-plans/index.md")
+          "Summary" not in recent and "| Document | Kind | Product | Release | Edited |\n|---|---|---|---|---|" in page("documents/index.md")
           and "| [Old Spike](./design-spikes/old-spike-doc9.md) | [Design Spike](./design-spikes/index.md) | — | — | 2026-07-01 |" in recent
           and "[!WARNING]" not in recent, recent)
     check("the front page's kinds are cards with an icon, the count and the newest edit, in reader order",
@@ -886,7 +934,11 @@ def main():
           and ".md-typeset figcaption" in css and "tbody tr:nth-child(even)" in css
           and ".md-typeset .lrs-facts" in css and ".md-typeset .lrs-figures" in css
           and ".md-typeset .lrs-case dl {\n  display: grid;" in css and ".md-typeset .lrs-case .admonition.success" in css
-          and ".md-typeset .lrs-case .lrs-group {" in css and ".md-typeset .lrs-case .lrs-steps {" in css, css[:300])
+          and ".md-typeset .lrs-case .lrs-group {" in css and ".md-typeset .lrs-case .lrs-steps {" in css
+          and ".md-typeset .lrs-tc {" in css and ".lrs-tc--n" in css and ".md-typeset .lrs-group-head {" in css
+          and ".md-typeset .lrs-pill {" in css and ".md-typeset details.lrs-entry {" in css
+          and ".md-typeset details.lrs-section {" in css and ".md-typeset .lrs-doc-facts {" in css
+          and ".md-typeset details.lrs-doc-meta {" in css and "uppercase" not in css, css[:300])
     # the Blocks composer's own rule: more slashes outside than inside
     blk = subprocess.run(["node", "--input-type=module", "-e",
         'import { block } from "./pipeline/lib/mdlayout.mjs";'
