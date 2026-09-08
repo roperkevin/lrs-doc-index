@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v2.0 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v2.1 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -27,7 +27,7 @@
  *   docs/cases/index.md           every test case, by plan, anchored
  *   docs/figures/index.md         every figure, by document
  *   docs/recent.md, docs/about.md
- *   docs/stylesheets/extra.css  the site's own styling (v1.4)
+ *   docs/stylesheets/extra.css  the site's own styling (v1.4, v2.1)
  *   docs/javascripts/tables.js  sort, filter and link behaviour (v1.7, v2.0)
  *
  * Bodies keep their sidecar shape (the same relative
@@ -35,6 +35,43 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v2.1 — the pages dressed by content type
+ * (https://squidfunk.github.io/mkdocs-material/reference/). Every
+ * block a reader meets now says what KIND of thing it is, in
+ * Material's own vocabulary, instead of one more H2 that looks like
+ * the body:
+ *
+ *   - A document page: the summary is an `abstract` admonition
+ *     (Material's own "Summary" type; the sweep's no-summary alert
+ *     stays the `warning` it is); the related documents are a
+ *     foldable `related` block — a custom type with the link icon —
+ *     open by default; the Esri documentation links are a `docs`
+ *     block (custom, the book icon); the Open button is the page's
+ *     primary button. `lib/mdlayout.mjs` v1.3 renders every case's
+ *     Expected Result as a `success` admonition — the green check IS
+ *     the pass criterion — with Group, Case, Steps and Trace still a
+ *     definition list.
+ *   - Page status (Material's `status:` front matter): a document
+ *     edited in the last NEW_DAYS days carries `new`, a badge beside
+ *     it in the sidebar; every draft carries `draft`, the pencil.
+ *     `extra.status` gives each badge its tooltip.
+ *   - The front page's kinds are cards — an icon per kind
+ *     (KIND_ICONS), the count, the newest edit — like the Browse
+ *     cards; every index page's title wears the same icon, so a kind
+ *     or a catalog looks the same on a card and at the top of its
+ *     page. The figure catalog is a card grid per document instead of
+ *     a bullet list of thumbnails; a catalog value's facts line is a
+ *     strip under the title; the Summary column of every table reads
+ *     the no-summary alert as its sentence, not as `> [!WARNING] >`.
+ *   - The theme: the site's own palette (`primary: custom` — a deep
+ *     blue and a teal, defined in extra.css for both schemes, with
+ *     readable link colours on slate), instant navigation with its
+ *     progress bar (off under `wiki.offline`: file:// pages cannot be
+ *     fetched), `content.tooltips`; `footnotes` closes the last GFM
+ *     dialect gap (`[^1]`). extra.css: a rule under every H2, figures
+ *     centred with a muted caption, striped catalog tables, softer
+ *     borders on the metadata card and the cards.
  *
  * v2.0 — the site reorganised for readers. The v1.x nav was a flat
  * sidebar of index pages with every document and catalog page left
@@ -275,7 +312,11 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList } from "./lib/mdl
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v2.0";
+export const WIKI_VERSION = "v2.1";
+
+/** Days after its last edit a document counts as new (v2.1): the
+ *  `new` badge in the sidebar. */
+export const NEW_DAYS = 14;
 
 // Declaration order is READER order (v2.0): the nav, the front page
 // and the All-documents table list kinds this way, test plans first,
@@ -289,6 +330,19 @@ const KIND_FOLDERS = {
   "Doc Review": "Doc Reviews",
   Other: "Other",
 };
+
+// v2.1: the icon each kind wears — on its front-page card and its
+// index page's title. A kind the config adds gets the plain document.
+const KIND_ICONS = {
+  "Test Plan": "test-tube",
+  "User Story": "book-open-variant",
+  "Design Spike": "lightbulb-on-outline",
+  "Data Template": "table-large",
+  Schedule: "calendar-clock",
+  "Doc Review": "file-check-outline",
+  Other: "file-document-outline",
+};
+const kindIcon = (kind) => KIND_ICONS[kind] || "file-document-outline";
 
 /** The six catalogs, in the order the nav and the Browse page show
  *  them: section (the folder), title, the model key, the index page's
@@ -362,6 +416,9 @@ const cell = (s) => String(s ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|")
  *  catalog's raw-HTML thumbnails). */
 const attr = (s) => cell(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const mdEscape = (s) => String(s ?? "").replace(/([\\`*_[\]<>])/g, "\\$1");
+/** A summary as one table cell (v2.1): the sweep's no-summary alert
+ *  reads as its sentence, not as `> [!WARNING] > No AI summary…`. */
+const summaryText = (s) => cell(String(s ?? "").replace(/^>\s*\[![A-Za-z]+\][-+]?[^\n]*\n?/m, "").replace(/^>[ \t]?/gm, ""));
 const linkText = (s) => mdEscape(cell(s)).replace(/\\\|/g, "|");
 const pageName = (s) => kebab(s) || "untitled";
 
@@ -492,29 +549,36 @@ function draftPage(d, model) {
   ];
   // v2.0: damped in search — an unreviewed draft must never outrank
   // the plan or the story it was generated from
-  const out = [...searchMeta({ boost: 0.5 }), ...crumbs(d.page, [["drafts/index.md", "Test-plan drafts"]]),
+  const out = [...pageMeta({ boost: 0.5, status: "draft" }), ...crumbs(d.page, [["drafts/index.md", "Test-plan drafts"]]),
     `# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("", META_CLOSE, "");
-  // v1.6: the one thing a reader must not miss, in the site's own
-  // admonition type rather than a paragraph they can skim past
-  out.push(admonition("draft",
-    "Machine-generated and **unreviewed**: every case and every [VERIFY] item still needs a " +
-    "Product Engineer. This page is a render of the drafts folder — it is not a catalog " +
-    "document and joins no catalog.", { title: "Unreviewed draft" }), "");
   // everything under the draft's own metadata table — the callouts
   // included; "unreviewed" is the most important thing on the page —
   // translated for MkDocs like any other body
   let bodyAt = 0;
   for (const m of d.content.matchAll(/^\| \*\*[A-Za-z]+\*\* \|.*\|$/gm)) bodyAt = m.index + m[0].length;
-  const body = normalize(toMkDocs(stripComments(d.content.slice(bodyAt))));
+  let body = normalize(toMkDocs(stripComments(d.content.slice(bodyAt))));
+  // v1.6: the one thing a reader must not miss, in the site's own
+  // admonition type rather than a paragraph they can skim past.
+  // v2.1: ONE box, not two — the generator's own banner (the warning
+  // the body opens with) is retyped as the draft block and keeps its
+  // words; only a draft without one gets the composed notice
+  if (/^!!! warning\n/.test(body)) {
+    body = body.replace(/^!!! warning\n/, '!!! draft "Unreviewed draft"\n');
+  } else {
+    out.push(admonition("draft",
+      "Machine-generated and **unreviewed**: every case and every [VERIFY] item still needs a " +
+      "Product Engineer. This page is a render of the drafts folder — it is not a catalog " +
+      "document and joins no catalog.", { title: "Unreviewed draft" }), "");
+  }
   if (body) out.push("---", "", body, "");
   return out.join("\n");
 }
 
 function draftsIndex(drafts) {
   const p = "drafts/index.md";
-  const out = [...searchMeta({ exclude: true }), "# Test-plan drafts", "",
+  const out = [...pageMeta({ exclude: true, title: "Test-plan drafts" }), h1("file-document-edit", "Test-plan drafts"), "",
     `Machine-generated test-plan drafts, newest first. ${TABLE_HELP}`, "",
     admonition("draft",
       "Every draft here is **unreviewed**: every case and every [VERIFY] item still " +
@@ -660,6 +724,19 @@ export function personRoles(name, docs) {
   return roles.map(([label, c]) => `${label} of ${c}`).join(" · ");
 }
 
+/** Material's page status for a document (v2.1): "new" when its last
+ *  edit is within NEW_DAYS of `now`, else "". `lastEdited` is the
+ *  metadata row's `2026-08-01 10:00` (or an ISO stamp); a date that
+ *  does not parse is never new. */
+export function pageStatus(lastEdited, now = Date.now()) {
+  const s = String(lastEdited || "").trim();
+  if (!s) return "";
+  const iso = s.replace(" ", "T");
+  const t = Date.parse(iso + (iso.includes("T") && !/(Z|[+-]\d\d:?\d\d)$/.test(iso) ? "Z" : ""));
+  if (isNaN(t)) return "";
+  return (now - t) / 86400000 <= NEW_DAYS ? "new" : "";
+}
+
 /** Test cases of a plan body: [{ordinal, heading, anchor}] with the
  *  anchors MkDocs will give the headings. */
 export function planCases(body) {
@@ -735,15 +812,27 @@ const META_CLOSE = "</div>";
 const sortable = (lines, { filter = false } = {}) =>
   [`<div class="sortable${filter ? " filterable" : ""}" markdown>`, "", ...lines, "", "</div>"];
 
-/** Page-level front matter for Material's search plugin (v2.0):
- *  `boost` scales a page's score, `exclude` keeps it out of the index
- *  altogether. The aggregate pages — All documents, Recent, the kind
+/** Page front matter (v2.0 search, v2.1 status and title). `boost`
+ *  scales a page's search score, `exclude` keeps it out of the index
+ *  altogether: the aggregate pages — All documents, Recent, the kind
  *  and catalog indexes, the case and figure catalogs — repeat every
  *  title the document pages already carry, so they matched almost any
- *  query and pushed the documents down; they are excluded. */
-const searchMeta = ({ boost, exclude } = {}) =>
-  exclude ? ["---", "search:", "  exclude: true", "---", ""]
-    : boost !== undefined ? ["---", "search:", `  boost: ${boost}`, "---", ""] : [];
+ *  query and pushed the documents down. `status` is Material's page
+ *  status (`new`, `draft`), a badge beside the page in the nav;
+ *  `title` pins the page title when the H1 wears an icon. */
+const pageMeta = ({ boost, exclude, status, title } = {}) => {
+  const lines = [];
+  if (title) lines.push(`title: ${JSON.stringify(String(title))}`);
+  if (exclude) lines.push("search:", "  exclude: true");
+  else if (boost !== undefined) lines.push("search:", `  boost: ${boost}`);
+  if (status) lines.push(`status: ${status}`);
+  return lines.length ? ["---", ...lines, "---", ""] : [];
+};
+
+/** A page title with its icon (v2.1): `# :material-test-tube: Test
+ *  Plans`. pymdownx.emoji draws the icon; the front matter's `title`
+ *  keeps the browser title and the search entry to the words. */
+const h1 = (icon, text) => `# :material-${icon}: ${mdEscape(text)}`;
 
 /** The breadcrumb line above a page's title (v2.0): `Home › Test
  *  Plans`. Markdown links inside an md_in_html div, so MkDocs rewrites
@@ -757,7 +846,7 @@ const crumbs = (fromPage, trail) =>
 function docRow(fromPage, d, { kind = false } = {}) {
   const title = d.meta.title || d.stem;
   const kindCol = kind ? ` ${link(fromPage, `${d.kindDir}/index.md`, d.kind)} |` : "";
-  return `| ${link(fromPage, d.page, title)} |${kindCol} ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${cell(d.summary).slice(0, 160) || "—"} |`;
+  return `| ${link(fromPage, d.page, title)} |${kindCol} ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${summaryText(d.summary).slice(0, 160) || "—"} |`;
 }
 const DOC_TABLE_HEAD = "| Document | Product | Release | Edited | Summary |\n|---|---|---|---|---|";
 const DOC_TABLE_HEAD_KIND = "| Document | Kind | Product | Release | Edited | Summary |\n|---|---|---|---|---|---|";
@@ -776,6 +865,36 @@ function docTable(fromPage, docs, { kind = false, filter = false } = {}) {
 }
 
 const TABLE_HELP = "Type in the box to filter the table; click a column header to sort it.";
+
+/** The summary as an `abstract` admonition (v2.1) — unless the sweep
+ *  left its no-summary alert there, which is a `warning` and renders
+ *  as one rather than as a warning inside a summary box. */
+function summaryBlock(summary) {
+  const md = normalize(toMkDocs(summary));
+  return (/^(!!!|\?\?\?)/.test(md) ? md : admonition("abstract", md, { title: "Summary" })).trimEnd();
+}
+
+/** The related list as a foldable `related` block (v2.1, a custom
+ *  type with the link icon; open by default): each bullet links the
+ *  sibling page, with the sweep's reason after the dash. */
+function relatedBlock(d) {
+  const items = d.related.map((r) => {
+    const target = r.target ? link(d.page, r.target.page, r.target.meta.title || r.title) : mdEscape(r.title);
+    return `- ${target}${r.text ? ` — ${r.text}` : ""}`;
+  });
+  return admonition("related", items.join("\n"), {
+    title: `Related documents (${d.related.length})`, collapse: "open",
+  }).trimEnd();
+}
+
+/** The sweep's Esri-documentation region as a `docs` block (v2.1, a
+ *  custom type with the book icon): the region's own `## Esri
+ *  documentation` heading becomes the block's title. */
+function docsBlock(region) {
+  const md = normalize(toMkDocs(stripComments(region)));
+  const m = /^#{1,6}[ \t]+(.+?)[ \t]*\n/.exec(md);
+  return admonition("docs", m ? md.slice(m[0].length).trim() : md, { title: m ? m[1].trim() : "Esri documentation" }).trimEnd();
+}
 
 function docPage(d, model) {
   const p = d.page;
@@ -815,8 +934,9 @@ function docPage(d, model) {
   // v1.4: the table sits in a div the stylesheet turns into a card;
   // the rows themselves are the format 3.1 contract and do not change.
   // v2.0: search boost (a document page is what a query is for), the
-  // breadcrumb line, and the "Open <file>" button under the card
-  const out = [...searchMeta({ boost: 2 }),
+  // breadcrumb line, and the "Open <file>" button under the card;
+  // v2.1: the `new` badge for a recent edit
+  const out = [...pageMeta({ boost: 2, status: pageStatus(m.last_edited) }),
     ...crumbs(p, [[`${d.kindDir}/index.md`, model.kindFolders[d.kind] || d.kind]]),
     `# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v, always] of rows) {
@@ -825,26 +945,21 @@ function docPage(d, model) {
   }
   out.push("", META_CLOSE, "");
   if (m.source_url) {
-    out.push(`[:material-open-in-new: Open ${linkText(m.source_file || "the original")}](<${m.source_url}>){ .md-button .lrs-open }`, "");
+    out.push(`[:material-open-in-new: Open ${linkText(m.source_file || "the original")}](<${m.source_url}>){ .md-button .md-button--primary .lrs-open }`, "");
   }
-  if (d.summary) out.push("## Summary", "", normalize(toMkDocs(d.summary)), "");
-  if (d.related.length) {
-    out.push("## Related documents", "");
-    for (const r of d.related) {
-      const target = r.target ? link(p, r.target.page, r.target.meta.title || r.title) : mdEscape(r.title);
-      out.push(`- ${target}${r.text ? ` — ${r.text}` : ""}`);
-    }
-    out.push("");
-  }
-  if (d.docsRegion) out.push(normalize(toMkDocs(stripComments(d.docsRegion))), "");
+  // v2.1: the head of the page by content type — summary, related,
+  // documentation — each in the block that says what it is
+  if (d.summary) out.push(summaryBlock(d.summary), "");
+  if (d.related.length) out.push(relatedBlock(d), "");
+  if (d.docsRegion) out.push(docsBlock(d.docsRegion), "");
   const body = normalize(toMkDocs(stripComments(dropMissingMedia(d.body, d.mediaMissing))));
   if (body) out.push("---", "", body, "");
   return out.join("\n");
 }
 
-function catalogIndex({ section, title, intro, label }, groups, model) {
+function catalogIndex({ section, title, intro, label, icon }, groups, model) {
   const p = `${section}/index.md`;
-  const out = [...searchMeta({ exclude: true }), `# ${title}`, "", intro, "",
+  const out = [...pageMeta({ exclude: true, title }), h1(icon, title), "", intro, "",
     `${groups.size} ${groups.size === 1 ? label.toLowerCase() : title.toLowerCase()}. ${TABLE_HELP}`, "",
     ...sortable([
       "| " + label + " | Documents |", "|---|---:|",
@@ -873,8 +988,10 @@ function catalogValuePage({ section, title }, value, docs, model) {
     if (roles) facts.push(roles);
   }
   facts.push(link(p, `${section}/index.md`, "all " + title.toLowerCase()));
-  const out = [...searchMeta({ boost: 1 }), ...crumbs(p, [[`${section}/index.md`, title]]),
-    `# ${mdEscape(value)}`, "", facts.join(" · "), ""];
+  // v2.1: the facts in a strip under the title (md_in_html, see
+  // extra.css), the tracker link and the co-tags with them
+  const out = [...pageMeta({ boost: 1 }), ...crumbs(p, [[`${section}/index.md`, title]]),
+    `# ${mdEscape(value)}`, "", '<div class="lrs-facts" markdown>', "", facts.join(" · "), ""];
   if (section === "issues" && model.issueUrls.get(value)) out.push(`Issue: <${model.issueUrls.get(value)}>`, "");
   if (section === "keywords") {
     const co = coKeywords(value, docs);
@@ -882,14 +999,14 @@ function catalogValuePage({ section, title }, value, docs, model) {
       out.push("Often tagged with: " + co.map((c) => `${link(p, catalogPage("keywords", c.value), c.value)} (${c.n})`).join(" · "), "");
     }
   }
-  out.push(docTable(p, docs, { kind: true, filter: true }), "");
+  out.push("</div>", "", docTable(p, docs, { kind: true, filter: true }), "");
   return out.join("\n");
 }
 
 function kindIndex(kind, docs, model, kindFolders) {
   const dir = pageName(kindFolders[kind] || kind);
   const p = `${dir}/index.md`;
-  return [...searchMeta({ exclude: true }), `# ${mdEscape(kindFolders[kind] || kind)}`, "",
+  return [...pageMeta({ exclude: true, title: kindFolders[kind] || kind }), h1(kindIcon(kind), kindFolders[kind] || kind), "",
     `${docs.length} document${docs.length === 1 ? "" : "s"}, newest edit first. ${TABLE_HELP} ` +
     `Or ${link(p, "documents/index.md", "see every kind in one table")}.`, "",
     docTable(p, docs, { filter: true }), ""].join("\n");
@@ -900,7 +1017,7 @@ function allDocumentsPage(model) {
   const p = "documents/index.md";
   const kinds = kindOrder(model.kinds, model.kindFolders)
     .map((k) => `${link(p, `${pageName(model.kindFolders[k] || k)}/index.md`, model.kindFolders[k] || k)} (${model.kinds.get(k).length})`);
-  return [...searchMeta({ exclude: true }), "# All documents", "",
+  return [...pageMeta({ exclude: true, title: "All documents" }), h1("file-document-multiple-outline", "All documents"), "",
     `${model.docs.length} documents of every kind, newest edit first. ${TABLE_HELP}`, "",
     `By kind: ${kinds.join(" · ")}.`, "",
     docTable(p, model.docs, { kind: true, filter: true }), ""].join("\n");
@@ -918,14 +1035,14 @@ const catalogCards = (fromPage, model) =>
 /** The Browse tab's own page (v2.0): the six catalogs as cards. */
 function browsePage(model) {
   const p = "browse/index.md";
-  return [...searchMeta({ exclude: true }), "# Browse", "",
+  return [...pageMeta({ exclude: true, title: "Browse" }), h1("compass-outline", "Browse"), "",
     "Six ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here.", "",
     '<div class="grid cards" markdown>', "", ...catalogCards(p, model), "</div>", ""].join("\n");
 }
 
 function casesPage(model) {
   const p = "cases/index.md";
-  const out = [...searchMeta({ exclude: true }), "# Test cases", "",
+  const out = [...pageMeta({ exclude: true, title: "Test cases" }), h1("clipboard-check", "Test cases"), "",
     "Every test case the catalog's test plans carry, by plan (newest edit first); each row links the case's section on the plan's page.", ""];
   const at = out.length;
   // v2.0: one filter box for the whole page — a plan whose cases all
@@ -950,14 +1067,16 @@ function casesPage(model) {
 
 function figuresPage(model) {
   const p = "figures/index.md";
-  const out = [...searchMeta({ exclude: true }), "# Figures", "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
+  const out = [...pageMeta({ exclude: true, title: "Figures" }), h1("image-multiple", "Figures"), "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
   const at = out.length; // the count line goes here, once known
   let total = 0;
   for (const d of model.docs.slice().sort(byEdited)) {
     const figs = bodyFigures(d.body).filter((f) => !d.mediaMissing?.has(f.link));
     if (!figs.length) continue;
     total += figs.length;
-    out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "");
+    // v2.1: a card grid per document (Material's grid cards) rather
+    // than a bullet list of thumbnails
+    out.push(`## ${link(p, d.page, d.meta.title || d.stem)}`, "", '<div class="grid cards lrs-figures" markdown>', "");
     for (const f of figs) {
       const img = f.link.replace(/^\.\.\//, "../").replace(/ /g, "%20");
       const href = `${rel(p, d.page).replace(/ /g, "%20")}#${f.anchor}`;
@@ -968,16 +1087,16 @@ function figuresPage(model) {
       // link, the width and the alt, and takes no caption or panzoom box.
       out.push(`- <a href="${attr(href)}"><img src="${attr(img)}" width="160" alt="${attr(f.alt)}"></a> ${f.heading ? `[${linkText(f.heading)}](${href})` : ""}`);
     }
-    out.push("");
+    out.push("", "</div>", "");
   }
-  out.splice(at, 0, `${total} figures.`);
+  out.splice(at, 0, `${total} figures.`, "");
   return out.join("\n");
 }
 
 function recentPage(model, n) {
   const p = "recent.md";
   const docs = model.docs.slice().sort(byEdited).slice(0, n);
-  return [...searchMeta({ exclude: true }), "# Recent", "",
+  return [...pageMeta({ exclude: true, title: "Recent" }), h1("history", "Recent"), "",
     `The ${docs.length} most recently edited source documents. ${TABLE_HELP}`, "",
     docTable(p, docs, { kind: true, filter: true }), ""].join("\n");
 }
@@ -989,7 +1108,7 @@ const FRONT_RECENT = 8;
  *  the Browse cards. */
 function frontPage(model, kindFolders, opts, draftCount = 0) {
   const p = "index.md";
-  const out = [...searchMeta({ exclude: true }), `# ${mdEscape(opts.siteName)}`, "",
+  const out = [...pageMeta({ exclude: true }), `# ${mdEscape(opts.siteName)}`, "",
     `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
     admonition("tip",
       "Search (press `/`) splits an id into its parts, so `TC-P01`, " +
@@ -999,12 +1118,15 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
       { title: "Finding a document" }), "",
     "## Documents", "",
     `By kind — or ${link(p, "documents/index.md", "every document in one table")}.`, "",
-    '<div class="sortable" markdown>', "",
-    "| Kind | Documents |", "|---|---:|"];
+    // v2.1: a card per kind (icon, count, newest edit), like Browse
+    '<div class="grid cards lrs-kinds" markdown>', ""];
   for (const kind of kindOrder(model.kinds, kindFolders)) {
-    out.push(`| ${link(p, `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind)} | ${model.kinds.get(kind).length} |`);
+    const ds = model.kinds.get(kind);
+    const newest = cell(ds.slice().sort(byEdited)[0]?.meta.last_edited).slice(0, 10);
+    out.push(...card(p, kindIcon(kind), `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind, ds.length,
+      `${ds.length} document${ds.length === 1 ? "" : "s"}${newest ? `, newest edit ${newest}` : ""}.`));
   }
-  out.push("", "</div>");
+  out.push("</div>");
   const recent = model.docs.slice().sort(byEdited).slice(0, FRONT_RECENT);
   if (recent.length) {
     out.push("", "## Recently edited", "",
@@ -1023,10 +1145,13 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
 }
 
 function aboutPage(model, opts) {
-  return ["# About this wiki", "",
+  return [...pageMeta({ title: "About this wiki" }), h1("information", "About this wiki"), "",
     // v2.0: the site's map, for the reader who wants it spelled out
     admonition("note", defList([
       ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's table, the pages under it are the documents. A document page links its original file, its catalog values and its related documents."],
+      // v2.1: what the blocks on a document page are, and the badges
+      ["A document page", "The metadata card and the Open button; the summary; the related documents (fold them away with the chevron); the Esri documentation links; then, under the rule, the extracted text — every test case ending in its green Expected result."],
+      ["Badges", `A page edited in the last ${NEW_DAYS} days carries a New badge in the sidebar; a draft carries the pencil.`],
       ["Browse", "The six catalogs: keywords, tools, products, releases, people and issues. Every value is a page listing the documents that carry it."],
       ["Test cases & figures", "What the sweep extracted from the bodies, each entry linking the section it came from."],
       ["Search, filter, sort", "Search (`/`) indexes the document pages and catalog values, not the tables that repeat them. Every large table filters as you type and sorts on a header click."],
@@ -1115,21 +1240,35 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     "  name: material",
     "  icon:",
     "    logo: material/book-open-page-variant",
+    // v2.1: the page-status badges (Material's `status:` front
+    // matter) — `new` is the theme's own, `draft` the site's
+    "    status:",
+    "      draft: material/pencil",
     // v2.0: tabs + section indexes + prune replace navigation.sections
     // (which would have listed every document under an always-open
-    // heading); the rest as v1.4
-    "  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.prune, navigation.top, navigation.tracking, navigation.footer, search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, toc.follow]",
+    // heading); the rest as v1.4. v2.1: instant navigation (the site
+    // behaves like one page; `tables.js` already re-runs on Material's
+    // document$) with its progress bar — not under `offline`, where a
+    // file:// page cannot be fetched — and Material's tooltips
+    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, toc.follow]`,
+    // v2.1: the site's own colours (extra.css defines the variables
+    // `primary: custom` leaves to the site, for both schemes)
     "  palette:",
     '    - media: "(prefers-color-scheme: light)"',
     "      scheme: default",
-    "      primary: indigo",
-    "      accent: indigo",
+    "      primary: custom",
+    "      accent: custom",
     "      toggle: { icon: material/brightness-7, name: Dark }",
     '    - media: "(prefers-color-scheme: dark)"',
     "      scheme: slate",
-    "      primary: indigo",
-    "      accent: indigo",
+    "      primary: custom",
+    "      accent: custom",
     "      toggle: { icon: material/brightness-4, name: Light }",
+    // v2.1: the badges' tooltips
+    "extra:",
+    "  status:",
+    `    new: ${y(`Edited in the last ${NEW_DAYS} days`)}`,
+    '    draft: "Machine-generated, unreviewed"',
     "extra_css:",
     "  - stylesheets/extra.css",
     "extra_javascript:",
@@ -1173,6 +1312,8 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     "  - sane_lists",
     // a case's fields, and About's provenance list (v1.8)
     "  - def_list",
+    // v2.1: GFM footnotes (`[^1]`), the dialect's last gap
+    "  - footnotes",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
     "  - pymdownx.emoji:",
@@ -1382,22 +1523,57 @@ const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 })();
 `;
 
-/** docs/stylesheets/extra.css (v1.4). Material's own variables
+/** docs/stylesheets/extra.css (v1.4; v2.1 the palette, the custom
+ *  block types and the typography). Material's own variables
  *  throughout, so the light and the slate palette both work. */
 const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every render */
-:root { --lrs-radius: 0.4rem; }
+
+/* the site's palette (v2.1): mkdocs.yml says \`primary: custom\` /
+   \`accent: custom\` and leaves these to the site — a deep blue for the
+   header, the tabs and the links, a teal for hover and focus. Slate
+   gets lighter link and accent inks, which Material would otherwise
+   only provide for its own named colours. */
+:root {
+  --md-primary-fg-color: #1f4e79;
+  --md-primary-fg-color--light: #3b6ea5;
+  --md-primary-fg-color--dark: #163a5c;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+  --md-accent-fg-color: #0e7c7b;
+  --md-accent-fg-color--transparent: #0e7c7b1a;
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: #ffffffb3;
+  --lrs-radius: 0.4rem;
+  --lrs-draft: #d97706;
+  --lrs-related: #5b6b7f;
+  --lrs-docs: #6d4fc2;
+}
+[data-md-color-scheme="slate"] {
+  --md-typeset-a-color: #8ab4f8;
+  --md-accent-fg-color: #2dd4bf;
+  --md-accent-fg-color--transparent: #2dd4bf1a;
+  --lrs-related: #94a3b8;
+  --lrs-docs: #a78bfa;
+}
+
+/* type and rhythm (v2.1): a firmer title, an icon in the site's blue
+   beside it, a rule under every section heading */
+.md-typeset h1 { font-weight: 700; letter-spacing: -0.01em; color: var(--md-default-fg-color); }
+.md-typeset h1 .twemoji { color: var(--md-primary-fg-color); vertical-align: -0.12em; margin-right: 0.1em; }
+.md-typeset h2 { padding-bottom: 0.25em; border-bottom: 1px solid var(--md-default-fg-color--lightest); }
 
 /* tables fill the column (Material inlines them); the long column wraps */
 .md-typeset .md-typeset__table { display: block; }
 .md-typeset .md-typeset__table table:not([class]) { display: table; width: 100%; }
 
 /* the document header: a key/value card, not a two-column table */
-.doc-meta .md-typeset__scrollwrap { margin: 0 0 1.6em; }
+.doc-meta .md-typeset__scrollwrap { margin: 0 0 1.2em; }
 .doc-meta table:not([class]) {
   font-size: 0.72rem;
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: var(--lrs-radius);
   background: var(--md-code-bg-color);
+  box-shadow: none;
   overflow: hidden;
 }
 .doc-meta table:not([class]) thead { display: none; }
@@ -1430,8 +1606,10 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 .md-typeset h3[id^="tc-"] .headerlink { font-weight: 400; }
 
-/* admonitions (v1.6): the site's radius, a quieter body, and one
-   custom type — draft — for machine-generated, unreviewed pages */
+/* admonitions (v1.6): the site's radius, a quieter body, and the
+   site's own types — draft (v1.6) for machine-generated, unreviewed
+   pages; related (v2.1) for a document's related list; docs (v2.1)
+   for its Esri documentation links */
 .md-typeset .admonition, .md-typeset details {
   border-radius: var(--lrs-radius);
   border-width: 1px 1px 1px 0.2rem;
@@ -1444,17 +1622,40 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 .md-typeset .admonition > :last-child, .md-typeset details > :last-child { margin-bottom: 0.6rem; }
 :root {
-  --lrs-draft: #d97706;
   --md-admonition-icon--draft: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20.71 7.04c.39-.39.39-1.04 0-1.41l-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-1.84 1.83 3.75 3.75M3 17.25V21h3.75L17.81 9.93l-3.75-3.75L3 17.25Z"/></svg>');
+  --md-admonition-icon--related: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10.59 13.41c.41.39.41 1.03 0 1.42-.39.39-1.03.39-1.42 0a5.003 5.003 0 0 1 0-7.07l3.54-3.54a5.003 5.003 0 0 1 7.07 0 5.003 5.003 0 0 1 0 7.07l-1.49 1.49c.01-.82-.12-1.64-.4-2.42l.47-.48a2.98 2.98 0 0 0 0-4.24 2.98 2.98 0 0 0-4.24 0l-3.53 3.53a2.98 2.98 0 0 0 0 4.24m2.82-4.24c.39-.39 1.03-.39 1.42 0a5.003 5.003 0 0 1 0 7.07l-3.54 3.54a5.003 5.003 0 0 1-7.07 0 5.003 5.003 0 0 1 0-7.07l1.49-1.49c-.01.82.12 1.64.4 2.43l-.47.47a2.98 2.98 0 0 0 0 4.24 2.98 2.98 0 0 0 4.24 0l3.53-3.53a2.98 2.98 0 0 0 0-4.24.973.973 0 0 1 0-1.42"/></svg>');
+  --md-admonition-icon--docs: url('data:image/svg+xml;charset=utf-8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21.5c-1.35-.85-3.8-1.5-5.5-1.5-1.65 0-3.35.3-4.75 1.05-.1.05-.15.05-.25.05-.25 0-.5-.25-.5-.5V6c.6-.45 1.25-.75 2-1 1.11-.35 2.33-.5 3.5-.5 1.95 0 4.05.4 5.5 1.5 1.45-1.1 3.55-1.5 5.5-1.5 1.17 0 2.39.15 3.5.5.75.25 1.4.55 2 1v14.6c0 .25-.25.5-.5.5-.1 0-.15 0-.25-.05-1.4-.75-3.1-1.05-4.75-1.05-1.7 0-4.15.65-5.5 1.5M12 8v11.5c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5V7c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5m1 3.5c1.11-.68 2.6-1 4.5-1 .91 0 1.76.09 2.5.28V9.23c-.87-.15-1.71-.23-2.5-.23q-2.655 0-4.5.84zm4.5.17c-1.71 0-3.21.26-4.5.79v1.69c1.11-.65 2.6-.99 4.5-.99 1.04 0 1.88.08 2.5.24v-1.5c-.87-.16-1.71-.23-2.5-.23m2.5 2.9c-.87-.16-1.71-.24-2.5-.24-1.83 0-3.33.27-4.5.8v1.69c1.11-.66 2.6-.99 4.5-.99 1.04 0 1.88.08 2.5.24z"/></svg>');
 }
 .md-typeset .admonition.draft, .md-typeset details.draft { border-color: var(--lrs-draft); }
-.md-typeset .draft > .admonition-title, .md-typeset .draft > summary {
-  background-color: rgba(217, 119, 6, 0.1);
-}
+.md-typeset .draft > .admonition-title, .md-typeset .draft > summary { background-color: rgba(217, 119, 6, 0.1); }
 .md-typeset .draft > .admonition-title::before, .md-typeset .draft > summary::before {
   background-color: var(--lrs-draft);
   -webkit-mask-image: var(--md-admonition-icon--draft);
           mask-image: var(--md-admonition-icon--draft);
+}
+.md-typeset .admonition.related, .md-typeset details.related { border-color: var(--lrs-related); }
+.md-typeset .related > .admonition-title, .md-typeset .related > summary { background-color: rgba(91, 107, 127, 0.1); }
+.md-typeset .related > .admonition-title::before, .md-typeset .related > summary::before {
+  background-color: var(--lrs-related);
+  -webkit-mask-image: var(--md-admonition-icon--related);
+          mask-image: var(--md-admonition-icon--related);
+}
+.md-typeset .admonition.docs, .md-typeset details.docs { border-color: var(--lrs-docs); }
+.md-typeset .docs > .admonition-title, .md-typeset .docs > summary { background-color: rgba(109, 79, 194, 0.1); }
+.md-typeset .docs > .admonition-title::before, .md-typeset .docs > summary::before {
+  background-color: var(--lrs-docs);
+  -webkit-mask-image: var(--md-admonition-icon--docs);
+          mask-image: var(--md-admonition-icon--docs);
+}
+
+/* the related list inside its block: a list of links, the sweep's
+   reason in a lighter ink */
+.md-typeset .related > ul { list-style: none; margin-left: 0; }
+.md-typeset .related > ul > li {
+  margin: 0 0 0.4em;
+  padding: 0.3em 0.7em;
+  border-left: 0.15rem solid var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
 }
 
 /* definition lists (v1.8): a case's fields and About's provenance, in
@@ -1471,6 +1672,20 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .md-typeset dl dt:first-child { margin-top: 0; }
 .md-typeset dl dd { margin: 0.15em 0 0; }
 .md-typeset dl dd > ul, .md-typeset dl dd > ol { margin-top: 0.3em; }
+
+/* figures (v2.1): centred, framed, the caption in a lighter ink */
+.md-typeset figure { margin: 1.2em auto; text-align: center; }
+.md-typeset figure > img, .md-typeset figure .panzoom-box img {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--lrs-radius);
+}
+.md-typeset figcaption {
+  margin: 0.5em auto 0;
+  max-width: 40em;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.68rem;
+  font-style: normal;
+}
 
 /* sortable catalog tables (v1.7): the header is the control */
 .doc-table th[role="button"], .sortable th[role="button"] {
@@ -1495,10 +1710,15 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .doc-table th[aria-sort="ascending"]::after, .sortable th[aria-sort="ascending"]::after { border-bottom-color: currentColor; }
 .doc-table th[aria-sort="descending"]::after, .sortable th[aria-sort="descending"]::after { border-top-color: currentColor; }
 
-/* catalog tables: the short columns stay on one line, the summary is quiet
-   (v2.0: every middle column, since a Kind column may be present) */
+/* catalog tables: the short columns stay on one line, the summary is
+   quiet (v2.0: every middle column, since a Kind column may be
+   present); v2.1: striped rows, and the title and summary columns
+   keep a readable width — a narrow column scrolls the table rather
+   than squeezing the summary to one word a line */
 .doc-table td:not(:first-child):not(:last-child) { white-space: nowrap; }
-.doc-table td:last-child { color: var(--md-default-fg-color--light); }
+.doc-table td:first-child { min-width: 11rem; }
+.doc-table td:last-child { min-width: 16rem; color: var(--md-default-fg-color--light); }
+.doc-table tbody tr:nth-child(even), .sortable tbody tr:nth-child(even) { background: var(--md-code-bg-color); }
 
 /* the type-to-filter box (v2.0), in Material's own vocabulary */
 .lrs-filter { display: flex; align-items: center; gap: 0.6em; margin: 0 0 0.8em; }
@@ -1526,22 +1746,41 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .md-typeset .lrs-crumbs a { color: inherit; }
 .md-typeset .lrs-crumbs a:hover { color: var(--md-accent-fg-color); }
 
-/* the "Open <file>" button under the metadata card (v2.0) */
-.md-typeset .lrs-open { margin: -0.8em 0 1.4em; font-size: 0.7rem; }
+/* the "Open <file>" button under the metadata card (v2.0; v2.1 the
+   page's primary button) */
+.md-typeset .lrs-open { margin: -0.4em 0 1.4em; font-size: 0.7rem; }
 .md-typeset .lrs-open .twemoji { vertical-align: -0.15em; }
 
-/* the front page's cards */
-.md-typeset .grid.cards > ul > li { border-radius: var(--lrs-radius); }
-.md-typeset .grid.cards > ul > li > p:first-child { font-weight: 600; }
-.md-typeset .grid.cards > ul > li > hr { margin: 0.6em 0; }
-
-/* related documents: a list of links, the reason in a lighter ink */
-.md-typeset h2#related-documents + ul { list-style: none; margin-left: 0; }
-.md-typeset h2#related-documents + ul > li {
-  margin: 0 0 0.4em;
-  padding: 0.35em 0.8em;
-  border-left: 0.2rem solid var(--md-default-fg-color--lightest);
+/* a catalog value's facts (v2.1): a strip under the title */
+.md-typeset .lrs-facts {
+  margin: -0.4em 0 1.2em;
+  padding: 0.5em 0.9em;
+  border-left: 0.2rem solid var(--md-primary-fg-color);
+  border-radius: 0 var(--lrs-radius) var(--lrs-radius) 0;
+  background: var(--md-code-bg-color);
   color: var(--md-default-fg-color--light);
+  font-size: 0.7rem;
+}
+.md-typeset .lrs-facts p { margin: 0.2em 0; }
+
+/* the cards (the front page, Browse, the figure catalog) */
+.md-typeset .grid.cards > ul > li {
+  border-radius: var(--lrs-radius);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.md-typeset .grid.cards > ul > li:hover { box-shadow: var(--md-shadow-z2); }
+.md-typeset .grid.cards > ul > li > p:first-child { font-weight: 600; }
+.md-typeset .grid.cards > ul > li > p:first-child .twemoji { color: var(--md-primary-fg-color); }
+.md-typeset .grid.cards > ul > li > hr { margin: 0.6em 0; }
+.md-typeset .lrs-figures > ul > li { text-align: center; font-size: 0.68rem; }
+.md-typeset .lrs-figures > ul > li img {
+  display: block;
+  margin: 0 auto 0.5em;
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: var(--lrs-radius);
 }
 `;
 

@@ -1,5 +1,5 @@
 /**
- * mdlayout.mjs v1.2 — the markdown layout kernel
+ * mdlayout.mjs v1.3 — the markdown layout kernel
  * (docs/design/Markdown_Layout_Plan.md §4.1, phase 2's inhabitant).
  *
  * The project writes ONE markdown dialect — GitHub-flavored: ATX
@@ -25,6 +25,16 @@
  *
  * Code spans and fenced blocks are never touched: `<` renders itself
  * there, and escaping would show the entity.
+ *
+ * v1.3 — a field that IS a verdict. Of the case grammar's fields,
+ * `Expected Result` is not one more definition: it is the pass
+ * criterion, the line a tester reads last and a reviewer reads first.
+ * In the MkDocs lane it renders as a `success` admonition
+ * (https://squidfunk.github.io/mkdocs-material/reference/admonitions/
+ * — the green check), so every case on a page ends in the same green
+ * box, while Group, Case, Steps and Trace stay a definition list.
+ * `FIELD_ADMONITIONS` is the whole rule; the files on disk keep the
+ * bold-label bullet GitHub and the SharePoint preview read.
  *
  * v1.2 — definition lists
  * (https://squidfunk.github.io/mkdocs-material/reference/lists/). The
@@ -194,6 +204,12 @@ export function alertsToAdmonitions(text) {
 /** A bold-label field bullet: `- **Expected Result:** A lock is held.` */
 const FIELD_LINE = /^-[ \t]+\*\*(.+?):\*\*[ \t]*(.*)$/;
 
+/** The fields that render as an admonition rather than a definition
+ *  (v1.3): label (case-folded) -> [type, title]. */
+export const FIELD_ADMONITIONS = {
+  "expected result": ["success", "Expected result"],
+};
+
 /**
  * One definition list, composed. `defList([["Doc", "the row id"], …])`
  * -> `Doc` / `:   the row id`. A multi-line definition keeps its own
@@ -216,9 +232,11 @@ export function defList(pairs) {
 
 /**
  * A run of the case grammar's field bullets -> a definition list. The
- * fields of a test case (Group, Case, Steps, Expected Result) are
- * definitions, not list items; GFM has no way to say so, MkDocs does,
- * and this is the lane that can tell the difference.
+ * fields of a test case (Group, Case, Steps, Trace) are definitions,
+ * not list items; GFM has no way to say so, MkDocs does, and this is
+ * the lane that can tell the difference. A field in
+ * `FIELD_ADMONITIONS` — Expected Result — becomes an admonition
+ * block instead (v1.3), splitting the definition list around it.
  *
  * Only a CONTIGUOUS run at the top level converts, and lines indented
  * under a field — the task list under `- **Steps:**` — travel with it
@@ -243,7 +261,19 @@ export function fieldsToDefList(text) {
       break;
     }
     i--;
-    out.push(defList(fields.map(([term, body]) => [term, body.join("\n")])), "");
+    // the run, split around the fields that are admonitions
+    let pending = [];
+    const flush = () => {
+      if (pending.length) out.push(defList(pending.map(([term, body]) => [term, body.join("\n")])), "");
+      pending = [];
+    };
+    for (const [term, body] of fields) {
+      const adm = FIELD_ADMONITIONS[term.toLowerCase()];
+      if (!adm) { pending.push([term, body]); continue; }
+      flush();
+      out.push(admonition(adm[0], body.join("\n"), { title: adm[1] }));
+    }
+    flush();
   }
   return out.join("\n");
 }
