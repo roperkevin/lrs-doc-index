@@ -190,7 +190,38 @@ CSS scoped to it):
   structural change in `wrapCases()` — emit it where the group
   changes — where S1 is CSS alone.
 
-Both drop the checkboxes; either could keep them.
+## 5b. The run sheet — a different page, not a different card
+
+The test plan page rebuilt around the two things a plan is for:
+running it and reviewing its coverage. Material's `hide: [navigation,
+toc]` front matter gives the page the full width; a two-column grid
+(`////// html | div.lrs-run`) puts a **plan sheet** on the left and
+the **runbook** on the right.
+
+- **The sheet** is sticky. Top to bottom: the tool pills; Surface,
+  Product, Release, Product engineer and Edited as a definition list
+  (the site's own label vocabulary, so nothing new to style); the
+  Open button; a **case index** — the count with its positive /
+  negative split, then every case id under its group, each linking
+  its section — which replaces Material's table of contents with one
+  that knows what a case is; and the Summary block last, since a
+  tester who has the plan open already knows what it is about.
+- **The runbook** is the S2 body without the cards: a group is a
+  section head with the site's blue rule, a case is a heading and a
+  hairline, the steps (checkboxes kept) sit beside the expected
+  result. No borders, no card backgrounds; the rhythm comes from the
+  rules.
+
+What it costs: the kind's sidebar is gone from this page (the
+breadcrumb and the tab bar remain), the metadata table is not on the
+page at all (Status, Source revision, Extracted, Keywords would need
+a fold in the sheet), and below about 60 em the page stacks back to
+one column. What it gains: a plan reads as a plan, not as a document
+with a plan in it. Related documents and the Esri documentation
+blocks would sit in the sheet under the summary.
+
+Both keep the checkboxes: they are the tester's affordance on the
+page, and the step number beside them does no harm.
 
 ## 6. What the render would gain
 
@@ -239,5 +270,8 @@ python shoot.py                                                # screenshots, se
    or take A.
 3. **The metadata fold on every page**, or only on kinds whose strip
    carries enough (a Doc Review has no tools to show).
-4. **The case card**: S1, S2, or the wired default; and whether the
-   checkboxes stay.
+4. **The case card**: S1, S2, or the wired default. The checkboxes
+   stay.
+5. **The run sheet** as the test plan page — or as a second view
+   (`Run sheet` beside `Open the original`), the document page staying
+   as it is.

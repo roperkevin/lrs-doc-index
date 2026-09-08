@@ -12,6 +12,8 @@ shots = [
   ("doc-folded-open", "test-plans/4855-merge-plan-v/", "openmeta", "default"),
   ("cases-s1",        "test-plans/4855-merge-plan-s1/", None, "default"),
   ("cases-s2",        "test-plans/4855-merge-plan-s2/", None, "default"),
+  ("run-sheet",       "test-plans/4855-merge-plan-r/", None, "default"),
+  ("run-sheet-dark",  "test-plans/4855-merge-plan-r/", None, "slate"),
 ]
 with sync_playwright() as p:
     kw = {}
@@ -23,6 +25,8 @@ with sync_playwright() as p:
     pg = b.new_page(viewport={"width": 1280, "height": 900}, device_scale_factor=1.5)
     for name, path, act, scheme in shots:
         pg.goto(BASE + path, wait_until="networkidle")
+        # the sticky header would cover the top of an element screenshot
+        pg.add_style_tag(content=".md-header, .md-tabs { position: static !important; }")
         if scheme != "default":
             pg.evaluate(f"document.body.setAttribute('data-md-color-scheme','{scheme}')")
         if act == "open3":

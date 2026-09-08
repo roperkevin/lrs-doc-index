@@ -82,8 +82,7 @@
 /* ---- case-card suggestions (mockup) ---- */
 
 /* S1 — the procedure: the group rides in the head bar, the Case line is
-   the card's lead sentence, the checkboxes go (they never tick), the
-   verdict row sits flush at the card's foot */
+   the card's lead sentence, the verdict row sits flush at the card's foot */
 .md-typeset .lrs-s1 .lrs-case { position: relative; padding-top: 0.6em; }
 .md-typeset .lrs-s1 .lrs-case .lrs-group {
   position: absolute; top: -1.75rem; right: 0.9em; margin: 0;
@@ -92,9 +91,8 @@
 .md-typeset .lrs-s1 .lrs-case dl { display: block; margin: 0 0 0.5em; }
 .md-typeset .lrs-s1 .lrs-case dl dt { display: none; }
 .md-typeset .lrs-s1 .lrs-case dl dd { margin: 0; color: var(--md-default-fg-color--light); }
-.md-typeset .lrs-s1 .lrs-case .lrs-steps > ul.task-list { margin-left: 0; }
-.md-typeset .lrs-s1 .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; padding-left: 0; }
-.md-typeset .lrs-s1 .lrs-case .lrs-steps .task-list-control { display: none; }
+.md-typeset .lrs-s1 .lrs-case .lrs-steps > ul.task-list { margin-left: 1.5em; }
+.md-typeset .lrs-s1 .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; }
 .md-typeset .lrs-s1 .lrs-case > .admonition.success:last-child { margin-bottom: -0.5em; border-radius: 0 0 var(--lrs-radius) var(--lrs-radius); }
 
 /* S2 — the ledger: a group is a divider over the run of cases that
@@ -112,9 +110,8 @@
 .md-typeset .lrs-s2 .lrs-case > dl dt { display: none; }
 .md-typeset .lrs-s2 .lrs-case > dl dd { margin: 0; color: var(--md-default-fg-color--light); }
 .md-typeset .lrs-s2 .lrs-case > .lrs-steps { grid-column: 1; margin: 0; }
-.md-typeset .lrs-s2 .lrs-case .lrs-steps > ul.task-list { margin-left: 0; }
-.md-typeset .lrs-s2 .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; padding-left: 0; }
-.md-typeset .lrs-s2 .lrs-case .lrs-steps .task-list-control { display: none; }
+.md-typeset .lrs-s2 .lrs-case .lrs-steps > ul.task-list { margin-left: 1.5em; }
+.md-typeset .lrs-s2 .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; }
 .md-typeset .lrs-s2 .lrs-case > .admonition.success {
   grid-column: 2; align-self: stretch;
   display: block; margin: -0.6em -0.9em -0.5em 0; padding: 0.6em 0.9em;
@@ -124,4 +121,57 @@
 @media (max-width: 44.9em) {
   .md-typeset .lrs-s2 .lrs-case { display: block; }
   .md-typeset .lrs-s2 .lrs-case > .admonition.success { margin: 0 -0.9em -0.5em; border-radius: 0 0 var(--lrs-radius) var(--lrs-radius); }
+}
+
+/* ---- R — the run sheet (mockup): the page full width, a sticky plan
+   sheet on the left, the cases a continuous runbook on the right ---- */
+.md-typeset .lrs-run { display: grid; grid-template-columns: 17rem minmax(0, 1fr); column-gap: 2.4rem; align-items: start; margin-top: 0.4rem; }
+.md-typeset .lrs-run__sheet { position: sticky; top: 4.6rem; font-size: 0.68rem; }
+.md-typeset .lrs-run__sheet > :first-child { margin-top: 0; }
+.md-typeset .lrs-run__sheet .lrs-tags { display: flex; flex-wrap: wrap; gap: 0.25em; margin: 0 0 0.9em; }
+.md-typeset .lrs-run__sheet dl { margin: 0 0 1em; }
+.md-typeset .lrs-run__sheet dl dt { margin-top: 0.55em; }
+.md-typeset .lrs-run__sheet .md-button { margin: 0 0 1.2em; font-size: 0.66rem; }
+.md-typeset .lrs-run__sheet h4 { margin: 1.2em 0 0.4em; padding-bottom: 0.25em; border-bottom: 1px solid var(--md-default-fg-color--lightest); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-run__sheet .lrs-run__count { color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-run__sheet ul.lrs-run__index { list-style: none; margin: 0 0 0.8em; padding: 0; }
+.md-typeset .lrs-run__sheet ul.lrs-run__index li { margin: 0; padding: 0.15em 0; display: flex; gap: 0.5em; align-items: baseline; }
+.md-typeset .lrs-run__sheet ul.lrs-run__index code { flex: 0 0 auto; padding: 0 0.35em; font-size: 0.6rem; }
+.md-typeset .lrs-run__sheet ul.lrs-run__index span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-run__sheet .lrs-run__group { margin: 0.6em 0 0.2em; font-size: 0.62rem; font-weight: 600; color: var(--md-default-fg-color); }
+.md-typeset .lrs-run__sheet .admonition { margin: 0.6em 0 0; font-size: 0.66rem; }
+
+.md-typeset .lrs-run__main > h2:first-child { margin-top: 0; }
+.md-typeset .lrs-run__main .lrs-group-head {
+  margin: 1.8em 0 0.2em; padding: 0 0 0.3em;
+  border-bottom: 2px solid var(--md-primary-fg-color);
+  color: var(--md-primary-fg-color);
+  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+}
+.md-typeset .lrs-run__main h3[id^="tc-"] {
+  margin: 0; padding: 0.7em 0 0.3em;
+  border: 0; border-radius: 0; background: none;
+  font-size: 0.76rem; font-weight: 600;
+}
+.md-typeset .lrs-run__main .lrs-case {
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 1.4em;
+  margin: 0; padding: 0 0 0.9em;
+  border: 0; border-bottom: 1px solid var(--md-default-fg-color--lightest); border-radius: 0;
+}
+.md-typeset .lrs-run__main .lrs-case .lrs-group { display: none; }
+.md-typeset .lrs-run__main .lrs-case > dl { grid-column: 1 / -1; display: block; margin: 0 0 0.4em; }
+.md-typeset .lrs-run__main .lrs-case > dl dt { display: none; }
+.md-typeset .lrs-run__main .lrs-case > dl dd { margin: 0; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-run__main .lrs-case > .lrs-steps { grid-column: 1; margin: 0; }
+.md-typeset .lrs-run__main .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; }
+.md-typeset .lrs-run__main .lrs-case > .admonition.success {
+  grid-column: 2; display: block; margin: 0; padding: 0.5em 0.8em;
+  border-radius: var(--lrs-radius);
+}
+.md-typeset .lrs-run__main .lrs-case > .admonition.success > .admonition-title { margin-bottom: 0.25em; }
+@media (max-width: 60em) {
+  .md-typeset .lrs-run { display: block; }
+  .md-typeset .lrs-run__sheet { position: static; margin-bottom: 1.5em; }
+  .md-typeset .lrs-run__main .lrs-case { display: block; }
+  .md-typeset .lrs-run__main .lrs-case > .admonition.success { margin-top: 0.5em; }
 }
