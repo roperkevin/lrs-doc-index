@@ -127,14 +127,16 @@ edit year would suit other kinds, or a kind could keep the table.
 
 Under the title, a **facts strip** (the same `.lrs-facts` shape a
 catalog value's page has) carries what a reader scans for: the tool
-pills, then kind · surface · product · release · edited by whom — each
+pills with the **Open** link at the right of the same row — a small
+outlined button in a muted ink, no longer the page's loudest element
+— then kind · surface · product · release · edited by whom, each
 linked. The full metadata card goes into a closed `Details` block
-under it, the Open button and the Summary follow as today.
+under it, the Summary follows as today.
 
 ```
 <div class="lrs-doc-facts" markdown>
 
-[Merge Events](../tools/merge-events.md){ .lrs-pill } [Apply Event Behaviors](../tools/apply-event-behaviors.md){ .lrs-pill }
+[Merge Events](../tools/merge-events.md){ .lrs-pill } [Apply Event Behaviors](../tools/apply-event-behaviors.md){ .lrs-pill } [:material-open-in-new: Open the .pptx](<https://…/Merge%20Plan.pptx>){ .md-button .lrs-open }
 
 Test plan · [Pro](../surfaces/pro.md) · [Roads & Highways](../products/roads-and-highways.md) · release [3.8](../releases/3-8.md) · edited *2026-08-01*{ .lrs-when } by [Mac Christmas](../people/mac-christmas.md)
 

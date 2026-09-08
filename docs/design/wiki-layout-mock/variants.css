@@ -60,7 +60,7 @@
 .md-typeset .lrs-plans--ledger details.lrs-plan > summary { padding-top: 0.35em; padding-bottom: 0.35em; font-weight: 500; }
 .md-typeset .lrs-plans--ledger details.lrs-plan > p { margin: 0.4em 0.9em 0.7em; }
 .md-typeset .lrs-plans--ledger h2 { margin-top: 1.4em; }
-.md-typeset .lrs-plans--ledger h2 small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; letter-spacing: 0.02em; }
+.md-typeset .lrs-plans--ledger h2 small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; }
 
 /* the document page: the facts strip up top, the full table folded */
 .md-typeset .lrs-doc-facts {
@@ -73,6 +73,17 @@
   font-size: 0.7rem;
 }
 .md-typeset .lrs-doc-facts p { margin: 0.25em 0; }
+/* the first row: the pills, and the Open link at the right — a quiet
+   outlined button, not the page's loudest element */
+.md-typeset .lrs-doc-facts p:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25em; }
+.md-typeset .lrs-doc-facts .lrs-open {
+  margin: 0 0 0 auto; padding: 0.15em 0.7em;
+  border-width: 1px; border-color: var(--md-default-fg-color--lighter);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.64rem; font-weight: 500;
+}
+.md-typeset .lrs-doc-facts .lrs-open:hover { border-color: var(--md-accent-fg-color); color: var(--md-accent-fg-color); background: none; }
+.md-typeset .lrs-doc-facts .lrs-open .twemoji { vertical-align: -0.15em; margin-right: 0.15em; }
 .md-typeset details.lrs-doc-meta { margin: 0 0 1em; border-color: var(--md-default-fg-color--lightest); box-shadow: none; }
 .md-typeset details.lrs-doc-meta > summary { background: none; padding-left: 2rem; font-weight: 500; color: var(--md-default-fg-color--light); }
 .md-typeset details.lrs-doc-meta > summary::before { background-color: var(--md-default-fg-color--light); -webkit-mask-image: var(--md-admonition-icon--info); mask-image: var(--md-admonition-icon--info); }
@@ -143,7 +154,7 @@
 .md-typeset .lrs-c .lrs-tc {
   flex: 0 0 4.2rem; padding: 0.15em 0; text-align: center;
   border-radius: 0.25rem;
-  font-family: var(--md-code-font-family); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.02em;
+  font-family: var(--md-code-font-family); font-size: 0.62rem; font-weight: 600;
   background: rgba(0, 200, 83, 0.14); color: #1b6b3a;
 }
 .md-typeset .lrs-c .lrs-tc--n { background: rgba(255, 145, 0, 0.16); color: #9a4a00; }

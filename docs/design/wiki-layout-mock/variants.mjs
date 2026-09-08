@@ -51,10 +51,13 @@ fs.writeFileSync(path.join(docs, "test-plans", "variant-b.md"), B.join("\n"));
 const p = plans.find((x) => x.stem === "4855-merge-plan");
 const orig = fs.readFileSync(path.join(docs, "test-plans", p.stem + ".md"), "utf8");
 const metaTable = /<div class="doc-meta" markdown>\n\n([\s\S]*?)\n\n<\/div>\n/.exec(orig)[1];
-const rest = orig.slice(orig.indexOf("[:material-open-in-new:"));
+// the Open button leaves its own paragraph for the strip's first row
+const openAt = orig.indexOf("[:material-open-in-new:");
+const rest = orig.slice(orig.indexOf("\n", openAt) + 1).replace(/^\n+/, "");
+const srcUrl = /\]\(<([^>]+)>\)\{ \.md-button/.exec(orig.slice(openAt))[1];
 const D = orig.slice(0, orig.indexOf('<div class="doc-meta"')) +
   [`<div class="lrs-doc-facts" markdown>`, "",
-    `${p.tools.map(pill).join(" ")}`, "",
+    `${p.tools.map(pill).join(" ")} [:material-open-in-new: Open the .pptx](<${srcUrl}>){ .md-button .lrs-open }`, "",
     `Test plan · [Pro](../surfaces/pro.md) · [Roads & Highways](../products/roads-and-highways.md) · release [3.8](../releases/3-8.md) · edited *2026-08-01*{ .lrs-when } by [Mac Christmas](../people/mac-christmas.md)`, "",
     "</div>", "",
     "///// details | Details", "    attrs: {class: lrs-doc-meta}", "",
@@ -70,9 +73,9 @@ fs.writeFileSync(path.join(docs, "test-plans", p.stem + "-v.md"), D);
 // body hanging under the title with no box
 {
   const src = fs.readFileSync(path.join(docs, "test-plans", p.stem + ".md"), "utf8");
-  const foldedHead = D.slice(0, D.indexOf("[:material-open-in-new:"));
+  const foldedHead = D.slice(0, D.indexOf("!!! abstract"));
   const at = src.indexOf("\n## Test Cases");
-  const between = src.slice(src.indexOf("[:material-open-in-new:"), at); // the Open button and the Summary
+  const between = src.slice(src.indexOf("!!! abstract"), at); // the Summary
   const lines = src.slice(at).split("\n"); const out = []; let last = "";
   const groupOf = (i) => /\/\/\/ html \| div\.lrs-group\n\n(.+)\n/.exec(lines.slice(i, i + 8).join("\n"))?.[1] || "";
   const counts = new Map();

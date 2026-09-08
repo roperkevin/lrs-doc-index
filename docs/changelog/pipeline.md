@@ -11,7 +11,10 @@ sibling of `FIELD_ADMONITIONS`; `Case` and `Trace` stay a definition
 list, label and value, and the Expected result stays the green row.
 The wiki's stylesheet draws the group as a quiet line over the card's
 content (small, muted, the source's own casing) and the steps as the
-procedure, flush with the card. Nothing on disk changes shape.
+procedure, flush with the card. Nothing on disk changes shape. And no
+uppercase anywhere on the site: the metadata card's labels and the
+definition-list labels (v1.4, v1.8) keep their muted ink and weight
+and lose the transform and the letter-spacing.
 
 Two further layouts for the card body and two for the long kind
 tables are mocked, not wired, in `docs/design/Wiki_Kind_Layout_Variations.md`.
