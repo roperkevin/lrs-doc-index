@@ -1,0 +1,80 @@
+
+/* ---- layout variations (mockup): tool pills, plan cards, folded meta ---- */
+
+/* a tool as a pill: the link ink on a wash of itself, so it reads as a tag
+   in both schemes without a second colour */
+.md-typeset .lrs-pill {
+  display: inline-block;
+  margin: 0.1em 0.1em 0.1em 0;
+  padding: 0.1em 0.6em;
+  border: 1px solid color-mix(in srgb, var(--md-typeset-a-color) 30%, transparent);
+  border-radius: 1em;
+  background: color-mix(in srgb, var(--md-typeset-a-color) 9%, transparent);
+  color: var(--md-typeset-a-color);
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.md-typeset .lrs-pill:hover { background: color-mix(in srgb, var(--md-accent-fg-color) 14%, transparent); border-color: var(--md-accent-fg-color); color: var(--md-accent-fg-color); }
+.md-typeset .lrs-when { font-style: normal; color: var(--md-default-fg-color--light); font-variant-numeric: tabular-nums; }
+
+/* a plan as a details card: the header row is the summary element —
+   title, pills, and the edit date pushed to the right */
+.md-typeset details.lrs-plan {
+  margin: 0 0 0.6em;
+  border-color: var(--md-primary-fg-color);
+  font-size: 0.72rem;
+}
+.md-typeset details.lrs-plan > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2em 0.5em;
+  padding: 0.5em 2.2rem 0.5em 0.9em;
+  background: var(--md-code-bg-color);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.md-typeset details.lrs-plan > summary::before { display: none; }
+.md-typeset details.lrs-plan > summary > a:first-child { margin-right: 0.3em; }
+.md-typeset details.lrs-plan > summary .lrs-tags { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 0.2em 0.3em; min-width: 0; }
+.md-typeset details.lrs-plan > summary .lrs-when { flex-shrink: 0; margin-left: auto; font-size: 0.66rem; font-weight: 400; }
+.md-typeset details.lrs-plan > :not(summary) { margin-left: 0.9em; margin-right: 0.9em; }
+.md-typeset details.lrs-plan .lrs-plan__facts { margin: 0.5em 0.9em 0.2em; color: var(--md-default-fg-color--light); font-size: 0.68rem; }
+.md-typeset details.lrs-plan .lrs-plan__facts p { margin: 0; }
+/* the nested Summary fold: quiet, no box of its own */
+.md-typeset details.lrs-plan > details {
+  margin: 0.3em 0.9em 0.6em;
+  border: 0;
+  box-shadow: none;
+  background: none;
+}
+.md-typeset details.lrs-plan > details > summary { padding-top: 0.3em; padding-bottom: 0.3em; background: none; font-weight: 500; }
+.md-typeset details.lrs-plan > details > :not(summary) { margin: 0.3em 0 0 0.4rem; padding: 0 0.8rem 0.3em; }
+
+/* B — the ledger: closed rows, a quiet rail until a row is open */
+.md-typeset .lrs-plans--ledger details.lrs-plan { margin: 0 0 0.3em; border-color: var(--md-default-fg-color--lightest); }
+.md-typeset .lrs-plans--ledger details.lrs-plan[open] { border-color: var(--md-primary-fg-color); }
+.md-typeset .lrs-plans--ledger details.lrs-plan > summary { padding-top: 0.35em; padding-bottom: 0.35em; font-weight: 500; }
+.md-typeset .lrs-plans--ledger details.lrs-plan > p { margin: 0.4em 0.9em 0.7em; }
+.md-typeset .lrs-plans--ledger h2 { margin-top: 1.4em; }
+.md-typeset .lrs-plans--ledger h2 small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; letter-spacing: 0.02em; }
+
+/* the document page: the facts strip up top, the full table folded */
+.md-typeset .lrs-doc-facts {
+  margin: -0.4em 0 0.8em;
+  padding: 0.6em 0.9em;
+  border-left: 0.2rem solid var(--md-primary-fg-color);
+  border-radius: 0 var(--lrs-radius) var(--lrs-radius) 0;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.7rem;
+}
+.md-typeset .lrs-doc-facts p { margin: 0.25em 0; }
+.md-typeset details.lrs-doc-meta { margin: 0 0 1em; border-color: var(--md-default-fg-color--lightest); box-shadow: none; }
+.md-typeset details.lrs-doc-meta > summary { background: none; padding-left: 2rem; font-weight: 500; color: var(--md-default-fg-color--light); }
+.md-typeset details.lrs-doc-meta > summary::before { background-color: var(--md-default-fg-color--light); -webkit-mask-image: var(--md-admonition-icon--info); mask-image: var(--md-admonition-icon--info); }
+.md-typeset details.lrs-doc-meta .doc-meta { margin: 0.4em 0.6em 0.2em; }
+.md-typeset details.lrs-doc-meta .doc-meta .md-typeset__scrollwrap { margin-bottom: 0.4em; }
