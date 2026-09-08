@@ -161,6 +161,37 @@ Status, Source, Extracted and Generated. Keywords are the one row the
 strip does not repeat; they could join the pills in a second, lighter
 style if the strip is not to lose them.
 
+## 5a. The case card — labels gone, and two layouts for the body
+
+Wired (wiki v2.3, mdlayout v1.5): the Group and Steps fields lose
+their labels. Each is a class-named html block with the content alone
+(`FIELD_BARE` in `mdlayout.mjs`), drawn as an eyebrow over the card
+and as the procedure; Case and Trace stay a definition list, the
+Expected result stays the green row.
+
+Two further layouts, mocked in `wiki-layout-mock/` (the doc page's
+body wrapped in a `///// html | div.lrs-s1` / `div.lrs-s2` block, the
+CSS scoped to it):
+
+- **S1, the procedure.** The group rides in the head bar, at the
+  right of the case id and title (absolutely positioned into the
+  `h3`; a title long enough to wrap would collide with it). The Case
+  line, when there is one, is the card's lead sentence in a lighter
+  ink, no label — it is the full case text the heading shortened. The
+  checkboxes go: they never tick (About says so), and the step
+  number already leads each line. The verdict row sits flush at the
+  card's foot.
+- **S2, the ledger.** A group is a divider over the run of cases that
+  share it — cases in the same group are consecutive, so the eyebrow
+  on every card repeats itself — and the steps sit beside the
+  expected result, the way a test-case table reads: the tester's
+  eye goes left to right, do this, see that. The card is a two-column
+  grid (3 : 2); on a narrow screen it stacks. The divider needs one
+  structural change in `wrapCases()` — emit it where the group
+  changes — where S1 is CSS alone.
+
+Both drop the checkboxes; either could keep them.
+
 ## 6. What the render would gain
 
 - **mkdocs.yml**: `- pymdownx.blocks.details` after
@@ -208,3 +239,5 @@ python shoot.py                                                # screenshots, se
    or take A.
 3. **The metadata fold on every page**, or only on kinds whose strip
    carries enough (a Doc Review has no tools to show).
+4. **The case card**: S1, S2, or the wired default; and whether the
+   checkboxes stay.

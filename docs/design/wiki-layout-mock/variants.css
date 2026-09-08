@@ -78,3 +78,50 @@
 .md-typeset details.lrs-doc-meta > summary::before { background-color: var(--md-default-fg-color--light); -webkit-mask-image: var(--md-admonition-icon--info); mask-image: var(--md-admonition-icon--info); }
 .md-typeset details.lrs-doc-meta .doc-meta { margin: 0.4em 0.6em 0.2em; }
 .md-typeset details.lrs-doc-meta .doc-meta .md-typeset__scrollwrap { margin-bottom: 0.4em; }
+
+/* ---- case-card suggestions (mockup) ---- */
+
+/* S1 — the procedure: the group rides in the head bar, the Case line is
+   the card's lead sentence, the checkboxes go (they never tick), the
+   verdict row sits flush at the card's foot */
+.md-typeset .lrs-s1 .lrs-case { position: relative; padding-top: 0.6em; }
+.md-typeset .lrs-s1 .lrs-case .lrs-group {
+  position: absolute; top: -1.75rem; right: 0.9em; margin: 0;
+  line-height: 1.6;
+}
+.md-typeset .lrs-s1 .lrs-case dl { display: block; margin: 0 0 0.5em; }
+.md-typeset .lrs-s1 .lrs-case dl dt { display: none; }
+.md-typeset .lrs-s1 .lrs-case dl dd { margin: 0; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-s1 .lrs-case .lrs-steps > ul.task-list { margin-left: 0; }
+.md-typeset .lrs-s1 .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; padding-left: 0; }
+.md-typeset .lrs-s1 .lrs-case .lrs-steps .task-list-control { display: none; }
+.md-typeset .lrs-s1 .lrs-case > .admonition.success:last-child { margin-bottom: -0.5em; border-radius: 0 0 var(--lrs-radius) var(--lrs-radius); }
+
+/* S2 — the ledger: a group is a divider over the run of cases that
+   share it, not a line on each; steps and the expected result side by
+   side, the way a test-case table reads */
+.md-typeset .lrs-s2 .lrs-group-head {
+  margin: 1.6em 0 -0.9em;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.md-typeset .lrs-s2 .lrs-group-head + h3[id^="tc-"] { margin-top: 1.2em; }
+.md-typeset .lrs-s2 .lrs-case .lrs-group { display: none; }
+.md-typeset .lrs-s2 .lrs-case { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 1.2em; padding-top: 0.6em; }
+.md-typeset .lrs-s2 .lrs-case > dl { grid-column: 1 / -1; display: block; margin: 0 0 0.5em; }
+.md-typeset .lrs-s2 .lrs-case > dl dt { display: none; }
+.md-typeset .lrs-s2 .lrs-case > dl dd { margin: 0; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-s2 .lrs-case > .lrs-steps { grid-column: 1; margin: 0; }
+.md-typeset .lrs-s2 .lrs-case .lrs-steps > ul.task-list { margin-left: 0; }
+.md-typeset .lrs-s2 .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; padding-left: 0; }
+.md-typeset .lrs-s2 .lrs-case .lrs-steps .task-list-control { display: none; }
+.md-typeset .lrs-s2 .lrs-case > .admonition.success {
+  grid-column: 2; align-self: stretch;
+  display: block; margin: -0.6em -0.9em -0.5em 0; padding: 0.6em 0.9em;
+  border-radius: 0 0 var(--lrs-radius) 0;
+}
+.md-typeset .lrs-s2 .lrs-case > .admonition.success > .admonition-title { margin-bottom: 0.3em; }
+@media (max-width: 44.9em) {
+  .md-typeset .lrs-s2 .lrs-case { display: block; }
+  .md-typeset .lrs-s2 .lrs-case > .admonition.success { margin: 0 -0.9em -0.5em; border-radius: 0 0 var(--lrs-radius) var(--lrs-radius); }
+}

@@ -36,10 +36,32 @@ export const PLANS = [
   ["4801-create-extend-plan", "Create Route and Extend Route Test Plan", 11, "Pro", [RH], "3.6", ["Create Route", "Extend Route"], "2025-12-15 16:00", "Claire Wang", "Claire Wang",
    "Creating routes from selected centerlines and extending routes at either end, with the calibration options and the resulting measures checked."],
 ];
-const cases = (n) => Array.from({ length: n }, (_, i) =>
-  `### TC-P${String(i + 1).padStart(2, "0")} — Case ${i + 1} { #tc-p${String(i + 1).padStart(2, "0")} }\n- **Group:** Normal Routes\n- **Steps:**\n  - [ ] 1. Do the thing.\n- **Expected Result:** It works.\n`).join("\n");
+// realistic cases: a group, sometimes a Case line, 2–4 steps, the expected result
+const CASES = [
+  ["Normal Routes", "", ["Open the LRS network in an edit session.", "Select the two line events on <Route A> that share a measure at <m>.", "Run Merge Events with Keep first event's attributes."],
+   "One event spans the union of the two measure ranges; the attributes of the first event are kept."],
+  ["Normal Routes", "Merge across a calibration change on the same route", ["Select the events either side of the calibration point.", "Run Merge Events."],
+   "The merged event keeps its from- and to-measures; no gap is introduced at the calibration point."],
+  ["Concurrent Routes", "", ["Select an event on the dominant route and the coincident event on the subordinate route.", "Run Merge Events.", "Open the event table and read the RouteID."],
+   "The merged event is written to the dominant route only; the subordinate route's event is retired."],
+  ["Conflicts", "The merge is refused while another user holds the lock", ["As user B, acquire the lock on <Route A>.", "As user A, select the two events and run Merge Events."],
+   "A lock conflict dialog names user B; no edit is made."],
+  ["Conflicts", "", ["Retire <Route A> in a second session.", "In the first session, run Merge Events on its events."],
+   "The tool reports the route as retired and makes no edit."],
+];
+const cases = (n) => Array.from({ length: n }, (_, i) => {
+  const [group, kase, steps, expected] = CASES[i % CASES.length];
+  const neg = group === "Conflicts";
+  const id = `TC-${neg ? "N" : "P"}${String(i + 1).padStart(2, "0")}`;
+  const title = kase || `${steps[steps.length - 1].replace(/\.$/, "")}`;
+  return [`### ${id} — ${title.slice(0, 60)} { #${id.toLowerCase()} }`,
+    `- **Group:** ${group}`,
+    ...(kase ? [`- **Case:** ${kase}`] : []),
+    "- **Steps:**", ...steps.map((st, k) => `  - [ ] ${k + 1}. ${st}`),
+    `- **Expected Result:** ${expected}`, ""].join("\n");
+}).join("\n");
 for (const [stem, title, id, surface, products, release, tools, edited, author, pe, summary] of PLANS) {
-  const n = 6 + (id % 9);
+  const n = 3 + (id % 3);
   const md = `# ${title}
 
 | Field | Value |

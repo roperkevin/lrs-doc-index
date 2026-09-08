@@ -1,5 +1,5 @@
 /**
- * mdlayout.mjs v1.4 — the markdown layout kernel
+ * mdlayout.mjs v1.5 — the markdown layout kernel
  * (docs/design/Markdown_Layout_Plan.md §4.1, phase 2's inhabitant).
  *
  * The project writes ONE markdown dialect — GitHub-flavored: ATX
@@ -25,6 +25,16 @@
  *
  * Code spans and fenced blocks are never touched: `<` renders itself
  * there, and escaping would show the entity.
+ *
+ * v1.5 — two fields lose their labels in the MkDocs lane. `Group` is
+ * a category, not a fact about the case, and `Steps` ARE the case:
+ * a reader of the card gains nothing from the words "Group" and
+ * "Steps" beside them. Each is written as a class-named Blocks html
+ * block holding the content alone (`/// html | div.lrs-group`,
+ * `/// html | div.lrs-steps`), which the wiki's stylesheet draws as
+ * an eyebrow over the card and as the procedure, flush with the card.
+ * `FIELD_BARE` is the whole rule; `Case` and `Trace` stay a definition
+ * list, and nothing on disk changes shape.
  *
  * v1.4 — Blocks syntax where blocks NEST
  * (https://facelessuser.github.io/pymdown-extensions/extensions/blocks/).
@@ -244,6 +254,13 @@ export const FIELD_ADMONITIONS = {
   "expected result": ["success", "Expected result"],
 };
 
+/** The fields whose LABEL the wiki hides (v1.5): the content stands
+ *  alone in a class-named html block. label (case-folded) -> class. */
+export const FIELD_BARE = {
+  group: "lrs-group",
+  steps: "lrs-steps",
+};
+
 /**
  * One definition list, composed. `defList([["Doc", "the row id"], …])`
  * -> `Doc` / `:   the row id`. A multi-line definition keeps its own
@@ -270,7 +287,9 @@ export function defList(pairs) {
  * not list items; GFM has no way to say so, MkDocs does, and this is
  * the lane that can tell the difference. A field in
  * `FIELD_ADMONITIONS` — Expected Result — becomes an admonition
- * block instead (v1.3), splitting the definition list around it.
+ * block instead (v1.3), and a field in `FIELD_BARE` — Group, Steps —
+ * a class-named html block with no label (v1.5); either splits the
+ * definition list around it.
  *
  * Only a CONTIGUOUS run at the top level converts, and lines indented
  * under a field — the task list under `- **Steps:**` — travel with it
@@ -308,12 +327,15 @@ export function fieldsToDefList(text) {
     };
     for (const [term, body] of fields) {
       const adm = FIELD_ADMONITIONS[term.toLowerCase()];
-      if (!adm) { pending.push([term, body]); continue; }
+      const bare = FIELD_BARE[term.toLowerCase()];
+      if (!adm && !bare) { pending.push([term, body]); continue; }
       flush();
       sep();
       // Blocks form (v1.4): it sits inside the wiki's case card, an
       // outer block, so its nesting shows in the slash count
-      out.push(block("admonition", body.join("\n"), { title: adm[1], options: { type: adm[0] } }), "");
+      if (adm) out.push(block("admonition", body.join("\n"), { title: adm[1], options: { type: adm[0] } }), "");
+      // v1.5: the content alone, the class saying which field it was
+      else out.push(block("html", body.join("\n"), { title: `div.${bare}` }), "");
     }
     flush();
   }

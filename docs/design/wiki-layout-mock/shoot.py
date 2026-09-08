@@ -1,6 +1,6 @@
 import os, sys
 from playwright.sync_api import sync_playwright
-BASE = "http://127.0.0.1:8765/"
+BASE = os.environ.get("MOCK_BASE", "http://127.0.0.1:8765/")
 OUT = "shots"; os.makedirs(OUT, exist_ok=True)
 shots = [
   ("current-table",   "test-plans/",                 None, "default"),
@@ -10,14 +10,16 @@ shots = [
   ("doc-current",     "test-plans/4855-merge-plan/", None, "default"),
   ("doc-folded",      "test-plans/4855-merge-plan-v/", None, "default"),
   ("doc-folded-open", "test-plans/4855-merge-plan-v/", "openmeta", "default"),
+  ("cases-s1",        "test-plans/4855-merge-plan-s1/", None, "default"),
+  ("cases-s2",        "test-plans/4855-merge-plan-s2/", None, "default"),
 ]
 with sync_playwright() as p:
     kw = {}
-    if len(sys.argv) > 1: kw["executable_path"] = sys.argv[1]  # a Playwright chromium build, when the default is not found
+    if os.path.exists("/opt/pw-browsers/chromium/chrome"): kw["executable_path"] = "/opt/pw-browsers/chromium/chrome"
     try:
         b = p.chromium.launch(**kw)
     except Exception as e:
-        raise SystemExit(f"could not launch Chromium ({e}); pass the browser path as the first argument")
+        print("launch failed", e); b = p.chromium.launch(executable_path=sys.argv[1])
     pg = b.new_page(viewport={"width": 1280, "height": 900}, device_scale_factor=1.5)
     for name, path, act, scheme in shots:
         pg.goto(BASE + path, wait_until="networkidle")

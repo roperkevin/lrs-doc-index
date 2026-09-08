@@ -62,6 +62,28 @@ const D = orig.slice(0, orig.indexOf('<div class="doc-meta"')) +
   ].join("\n") + rest;
 fs.writeFileSync(path.join(docs, "test-plans", p.stem + "-v.md"), D);
 
+
+// ---- the case-card suggestions: the rendered page, its body wrapped in a
+// class the mock CSS scopes to (S1), and with group dividers inserted
+// before the first case of each run (S2)
+{
+  const src = fs.readFileSync(path.join(docs, "test-plans", "4855-merge-plan.md"), "utf8");
+  const at = src.indexOf("\n## Test Cases");
+  const wrap = (cls, body) => src.slice(0, at) + `\n///// html | div.${cls}\n${body}\n/////\n`;
+  fs.writeFileSync(path.join(docs, "test-plans", "4855-merge-plan-s1.md"), wrap("lrs-s1", src.slice(at)));
+  // S2: a divider where the group changes; the groups are read off the cards
+  const lines = src.slice(at).split("\n");
+  const out = []; let last = "";
+  for (let i = 0; i < lines.length; i++) {
+    if (/^### TC-/.test(lines[i])) {
+      const g = /\/\/\/ html \| div\.lrs-group\n\n(.+)\n/.exec(lines.slice(i, i + 8).join("\n"))?.[1] || "";
+      if (g && g !== last) { out.push(`<div class="lrs-group-head">${g}</div>`, ""); last = g; }
+    }
+    out.push(lines[i]);
+  }
+  fs.writeFileSync(path.join(docs, "test-plans", "4855-merge-plan-s2.md"), wrap("lrs-s2", out.join("\n")));
+}
+
 // ---- CSS and JS the variations need (what wiki.mjs would gain)
 fs.appendFileSync(path.join(docs, "stylesheets", "extra.css"), fs.readFileSync("variants.css", "utf8"));
 fs.appendFileSync(path.join(docs, "javascripts", "tables.js"), fs.readFileSync("variants.js", "utf8"));
@@ -71,5 +93,5 @@ const yml = path.join(site, "work", "wiki", "mkdocs.yml");
 let y = fs.readFileSync(yml, "utf8");
 y = y.replace("  - markdown_captions\n", "").replace(/  - panzoom:\n(?:      .*\n)*/, "");
 y = y.replace("  - pymdownx.blocks.admonition\n", "  - pymdownx.blocks.admonition\n  - pymdownx.blocks.details\n");
-y = y.replace("          - test-plans/index.md\n", "          - test-plans/index.md\n          - \"Variant A\": test-plans/variant-a.md\n          - \"Variant B\": test-plans/variant-b.md\n          - \"Merge Events (folded meta)\": test-plans/4855-merge-plan-v.md\n");
+y = y.replace("          - test-plans/index.md\n", "          - test-plans/index.md\n          - \"Variant A\": test-plans/variant-a.md\n          - \"Variant B\": test-plans/variant-b.md\n          - \"Merge Events (folded meta)\": test-plans/4855-merge-plan-v.md\n          - \"Cases S1\": test-plans/4855-merge-plan-s1.md\n          - \"Cases S2\": test-plans/4855-merge-plan-s2.md\n");
 fs.writeFileSync(yml, y);
