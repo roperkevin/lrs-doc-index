@@ -1,5 +1,5 @@
 /**
- * mdlayout.mjs v1.5 — the markdown layout kernel
+ * mdlayout.mjs v1.6 — the markdown layout kernel
  * (docs/design/Markdown_Layout_Plan.md §4.1, phase 2's inhabitant).
  *
  * The project writes ONE markdown dialect — GitHub-flavored: ATX
@@ -25,6 +25,10 @@
  *
  * Code spans and fenced blocks are never touched: `<` renders itself
  * there, and escaping would show the entity.
+ *
+ * v1.6 — `Case` bares too: the full case line the heading shortened
+ * is the card's lead sentence (`/// html | div.lrs-case-text`), not a
+ * labelled definition. `Trace` is the one field still a definition.
  *
  * v1.5 — two fields lose their labels in the MkDocs lane. `Group` is
  * a category, not a fact about the case, and `Steps` ARE the case:
@@ -259,6 +263,7 @@ export const FIELD_ADMONITIONS = {
 export const FIELD_BARE = {
   group: "lrs-group",
   steps: "lrs-steps",
+  case: "lrs-case-text",
 };
 
 /**

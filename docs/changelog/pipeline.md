@@ -1,5 +1,45 @@
 # Local sweep — release notes
 
+## wiki v2.4 (2026-09-08 — the ledger and the checklist; mdlayout v1.6)
+
+The two layouts chosen from `docs/design/Wiki_Kind_Layout_Variations.md`,
+wired. pymdown's Blocks `details` plugin joins mkdocs.yml for both.
+
+- **A kind's index page is a ledger** (`wiki.kindLayout`, default
+  `ledger`; `table` keeps the v2.0 table). Its documents are grouped
+  by surface — Pro, Experience Builder, REST, Server, Enterprise, each
+  a details section open by default, so a reader folds away the
+  surfaces that are not theirs — then by the tools they name, a
+  document listed under EVERY tool it names. A document is a closed
+  details row: the title, its other tools as pills, the edit date;
+  opened, the facts line (product, release, surfaces, cases, PE) and
+  the summary. `tables.js` filters the rows and folds a tool head or
+  a surface section whose rows all hid. A document with no surface
+  sits under "No surface", one with no tool under "No tool named".
+- **A document page opens with a facts strip** — the tools as pills,
+  the Open link (a quiet outlined button, "Open the .pptx") at the
+  right of that row, then kind · surface · product · release · edited
+  by whom — and the full metadata table folded under a closed
+  `Details` block. The format 3.1 rows are unchanged; only their
+  place on the page is. Drafts keep their four-row table in the open.
+- **The test cases are a checklist.** A count line (`5 cases · 3
+  positive · 2 negative`) before the first case; a group as a divider
+  over its run of cases, in the source's casing with its count; the
+  case id a badge in a gutter beside the title — green for a positive
+  case, amber for a negative one, the id already said so; the body
+  hanging under the title with no box: the Case line as a lead
+  sentence (mdlayout v1.6 bares `Case` as it bared Group and Steps),
+  the steps with their checkboxes, the Expected result one green
+  line, a hairline to close. `wrapCases` writes the count line, the
+  dividers and the badge span; the heading's words are unchanged, so
+  anchors, the table of contents and search are too.
+
+Gates: `check_wiki.py` — the ledger's sections, heads and rows (the
+head's own pill left off), `kindLayout = table`, an unknown layout
+refused, the strip, the folded table, the count line, the dividers,
+both badges, the built page's open section and closed row, the
+plugin, the script, the rules: 125 checks, strict build included.
+
 ## wiki v2.3 (2026-09-08 — the case card without its two loudest labels; mdlayout v1.5)
 
 "Group" and "Steps" said nothing a reader of a case card did not

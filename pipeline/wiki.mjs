@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v2.3 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v2.4 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -35,6 +35,38 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v2.4 — the ledger and the checklist (docs/design/
+ * Wiki_Kind_Layout_Variations.md, the variations chosen). pymdown's
+ * Blocks `details` plugin joins mkdocs.yml for both.
+ *
+ *   - A kind's index page is a LEDGER (`wiki.kindLayout`, default
+ *     "ledger"; "table" keeps the v2.0 table): the documents grouped
+ *     by surface — Pro, Experience Builder, REST, Server, Enterprise,
+ *     each a details section open by default, so a reader folds away
+ *     the surfaces that are not theirs — then by the tools they name,
+ *     a document listed under EVERY tool it names. A document is a
+ *     closed details row: the title, its other tools as pills, the
+ *     edit date; opened, the facts line (product, release, surfaces,
+ *     cases, PE) and the summary. `tables.js` filters the rows and
+ *     folds a tool head or a surface section whose rows all hid.
+ *   - A document page opens with a FACTS STRIP — the tools as pills,
+ *     the Open link at the right of that row, then kind · surface ·
+ *     product · release · edited by whom — and the full metadata table
+ *     folded under a closed `Details` block; the format 3.1 rows are
+ *     unchanged, only their place on the page is. Drafts keep their
+ *     four-row table in the open.
+ *   - The test cases are a CHECKLIST: a count line (`5 cases · 3
+ *     positive · 2 negative`) before the first case, a group as a
+ *     divider over its run of cases (the source's casing, its count
+ *     beside it), the case id a badge in a gutter beside the title —
+ *     green for a positive case, amber for a negative one; the id
+ *     already said so — and the body hanging under the title with no
+ *     box: the Case line as a lead sentence (mdlayout v1.6 bares it
+ *     too), the steps with their checkboxes, the Expected result one
+ *     green line, a hairline to close. `wrapCases` writes the count
+ *     line, the dividers and the badge span; anchors, the table of
+ *     contents and search see the same heading text as before.
  *
  * v2.3 — the case card without its two loudest labels. "Group" and
  * "Steps" said nothing a reader of the card did not already see:
@@ -333,7 +365,7 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList, block } from "./
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v2.3";
+export const WIKI_VERSION = "v2.4";
 
 /** Days after its last edit a document counts as new (v2.1): the
  *  `new` badge in the sidebar. */
@@ -399,6 +431,15 @@ const CATALOGS = [
  *  from `sweep.kindFolders` may not collide with one. */
 const RESERVED_DIRS = new Set(["documents", "browse", "cases", "figures", "drafts", "media",
   "stylesheets", "javascripts", ...CATALOGS.map((c) => c.section)]);
+
+/** The ledger's sections in reader order (v2.4). A surface the corpus
+ *  has and this list lacks follows alphabetically; a document with no
+ *  surface sits under "No surface", last. */
+const SURFACE_ORDER = ["Pro", "Experience Builder", "REST", "Server", "Enterprise"];
+const NO_SURFACE = "\u0000none";
+const NO_TOOL = "\u0000none";
+/** `wiki.kindLayout`: the ledger (v2.4) or the v2.0 table. */
+const KIND_LAYOUTS = ["ledger", "table"];
 
 /** Kinds in reader order: KIND_FOLDERS' declaration order first, then
  *  any other kind the corpus has, alphabetically. */
@@ -806,6 +847,25 @@ export function dropMissingMedia(body, missing) {
     missing.has(link) ? `*(missing figure${alt ? `: ${alt}` : ""})*` : whole);
 }
 
+/** A case heading, split: `### TC-P01 — Title { #tc-p01 }` ->
+ *  [id, title, anchor]. The dash may be an em dash, an en dash or a
+ *  hyphen; the anchor is optional. */
+const CASE_HEAD = /^### (TC-[A-Za-z]?\d[\w.-]*)[ \t]+(?:—|–|-)[ \t]+(.*?)([ \t]*\{[ \t]*#[^}]+\})?[ \t]*$/;
+/** P for a positive case, N for a negative one, "" otherwise. */
+const caseClass = (id) => { const m = /^TC-([A-Za-z])/.exec(id); return m ? m[1].toUpperCase() : ""; };
+
+/** The heading with its id as a badge (v2.4): `### <span class="lrs-tc
+ *  lrs-tc--p">TC-P01</span> Title { #tc-p01 }`. The heading's text is
+ *  the same words, so the toc, search and a derived id are unchanged;
+ *  a heading not in the id — title shape is left alone. */
+export function badgeHeading(line) {
+  const m = CASE_HEAD.exec(line);
+  if (!m) return line;
+  const c = caseClass(m[1]);
+  const mod = c === "P" ? " lrs-tc--p" : c === "N" ? " lrs-tc--n" : "";
+  return `### <span class="lrs-tc${mod}">${m[1]}</span> ${m[2]}${m[3] || ""}`;
+}
+
 /** Wrap each test case's content — everything under a `### TC-…`
  *  heading up to the next heading — in a `//// html | div.lrs-case`
  *  block (v2.1, pymdown Blocks), so the stylesheet can draw the
@@ -816,18 +876,48 @@ export function dropMissingMedia(body, missing) {
  *  the heading line, with its anchor, stays where it is. Runs on the
  *  TRANSLATED body (after `toMkDocs`, so a body's own text cannot be
  *  read as the wrapper); deck-shaped `## Slide N` cases are left
- *  alone — they are sections, not cards. */
+ *  alone — they are sections, not cards.
+ *
+ *  v2.4, the checklist: a count line before the first case, a divider
+ *  where the group changes (read off the case's own `lrs-group` block,
+ *  which the stylesheet then hides), and the id as a badge in the
+ *  heading. */
 export function wrapCases(body) {
   const { lines, spans } = caseSpans(body);
   const cases = spans.filter((s) => /^### /.test(lines[s.start]));
   if (!cases.length) return String(body ?? "");
-  const out = [];
-  let at = 0;
+  const groupOf = (s) => {
+    const m = /^\/\/\/ html \| div\.lrs-group\n\n([^\n]+)\n\/\/\/$/m.exec(lines.slice(s.start + 1, s.end).join("\n"));
+    return m ? m[1].trim() : "";
+  };
+  const idOf = (s) => (CASE_HEAD.exec(lines[s.start]) || /^### (TC-\S+)/.exec(lines[s.start]) || [])[1] || "";
+  const counts = new Map();
+  let nPos = 0, nNeg = 0;
   for (const s of cases) {
-    out.push(...lines.slice(at, s.start + 1), "",
+    const g = groupOf(s);
+    counts.set(g, (counts.get(g) || 0) + 1);
+    const c = caseClass(idOf(s));
+    if (c === "P") nPos++; else if (c === "N") nNeg++;
+  }
+  const n = cases.length, nOther = n - nPos - nNeg;
+  const countLine = `<p class="lrs-cases-count">${n} case${n === 1 ? "" : "s"}` +
+    (nPos || nNeg ? ` · ${nPos} positive · ${nNeg} negative${nOther ? ` · ${nOther} unclassified` : ""}` : "") + "</p>";
+  const out = [];
+  let at = 0, last = null;
+  cases.forEach((s, i) => {
+    out.push(...lines.slice(at, s.start));
+    if (out.length && out[out.length - 1].trim() !== "") out.push("");
+    if (i === 0) out.push(countLine, "");
+    const g = groupOf(s);
+    if (g && g !== last) {
+      const k = counts.get(g);
+      out.push(`<div class="lrs-group-head">${g} <small>${k} case${k === 1 ? "" : "s"}</small></div>`, "");
+      last = g;
+    }
+    out.push(badgeHeading(lines[s.start]), "",
       block("html", lines.slice(s.start + 1, s.end).join("\n"), { title: "div.lrs-case", depth: 4 }), "");
     at = s.end;
-  }
+  });
   out.push(...lines.slice(at));
   return out.join("\n");
 }
@@ -1006,19 +1096,41 @@ function docPage(d, model) {
   // v1.4: the table sits in a div the stylesheet turns into a card;
   // the rows themselves are the format 3.1 contract and do not change.
   // v2.0: search boost (a document page is what a query is for), the
-  // breadcrumb line, and the "Open <file>" button under the card;
-  // v2.1: the `new` badge for a recent edit
-  const out = [...pageMeta({ boost: 2, status: pageStatus(m.last_edited) }),
-    ...crumbs(p, [[`${d.kindDir}/index.md`, model.kindFolders[d.kind] || d.kind]]),
-    `# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
+  // breadcrumb line; v2.1: the `new` badge for a recent edit.
+  // v2.4: the facts strip — the tools as pills with the Open link at
+  // the right of that row, then kind · surface · product · release ·
+  // edited by whom — and the table folded under a closed Details
+  // block (Blocks html inside Blocks details, so the card's div keeps
+  // its class; the nesting shows in the slash count)
+  const ext = /\.([A-Za-z0-9]{1,5})$/.exec(cell(m.source_file) || "");
+  const openLink = m.source_url
+    ? `[:material-open-in-new: ${ext ? `Open the .${ext[1].toLowerCase()}` : "Open the original"}](<${m.source_url}>){ .md-button .lrs-open }`
+    : "";
+  const strip1 = [m.tools.length ? m.tools.map((t) => pill(p, t)).join(" ") : "", openLink].filter(Boolean).join(" ");
+  const edited = cell(m.last_edited).slice(0, 10);
+  const strip2 = [
+    kindLink,
+    surfaces.length ? cat("surfaces", surfaces) : "",
+    m.products.length ? cat("products", m.products) : "",
+    m.target_release ? `release ${link(p, catalogPage("releases", m.target_release), m.target_release)}` : "",
+    // the editor links their People page only when they have one — the
+    // catalog holds authors, PEs and devs, and an editor may be none
+    edited ? `edited *${edited}*{ .lrs-when }${m.last_edited_by ? ` by ${model.people.has(m.last_edited_by) ? person(m.last_edited_by) : mdEscape(m.last_edited_by)}` : ""}` : "",
+  ].filter(Boolean).join(" · ");
+  const table = ["| Field | Value |", "| --- | --- |"];
   for (const [k, v, always] of rows) {
     if (!always && (v === "" || v === "—")) continue;
-    out.push(`| **${k}** | ${v === "" ? "—" : v} |`);
+    table.push(`| **${k}** | ${v === "" ? "—" : v} |`);
   }
-  out.push("", META_CLOSE, "");
-  if (m.source_url) {
-    out.push(`[:material-open-in-new: Open ${linkText(m.source_file || "the original")}](<${m.source_url}>){ .md-button .md-button--primary .lrs-open }`, "");
-  }
+  const out = [...pageMeta({ boost: 2, status: pageStatus(m.last_edited) }),
+    ...crumbs(p, [[`${d.kindDir}/index.md`, model.kindFolders[d.kind] || d.kind]]),
+    `# ${mdEscape(m.title || d.stem)}`, "",
+    '<div class="lrs-doc-facts" markdown>', "",
+    ...(strip1 ? [strip1, ""] : []),
+    strip2, "",
+    "</div>", "",
+    block("details", block("html", table.join("\n"), { title: "div.doc-meta", depth: 4 }),
+      { title: "Details", depth: 5, options: { attrs: "{class: lrs-doc-meta}" } }), ""];
   // v2.1: the head of the page by content type — summary, related,
   // documentation — each in the block that says what it is
   if (d.summary) out.push(summaryBlock(d.summary), "");
@@ -1075,13 +1187,100 @@ function catalogValuePage({ section, title }, value, docs, model) {
   return out.join("\n");
 }
 
-function kindIndex(kind, docs, model, kindFolders) {
+/** A tool as a pill (v2.4): the link, classed for the stylesheet. */
+const pill = (fromPage, tool) => `${link(fromPage, catalogPage("tools", tool), tool)}{ .lrs-pill }`;
+
+/** One document as a closed details row (v2.4, the ledger): the
+ *  summary line is the title link, the tool pills — `skip`, the tool
+ *  the row sits under, left off — and the edit date; the body the
+ *  facts line and the summary. Four slashes: it sits inside the
+ *  surface section, a five-slash block. */
+function entryRow(fromPage, d, { skip = "" } = {}) {
+  const m = d.meta;
+  const tools = m.tools.filter((t) => t !== skip);
+  const tags = tools.length ? ` <span class="lrs-tags">${tools.map((t) => pill(fromPage, t)).join(" ")}</span>` : "";
+  const when = cell(m.last_edited).slice(0, 10);
+  const surfaces = surfacesOf(m);
+  const nCases = planCases(d.body).length;
+  const who = m.pe ? `PE ${link(fromPage, catalogPage("people", m.pe), m.pe)}`
+    : m.author ? `author ${link(fromPage, catalogPage("people", m.author), m.author)}` : "";
+  const facts = [
+    m.products.length ? m.products.map((v) => link(fromPage, catalogPage("products", v), v)).join(" · ") : "",
+    m.target_release ? `release ${link(fromPage, catalogPage("releases", m.target_release), m.target_release)}` : "",
+    surfaces.length ? surfaces.map((v) => link(fromPage, catalogPage("surfaces", v), v)).join(" · ") : "",
+    nCases ? `${nCases} case${nCases === 1 ? "" : "s"}` : "",
+    who,
+  ].filter(Boolean).join(" · ");
+  const summary = d.summary ? normalize(toMkDocs(d.summary)) : "";
+  return [
+    `//// details | ${link(fromPage, d.page, m.title || d.stem)}${tags}${when ? ` *${when}*{ .lrs-when }` : ""}`,
+    '    attrs: {class: "lrs-entry"}', "",
+    ...(facts ? [`<div class="lrs-entry__facts" markdown>${facts}</div>`, ""] : []),
+    ...(summary ? [summary, ""] : []),
+    "////",
+  ].join("\n");
+}
+
+/** The ledger (v2.4): a details section per surface, open, and inside
+ *  it a head per tool with the documents that name it, newest edit
+ *  first — a document under every tool it names, in every surface it
+ *  covers. The tool head is a div, not a heading, so the page's table
+ *  of contents stays empty rather than listing every tool. */
+function ledger(fromPage, docs) {
+  const bySurface = new Map();
+  for (const d of docs) {
+    const surfaces = surfacesOf(d.meta);
+    for (const sf of surfaces.length ? surfaces : [NO_SURFACE]) {
+      if (!bySurface.has(sf)) bySurface.set(sf, []);
+      bySurface.get(sf).push(d);
+    }
+  }
+  const rank = (sf) => (sf === NO_SURFACE ? 1e9 : SURFACE_ORDER.indexOf(sf) + 1 || SURFACE_ORDER.length + 1);
+  const surfaces = [...bySurface.keys()].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, "en"));
+  const out = ['<div class="lrs-entries" markdown>', ""];
+  for (const sf of surfaces) {
+    const ds = bySurface.get(sf);
+    const title = sf === NO_SURFACE ? "No surface" : link(fromPage, catalogPage("surfaces", sf), sf);
+    out.push(`///// details | ${title} <small>${ds.length} document${ds.length === 1 ? "" : "s"}</small>`,
+      "    open: true", '    attrs: {class: "lrs-section"}', "");
+    const byTool = new Map();
+    for (const d of ds) {
+      for (const t of d.meta.tools.length ? d.meta.tools : [NO_TOOL]) {
+        if (!byTool.has(t)) byTool.set(t, []);
+        byTool.get(t).push(d);
+      }
+    }
+    const tools = [...byTool.keys()].sort((a, b) =>
+      (a === NO_TOOL) - (b === NO_TOOL) || a.localeCompare(b, "en", { numeric: true, sensitivity: "base" }));
+    for (const t of tools) {
+      const td = byTool.get(t).slice().sort(byEdited);
+      const head = t === NO_TOOL ? "No tool named" : link(fromPage, catalogPage("tools", t), t);
+      out.push(`<div class="lrs-tool-head" markdown="span">${head} <small>${td.length}</small></div>`, "");
+      for (const d of td) out.push(entryRow(fromPage, d, { skip: t }), "");
+    }
+    out.push("/////", "");
+  }
+  out.push("</div>");
+  return out.join("\n");
+}
+
+function kindIndex(kind, docs, model, kindFolders, opts = {}) {
   const dir = pageName(kindFolders[kind] || kind);
   const p = `${dir}/index.md`;
-  return [...pageMeta({ exclude: true, title: kindFolders[kind] || kind }), h1(kindIcon(kind), kindFolders[kind] || kind), "",
-    `${docs.length} document${docs.length === 1 ? "" : "s"}, newest edit first. ${TABLE_HELP} ` +
+  const n = `${docs.length} document${docs.length === 1 ? "" : "s"}`;
+  const head = [...pageMeta({ exclude: true, title: kindFolders[kind] || kind }), h1(kindIcon(kind), kindFolders[kind] || kind), ""];
+  if (opts.kindLayout === "table") {
+    return [...head,
+      `${n}, newest edit first. ${TABLE_HELP} ` +
+      `Or ${link(p, "documents/index.md", "see every kind in one table")}.`, "",
+      docTable(p, docs, { filter: true }), ""].join("\n");
+  }
+  // v2.4: the ledger
+  return [...head,
+    `${n} by surface, then by the tools they name — a document is listed under every tool it names. ` +
+    "Type in the box to filter every group at once; open a row for the document's facts and summary. " +
     `Or ${link(p, "documents/index.md", "see every kind in one table")}.`, "",
-    docTable(p, docs, { filter: true }), ""].join("\n");
+    ledger(p, docs), ""].join("\n");
 }
 
 /** Every document in one table (v2.0): the Documents tab's own page. */
@@ -1220,9 +1419,9 @@ function aboutPage(model, opts) {
   return [...pageMeta({ title: "About this wiki" }), h1("information", "About this wiki"), "",
     // v2.0: the site's map, for the reader who wants it spelled out
     admonition("note", defList([
-      ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's table, the pages under it are the documents. A document page links its original file, its catalog values and its related documents."],
+      ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's ledger: its documents by surface, then by the tools they name, each row opening to the facts and the summary. A document page links its original file, its catalog values and its related documents."],
       // v2.1: what the blocks on a document page are, and the badges
-      ["A document page", "The metadata card and the Open button; the summary; the related documents (fold them away with the chevron); the Esri documentation links; then, under the rule, the extracted text — every test case one card: its fields as label and value, the Expected result the green row."],
+      ["A document page", "The facts strip — the tools as pills, the Open link, kind · surface · product · release · edited — with the full metadata table folded under Details; the summary; the related documents (fold them away with the chevron); the Esri documentation links; then, under the rule, the extracted text — the test cases as a checklist: the id a badge (green positive, amber negative) beside the title, the steps, the Expected result the green line, a group a divider over its cases."],
       ["Badges", `A page edited in the last ${NEW_DAYS} days carries a New badge in the sidebar; a draft carries the pencil.`],
       ["Browse", "The seven catalogs: keywords, tools, products, surfaces, releases, people and issues. Every value is a page listing the documents that carry it."],
       ["Test cases", "Every case the sweep read out of the test plans, each entry linking the section it came from. The Figures catalog is its sibling, reached from the Browse card below."],
@@ -1394,6 +1593,9 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // the `!!!` form stays for the flat blocks
     "  - pymdownx.blocks.html",
     "  - pymdownx.blocks.admonition",
+    // v2.4: the ledger's sections and rows, the document page's folded
+    // metadata table
+    "  - pymdownx.blocks.details",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
     "  - pymdownx.emoji:",
@@ -1573,6 +1775,40 @@ const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every re
     }), wrap.firstChild);
   }
 
+  /* ---- v2.4: the ledger ---------------------------------------------
+     An ".lrs-entries" wrapper holds details rows (.lrs-entry) under
+     tool heads (.lrs-tool-head) inside surface sections
+     (details.lrs-section). One box filters the rows; a tool head folds
+     when the rows up to the next head all hid, a section when every
+     row in it hid. */
+  function makeEntries(wrap) {
+    var rows = Array.prototype.slice.call(wrap.querySelectorAll("details.lrs-entry"));
+    if (!rows.length || wrap.dataset.lrsFilter) return;
+    if (rows.length < FILTER_MIN_ROWS) return;
+    wrap.dataset.lrsFilter = "1";
+    wrap.insertBefore(filterBox(rows.length, function (terms) {
+      var shown = 0;
+      rows.forEach(function (d) {
+        var text = (d.textContent || "").toLowerCase();
+        var hit = terms.every(function (t) { return text.indexOf(t) >= 0; });
+        d.hidden = !hit;
+        if (hit) shown++;
+      });
+      Array.prototype.forEach.call(wrap.querySelectorAll(".lrs-tool-head"), function (h) {
+        var any = false;
+        for (var el = h.nextElementSibling; el && !el.classList.contains("lrs-tool-head"); el = el.nextElementSibling) {
+          if (!el.hidden) { any = true; break; }
+        }
+        h.hidden = terms.length > 0 && !any;
+      });
+      Array.prototype.forEach.call(wrap.querySelectorAll("details.lrs-section"), function (sec) {
+        var any = Array.prototype.some.call(sec.querySelectorAll("details.lrs-entry"), function (d) { return !d.hidden; });
+        sec.hidden = terms.length > 0 && !any;
+      });
+      return shown;
+    }), wrap.firstChild);
+  }
+
   /* ---- v2.0: external links open in a new tab ----------------------
      The Source button, the issue tracker, the Esri documentation — a
      reader following one should not lose their place in the wiki.
@@ -1593,6 +1829,7 @@ const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every re
     document.querySelectorAll(SELECTOR).forEach(makeSortable);
     document.querySelectorAll(".filterable").forEach(makeFilterable);
     document.querySelectorAll(".filter-all").forEach(makeFilterAll);
+    document.querySelectorAll(".lrs-entries").forEach(makeEntries);
     externalLinks();
   }
 
@@ -1672,32 +1909,56 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 .doc-meta table:not([class]) td:first-child strong { font-weight: 600; }
 
-/* a test case is ONE card (v2.1): the heading is its head, the
-   .lrs-case wrapper its body — the fields a label/value grid, the
-   expected result (a success admonition) a green row of that grid,
-   the label column shared so everything lines up */
-.md-typeset h3[id^="tc-"] {
-  margin: 1.6em 0 0;
-  padding: 0.5em 0.9em;
-  border: 1px solid var(--md-default-fg-color--lightest);
-  border-left: 0.2rem solid var(--md-primary-fg-color);
-  border-radius: var(--lrs-radius) var(--lrs-radius) 0 0;
-  background: var(--md-code-bg-color);
-  font-size: 0.8rem;
+/* a test case (v2.4, the checklist): the id a badge in a gutter beside
+   the title, the body hanging under the title with no box, a hairline
+   to close it; a group is a divider over its run of cases and a count
+   line opens the section. The card's own group line (mdlayout) is
+   hidden — the divider carries it. */
+.md-typeset .lrs-cases-count { margin: -0.6em 0 1em; color: var(--md-default-fg-color--light); font-size: 0.7rem; }
+.md-typeset .lrs-group-head {
+  margin: 1.8em 0 0.4em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  font-size: 0.82rem;
   font-weight: 600;
 }
-.md-typeset h3[id^="tc-"] .headerlink { font-weight: 400; }
+.md-typeset .lrs-group-head small { margin-left: 0.5em; color: var(--md-default-fg-color--light); font-size: 0.66rem; font-weight: 400; }
+.md-typeset h3[id^="tc-"] {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  margin: 1em 0 0;
+  padding: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.md-typeset h3[id^="tc-"] .headerlink { margin-left: 0.2rem; font-weight: 400; }
+.md-typeset .lrs-tc {
+  flex: 0 0 4.2rem;
+  padding: 0.15em 0;
+  border-radius: 0.25rem;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color--light);
+  font-family: var(--md-code-font-family);
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-align: center;
+}
+.md-typeset .lrs-tc--p { background: rgba(0, 200, 83, 0.14); color: #1b6b3a; }
+.md-typeset .lrs-tc--n { background: rgba(255, 145, 0, 0.16); color: #9a4a00; }
+[data-md-color-scheme="slate"] .md-typeset .lrs-tc--p { color: #7ee2a8; }
+[data-md-color-scheme="slate"] .md-typeset .lrs-tc--n { color: #ffc27a; }
 .md-typeset .lrs-case {
-  margin: 0 0 1.2em;
-  padding: 0.7em 0.9em 0.5em;
-  border: 1px solid var(--md-default-fg-color--lightest);
-  border-top: 0;
-  border-left: 0.2rem solid var(--md-primary-fg-color);
-  border-radius: 0 0 var(--lrs-radius) var(--lrs-radius);
+  margin: 0.3em 0 0 4.9rem;
+  padding: 0 0 0.9em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
   font-size: 0.72rem;
 }
 .md-typeset .lrs-case > :first-child { margin-top: 0; }
-.md-typeset .lrs-case > :last-child { margin-bottom: 0; }
+.md-typeset .lrs-case .lrs-group { display: none; }
+.md-typeset .lrs-case .lrs-case-text { margin: 0 0 0.5em; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-case .lrs-case-text p { margin: 0; }
+/* the fields that keep a label (Trace) — a label/value grid */
 .md-typeset .lrs-case dl {
   display: grid;
   grid-template-columns: 7.5rem minmax(0, 1fr);
@@ -1707,53 +1968,46 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 .md-typeset .lrs-case dl dt {
   margin: 0;
-  padding: 0.1em 0 0 1.5em;
+  padding: 0.1em 0 0;
   color: var(--md-default-fg-color--light);
   font-size: 0.68rem;
   font-weight: 600;
 }
 .md-typeset .lrs-case dl dd { margin: 0; }
 .md-typeset .lrs-case dl dd > ul, .md-typeset .lrs-case dl dd > ol { margin-top: 0; margin-bottom: 0; }
-.md-typeset .lrs-case dl dd > ul.task-list { margin-left: 1.5em; }
-/* v2.3: Group is a category — a quiet line over the card's content,
-   in the source's own casing; Steps ARE the case — the procedure,
-   flush with the card, no label */
-.md-typeset .lrs-case .lrs-group {
-  margin: 0 0 0.4em;
-  color: var(--md-default-fg-color--light);
-  font-size: 0.66rem;
-  font-weight: 600;
-}
-.md-typeset .lrs-case .lrs-group p { margin: 0; }
-.md-typeset .lrs-case .lrs-steps { margin: 0 0 0.6em; }
+/* the steps ARE the case: the procedure, its checkboxes kept */
+.md-typeset .lrs-case .lrs-steps { margin: 0 0 0.5em; }
 .md-typeset .lrs-case .lrs-steps > ul, .md-typeset .lrs-case .lrs-steps > ol { margin: 0; }
 .md-typeset .lrs-case .lrs-steps > ul.task-list { margin-left: 1.5em; }
+.md-typeset .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.2em; }
+/* the verdict: one green line */
 .md-typeset .lrs-case .admonition.success {
-  display: grid;
-  grid-template-columns: 7.5rem minmax(0, 1fr);
-  column-gap: 1em;
-  align-items: start;
-  margin: 0 -0.9em 0.6em;
-  padding: 0.45em 0.9em;
+  margin: 0.4em 0 0;
+  padding: 0.45em 0.8em;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--lrs-radius);
   background: rgba(0, 200, 83, 0.09);
   box-shadow: none;
   font-size: 0.72rem;
 }
 .md-typeset .lrs-case .admonition.success > .admonition-title {
   position: relative;
-  margin: 0;
-  padding: 0.1em 0 0 1.5em;
+  display: inline;
+  margin: 0 0.4em 0 0;
+  padding: 0 0 0 1.4em;
   background: none;
   border: 0;
   font-size: 0.68rem;
   font-weight: 600;
 }
 .md-typeset .lrs-case .admonition.success > .admonition-title::before { top: 0.05em; left: 0; width: 1em; height: 1em; }
-.md-typeset .lrs-case .admonition.success > :not(.admonition-title) { margin: 0; }
+.md-typeset .lrs-case .admonition.success > .admonition-title::after { content: ":"; }
+.md-typeset .lrs-case .admonition.success > :not(.admonition-title) { display: inline; margin: 0; }
 .md-typeset .lrs-case figure { margin: 0.6em auto; }
 .md-typeset .lrs-case .md-typeset__table { margin: 0.4em 0; }
+@media screen and (max-width: 44.9em) {
+  .md-typeset .lrs-case { margin-left: 0; }
+}
 
 /* admonitions (v1.6): the site's radius, a quieter body, and the
    site's own types — draft (v1.6) for machine-generated, unreviewed
@@ -1808,8 +2062,8 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 
 /* definition lists (v1.8): a case's fields and About's provenance, in
-   the metadata card's vocabulary — a quiet label over its value
-   (v2.3: no uppercase anywhere on the site) */
+   the metadata card's vocabulary — a quiet label over its value, in
+   the source's own casing (v2.3) */
 .md-typeset dl { margin: 0.6em 0 1.2em; }
 .md-typeset dl dt {
   margin-top: 0.9em;
@@ -1891,10 +2145,104 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .md-typeset .lrs-crumbs a { color: inherit; }
 .md-typeset .lrs-crumbs a:hover { color: var(--md-accent-fg-color); }
 
-/* the "Open <file>" button under the metadata card (v2.0; v2.1 the
-   page's primary button) */
-.md-typeset .lrs-open { margin: -0.4em 0 1.4em; font-size: 0.7rem; }
-.md-typeset .lrs-open .twemoji { vertical-align: -0.15em; }
+/* a document page's head (v2.4): the facts strip — the pills and the
+   Open link on its first row, the facts on its second — and the
+   metadata card folded under Details */
+.md-typeset .lrs-doc-facts {
+  margin: -0.4em 0 0.8em;
+  padding: 0.6em 0.9em;
+  border-left: 0.2rem solid var(--md-primary-fg-color);
+  border-radius: 0 var(--lrs-radius) var(--lrs-radius) 0;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.7rem;
+}
+.md-typeset .lrs-doc-facts p { margin: 0.25em 0; }
+.md-typeset .lrs-doc-facts p:first-child { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25em; }
+/* the Open link (v2.0 a button under the card; v2.4 a quiet outlined
+   link at the right of the strip's first row) */
+.md-typeset .lrs-open {
+  margin: 0 0 0 auto;
+  padding: 0.15em 0.7em;
+  border-width: 1px;
+  border-color: var(--md-default-fg-color--lighter);
+  color: var(--md-default-fg-color--light);
+  font-size: 0.64rem;
+  font-weight: 500;
+}
+.md-typeset .lrs-open:hover { border-color: var(--md-accent-fg-color); color: var(--md-accent-fg-color); background: none; }
+.md-typeset .lrs-open .twemoji { vertical-align: -0.15em; margin-right: 0.15em; }
+.md-typeset details.lrs-doc-meta { margin: 0 0 1em; border-color: var(--md-default-fg-color--lightest); box-shadow: none; }
+.md-typeset details.lrs-doc-meta > summary { padding-left: 2rem; background: none; font-weight: 500; color: var(--md-default-fg-color--light); }
+.md-typeset details.lrs-doc-meta > summary::before {
+  background-color: var(--md-default-fg-color--light);
+  -webkit-mask-image: var(--md-admonition-icon--info);
+          mask-image: var(--md-admonition-icon--info);
+}
+.md-typeset details.lrs-doc-meta .doc-meta { margin: 0.4em 0.6em 0.2em; }
+.md-typeset details.lrs-doc-meta .doc-meta .md-typeset__scrollwrap { margin-bottom: 0.4em; }
+
+/* a tool as a pill (v2.4): the link ink on a wash of itself, so it
+   reads as a tag in both schemes without a second colour */
+.md-typeset .lrs-pill {
+  display: inline-block;
+  margin: 0.1em 0.1em 0.1em 0;
+  padding: 0.1em 0.6em;
+  border: 1px solid color-mix(in srgb, var(--md-typeset-a-color) 30%, transparent);
+  border-radius: 1em;
+  background: color-mix(in srgb, var(--md-typeset-a-color) 9%, transparent);
+  color: var(--md-typeset-a-color);
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.md-typeset .lrs-pill:hover { background: color-mix(in srgb, var(--md-accent-fg-color) 14%, transparent); border-color: var(--md-accent-fg-color); color: var(--md-accent-fg-color); }
+.md-typeset .lrs-when { font-style: normal; color: var(--md-default-fg-color--light); font-variant-numeric: tabular-nums; }
+
+/* the ledger (v2.4): a surface is a collapsible section, open — its
+   summary line reads as the section heading, the chevron the only
+   chrome; a tool head over its rows; a document a closed details row
+   whose summary line is the title, the pills and the date */
+.md-typeset .lrs-entries [hidden] { display: none !important; }
+.md-typeset details.lrs-section { margin: 1.4em 0 0; border: 0; border-radius: 0; box-shadow: none; background: none; font-size: inherit; }
+.md-typeset details.lrs-section > summary {
+  margin: 0 0 0.6em;
+  padding: 0.2em 2rem 0.3em 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  background: none;
+  color: var(--md-default-fg-color);
+  font-size: 1.15rem;
+  font-weight: 400;
+  line-height: 1.4;
+}
+.md-typeset details.lrs-section > summary::before { display: none; }
+.md-typeset details.lrs-section > summary::after { top: 0.55em; }
+.md-typeset details.lrs-section > summary small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; }
+.md-typeset details.lrs-section > :not(summary) { margin-left: 0; margin-right: 0; padding: 0; }
+.md-typeset .lrs-tool-head { margin: 1.1em 0 0.5em; font-size: 0.8rem; font-weight: 600; }
+.md-typeset .lrs-tool-head small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; }
+.md-typeset details.lrs-entry { margin: 0 0 0.3em; border-color: var(--md-default-fg-color--lightest); font-size: 0.72rem; }
+.md-typeset details.lrs-entry[open] { border-color: var(--md-primary-fg-color); }
+.md-typeset details.lrs-entry > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2em 0.5em;
+  padding: 0.35em 2.2rem 0.35em 0.9em;
+  background: var(--md-code-bg-color);
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.md-typeset details.lrs-entry > summary::before { display: none; }
+.md-typeset details.lrs-entry > summary > a:first-child { margin-right: 0.3em; }
+.md-typeset details.lrs-entry > summary .lrs-tags { display: flex; flex: 1 1 auto; flex-wrap: wrap; gap: 0.2em 0.3em; min-width: 0; }
+.md-typeset details.lrs-entry > summary .lrs-when { flex-shrink: 0; margin-left: auto; font-size: 0.66rem; font-weight: 400; }
+.md-typeset details.lrs-entry > :not(summary) { margin-left: 0.9em; margin-right: 0.9em; }
+.md-typeset details.lrs-entry .lrs-entry__facts { margin: 0.5em 0.9em 0.2em; color: var(--md-default-fg-color--light); font-size: 0.68rem; }
+.md-typeset details.lrs-entry .lrs-entry__facts p { margin: 0; }
+.md-typeset details.lrs-entry > p { margin: 0.4em 0.9em 0.7em; }
 
 /* a catalog value's facts (v2.1): a strip under the title */
 .md-typeset .lrs-facts {
@@ -2070,9 +2418,13 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
     offline: !!w.offline,
     sourceSite: w.sourceSite || cfg.sweep?.siteUrl || "",
     draftsDir: w.draftsDir || "",
+    kindLayout: w.kindLayout || "ledger",
   };
   if (!DEPLOY_MODES.includes(opts.deploy)) {
     throw new Error(`wiki.deploy must be one of ${DEPLOY_MODES.join(", ")}, got "${opts.deploy}"`);
+  }
+  if (!KIND_LAYOUTS.includes(opts.kindLayout)) {
+    throw new Error(`wiki.kindLayout must be one of ${KIND_LAYOUTS.join(", ")}, got "${opts.kindLayout}"`);
   }
   const kindFolders = { ...KIND_FOLDERS, ...(cfg.sweep?.kindFolders || {}) };
   for (const [kind, folder] of Object.entries(kindFolders)) {
@@ -2131,7 +2483,7 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   } else if (fs.existsSync(missingFile)) {
     fs.unlinkSync(missingFile); // a clean run retires the stale list
   }
-  for (const [kind, ds] of model.kinds) put(`${pageName(kindFolders[kind] || kind)}/index.md`, kindIndex(kind, ds, model, kindFolders));
+  for (const [kind, ds] of model.kinds) put(`${pageName(kindFolders[kind] || kind)}/index.md`, kindIndex(kind, ds, model, kindFolders, opts));
   put("documents/index.md", allDocumentsPage(model));
   for (const c of CATALOGS) {
     const groups = model[c.key];

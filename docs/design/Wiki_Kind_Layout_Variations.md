@@ -4,9 +4,11 @@ Two layouts for the long per-kind tables (`/test-plans/` and its
 siblings) and one for the document page's metadata card, built on
 pymdown's Blocks `details` plugin
 (https://facelessuser.github.io/pymdown-extensions/extensions/blocks/plugins/details/).
-Nothing here is wired into `pipeline/wiki.mjs` yet: this note records
-the shapes, the CSS and JS they need, and what changes when one is
-chosen. Companion to `Markdown_Layout_Plan.md` (the dialect and the
+**Wired in wiki v2.4:** Variant B (the ledger, §4) as every kind's
+index page under `wiki.kindLayout` (`table` keeps the old table), the
+folded head with the Open link in the strip (§5), and the checklist
+(§5b). Variant A (§3) stays a mockup. This note records the shapes,
+the CSS and JS they needed, and the decisions. Companion to `Markdown_Layout_Plan.md` (the dialect and the
 MkDocs lane) and to wiki v2.1 in `docs/changelog/pipeline.md` (the
 pages dressed by content type).
 
@@ -237,7 +239,7 @@ written by `wrapCases()`, which already owns the heading line; the
 divider and the count line are two more lines it writes. The rest is
 CSS (`wiki-layout-mock/variants.css`, the `.lrs-c` rules).
 
-## 6. What the render would gain
+## 6. What the render gained (v2.4)
 
 - **mkdocs.yml**: `- pymdownx.blocks.details` after
   `pymdownx.blocks.admonition`.
@@ -251,12 +253,10 @@ CSS (`wiki-layout-mock/variants.css`, the `.lrs-c` rules).
   `.lrs-plans` wrapper filters `details.lrs-plan` children instead of
   table rows, and folds a heading whose rows all hid. Same
   `document$` hook, same box, same `FILTER_MIN_ROWS` rule.
-- **wiki.mjs**: `kindIndex()` composes the chosen shape (the pill and
-  facts helpers in `variants.mjs` are the prototype); `docPage()`
-  wraps the meta table and writes the strip; `mdlayout.block()`
-  already composes a Blocks-syntax block, and `details` needs only its
-  `open` / `type` options. A `wiki.kindLayout` key (`table` |
-  `cards` | `ledger`) would keep the table available per site.
+- **wiki.mjs**: `ledger()` and `entryRow()` compose the kind page,
+  `docPage()` the strip and the fold, `wrapCases()` the count line,
+  the dividers and the badge; `wiki.kindLayout` (`ledger` | `table`)
+  keeps the table available per site.
 - **check_wiki.py**: the pinned `<div class="doc-table filterable">`
   on `test-plans/index.md` moves to the new wrapper; new gates for the
   pills linking the tools catalog, the date in the summary line, the
