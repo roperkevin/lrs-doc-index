@@ -13,6 +13,7 @@ read exactly this format.
 |---|---|---|---|
 | `docindex_classify.md` | 3.1.0 | the nightly sweep, once per changed document | JSON, `schemas/docindex_classify.json` (nine fields) |
 | `keyword_curation.md` | 2.1.0 | `curate.mjs`, once per vocabulary chunk, weekly | JSON, `schemas/keyword_curation.json` |
+| `keyword_review.md` | 1.0.0 | `curate.mjs --review` / `curation.review.enabled`, once per chunk of pending proposals | JSON, `schemas/keyword_review.json` |
 | `testplan_draft.md` | 1.13.0 | `testplangen.mjs` — the one draft call | markdown between `[[[DRAFT BEGIN]]]` / `[[[DRAFT END]]]` |
 | `testplan_figures.md` | 0.4.0 | `testplangen.mjs --figures` | JSON between `[[[FIGURES BEGIN]]]` / `[[[FIGURES END]]]`, verified by `pipeline/lib/figurespec.mjs` |
 | `testplan_deck.md` | 0.1.0 | `testplangen.mjs --deck`, `deck2pptx.mjs --generate` | JSON between `[[[DECK BEGIN]]]` / `[[[DECK END]]]`, verified by `pipeline/lib/deckspec.mjs` |

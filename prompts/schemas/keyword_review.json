@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "properties": {
+    "verdicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": ["approve", "withdraw", "hold"]
+          },
+          "why": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "verdict",
+          "why"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "verdicts"
+  ],
+  "additionalProperties": false
+}

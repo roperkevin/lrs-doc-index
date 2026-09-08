@@ -14,3 +14,8 @@ git fetch origin deploy >> work\curate-task.log 2>&1
 git merge --ff-only origin/deploy >> work\curate-task.log 2>&1
 
 node --experimental-strip-types pipeline\curate.mjs --config config.json --live >> work\curate-task.log 2>&1
+rem the second reader (curation.review.enabled) may have approved merges
+rem in the run above: re-point the historical junction rows and refresh
+rem the related sections (both no-ops when nothing was merged)
+node --experimental-strip-types pipeline\curate.mjs --config config.json --repoint --live >> work\curate-task.log 2>&1
+node --experimental-strip-types pipeline\sweep.mjs --config config.json --rerank --live >> work\curate-task.log 2>&1

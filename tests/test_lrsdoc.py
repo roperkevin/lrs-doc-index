@@ -136,8 +136,8 @@ def main():
     print("== prompt files")
     all_prompts = prompts.list_prompts()
     names = sorted(p.name for p in all_prompts)
-    check("six prompt files load", names == ["case_normalize", "docindex_classify", "keyword_curation",
-                                            "testplan_deck", "testplan_draft", "testplan_figures"], names)
+    check("seven prompt files load", names == ["case_normalize", "docindex_classify", "keyword_curation",
+                                              "keyword_review", "testplan_deck", "testplan_draft", "testplan_figures"], names)
     for p in all_prompts:
         check(f"{p.name}: inputs == slots, semver, model, output kind",
               p.placeholders() == set(p.inputs) and len(p.version.split(".")) == 3 and p.model
@@ -200,6 +200,18 @@ def main():
     state.text = json.dumps({"proposals": [{"alias": "centerlines", "canonical": "centerline", "why": "plural"}]})
     res = t_curate({"Vocabulary": "centerline [topic]\ncenterlines [topic]", "DoNotPropose": ""}, {"max_retries": 0})
     check("curate: proposals parsed", res.data["proposals"][0]["alias"] == "centerlines", res.data)
+    from lrsdoc.tasks import review as t_review
+    state.text = json.dumps({"verdicts": [{"id": 12, "verdict": "approve", "why": "A1"},
+                                          {"id": "13", "verdict": "Withdraw", "why": "x"},
+                                          {"id": 14, "verdict": "maybe", "why": "y"},
+                                          {"id": "nope", "verdict": "approve", "why": "z"}]})
+    res = t_review({"Proposals": "12 | a [topic] -> b [topic] | A1", "OfficialVocabulary": ""}, {"max_retries": 0})
+    check("review: verdicts parsed, ids coerced, unknown verdicts held, bad ids dropped, empty vocabulary rendered as (none)",
+          res.data["verdicts"] == [{"id": 12, "verdict": "approve", "why": "A1"},
+                                   {"id": 13, "verdict": "withdraw", "why": "x"},
+                                   {"id": 14, "verdict": "hold", "why": "y"}]
+          and "Official vocabulary (the documentation's tool names and terms):\n(none)" in mock.user_text(state.last_body)
+          and res.prompt_version == "1.0.0", str(res.data) + mock.user_text(state.last_body)[-200:])
 
     deltas = []
     state.text = "[[[DRAFT BEGIN]]]\n# Test Plan — X\n[[[DRAFT END]]]"
@@ -292,7 +304,7 @@ def main():
         check("cli --output writes the result object to the file",
               r.returncode == 0 and json.load(open(outp))["text"] == state.text and json.loads(r.stdout)["result"]["written"] == outp, r.stdout)
     r = subprocess.run([sys.executable, "-m", "lrsdoc", "prompts"], capture_output=True, text=True, env=env, cwd=REPO)
-    check("cli prompts lists the six files with versions", r.returncode == 0 and r.stdout.count("\n") == 6 and "testplan_draft" in r.stdout, r.stdout)
+    check("cli prompts lists the seven files with versions", r.returncode == 0 and r.stdout.count("\n") == 7 and "keyword_review" in r.stdout, r.stdout)
 
     # ---- 5. the tenant model ---------------------------------------
     # A second mock server stands in for the company's own deployment;

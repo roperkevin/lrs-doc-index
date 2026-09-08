@@ -76,10 +76,14 @@
   },
 
   "curation": {
-    "$comment": "Weekly keyword curation (pipeline/curate.mjs — docs/setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur. autoApprove: true applies guard-passing merges immediately (digest becomes an audit log; undo = clear CanonicalRef + set CurationStatus Rejected). Also: vocabChunk (700 vocabulary lines per model call, alphabetical chunks) and digestDrivePath ('' = the site's default drive root, Shared Documents). promptVersion (the digest header's stamp) defaults to the version in prompts/keyword_curation.md - set it only to pin another. Review by list: curate.mjs --approve <ids-file> / --withdraw <ids-file> apply verdicts to pending rows from a file of row IDs; unmerge.mjs --unreject clears a too-broad bulk rejection (docs/setup.md §9).",
+    "$comment": "Weekly keyword curation (pipeline/curate.mjs — docs/setup.md §9). Optional; these are the defaults, mirroring the KeywordCuration flow's Config_cur. autoApprove: true applies guard-passing merges immediately (digest becomes an audit log; undo = clear CanonicalRef + set CurationStatus Rejected). Also: vocabChunk (700 vocabulary lines per model call, alphabetical chunks) and digestDrivePath ('' = the site's default drive root, Shared Documents). promptVersion (the digest header's stamp) defaults to the version in prompts/keyword_curation.md - set it only to pin another. Review by list: curate.mjs --approve <ids-file> / --withdraw <ids-file> apply verdicts to pending rows from a file of row IDs; unmerge.mjs --unreject clears a too-broad bulk rejection (docs/setup.md §9). review = the second reader (prompts/keyword_review.md): enabled true makes every weekly run end by judging the whole pending queue - the deterministic guard first, then one model call per chunk of proposals - and applying the verdicts (approve = CanonicalRef set, withdraw = proposal cleared, hold = left for you; the digest lists all three); chunk = proposals per call (100); model / effort / maxTokens override llm.* for that call only. curate.mjs --review runs the pass alone. After approvals the weekly script runs --repoint and sweep --rerank.",
     "digestName": "Keyword_Curation_Digest.md",
     "maxProposals": 20,
     "autoApprove": false,
+    "review": {
+      "enabled": true,
+      "chunk": 100
+    },
     "dryRun": true
   },
 
