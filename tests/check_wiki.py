@@ -478,9 +478,12 @@ def main():
           plan[:1200])
     check("Source keeps the original SharePoint link and the revision",
           "[Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>) · rev V2" in plan, plan[:900])
-    check("related list links the sibling page and degrades the missing target to text, in a foldable related block",
-          '???+ related "Related documents (2)"\n\n    - [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue' in plan
-          and "    - Gone Doc — 1 shared keyword: route" in plan and "## Related documents" not in plan, plan)
+    # v2.6: a page with two or more of summary / related / docs carries
+    # them as one tab set (Blocks tab inside a Blocks html wrapper)
+    check("related list links the sibling page and degrades the missing target to text, in the Related tab",
+          '/// tab | :material-link-variant: Related (2)\n\n- [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue' in plan
+          and "\n- Gone Doc — 1 shared keyword: route\n///" in plan and "## Related documents" not in plan
+          and "???+ related" not in plan, plan)
     check("the body follows a rule, media link unchanged (resolves through docs/media)",
           "\n---\n\n## Test Cases" in plan and "![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png)" in plan, plan[-600:])
     # a link whose file is not in the library never reaches the page:
@@ -501,13 +504,13 @@ def main():
     # v2.4: the heading carries the id as a badge; a count line opens
     # the cases, a divider opens each run of a group
     check("each TC case's content is wrapped for the card in a four-slash Blocks html block, up to the next heading",
-          plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 4  # 3 cards + the folded metadata card
-          and '### <span class="lrs-tc lrs-tc--p">TC-P01</span> Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\n/// html | div.lrs-group\n\nNormal Routes\n///' in plan
+          plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 5  # 3 cards + the folded metadata card + the head tabs
+          and '### <span class="lrs-tc lrs-tc--p">TC-P01</span> <span class="lrs-tc-title">Merge preserves measures</span> { #tc-p01 }\n\n//// html | div.lrs-case\n\n/// html | div.lrs-group\n\nNormal Routes\n///' in plan
           and "////\n\n## Notes | pipes" in plan and "lrs-case\" markdown" not in plan
           and "*(missing figure: Figure 2 — Lock dialog)*\n\n/// html | div.lrs-steps\n\n- [ ] 1." in plan, plan[-1800:])
     check("the checklist: a count line before the first case, a divider with its count where the group changes, the negative case's badge",
           '## Test Cases\n\n<p class="lrs-cases-count">3 cases · 2 positive · 1 negative</p>\n\n<div class="lrs-group-head">Normal Routes <small>1 case</small></div>\n\n### <span class="lrs-tc lrs-tc--p">TC-P01</span>' in plan
-          and '<div class="lrs-group-head">Conflicts <small>1 case</small></div>\n\n### <span class="lrs-tc lrs-tc--n">TC-N01</span> Lock conflict refuses { #tc-n01 }' in plan
+          and '<div class="lrs-group-head">Conflicts <small>1 case</small></div>\n\n### <span class="lrs-tc lrs-tc--n">TC-N01</span> <span class="lrs-tc-title">Lock conflict refuses</span> { #tc-n01 }' in plan
           and plan.count('class="lrs-group-head"') == 3 and plan.count("lrs-cases-count") == 1, plan[-2200:])
     dblocks = page("drafts/4855-conflict-story-draft-20260906-2300.md")
     check("the Expected result nests in the card as a three-slash admonition block, body unindented",
@@ -533,21 +536,30 @@ def main():
           '<div class="lrs-tool-head" markdown="span">No tool named <small>1</small></div>\n\n//// details | [Conflict Prevention Story](./4855-conflict-story.md) *2026-08-05*{ .lrs-when }' in page("user-stories/index.md"),
           page("user-stories/index.md"))
     check("a case's own attr_list anchor survives the body escape",
-          '<span class="lrs-tc lrs-tc--p">TC-P01</span> Merge preserves measures { #tc-p01 }' in plan
+          '<span class="lrs-tc lrs-tc--p">TC-P01</span> <span class="lrs-tc-title">Merge preserves measures</span> { #tc-p01 }' in plan
           and "\\{ #tc-p01 }" not in plan, plan[-900:])
 
     # ---- 2b. the MkDocs dialect translation (v1.1) ----------------
     print("== dialect")
-    check("the whole summary reaches the page, as an abstract block",
-          '!!! abstract "Summary"\n\n    Covers merging line events' in plan
-          and "    A second paragraph the classifier wrote" in plan and "## Summary" not in plan, plan[:1600])
+    check("the whole summary reaches the page, in the Summary tab",
+          '//// html | div.lrs-head\n\n/// tab | :material-text-box-outline: Summary\n\nCovers merging line events' in plan
+          and "\nA second paragraph the classifier wrote" in plan and "## Summary" not in plan
+          and "!!! abstract" not in plan, plan[:1600])
     # v2.1: the docs region is a `docs` block titled by its own heading
-    check("the docs region becomes an Esri documentation block on the page",
-          '!!! docs "Esri documentation"' in plan and "    [Merge Events](https://pro.arcgis.test/merge-events)" in plan
-          and "## Esri documentation" not in plan, plan[:2400])
-    order = [plan.find(h) for h in ('!!! abstract "Summary"', '???+ related "Related documents (2)"', '!!! docs "Esri documentation"', "\n---\n")]
-    check("summary, related and docs blocks sit in that order above the body seam",
+    check("the docs region becomes the Esri documentation tab",
+          "/// tab | :material-book-open-variant: Esri documentation\n\n" in plan
+          and "\n[Merge Events](https://pro.arcgis.test/merge-events)" in plan
+          and "## Esri documentation" not in plan and "!!! docs" not in plan, plan[:2400])
+    order = [plan.find(h) for h in ("/// tab | :material-text-box-outline: Summary", "/// tab | :material-link-variant: Related (2)",
+                                    "/// tab | :material-book-open-variant: Esri documentation", "\n////\n\n---\n")]
+    check("summary, related and docs tabs sit in that order, the tab set closing above the body seam",
           all(i >= 0 for i in order) and order == sorted(order), str(order))
+    # a page with ONE of them keeps its block: the story has a summary
+    # and related documents but no docs region, the spike only a summary
+    story = page("user-stories/4855-conflict-story.md")
+    spike0 = page("design-spikes/old-spike-doc9.md")
+    check("a page with one head block keeps the block, not a one-tab set",
+          "/// tab |" in story and "/// tab |" not in spike0 and "!!! warning\n\n    No AI summary" in spike0, spike0[:800])
     check("GFM alerts become admonition blocks MkDocs renders",
           "!!! danger" in plan and "    A pass here is the described denial." in plan
           and "[!CAUTION]" not in plan, plan[-800:])
@@ -578,7 +590,7 @@ def main():
     dpage = page("drafts/4855-conflict-story-draft-20260906-2300.md")
     dindex = page("drafts/index.md")
     check("a draft becomes a page with its own head, under a breadcrumb line",
-          dpage.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test-plan drafts](./index.md)\n\n</div>\n\n# Test Plan — Conflict Prevention')
+          dpage.startswith('# Test Plan — Conflict Prevention') and "lrs-crumbs" not in dpage
           and "| **Doc** | draft · Test Plan · Pro |" in dpage
           and "| **Status** | Draft — 2 verifier finding(s) |" in dpage
           and "| **Generated** | pipeline/testplangen.mjs v1.24" in dpage, dpage[:600])
@@ -602,8 +614,11 @@ def main():
           raw("drafts/4855-conflict-story-draft-20260906-2300.md").startswith("---\nsearch:\n  boost: 0.5\nstatus: draft\n---\n")
           and raw("test-plans/4855-merge-plan.md").startswith("---\nsearch:\n  boost: 2\n---\n")
           and raw("keywords/route.md").startswith("---\nsearch:\n  boost: 1\n---\n"), raw("drafts/index.md")[:80])
+    def front_matter(rel):
+        m = re.match(r"\A---\n((?:[^\n]*\n)*?)---\n", raw(rel))
+        return m.group(1) if m else ""
     check("the aggregate pages are excluded from search",
-          all(re.match(r"\A---\n(?:title: [^\n]*\n)?search:\n  exclude: true\n---\n", raw(p))
+          all("\nsearch:\n  exclude: true\n" in "\n" + front_matter(p)
               for p in ["index.md", "documents/index.md", "browse/index.md", "recent.md", "cases/index.md",
                         "figures/index.md", "test-plans/index.md", "keywords/index.md", "drafts/index.md"])
           and "search:" not in raw("about.md").split("\n# ")[0], raw("recent.md")[:80])
@@ -629,8 +644,11 @@ def main():
           '!!! info "A render, not a source"' in about
           and '???+ note "Where each page' in about
           and "    Doc ids\n    :   Doc Index list row ids" in about, about)
-    check("the front page opens Browse with a search tip",
-          '!!! tip "Finding a document"' in front and "## Browse" in front, front[-1400:])
+    # v2.5: the search tip is the hero's hint line (front matter the
+    # template prints); the page body carries no tip box
+    check("the front page's search hint is in the hero, not a tip box; Browse follows",
+          "hint: \"An id is found by its parts: TC-P01, ps-location-referencing#4855 and merge-events" in raw("index.md")
+          and "!!! tip" not in front and "## Browse" in front, raw("index.md")[:900])
     check("extra.css defines the custom draft admonition (colour and icon)",
           "--md-admonition-icon--draft" in css
           and ".md-typeset .admonition.draft" in css, css[:200])
@@ -652,14 +670,14 @@ def main():
           and '<div class="lrs-entries" markdown>' in page("test-plans/index.md") and "doc-table" not in page("test-plans/index.md")
           and '<div class="doc-table filterable" markdown>' in page("recent.md")
           and '<div class="doc-table filterable" markdown>' in page("documents/index.md")
-          and '<div class="doc-table" markdown>' in front and "filterable" not in front,
+          and '<div class="lrs-feed" markdown>' in front and "doc-table" not in front and "filterable" not in front,
           page("keywords/index.md")[:400])
     check("tables.js carries the filter, the page-wide filter, the ledger's filter and external links in a new tab",
           "lrs-filter" in tjs and '".filterable"' in tjs and '".filter-all"' in tjs
           and '".lrs-entries"' in tjs and "details.lrs-section" in tjs and ".lrs-tool-head" in tjs
           and "FILTER_MIN_ROWS" in tjs and 'a.target = "_blank"' in tjs and 'a.rel = "noopener"' in tjs, tjs[:300])
     check("extra.css styles the filter box, the breadcrumbs and the Open button",
-          ".lrs-filter input" in css and ".lrs-crumbs" in css and ".lrs-open" in css
+          ".lrs-filter input" in css and ".lrs-crumbs" not in css and ".md-path {" in css and ".lrs-open" in css
           and "tr[hidden]" in css, css[-600:])
     check("count and ordinal columns are right-aligned",
           "| Keyword | Documents |\n|---|---:|" in page("keywords/index.md")
@@ -697,7 +715,7 @@ def main():
     check("the metadata card is never sortable (its header row is hidden), and sits folded under Details",
           '<div class="sortable" markdown>' not in plan.split("\n---\n")[0]
           and "///// details | Details\n    attrs: {class: lrs-doc-meta}\n\n//// html | div.doc-meta\n\n| Field | Value |\n| --- | --- |\n| **Doc** | 17" in plan
-          and "\n////\n/////\n\n!!! abstract" in plan, plan[:1400])
+          and "\n////\n/////\n\n//// html | div.lrs-head" in plan, plan[:1400])
     # v1.5: the three figure-presentation plugins. panzoom takes
     # include_selectors, NOT `images: true` — mkdocs-panzoom-plugin 0.5.2
     # reads that key off the global config, so it never fires.
@@ -725,7 +743,7 @@ def main():
           and "3 documents · a topic keyword · [all keywords](./index.md)" in route, route)
     check("a keyword page says what it is most often tagged with, and opens with a breadcrumb line",
           "Often tagged with: [gantt chart](./gantt-chart.md) (1) · [locks](./locks.md) (1) · [merge events](./merge-events.md) (1)" in route
-          and route.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Keywords](./index.md)\n\n</div>\n\n# route'), route[:400])
+          and route.startswith("# route") and "lrs-crumbs" not in route, route[:400])
     claire = page("people/claire-wang.md")
     check("a person's page says in which roles they appear",
           "2 documents · author of 1 · PE of 1 · [all people](./index.md)" in claire, claire[:400])
@@ -797,18 +815,51 @@ def main():
         check("the built kind page: the surface section open, the row closed, the folded Details on the document page, the badge in the heading",
               '<details class="lrs-section" open="open">' in kp and '<details class="lrs-entry">' in kp
               and '<details class="lrs-doc-meta">' in html and '<div class="doc-meta">' in html
-              and '<h3 id="tc-p01"><span class="lrs-tc lrs-tc--p">TC-P01</span> Merge preserves measures' in html
+              and '<h3 id="tc-p01"><span class="lrs-tc lrs-tc--p">TC-P01</span> <span class="lrs-tc-title">Merge preserves measures</span>' in html
               and '<span class="lrs-tc lrs-tc--n">TC-N01</span>' in html
               and 'class="lrs-cases-count"' in html, (kp[-1500:], html[-2500:]))
-        check("the built page carries the abstract, related (open) and docs blocks and the custom palette",
-              '<div class="admonition abstract">' in html and '<p class="admonition-title">Summary</p>' in html
-              and '<details class="related" open="open">' in html and "Related documents (2)" in html
-              and '<div class="admonition docs">' in html and 'data-md-color-primary="custom"' in html, html[-3000:])
+        check("the built page carries the head as tabs with icons, the theme's breadcrumbs, the glossary tooltips, and the custom palette",
+              '<div class="lrs-head">' in html and html.count('<div class="tabbed-set tabbed-alternate"') == 1
+              and "Summary</label>" in html and "Related (2)" in html and "Esri documentation</label>" in html
+              and 'class="tabbed-labels"' in html and html.count('<label for="__tabbed_1_') == 3
+              and "admonition abstract" not in html and "admonition docs" not in html
+              and '<nav class="md-path"' in html and 'href="../../documents/" class="md-path__link"' in html
+              and "Test Plans" in html.split('<nav class="md-path"')[1].split("</nav>")[0]
+              and 'data-md-color-primary="custom"' in html
+              and '<abbr title="' in html and "lrs-crumbs" not in html, html[-3000:])
+        # v2.6: the case heading's title in its own span (an abbreviation
+        # inside it must not become a flex item), the front page without
+        # breadcrumbs, the glossary page built and filterable
+        gl_path = os.path.join(out, "site", "glossary", "index.html")
+        gl = open(gl_path, encoding="utf-8").read() if os.path.isfile(gl_path) else ""
+        hp0_path = os.path.join(out, "site", "index.html")
+        hp0 = open(hp0_path, encoding="utf-8").read() if os.path.isfile(hp0_path) else ""
+        check("the built case heading wraps its title; the front page has no breadcrumbs; the glossary page is built with its sections",
+              '<h3 id="tc-p01"><span class="lrs-tc lrs-tc--p">TC-P01</span> <span class="lrs-tc-title">Merge preserves measures' in html
+              and 'class="md-content"' in hp0 and "md-path" not in hp0.split('class="md-content"')[1].split("</article>")[0]
+              and '<div class="filterable lrs-glossary">' in gl and "<dt>" in gl and "Geoprocessing tools" in gl
+              and 'href="https://doc.esri.com/' in gl, (html[:200], gl[:400]))
         check("the built draft page: a success block per Expected result inside the case card, the draft badge with its tooltip in the nav",
               '<div class="admonition success">' in dhtml and '<p class="admonition-title">Expected result</p>' in dhtml
               and dhtml.count('<div class="lrs-case">') == 1 and html.count('<div class="lrs-case">') == 3
               and dhtml.find('<div class="lrs-case">') < dhtml.find('<div class="admonition success">')
               and 'class="md-status md-status--draft" title="Machine-generated, unreviewed"' in dhtml, dhtml[-2500:])
+        # v2.5, built: the landing page — the hero between the tab bar
+        # and the article with the stats as links, no "Home" H1, the
+        # sidebars hidden, the tabs, the facet bars; the tab bar wears
+        # the index pages' icons; no Google Fonts stylesheet anywhere
+        hp_path = os.path.join(out, "site", "index.html")
+        hp = open(hp_path, encoding="utf-8").read() if os.path.isfile(hp_path) else ""
+        check("the built front page: the hero with its stats and search button, no Home H1, hidden sidebars, the tabs and the facet bars",
+              '<section class="lrs-hero">' in hp and hp.find('class="md-tabs"') < hp.find('<section class="lrs-hero">') < hp.find('class="md-content"')
+              and '<h1 class="lrs-hero__title">LRS Doc Index (gate)</h1>' in hp and "<h1>Home</h1>" not in hp
+              and '<strong>3</strong><span>documents</span>' in hp and 'href="documents/"><strong>3</strong>' in hp
+              and 'class="md-button md-button--primary lrs-hero__search" data-lrs-search' in hp
+              and 'class="lrs-home"' in hp and 'class="tabbed-set tabbed-alternate"' in hp
+              and 'style="--lrs-w: 100%"' in hp
+              and 'data-md-type="navigation" hidden=""' in hp and 'data-md-type="toc" hidden=""' in hp
+              and 'fonts.googleapis.com' not in hp and 'fonts.googleapis.com' not in html
+              and len(re.findall(r'class="md-tabs__link">\s*<svg', hp)) >= 3, hp[:3000])
         idx_path = os.path.join(out, "site", "search", "search_index.json")
         idx = open(idx_path, encoding="utf-8").read() if os.path.isfile(idx_path) else ""
         locs = set(re.findall(r'"location":\s*"([^"#]*)', idx))
@@ -850,17 +901,54 @@ def main():
           and "| [Merge Events Test Plan](./test-plans/4855-merge-plan.md) | [Test Plan](./test-plans/index.md) |" in recent, str(order))
     front = page("index.md")
     check("front page: counts per kind and the browse links",
-          "3 documents" in front and ":material-test-tube:{ .lg .middle } [Test Plans](./test-plans/index.md) (1)" in front
+          ":material-test-tube:{ .lg .middle } [Test Plans](./test-plans/index.md) (1)" in front
           and "[Keywords](./keywords/index.md) (4)" in front and "[Issues](./issues/index.md) (1)" in front, front)
+    # v2.5: the landing page — the hero's front matter (the template,
+    # the hidden sidebars, the lead with the count, the stats with
+    # final URLs), the content tabs, the facet bars, the feed
+    fm = front_matter("index.md")
+    check("front page: the hero front matter — template, hidden nav and toc, the lead, the stats",
+          fm.startswith("template: home.html\nhide: [navigation, toc, path]\nsearch:\n  exclude: true\nhero:\n")
+          and '\n  eyebrow: "Rendered ' in fm and 'from the LRS Doc Index catalog"' in fm
+          and '\n  lead: "3 documents from the team library — test plans, user stories, design spikes — one page each.' in fm
+          and '\n  documents: "documents/"\n  stats:\n' in fm
+          and '    - { label: "documents", n: 3, href: "documents/" }' in fm
+          and '    - { label: "test cases", n: 3, href: "cases/" }' in fm
+          and '    - { label: "figures", n: 1, href: "figures/" }' in fm
+          and '    - { label: "keywords", n: 4, href: "keywords/" }' in fm
+          and '    - { label: "people", n: 3, href: "people/" }' in fm, fm)
+    check("front page: the corpus in content tabs — the kind cards, then facet bars by surface, product and release",
+          "/// tab | By kind\n\n<div class=\"grid cards lrs-kinds\" markdown>" in front
+          and "/// tab | By surface\n\n<div class=\"lrs-facets\" markdown>\n\n- [Pro](./surfaces/pro.md) <i class=\"lrs-facets__bar\" style=\"--lrs-w: 100%\"></i> <b>3</b>\n- [REST](./surfaces/rest.md) <i class=\"lrs-facets__bar\" style=\"--lrs-w: 33%\"></i> <b>1</b>\n\n[all 2 surfaces](./surfaces/index.md)\n\n</div>\n\n///" in front
+          and "/// tab | By product" in front and "/// tab | By release" in front
+          and "[all 1 release](./releases/index.md)" in front, front[:2500])
+    check("front page: the recent edits as a feed — the kind's icon, the title, the facts, the date",
+          '<div class="lrs-feed" markdown>\n\n- :material-book-open-variant:{ .lrs-feed__icon } [Conflict Prevention Story](./user-stories/4855-conflict-story.md) <small>[User Story](./user-stories/index.md) · Roads & Highways · Pipeline Referencing</small> *2026-08-05*{ .lrs-when }\n- :material-test-tube:{ .lrs-feed__icon } [Merge Events Test Plan](./test-plans/4855-merge-plan.md) <small>[Test Plan](./test-plans/index.md) · Roads & Highways · release 3.8</small> *2026-08-01*{ .lrs-when }\n- :material-lightbulb-on-outline:{ .lrs-feed__icon } [Old Spike](./design-spikes/old-spike-doc9.md) <small>[Design Spike](./design-spikes/index.md)</small> *2026-07-01*{ .lrs-when }\n\n</div>' in front,
+          front)
+    home_html = open(os.path.join(out, "overrides", "home.html"), encoding="utf-8").read() \
+        if os.path.isfile(os.path.join(out, "overrides", "home.html")) else ""
+    check("the hero template is written and wired: overrides/home.html extends main.html, prints the hero and the body alone; mkdocs.yml names the folder, the tab extension, no Google Fonts",
+          '{% extends "main.html" %}' in home_html and "{% block tabs %}" in home_html and "{{ super() }}" in home_html
+          and 'class="lrs-hero"' in home_html and "{% for s in hero.stats %}" in home_html and "data-lrs-search" in home_html
+          and "{% block content %}" in home_html and "{{ page.content }}" in home_html
+          and "  custom_dir: overrides\n" in ycfg and "  font: false\n" in ycfg
+          and "  - pymdownx.blocks.tab:\n      alternate_style: true\n" in ycfg
+          and "navigation.instant.prefetch" in ycfg and "content.footnote.tooltips" in ycfg,
+          (home_html[:300], ycfg[:800]))
+    check("extra.css and tables.js carry the landing page: the hero, the facets, the feed, the search button",
+          ".lrs-hero {" in css and ".lrs-hero__stats" in css and ".md-typeset .lrs-facets__bar" in css
+          and ".md-typeset .lrs-feed > ul > li {" in css and "--md-text-font:" in css
+          and "[data-lrs-search]" in tjs and '[data-md-toggle="search"]' in tjs, css[:200])
     # ---- 5c. the v2.0 organisation ------------------------------------
     print("== organisation")
-    check("front page: tip, Documents (reader order, All-documents link), Recently edited inline, then Browse",
-          0 < front.find('!!! tip "Finding a document"') < front.find("## Documents")
-          < front.find("[every document in one table](./documents/index.md)")
+    check("front page: Documents (reader order, All-documents link, the tabs), Recently edited inline, then Browse and More",
+          0 <= front.find("## Documents")
+          < front.find("[every document in one table](./documents/index.md)") < front.find("/// tab | By kind")
           < front.find("[Test Plans](./test-plans/index.md) (1)") < front.find("[Design Spikes](./design-spikes/index.md) (1)")
-          < front.find("## Recently edited") < front.find("[the Recent page](./recent.md)")
-          < front.find("| [Conflict Prevention Story](./user-stories/4855-conflict-story.md) | [User Story](./user-stories/index.md) |")
-          < front.find("## Browse"), front)
+          < front.find("/// tab | By release") < front.find("## Recently edited") < front.find("[the Recent page](./recent.md)")
+          < front.find("[Conflict Prevention Story](./user-stories/4855-conflict-story.md) <small>[User Story](./user-stories/index.md)")
+          < front.find("## Browse") < front.find("## More") < front.find("[Test cases](./cases/index.md) (3)")
+          < front.find("[About](./about.md)"), front)
     alldocs = page("documents/index.md")
     check("All documents: every document in one filterable table with a Kind column, kinds in reader order",
           alldocs.startswith("# :material-file-document-multiple-outline: All documents") and "3 documents of every kind" in alldocs
@@ -868,15 +956,60 @@ def main():
           and "| Document | Kind | Product | Release | Edited |" in alldocs
           and len(re.findall(r"^\| \[", alldocs, re.M)) == 3, alldocs)
     browse = page("browse/index.md")
-    check("Browse: the seven catalogs as cards with counts (Surfaces: Pro and REST)",
+    check("Browse: the seven catalogs and the Glossary as cards with counts (Surfaces: Pro and REST)",
           browse.startswith("# :material-compass-outline: Browse") and '<div class="grid cards" markdown>' in browse
           and "[Keywords](../keywords/index.md) (4)" in browse and "[People](../people/index.md) (3)" in browse
           and "[Surfaces](../surfaces/index.md) (2)" in browse
-          and browse.split('<div class="grid cards" markdown>')[1].count(":material-") == 7, browse)
+          and ":material-book-alphabet:{ .lg .middle } [Glossary](../glossary.md) (" in browse
+          and browse.split('<div class="grid cards" markdown>')[1].count(":material-") == 8, browse)
+    # ---- v2.6: breadcrumbs, the glossary, the facet catalogs --------
+    print("== v2.6")
+    check("mkdocs.yml: the theme's breadcrumbs, abbr and the snippets glossary include (checked)",
+          "navigation.indexes, navigation.path, navigation.prune" in ycfg
+          and "\n  - abbr\n  - pymdownx.snippets:\n      auto_append: [includes/glossary.md]\n      check_paths: true\n" in ycfg
+          and "      - Glossary: glossary.md\n  - Test cases:" in ycfg, ycfg)
+    inc_path = os.path.join(out, "includes", "glossary.md")
+    inc = open(inc_path, encoding="utf-8").read() if os.path.isfile(inc_path) else ""
+    check("includes/glossary.md: one abbreviation per official name — a tool with its description, a widget with its kind's sentence, an acronym, an alias; no single-word term",
+          "*[Append Events]: Appends event records from a table, layer, or feature class to an existing LRS event feature class." in inc
+          and "*[Merge Events]: One of the Location Referencing widgets in Experience Builder." in inc
+          and "*[geometryToMeasure]: An operation of the Linear Referencing Service (REST)." in inc
+          and "*[Create Route]: A tool on the Location Referencing tab of the ArcGIS Pro ribbon." in inc
+          and "\n*[LRS]: " in inc and "\n*[Calibration point]: " in inc and "\n*[SLD]: Straight Line Diagram — One of the Location Referencing widgets in Experience Builder." in inc
+          and "*[Route]:" not in inc and "*[Event]:" not in inc and "*[Measure]:" not in inc
+          and all(len(l) < 400 and "\n" not in l for l in inc.split("\n")), inc[:600])
+    gpage = page("glossary.md")
+    check("the Glossary page: every kind a section with its count, the term linking its Esri page, the kind, the documents that name it, the definition — under one filter box",
+          gpage.startswith("# :material-book-alphabet: Glossary\n\nThe official vocabulary — ") and "entries: the tools, widgets" in gpage
+          and '<div class="filterable lrs-glossary" markdown>' in gpage
+          and "## Geoprocessing tools <small>49</small>" in gpage and "## Terms <small>36</small>" in gpage and "## Aliases <small>8</small>" in gpage
+          and "\n[Append Events](<https://doc.esri.com/" in gpage
+          and "\nMerge Events <small>*Experience Builder widget*{ .lrs-glossary__kind } · [1 document](./tools/merge-events.md)</small>\n:   One of the Location Referencing widgets in Experience Builder." in gpage
+          and "[Route](<https://doc.esri.com/" in gpage
+          and raw("glossary.md").startswith('---\ntitle: "Glossary"\nicon: material/book-alphabet\nsearch:\n  exclude: true\n---\n'), gpage[:900])
+    check("the front page's More and About name the glossary; the summary counts it",
+          ":material-book-alphabet:{ .lg .middle } [Glossary](./glossary.md) (" in front
+          and "    Glossary\n    :   The official vocabulary" in about
+          and summ.get("glossary", 0) > 100, (front[-1200:], summ))
+    sfi = page("surfaces/index.md")
+    check("the small catalogs — surfaces, products, releases — are facet bars on their index pages; the others keep their tables",
+          sfi.startswith("# :material-monitor-cellphone: Surfaces\n\nWhere the work runs")
+          and "2 surfaces, most documents first; the bar is the share of the largest." in sfi
+          and '<div class="lrs-facets" markdown>\n\n- [Pro](./pro.md) <i class="lrs-facets__bar" style="--lrs-w: 100%"></i> <b>3</b>\n- [REST](./rest.md) <i class="lrs-facets__bar" style="--lrs-w: 33%"></i> <b>1</b>\n\n</div>' in sfi
+          and "sortable" not in sfi and "all 2 surfaces" not in sfi
+          and '<div class="lrs-facets" markdown>' in page("products/index.md") and '<div class="lrs-facets" markdown>' in page("releases/index.md")
+          and '<div class="sortable filterable" markdown>' in page("tools/index.md") and "lrs-facets" not in kwi, sfi)
+    check("tables.js filters a definition list as it filters a table; extra.css dresses the head tabs, the glossary and the abbreviations",
+          "function dlRows(" in tjs and "function filterDl(" in tjs and '"dl > dt"' in tjs
+          and ".md-typeset .lrs-head .tabbed-labels > label" in css and ".md-typeset .lrs-glossary dl dt" in css
+          and ".md-typeset a abbr" in css and ".lrs-tc-title" in css and ".filterable [hidden]" in css, tjs[:200])
+    check("no page carries the v2.0 crumb line",
+          not any("lrs-crumbs" in raw(p) for p in ["index.md", "test-plans/4855-merge-plan.md", "keywords/route.md",
+                                                     "drafts/4855-conflict-story-draft-20260906-2300.md", "people/mac-christmas.md"]), "")
     # v2.4: the facts strip under the title — the pills and the Open
     # link on the first row, the facts on the second — then Details
-    check("a document page: breadcrumbs above the title, then the facts strip with the pills, the Open link and the facts",
-          plan.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test Plans](./index.md)\n\n</div>\n\n# Merge Events Test Plan\n\n<div class="lrs-doc-facts" markdown>\n\n'
+    check("a document page: the title, then the facts strip with the pills, the Open link and the facts",
+          plan.startswith('# Merge Events Test Plan\n\n<div class="lrs-doc-facts" markdown>\n\n'
                           "[Merge Events](../tools/merge-events.md){ .lrs-pill } [:material-open-in-new: Open the .pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .lrs-open }\n\n"
                           "[Test Plan](./index.md) · [Pro](../surfaces/pro.md) · [REST](../surfaces/rest.md) · [Roads & Highways](../products/roads-and-highways.md) · release [3.8](../releases/3-8.md) · edited *2026-08-01*{ .lrs-when } by [Mac Christmas](../people/mac-christmas.md)\n\n</div>\n\n///// details | Details"),
           plan[:900])
@@ -905,15 +1038,16 @@ def main():
           and "| Kind | Documents |" not in front, front)
     check("the index pages' titles wear their icon, with the title pinned in front matter",
           page("test-plans/index.md").startswith("# :material-test-tube: Test Plans")
-          and raw("test-plans/index.md").startswith('---\ntitle: "Test Plans"\nsearch:\n  exclude: true\n---\n')
+          and raw("test-plans/index.md").startswith('---\ntitle: "Test Plans"\nicon: material/test-tube\nsearch:\n  exclude: true\n---\n')
           and kwi.startswith("# :material-tag-multiple: Keywords")
           and page("cases/index.md").startswith("# :material-clipboard-check: Test cases")
           and recent.startswith("# :material-history: Recent")
           and about.startswith("# :material-information: About this wiki")
-          and raw("about.md").startswith('---\ntitle: "About this wiki"\n---\n'), raw("test-plans/index.md")[:200])
+          and raw("about.md").startswith('---\ntitle: "About this wiki"\nicon: material/information\n---\n')
+          and raw("cases/index.md").startswith('---\ntitle: "Test cases"\nicon: material/clipboard-check\n'), raw("test-plans/index.md")[:200])
     check("a catalog value's facts sit in a strip under the title; the figure catalog is a card grid per document",
-          '# route\n\n<div class="lrs-facts" markdown>\n\n3 documents · a topic keyword' in route
-          and "Often tagged with:" in route.split("</div>")[1]
+          route.startswith('# route\n\n<div class="lrs-facts" markdown>\n\n3 documents · a topic keyword')
+          and "Often tagged with:" in route.split("</div>")[0]
           and '<div class="grid cards lrs-figures" markdown>' in figs, route[:600])
     check("no fixture document is new (all edits are older than NEW_DAYS), the draft page says draft",
           not any("status: new" in raw(p) for p in ["test-plans/4855-merge-plan.md", "user-stories/4855-conflict-story.md", "design-spikes/old-spike-doc9.md"])

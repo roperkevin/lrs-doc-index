@@ -113,7 +113,13 @@ arrive; `--gap-report` lists stories with no plan.
 fills the Issue Refs list plus `gantt` / `titlematch` edges in Doc
 Links, which RelatedRank already weights.
 
-**`wiki.mjs` — the catalog as a wiki.** Renders every sidecar into an
+**`wiki.mjs` — the catalog as a wiki.** v2.5 opens on a landing page
+(a hero with search and the corpus in numbers, the documents by kind /
+surface / product / release in tabs, the latest edits, the catalogs as
+cards — `docs/design/Wiki_Home_Page.md`); v2.6 adds the theme's
+breadcrumbs, a document page's head as tabs, a glossary from the
+official vocabulary (tooltips on every page, a Glossary page) and
+facet bars on the small catalogs. Renders every sidecar into an
 MkDocs site (one page per document, catalogs by kind, keyword,
 product, surface, release, person and issue, the test cases and figures with
 anchors, a Recent page) and pushes the tree to a private devtopia

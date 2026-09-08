@@ -1429,6 +1429,37 @@ pymdown's Blocks syntax (`//// html | div.lrs-case` around a
 `/// admonition` — nesting by slash count); the sidecars on disk are
 unchanged.
 
+**The next pages (wiki v2.6).** Breadcrumbs are the theme's
+(`navigation.path`), each crumb linking its index page. A document
+page's summary, related documents and Esri documentation links are one
+tab set under the facts strip (a page with one of them keeps the
+block). The official vocabulary (`pipeline/data/lrs_vocabulary.json`)
+is a glossary: every tool, widget, term and alias with a definition is
+a Markdown abbreviation the render writes to `includes/glossary.md`
+and appends to every page, so hovering a tool's name anywhere shows
+its definition; single ordinary-word terms (Route, Event …) are
+listed but not tooltips. The Glossary page, in the Browse tab, lists
+every entry by kind with its Esri link and its documents, under a
+filter box. Surfaces, Products and Releases show their index pages as
+facet bars; the other catalogs keep their tables.
+
+**The front page (wiki v2.5).** A landing page, not a document: a
+hero under the tab bar with the site's name, a Search button (`/`
+does the same), an Every-document button and the corpus in numbers —
+documents, test cases, figures, tools, keywords, people, each tile
+linking the page it counts; then the documents by kind (cards), by
+surface, product and release (facet bars) in content tabs; the eight
+latest edits as a feed; the seven catalogs and the site's other pages
+as cards. The hero is a Material template override the render writes
+(`overrides/home.html`, `theme.custom_dir`), fed by the page's `hero:`
+front matter; the sidebars are hidden on that page. From the same
+review of the Material reference: every index page carries an `icon:`
+so the tabs and the sidebar wear the kinds' and catalogs' icons, the
+site uses the system fonts (`theme.font: false` — no Google Fonts
+request on the internal network), and instant prefetch and footnote
+tooltips are on. `docs/design/Wiki_Home_Page.md` records what was
+adopted and what was passed over.
+
 The tree is a rendering: nothing in it is edited by hand, the next
 run overwrites every page. Change a document's classification,
 keywords or related documents in the catalog and the sweep's rewrite
