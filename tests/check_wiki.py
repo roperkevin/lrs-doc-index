@@ -28,6 +28,13 @@ carry two alias → canonical merges — then renders the site and proves:
      admonitions, `<placeholder>` and a trailing `{brace}` run are
      escaped, code spans / `<br>` / autolinks are not, and mkdocs.yml
      carries the extensions the dialect needs
+  5f. the v2.1 dress by content type: the summary as an abstract
+     block (the no-summary alert stays a warning), the related list
+     as a foldable `related` block, the Esri links as a `docs` block,
+     Expected Result as a success block, page status (`new` within
+     NEW_DAYS, `draft`), the kind cards, the icon titles, the palette
+     and instant-nav knobs in mkdocs.yml, the custom types in
+     extra.css — and, built, the blocks, the badge and the button
   5e. the v1.8 lists: the case grammar's bold-label field bullets
      become a definition list (with the task list travelling into the
      Steps definition), a plain bullet list is left alone, and
@@ -238,7 +245,8 @@ related: []
 
 ## Summary
 
-A spike still in the old frame.
+> [!WARNING]
+> No AI summary was generated for this document.
 
 ---
 
@@ -319,7 +327,7 @@ def main():
     def page(rel):
         """A page minus its search front matter (v2.0) — the markdown
         the contract below pins starts under it."""
-        return re.sub(r"\A---\nsearch:\n[^\n]*\n---\n\n?", "", raw(rel))
+        return re.sub(r"\A---\n(?:[^\n]*\n)*?---\n\n?", "", raw(rel))
 
     # ---- 1. render ------------------------------------------------
     print("== render")
@@ -450,9 +458,9 @@ def main():
           plan[:1200])
     check("Source keeps the original SharePoint link and the revision",
           "[Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>) · rev V2" in plan, plan[:900])
-    check("related list links the sibling page and degrades the missing target to text",
-          "- [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue" in plan
-          and "- Gone Doc — 1 shared keyword: route" in plan, plan)
+    check("related list links the sibling page and degrades the missing target to text, in a foldable related block",
+          '???+ related "Related documents (2)"\n\n    - [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue' in plan
+          and "    - Gone Doc — 1 shared keyword: route" in plan and "## Related documents" not in plan, plan)
     check("the body follows a rule, media link unchanged (resolves through docs/media)",
           "\n---\n\n## Test Cases" in plan and "![Figure 1 — Merge before](../media/4855-merge-plan/fig-01-slide-03-merge.png)" in plan, plan[-600:])
     # a link whose file is not in the library never reaches the page:
@@ -466,19 +474,38 @@ def main():
           and "test-plans/4855-merge-plan.md\t../media/4855-merge-plan/fig-02-slide-04-lock.png" in open(report, encoding="utf-8").read()
           and "media link(s) have no file in the library" in r.stderr, r.stderr[-400:])
     check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
+    # v2.1: every TC case's content sits in a `//// html | div.lrs-case`
+    # Blocks wrapper under its heading (one card), deck sections do
+    # not; the Expected result is a three-slash block nested in it; a
+    # def list after an image line starts its own block
+    check("each TC case's content is wrapped for the card in a four-slash Blocks html block, up to the next heading",
+          plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 3
+          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\nGroup\n:   Normal Routes" in plan
+          and "////\n\n## Notes | pipes" in plan and "lrs-case\" markdown" not in plan
+          and "*(missing figure: Figure 2 — Lock dialog)*\n\nSteps\n:" in plan, plan[-1800:])
+    dblocks = page("drafts/4855-conflict-story-draft-20260906-2300.md")
+    check("the Expected result nests in the card as a three-slash admonition block, body unindented",
+          dblocks.count("//// html | div.lrs-case") == 1
+          and "\n\n/// admonition | Expected result\n    type: success\n\nA lock is held.\n///\n" in dblocks
+          and dblocks.find("//// html | div.lrs-case") < dblocks.find("/// admonition | Expected result") < dblocks.find("\n////\n")
+          and "////\n\n## Issue Trace" in dblocks and "!!! success" not in dblocks, dblocks)
+    check("mkdocs.yml enables the Blocks extensions the card uses",
+          "\n  - pymdownx.blocks.html\n  - pymdownx.blocks.admonition\n" in ycfg, ycfg)
     check("a case's own attr_list anchor survives the body escape",
           "### TC-P01 — Merge preserves measures { #tc-p01 }" in plan
           and "\\{ #tc-p01 }" not in plan, plan[-900:])
 
     # ---- 2b. the MkDocs dialect translation (v1.1) ----------------
     print("== dialect")
-    check("the whole summary reaches the page, not just its first line",
-          "A second paragraph the classifier wrote" in plan, plan[:1600])
-    check("the docs region becomes an Esri documentation section on the page",
-          "## Esri documentation" in plan and "[Merge Events](https://pro.arcgis.test/merge-events)" in plan,
-          plan[:2000])
-    order = [plan.find(h) for h in ("## Related documents", "## Esri documentation", "\n---\n")]
-    check("the docs section sits above the body seam, below Related documents",
+    check("the whole summary reaches the page, as an abstract block",
+          '!!! abstract "Summary"\n\n    Covers merging line events' in plan
+          and "    A second paragraph the classifier wrote" in plan and "## Summary" not in plan, plan[:1600])
+    # v2.1: the docs region is a `docs` block titled by its own heading
+    check("the docs region becomes an Esri documentation block on the page",
+          '!!! docs "Esri documentation"' in plan and "    [Merge Events](https://pro.arcgis.test/merge-events)" in plan
+          and "## Esri documentation" not in plan, plan[:2400])
+    order = [plan.find(h) for h in ('!!! abstract "Summary"', '???+ related "Related documents (2)"', '!!! docs "Esri documentation"', "\n---\n")]
+    check("summary, related and docs blocks sit in that order above the body seam",
           all(i >= 0 for i in order) and order == sorted(order), str(order))
     check("GFM alerts become admonition blocks MkDocs renders",
           "!!! danger" in plan and "    A pass here is the described denial." in plan
@@ -517,10 +544,9 @@ def main():
     check("the draft's Source row links the story's own page",
           "[Conflict Prevention Story](../user-stories/4855-conflict-story.md)" in dpage, dpage[:800])
     check("the draft body is translated for MkDocs like any other body",
-          "!!! warning" in dpage and "&lt;R100>" in dpage
-          and "[!WARNING]" not in dpage and "lrs:addendum" not in dpage, dpage)
+          "&lt;R100>" in dpage and "[!WARNING]" not in dpage and "lrs:addendum" not in dpage, dpage)
     check("the Drafts catalog lists the draft, newest first, and says unreviewed",
-          "# Test-plan drafts" in dindex and "**unreviewed**" in dindex
+          "# :material-file-document-edit: Test-plan drafts" in dindex and "**unreviewed**" in dindex
           and "| 2026-09-06 23:00 |" in dindex
           and "[Test Plan — Conflict Prevention](" in dindex, dindex)
     check("drafts join no catalog and no other page",
@@ -531,15 +557,15 @@ def main():
     check("the nav and the front page carry the Drafts section (a tab, each draft under it with its timestamp)",
           '  - Drafts:\n      - drafts/index.md\n      - "Test Plan — Conflict Prevention (2026-09-06 23:00)": drafts/4855-conflict-story-draft-20260906-2300.md' in ycfg
           and "Test-plan drafts](./drafts/index.md) (1)" in page("index.md"), ycfg + page("index.md")[-400:])
-    check("a draft is damped in search, a document boosted, a catalog value neutral",
-          raw("drafts/4855-conflict-story-draft-20260906-2300.md").startswith("---\nsearch:\n  boost: 0.5\n---\n")
+    check("a draft is damped in search and carries the draft status; a document boosted, a catalog value neutral",
+          raw("drafts/4855-conflict-story-draft-20260906-2300.md").startswith("---\nsearch:\n  boost: 0.5\nstatus: draft\n---\n")
           and raw("test-plans/4855-merge-plan.md").startswith("---\nsearch:\n  boost: 2\n---\n")
           and raw("keywords/route.md").startswith("---\nsearch:\n  boost: 1\n---\n"), raw("drafts/index.md")[:80])
     check("the aggregate pages are excluded from search",
-          all(raw(p).startswith("---\nsearch:\n  exclude: true\n---\n")
+          all(re.match(r"\A---\n(?:title: [^\n]*\n)?search:\n  exclude: true\n---\n", raw(p))
               for p in ["index.md", "documents/index.md", "browse/index.md", "recent.md", "cases/index.md",
                         "figures/index.md", "test-plans/index.md", "keywords/index.md", "drafts/index.md"])
-          and not raw("about.md").startswith("---"), raw("recent.md")[:80])
+          and "search:" not in raw("about.md").split("\n# ")[0], raw("recent.md")[:80])
 
     check("mkdocs.yml enables the extensions the dialect needs",
           "pymdownx.tasklist" in ycfg and "custom_checkbox: true" in ycfg
@@ -550,8 +576,13 @@ def main():
     about = page("about.md")
     front = page("index.md")
     css = open(os.path.join(docs, "stylesheets", "extra.css"), encoding="utf-8").read()
-    check("the unreviewed notice is a draft admonition on both the draft page and its catalog",
-          '!!! draft "Unreviewed draft"' in dpage and "**unreviewed**" in dpage
+    # v2.1: one box — the generator's own banner, retyped as the draft
+    # block, keeps its words; the composed notice is only for a draft
+    # without one
+    check("the unreviewed notice is a draft admonition on both the draft page and its catalog — one box, the file's own banner",
+          '!!! draft "Unreviewed draft"\n\n    **DRAFT — machine-generated, unreviewed.**' in dpage
+          and dpage.count("!!! draft") == 1 and "!!! warning" not in dpage
+          and "This page is a render of the drafts folder" not in dpage
           and '!!! draft "Unreviewed"' in dindex, dpage[:1400])
     check("About states the render-not-a-source rule in an admonition and folds its provenance list",
           '!!! info "A render, not a source"' in about
@@ -574,7 +605,6 @@ def main():
     # are not — the case catalog has one `filter-all` box for the page
     check("the composed catalog tables are wrapped for sorting, the large ones for filtering too",
           '<div class="sortable filterable" markdown>' in page("keywords/index.md")
-          and '<div class="sortable" markdown>' in front
           and '<div class="sortable" markdown>' in page("cases/index.md")
           and '<div class="filter-all" markdown>' in page("cases/index.md")
           and '<div class="sortable filterable" markdown>' in dindex
@@ -591,7 +621,6 @@ def main():
           and "tr[hidden]" in css, css[-600:])
     check("count and ordinal columns are right-aligned",
           "| Keyword | Documents |\n|---|---:|" in page("keywords/index.md")
-          and "| Kind | Documents |\n|---|---:|" in front
           and "| # | Case |\n|---:|---|" in page("cases/index.md"),
           page("cases/index.md")[:500])
     # ---- 2f. lists (v1.8) ------------------------------------------
@@ -606,8 +635,12 @@ def main():
           and "    - [ ] 2. Read the value in \\{measure}" in plan, plan[-1600:])
     check("a plain bullet list is not a definition list",
           "- [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue" in plan, plan[:2000])
-    check("the draft's own field bullets are translated too",
-          "Expected Result\n:   A lock is held." in dpage, dpage)
+    # v2.1 (mdlayout v1.3): Expected Result is the pass criterion, a
+    # success block; the other fields stay a definition list
+    check("the draft's own field bullets are translated too — Expected Result as a success block",
+          "/// admonition | Expected result\n    type: success\n\nA lock is held.\n///" in dpage
+          and "Steps\n:   - [ ] 1. Create route &lt;R100>." in dpage
+          and "Expected Result\n:" not in dpage and "- **Expected Result:**" not in dpage, dpage)
     check("About's provenance list is a definition list, and says why nothing ticks",
           "    Doc ids\n    :   Doc Index list row ids" in about
           and "    The checkboxes\n    :   Rendered, never clickable." in about
@@ -636,7 +669,7 @@ def main():
     # the whole set), not one table per kind
     check("alias docs land on the canonical page, in one table with a Kind column",
           "## Test Plan" not in route
-          and "| Document | Kind | Product | Release | Edited | Summary |" in route
+          and "| Document | Kind | Product | Release | Edited |\n|---|---|---|---|---|" in route
           and "| [Old Spike](../design-spikes/old-spike-doc9.md) | [Design Spike](../design-spikes/index.md) |" in route
           and "| [Merge Events Test Plan](../test-plans/4855-merge-plan.md) | [Test Plan](../test-plans/index.md) |" in route
           and "3 documents · a topic keyword · [all keywords](./index.md)" in route, route)
@@ -702,9 +735,22 @@ def main():
               and "Conflict Prevention Story" not in chrome,  # pruned: the other kinds' pages are not rendered
               (tabs[:400], chrome[-1200:]))
         check("the built page: Open button, shorthand issue link to devtopia, strikethrough, single tilde untouched",
-              'class="md-button lrs-open"' in html
+              'class="md-button md-button--primary lrs-open"' in html
               and 'class="magiclink magiclink-devtopia magiclink-issue" href="https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855"' in html
               and "<del>a struck run</del>" in html and "at ~5 minutes" in html, html[-2500:])
+        # v2.1, built: the summary/related/docs blocks, the success block
+        # and the draft badge in the nav, the custom palette attribute
+        dhtml_path = os.path.join(out, "site", "drafts", "4855-conflict-story-draft-20260906-2300", "index.html")
+        dhtml = open(dhtml_path, encoding="utf-8").read() if os.path.isfile(dhtml_path) else ""
+        check("the built page carries the abstract, related (open) and docs blocks and the custom palette",
+              '<div class="admonition abstract">' in html and '<p class="admonition-title">Summary</p>' in html
+              and '<details class="related" open="open">' in html and "Related documents (2)" in html
+              and '<div class="admonition docs">' in html and 'data-md-color-primary="custom"' in html, html[-3000:])
+        check("the built draft page: a success block per Expected result inside the case card, the draft badge with its tooltip in the nav",
+              '<div class="admonition success">' in dhtml and '<p class="admonition-title">Expected result</p>' in dhtml
+              and dhtml.count('<div class="lrs-case">') == 1 and html.count('<div class="lrs-case">') == 3
+              and dhtml.find('<div class="lrs-case">') < dhtml.find('<div class="admonition success">')
+              and 'class="md-status md-status--draft" title="Machine-generated, unreviewed"' in dhtml, dhtml[-2500:])
         idx_path = os.path.join(out, "site", "search", "search_index.json")
         idx = open(idx_path, encoding="utf-8").read() if os.path.isfile(idx_path) else ""
         locs = set(re.findall(r'"location":\s*"([^"#]*)', idx))
@@ -746,31 +792,31 @@ def main():
           and "| [Merge Events Test Plan](./test-plans/4855-merge-plan.md) | [Test Plan](./test-plans/index.md) |" in recent, str(order))
     front = page("index.md")
     check("front page: counts per kind and the browse links",
-          "3 documents" in front and "| [Test Plans](./test-plans/index.md) | 1 |" in front
+          "3 documents" in front and ":material-test-tube:{ .lg .middle } [Test Plans](./test-plans/index.md) (1)" in front
           and "[Keywords](./keywords/index.md) (4)" in front and "[Issues](./issues/index.md) (1)" in front, front)
     # ---- 5c. the v2.0 organisation ------------------------------------
     print("== organisation")
     check("front page: tip, Documents (reader order, All-documents link), Recently edited inline, then Browse",
           0 < front.find('!!! tip "Finding a document"') < front.find("## Documents")
           < front.find("[every document in one table](./documents/index.md)")
-          < front.find("| [Test Plans](./test-plans/index.md) | 1 |") < front.find("| [Design Spikes](./design-spikes/index.md) | 1 |")
+          < front.find("[Test Plans](./test-plans/index.md) (1)") < front.find("[Design Spikes](./design-spikes/index.md) (1)")
           < front.find("## Recently edited") < front.find("[the Recent page](./recent.md)")
           < front.find("| [Conflict Prevention Story](./user-stories/4855-conflict-story.md) | [User Story](./user-stories/index.md) |")
           < front.find("## Browse"), front)
     alldocs = page("documents/index.md")
     check("All documents: every document in one filterable table with a Kind column, kinds in reader order",
-          alldocs.startswith("# All documents") and "3 documents of every kind" in alldocs
+          alldocs.startswith("# :material-file-document-multiple-outline: All documents") and "3 documents of every kind" in alldocs
           and "By kind: [Test Plans](../test-plans/index.md) (1) · [User Stories](../user-stories/index.md) (1) · [Design Spikes](../design-spikes/index.md) (1)." in alldocs
-          and "| Document | Kind | Product | Release | Edited | Summary |" in alldocs
+          and "| Document | Kind | Product | Release | Edited |" in alldocs
           and len(re.findall(r"^\| \[", alldocs, re.M)) == 3, alldocs)
     browse = page("browse/index.md")
     check("Browse: the six catalogs as cards with counts",
-          browse.startswith("# Browse") and '<div class="grid cards" markdown>' in browse
+          browse.startswith("# :material-compass-outline: Browse") and '<div class="grid cards" markdown>' in browse
           and "[Keywords](../keywords/index.md) (4)" in browse and "[People](../people/index.md) (3)" in browse
-          and browse.count(":material-") == 6, browse)
+          and browse.split('<div class="grid cards" markdown>')[1].count(":material-") == 6, browse)
     check("a document page: breadcrumbs above the title, an Open button for the original under the card",
           plan.startswith('<div class="lrs-crumbs" markdown>\n\n[Home](../index.md) › [Test Plans](./index.md)\n\n</div>\n\n# Merge Events Test Plan')
-          and "</div>\n\n[:material-open-in-new: Open Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .lrs-open }\n\n## Summary" in plan,
+          and "</div>\n\n[:material-open-in-new: Open Merge Plan.pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .md-button--primary .lrs-open }\n\n!!! abstract" in plan,
           plan[:900])
     check("a document without a source URL gets no Open button",
           ".md-button" not in spike and "Open " not in spike.split("\n---\n")[0], spike[:600])
@@ -780,11 +826,64 @@ def main():
     check("About explains the organisation",
           '???+ note "How the site is organised"' in about and "    Documents\n    :   One tab" in about
           and "    Search, filter, sort\n" in about, about)
+    # ---- 5d. the v2.1 dress by content type ---------------------------
+    print("== content types")
+    check("the sweep's no-summary alert stays a warning block, never a summary box",
+          "!!! warning\n\n    No AI summary was generated for this document." in spike
+          and "!!! abstract" not in spike, spike)
+    check("the document tables carry no Summary column (title, kind, product, release, edited)",
+          "Summary" not in recent and "| Document | Product | Release | Edited |\n|---|---|---|---|" in page("test-plans/index.md")
+          and "| [Old Spike](./design-spikes/old-spike-doc9.md) | [Design Spike](./design-spikes/index.md) | — | — | 2026-07-01 |" in recent
+          and "[!WARNING]" not in recent, recent)
+    check("the front page's kinds are cards with an icon, the count and the newest edit, in reader order",
+          '<div class="grid cards lrs-kinds" markdown>' in front
+          and "-   :material-test-tube:{ .lg .middle } [Test Plans](./test-plans/index.md) (1)\n\n    ---\n\n    1 document, newest edit 2026-08-01." in front
+          and ":material-book-open-variant:{ .lg .middle } [User Stories](./user-stories/index.md) (1)" in front
+          and ":material-lightbulb-on-outline:{ .lg .middle } [Design Spikes](./design-spikes/index.md) (1)" in front
+          and "| Kind | Documents |" not in front, front)
+    check("the index pages' titles wear their icon, with the title pinned in front matter",
+          page("test-plans/index.md").startswith("# :material-test-tube: Test Plans")
+          and raw("test-plans/index.md").startswith('---\ntitle: "Test Plans"\nsearch:\n  exclude: true\n---\n')
+          and kwi.startswith("# :material-tag-multiple: Keywords")
+          and page("cases/index.md").startswith("# :material-clipboard-check: Test cases")
+          and recent.startswith("# :material-history: Recent")
+          and about.startswith("# :material-information: About this wiki")
+          and raw("about.md").startswith('---\ntitle: "About this wiki"\n---\n'), raw("test-plans/index.md")[:200])
+    check("a catalog value's facts sit in a strip under the title; the figure catalog is a card grid per document",
+          '# route\n\n<div class="lrs-facts" markdown>\n\n3 documents · a topic keyword' in route
+          and "Often tagged with:" in route.split("</div>")[1]
+          and '<div class="grid cards lrs-figures" markdown>' in figs, route[:600])
+    check("no fixture document is new (all edits are older than NEW_DAYS), the draft page says draft",
+          not any("status: new" in raw(p) for p in ["test-plans/4855-merge-plan.md", "user-stories/4855-conflict-story.md", "design-spikes/old-spike-doc9.md"])
+          and "status: draft" in raw("drafts/4855-conflict-story-draft-20260906-2300.md").split("\n---\n")[0]
+          and "status:" not in raw("keywords/route.md"), raw("test-plans/4855-merge-plan.md")[:80])
+    check("mkdocs.yml: the site's own palette, the status badges with tooltips, instant navigation, tooltips, footnotes",
+          "      primary: custom\n      accent: custom" in ycfg and ycfg.count("primary: custom") == 2
+          and "    status:\n      draft: material/pencil" in ycfg
+          and 'extra:\n  status:\n    new: "Edited in the last 14 days"\n    draft: "Machine-generated, unreviewed"' in ycfg
+          and "navigation.instant, navigation.instant.progress," in ycfg and "content.tooltips" in ycfg
+          and "\n  - footnotes\n" in ycfg, ycfg)
+    check("wiki.offline leaves instant navigation off (a file:// page cannot be fetched)",
+          "navigation.instant" not in ycfg2 and "navigation.tabs" in ycfg2, ycfg2[:600])
+    check("extra.css: the palette variables for both schemes, the related and docs types, figures, stripes",
+          "--md-primary-fg-color: #1f4e79" in css and '[data-md-color-scheme="slate"]' in css and "--md-typeset-a-color" in css
+          and "--md-admonition-icon--related" in css and ".md-typeset .admonition.related" in css
+          and "--md-admonition-icon--docs" in css and ".md-typeset .admonition.docs" in css
+          and ".md-typeset figcaption" in css and "tbody tr:nth-child(even)" in css
+          and ".md-typeset .lrs-facts" in css and ".md-typeset .lrs-figures" in css
+          and ".md-typeset .lrs-case dl {\n  display: grid;" in css and ".md-typeset .lrs-case .admonition.success" in css, css[:300])
+    # the Blocks composer's own rule: more slashes outside than inside
+    blk = subprocess.run(["node", "--input-type=module", "-e",
+        'import { block } from "./pipeline/lib/mdlayout.mjs";'
+        'process.stdout.write(block("html", block("admonition", "Body.", { title: "T", options: { type: "success" } }), { title: "div.c", depth: 4 }));'],
+        capture_output=True, text=True, cwd=REPO).stdout
+    check("block() composes the Blocks form, nesting by slash count",
+          blk == "//// html | div.c\n\n/// admonition | T\n    type: success\n\nBody.\n///\n////", repr(blk))
     # the model's own rules, through the module: natural order for the
     # catalogs, the issue host, a person's roles, a keyword's neighbours
     unit = subprocess.run(
         ["node", "--input-type=module", "-e", """
-import { buildModel, issueHostOf, personRoles, coKeywords } from "./pipeline/wiki.mjs";
+import { buildModel, issueHostOf, personRoles, coKeywords, pageStatus, NEW_DAYS } from "./pipeline/wiki.mjs";
 const doc = (title, release, kw, extra = {}) => ({
   stem: title, content: "", kind: "Test Plan",
   meta: { title, keywords: kw, tools: [], products: [], target_release: release, author: "", pe: "", dev: "", ...extra },
@@ -796,15 +895,20 @@ const out = {
   host: issueHostOf(new Map([["x", "not a url"], ["y", "https://devtopia.esri.com/Org/repo/issues/9"]])),
   none: issueHostOf(new Map()),
   roles: personRoles("P", docs), co: coKeywords("a", docs),
+  status: [pageStatus("2026-08-01 10:00", Date.parse("2026-08-10T00:00:00Z")),
+    pageStatus("2026-08-01 10:00", Date.parse("2026-08-01T10:00:00Z") + (NEW_DAYS + 1) * 86400000),
+    pageStatus("2026-07-31T18:22:04Z", Date.parse("2026-08-14T00:00:00Z")),
+    pageStatus("", Date.now()), pageStatus("not a date", Date.now())],
 };
 console.log(JSON.stringify(out));
 """], capture_output=True, text=True, cwd=REPO)
     u = json.loads(unit.stdout.strip() or "{}") if unit.returncode == 0 else {}
-    check("catalog keys sort naturally and case-insensitively; issue host, roles and co-keywords",
+    check("catalog keys sort naturally and case-insensitively; issue host, roles, co-keywords and the new-badge rule",
           u.get("releases") == ["3.8", "3.9", "3.10"] and u.get("keywords") == ["a", "b", "c"]
           and u.get("host") == "https://devtopia.esri.com" and u.get("none") == ""
           and u.get("roles") == "author of 1 · PE of 1 · developer of 1"
-          and u.get("co") == [{"value": "b", "n": 2}, {"value": "c", "n": 1}],
+          and u.get("co") == [{"value": "b", "n": 2}, {"value": "c", "n": 1}]
+          and u.get("status") == ["new", "", "new", "", ""],
           unit.stderr[-400:] or unit.stdout[-400:])
     issue = page("issues/arcgispro-ps-location-referencing-4855.md")
     check("issue page names the devtopia URL and both documents",

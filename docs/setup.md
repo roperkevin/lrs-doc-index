@@ -1401,6 +1401,27 @@ built `site/` folder is opened from a file share instead of served
 (it switches the site to `.html` URLs — leave it off for Pages or
 IIS).
 
+**How a page is dressed (wiki v2.1).** Every block says what it is,
+in Material's admonition vocabulary: on a document page the summary
+is an abstract block, the related documents a foldable block with the
+link icon (open by default, titled with the count), the Esri
+documentation links a block with the book icon, and every test
+case one card — its heading the head, its fields a label/value grid,
+its Expected Result the green row. A
+document edited in the last 14 days carries a New badge in the
+sidebar; a draft carries the pencil and one amber "Unreviewed draft"
+box (the generator's own banner, retyped). The front page's kinds are
+cards with an icon and the newest edit; index pages wear the same
+icon in their title; the figure catalog is a card grid. The palette
+is the site's own (a deep blue and a teal, in `extra.css` — both
+schemes), navigation is instant (off under `wiki.offline`), and GFM
+footnotes render. The document tables carry no summary column (the
+summary is on the page). `lib/mdlayout.mjs` v1.4 carries the one
+field rule (`FIELD_ADMONITIONS`) and the case card is written in
+pymdown's Blocks syntax (`//// html | div.lrs-case` around a
+`/// admonition` — nesting by slash count); the sidecars on disk are
+unchanged.
+
 The tree is a rendering: nothing in it is edited by hand, the next
 run overwrites every page. Change a document's classification,
 keywords or related documents in the catalog and the sweep's rewrite

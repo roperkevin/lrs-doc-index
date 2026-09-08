@@ -1,5 +1,110 @@
 # Local sweep — release notes
 
+## wiki v2.1 (2026-09-08 — the pages dressed by content type; mdlayout v1.4)
+
+The v2.0 site was organised for readers but every block on a page
+still looked like the body: the summary, the related list and the
+Esri links were three more H2s above the rule, a case's pass
+criterion was one more definition, and the theme was Material's stock
+indigo. v2.1 dresses each block in the type that says what it is
+(https://squidfunk.github.io/mkdocs-material/reference/admonitions/),
+and takes a second pass through the Material reference
+(https://squidfunk.github.io/mkdocs-material/reference/) for what
+else earns its place. The metadata table, the catalog tables and the
+links are unchanged — the format 3.1 contract the gate pins holds.
+
+- **A document page, by content type.** The summary is an `abstract`
+  block (Material's own "Summary" type); the sweep's no-summary alert
+  stays the `warning` it is, never a warning inside a summary box.
+  The related documents are a `related` block — a custom type with
+  the link icon — foldable and open by default, titled with the
+  count. The Esri documentation links are a `docs` block (custom, the
+  book icon), titled by the region's own heading. The Open button is
+  the page's primary button.
+- **Expected Result is a verdict** (`mdlayout` v1.3). The one case
+  field that is a pass criterion rather than a definition renders as
+  a `success` block — the green check — so every case on a page ends
+  the same way; Group, Case, Steps and Trace stay a definition list,
+  split around it. `FIELD_ADMONITIONS` is the whole rule; the files on
+  disk keep the bold-label bullet GitHub and the SharePoint preview
+  read. And **every case is one card**: `wrapCases` puts the content
+  under a `### TC-…` heading in a `.lrs-case` wrapper (after the
+  translation; deck-shaped `## Slide N` cases stay sections), and the stylesheet
+  draws the heading as the card's head, the fields as a label/value
+  grid with a shared label column, and the Expected result as a green
+  row of that grid rather than a boxed admonition inside a box. A
+  definition list or an admonition the translator emits now always
+  starts after a blank line — python-markdown read an image line just
+  above the fields as the first term, and a `!!!` line glued to a
+  paragraph as more of it. The card is written in pymdown's **Blocks
+  syntax** (https://facelessuser.github.io/pymdown-extensions/extensions/blocks/#nesting):
+  `//// html | div.lrs-case` around the case, `/// admonition |
+  Expected result` with `type: success` inside it — an outer block
+  takes more slashes than what it nests, so the nesting is in the
+  margin instead of in indentation, and the body is not indented.
+  `mdlayout` v1.4 gains `block()`, the composer; `pymdownx.blocks.html`
+  and `pymdownx.blocks.admonition` join mkdocs.yml (the `!!!` form
+  stays for the flat blocks).
+- **One draft box, not two.** A draft page carried the render's own
+  "Unreviewed draft" block and, under the rule, the generator's own
+  `> [!WARNING]` banner saying the same thing. The banner is now
+  retyped as the `draft` block and keeps its words; only a draft
+  without one gets the composed notice.
+- **Page status.** Material's `status:` front matter: a document
+  edited in the last `NEW_DAYS` (14) days carries `new`, a badge
+  beside it in the sidebar; every draft carries `draft`, the pencil
+  (`theme.icon.status`); `extra.status` gives each badge its tooltip.
+  `pageStatus()` is the rule.
+- **The front page's kinds are cards** — an icon per kind
+  (`KIND_ICONS`: test tube, open book, lightbulb, table, calendar,
+  file check), the count, the newest edit — like the Browse cards,
+  replacing the two-column table. Every index page's title wears the
+  same icon (the front matter pins `title:` to the words, so the
+  browser tab and the breadcrumbs stay plain). The figure catalog is
+  a card grid per document instead of a bullet list of thumbnails; a
+  catalog value's facts line (count, kind, roles, co-tags, tracker
+  link) is a strip under the title. The document tables lose their
+  Summary column — a 160-character cell per row made every table a
+  wall of text, and the summary is on the document's own page — and
+  the title column keeps a readable width.
+- **The theme.** The site's own palette — `primary: custom` /
+  `accent: custom`, a deep blue and a teal defined in `extra.css` for
+  both schemes, with lighter link and accent inks on slate (Material
+  provides those only for its named colours). `navigation.instant` +
+  `navigation.instant.progress` (the site behaves like one page;
+  `tables.js` already re-runs on Material's `document$`) — left off
+  under `wiki.offline`, where a file:// page cannot be fetched.
+  `content.tooltips`. `footnotes` closes the last GFM dialect gap
+  (`[^1]` used to render as text). `extra.css`: a rule under every
+  H2, figures centred and framed with a muted caption, striped
+  catalog tables, a firmer H1 with its icon in the site's blue,
+  softer borders on the metadata card and the cards, a hover shadow
+  on the cards.
+
+Passed over on this pass, with the reason: content tabs
+(`pymdownx.tabbed` — nothing in the corpus writes them, and a case
+inside a tab loses its deep link), `pymdownx.keys` / `mark` /
+`critic` (nothing emits them), an `abbr` glossary from the vocabulary
+file (a dotted underline under every "route" in every body is noise;
+worth revisiting for the acronyms alone), Google Fonts (`font:` — the
+runner's site is internal; Material's system-font fallback is the
+deterministic choice), a template override for an announcement bar
+(the copyright line already says "a render, not a source").
+
+Gates: `check_wiki.py` **115/115** (was 104: the abstract / related /
+docs blocks and their order, the no-summary warning passing through,
+the success block, the one draft box, the status front matter and
+`pageStatus()`, the kind cards, the icon titles with pinned titles,
+the facts strip, the figure grid, the Summary column, the palette /
+status / instant-nav / footnotes knobs and the offline exception in
+mkdocs.yml, the custom types and palette in extra.css — and, built,
+the blocks, the `open` details, the primary button, the success block
+and the draft badge with its tooltip).
+
+Rollout: `git pull` on the sweep machine; the next `ops\run_wiki.cmd`
+publishes the new dress. Nothing to configure; the Pages workflow
+installs the same four packages.
+
 ## curate v1.5 (2026-09-08 — the second reader; keyword_review 1.0.0)
 
 Two rounds of review by list — 176 proposals, then 52 — were the same
