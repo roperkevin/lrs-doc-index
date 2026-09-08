@@ -212,8 +212,14 @@ async function main() {
   // --drain: repeat full passes (each re-fetches the shrunken
   // vocabulary) until a pass writes nothing. Terminates structurally:
   // every written proposal removes its alias from future eligibility
-  // (merged in autoApprove mode; CurationStatus-blocked in manual).
+  // (merged in autoApprove mode; CurationStatus-blocked in manual;
+  // with the second reader, merged or held — and a pair the reader
+  // WITHDREW stays blocked for the rest of the drain, cfg._withdrawn,
+  // or the next pass would propose it again and the reader withdraw
+  // it again until the pass limit).
   const maxPasses = cfg._drain && !cfg.curation.dryRun ? 20 : 1;
+  cfg._withdrawn = new Set();
+  cfg._held = new Set(); // row ids the reader held earlier in this drain: not re-asked each pass
   for (let pass = 1; pass <= maxPasses; pass++) {
     if (cfg._drain) {
       prog(`drain pass ${pass} of at most ${maxPasses}`);
@@ -402,7 +408,11 @@ async function runCuration(cfg, graph, siteId) {
   const pendingRows = canon.filter((r) => r.CurationStatus === "Proposed");
   const vocabRows = canon.filter((r) => r.CurationStatus !== "Proposed");
   const blockedRows = vocabRows.filter((r) => r.CurationStatus);
-  const blockedLines = blockedRows.map((r) => r.Title).join("\n");
+  const withdrawn = cfg._withdrawn || new Set(); // withdrawn earlier in this drain
+  const blockedLines = [
+    ...blockedRows.map((r) => r.Title),
+    ...vocabRows.filter((r) => !r.CurationStatus && withdrawn.has(lower(r.Title))).map((r) => r.Title),
+  ].join("\n");
 
   // 3) the curation prompt (prompts/keyword_curation.md through the
   // Python layer, schema-pinned) — one call per alphabetical vocabulary
@@ -484,7 +494,8 @@ async function runCuration(cfg, graph, siteId) {
     const canonRow = byLower.get(canonLower);
     // the flow's verbatim checks, plus (lib/curationguard.mjs) a pending
     // canonical, a kind mismatch and a merge in the wrong direction
-    const problem = proposalProblem(aliasRow, canonRow, cfg._official);
+    const problem = proposalProblem(aliasRow, canonRow, cfg._official) ||
+      (aliasRow && withdrawn.has(lower(aliasRow.Title)) ? "withdrawn by the second reader earlier in this drain" : "");
     if (problem) {
       dropped++;
       guard.step(`dropped '${String(p?.alias ?? "")}' → '${String(p?.canonical ?? "")}' — ${problem}`);
@@ -618,6 +629,7 @@ async function runReviewPass(cfg, graph, siteId, rows, patch, prog) {
     const problem = proposalProblem({ ...r, CurationStatus: "" }, canonRow && { ...canonRow, CurationStatus: "" }, cfg._official);
     if (problem) { rec.outcome = "withdraw"; rec.note = `guard: ${problem}`; }
     else if (canonRow.CurationStatus === "Proposed") { rec.outcome = "hold"; rec.note = "its canonical is itself pending (a chain)"; }
+    else if (cfg._held?.has(r.ID)) { rec.outcome = "hold"; rec.note = "held earlier in this drain — a librarian decides"; }
     else toModel.push(rec);
     results.push(rec);
   }
@@ -673,6 +685,7 @@ async function runReviewPass(cfg, graph, siteId, rows, patch, prog) {
       lines += `- APPROVED (review) '${x.row.Title}' → '${x.canonRow.Title}' — ${x.why} · reviewer: ${x.note}\n`;
     } else if (x.outcome === "withdraw") {
       await patch(x.row.ID, { CurationStatus: null, ProposedCanonical: null }, "review-withdraw");
+      cfg._withdrawn?.add(lower(x.row.Title));
       x.row.CurationStatus = "";
       x.row.ProposedCanonical = "";
       withdrawn++;
@@ -680,6 +693,7 @@ async function runReviewPass(cfg, graph, siteId, rows, patch, prog) {
       lines += `- WITHDRAWN (review) '${x.row.Title}' → '${x.canonTitle}' — ${x.note}\n`;
     } else {
       held++;
+      cfg._held?.add(x.row.ID);
       phase.step(`held '${x.row.Title}' → '${x.canonTitle}' — ${x.note}`);
       lines += `- (pending, held for a librarian) '${x.row.Title}' → ${x.row.ProposedCanonical} · reviewer: ${x.note}\n`;
     }

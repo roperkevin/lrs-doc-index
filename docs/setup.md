@@ -614,6 +614,13 @@ for you, and the digest lists all three with the reader's reason.
 - `model` / `effort` / `maxTokens` under `review` override `llm.*`
   for the reader's call only — a different model is a real second
   opinion.
+- **The whole list in one run:** `--live --drain` repeats the pass
+  (propose, review, merge) until a pass proposes nothing, at most 20
+  passes and 100 proposals per pass. Within a drain a pair the reader
+  withdrew is blocked from re-proposal and a row it held is not asked
+  about again, so the drain converges instead of circling; held rows
+  are yours afterwards. Then `--repoint --live` and `sweep.mjs
+  --rerank --live` once.
 
 **Undo, in bulk** (`pipeline/unmerge.mjs`): `--all | --modified
 <YYYY-MM-DD> | --chains | --ids-file <path>` selects alias rows and
