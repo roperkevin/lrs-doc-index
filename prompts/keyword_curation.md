@@ -3,7 +3,7 @@ name: keyword_curation
 version: 2.1.0
 model: claude-opus-5
 effort: high
-max_tokens: 16384
+max_tokens: 32000
 output: json_schema
 schema: schemas/keyword_curation.json
 inputs: ["Vocabulary", "DoNotPropose"]
