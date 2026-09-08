@@ -1,5 +1,76 @@
 # Local sweep — release notes
 
+## wiki v2.7 (2026-09-08 — coverage, cases by tool, redirects, history, the stale badge, print, the pins)
+
+The recommendations after v2.6 (`docs/design/Wiki_Home_Page.md` §6),
+all but the Figures tab.
+
+- **Coverage** (`coverage.md`, in the Test cases tab, a card on the
+  front page): every user story with the test plans that cite one of
+  its issues, by release — a plan covers a story when the two
+  reference the same devtopia issue, the edge the sweep's related
+  ranking already uses. A story with no such plan is listed first in
+  its release and marked amber; a story that cites no issue says so.
+  One filter box for every release.
+- **Cases by tool** (`cases/by-tool.md`): for every tool the corpus
+  names, the cases of every plan whose own words name it — whole
+  word, any casing — so a case is read across plans; a tool no case
+  names is listed at the end. On both case catalogs the case links
+  carry Material's hover preview (`navigation.instant.preview`,
+  `{ data-preview }`): the case shows without leaving the list.
+- **Stable links across renames.** `slugs.json` in the output tree
+  remembers every document id's page and its previous pages between
+  runs — committed with the tree, so a fresh clone keeps the memory.
+  A page that moved redirects from every page it had through the
+  `mkdocs-redirects` plugin (`redirect_maps` in mkdocs.yml, only when
+  there is one), unless another document now renders there.
+- **A History link** beside Open on a document page: the wiki
+  repository's commit history of that page (`wiki.repoUrl` in its
+  web form, the branch, `docs/<page>`) — every nightly push is a
+  commit, so the diff of what the sweep changed is already there.
+  Only for an http(s) remote.
+- **The stale badge.** `wiki.staleDays` (default 365): a document not
+  edited in that long carries the clock in the sidebar
+  (`status: stale`, the tooltip "Not edited in a year"), the Recent
+  page ends with them oldest first, and the front page says how many
+  with the way there. `pageStatus` now answers new, stale or nothing.
+- **Print.** A test plan prints as its run sheet — no header, tabs,
+  sidebars, footer, breadcrumbs, Open or Details; the facts strip,
+  the summary (every head tab, in print), the cases with their badges
+  and checkboxes, a case never split across a page break. The front
+  page prints its hero in black on white.
+- **The toolchain pinned** (`PIP_PACKAGES`, one constant behind the
+  generated workflow, the wiki README and the `--build` hint):
+  `mkdocs-material>=9.7,<10` (9.7 is Material's last feature line, in
+  maintenance) and `mkdocs<2` (incompatible), plus glightbox, panzoom,
+  markdown-captions and mkdocs-redirects. The harness workflow
+  installs the same set.
+- **`wiki.siteUrl`.** The render says on stderr when it is empty:
+  instant prefetch and the case previews read the sitemap, which
+  needs it. The sample config carries the key.
+- **Notes and Questions as admonitions** (`wrapSections`). A body
+  section whose heading starts or ends with "note(s)" — the slide
+  notes the case grammar sets aside, "Test notes", a draft's
+  "Automation Notes" — is a `note` block titled with the heading; one
+  whose heading starts or ends with "question(s)" — a draft's "Open
+  Questions" — a `question` block. The block holds the section up to
+  the next heading of the same or a higher level (a nested heading
+  travels inside) and carries the heading's id, so a link to the
+  section still lands. It runs after the case cards are wrapped: a
+  case's span ends at the next heading, and a Notes heading must
+  still be one then, or the last case would swallow the block.
+
+Gates: `check_wiki.py` — the Notes block with its id and a pipe in
+its title, the Questions block with a nested heading, the site-URL hint and its absence, the
+History link on a web remote, a 30-day clock on the GHES render (the
+badge, the Recent section oldest first, the front page's line, the
+tooltip), the Coverage page and its row, the by-tool page, the tab's
+three pages, the pins in the workflow and the README, previews and
+the stale icon in mkdocs.yml, the print rules, `pageStatus` /
+`repoWebUrl` / `redirectsFor` as units, and — in the push leg — a
+renamed source: slugs.json, the redirect in mkdocs.yml, the built
+redirect page, the redirect surviving the next run.
+
 ## wiki v2.6 (2026-09-08 — the next pages: breadcrumbs, the head as tabs, the glossary, facet catalogs)
 
 The four pages `docs/design/Wiki_Home_Page.md` §5 named after the
