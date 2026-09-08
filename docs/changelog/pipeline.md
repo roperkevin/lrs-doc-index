@@ -1,6 +1,6 @@
 # Local sweep — release notes
 
-## wiki v2.1 (2026-09-08 — the pages dressed by content type; mdlayout v1.3)
+## wiki v2.1 (2026-09-08 — the pages dressed by content type; mdlayout v1.4)
 
 The v2.0 site was organised for readers but every block on a page
 still looked like the body: the summary, the related list and the
