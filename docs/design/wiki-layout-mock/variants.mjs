@@ -10,8 +10,9 @@ const plans = PLANS.map(([stem, title, id, surface, products, release, tools, ed
   .sort((a, b) => b.edited.localeCompare(a.edited));
 const pill = (t) => `[${t}](../tools/${kebab(t)}.md){ .lrs-pill }`;
 const facts = (p) => `${p.products.map((x) => `[${x}](../products/${kebab(x)}.md)`).join(" · ")} · release [${p.release}](../releases/${kebab(p.release)}.md) · [${p.surface}](../surfaces/${kebab(p.surface)}.md) · ${p.cases} cases · PE [${p.pe}](../people/${kebab(p.pe)}.md)`;
-const head = (p, cls) => [
-  `//// details | [${p.title}](./${p.stem}.md) <span class="lrs-tags">${p.tools.map(pill).join(" ")}</span> *${p.edited.slice(0, 10)}*{ .lrs-when }`,
+// `skip`: the tool the row sits under — its pill would only repeat the heading
+const head = (p, cls, skip = "") => [
+  `//// details | [${p.title}](./${p.stem}.md) <span class="lrs-tags">${p.tools.filter((t) => t !== skip).map(pill).join(" ")}</span> *${p.edited.slice(0, 10)}*{ .lrs-when }`,
   ...(cls.open ? ["    open: true"] : []),
   `    attrs: {class: "${cls.cls}"}`, ""];
 
@@ -28,20 +29,30 @@ for (const p of plans) {
 A.push("</div>", "");
 fs.writeFileSync(path.join(docs, "test-plans", "variant-a.md"), A.join("\n"));
 
-// ---- B: a ledger — one closed row per plan, grouped by release
+// ---- B: a ledger — one closed row per plan, grouped by surface, then by
+// tool; a plan is listed under every tool it names, in every surface it
+// covers, so the page reads as a tag index
+const SURFACES = ["Pro", "Experience Builder", "REST", "Server", "Enterprise"];
 const B = [`---\ntitle: "Test Plans (B)"\nsearch:\n  exclude: true\n---\n`,
   "# :material-test-tube: Test Plans", "",
-  `${plans.length} documents by target release, newest edit first within a release. Type in the box to filter every group at once; open a row for the plan's facts and summary. Or [see every kind in one table](../documents/index.md).`, "",
+  `${plans.length} documents by surface, then by the tools they exercise — a plan is listed under every tool it names. Type in the box to filter every group at once; open a row for the plan's facts and summary. Or [see every kind in one table](../documents/index.md).`, "",
   '<div class="filter-all lrs-plans lrs-plans--ledger" markdown>', ""];
-const byRel = new Map();
-for (const p of plans) { if (!byRel.has(p.release)) byRel.set(p.release, []); byRel.get(p.release).push(p); }
-const rels = [...byRel.keys()].sort((a, b) => b.localeCompare(a, "en", { numeric: true }));
-for (const r of rels) {
-  const ps = byRel.get(r);
-  B.push(`## [Release ${r}](../releases/${kebab(r)}.md) <small>${ps.length} plan${ps.length === 1 ? "" : "s"}</small>`, "");
-  for (const p of ps) {
-    B.push(...head(p, { open: false, cls: "lrs-plan lrs-plan--row" }),
-      `<div class="lrs-plan__facts" markdown>${facts(p)}</div>`, "", p.summary, "", "////", "");
+const bySurface = new Map();
+for (const p of plans) { if (!bySurface.has(p.surface)) bySurface.set(p.surface, []); bySurface.get(p.surface).push(p); }
+const surfaces = [...bySurface.keys()].sort((a, b) => (SURFACES.indexOf(a) + 99) % 100 - (SURFACES.indexOf(b) + 99) % 100 || a.localeCompare(b));
+for (const sf of surfaces) {
+  const ps = bySurface.get(sf);
+  B.push(`## [${sf}](../surfaces/${kebab(sf)}.md) <small>${ps.length} plan${ps.length === 1 ? "" : "s"}</small>`, "");
+  const byTool = new Map();
+  for (const p of ps) for (const t of (p.tools.length ? p.tools : ["No tool named"])) { if (!byTool.has(t)) byTool.set(t, []); byTool.get(t).push(p); }
+  const tools = [...byTool.keys()].sort((a, b) => (a === "No tool named") - (b === "No tool named") || a.localeCompare(b, "en", { sensitivity: "base" }));
+  for (const t of tools) {
+    const tp = byTool.get(t);
+    B.push(t === "No tool named" ? `### No tool named <small>${tp.length}</small>` : `### [${t}](../tools/${kebab(t)}.md) <small>${tp.length}</small>`, "");
+    for (const p of tp) {
+      B.push(...head(p, { open: false, cls: "lrs-plan lrs-plan--row" }, t),
+        `<div class="lrs-plan__facts" markdown>${facts(p)}</div>`, "", p.summary, "", "////", "");
+    }
   }
 }
 B.push("</div>", "");

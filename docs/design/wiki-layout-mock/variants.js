@@ -31,12 +31,23 @@
       wrap.dataset.lrsFilter = "1";
       wrap.insertBefore(box(list.length, function (terms) {
         var n = apply(list, terms);
-        var head = null, group = [];
-        function flush() { if (!head) return; var any = group.some(function (el) { return !el.hidden; }); head.hidden = terms.length > 0 && !any; }
-        Array.prototype.forEach.call(wrap.children, function (el) {
-          if (/^H[1-6]$/.test(el.tagName)) { flush(); head = el; group = []; } else if (head && el.tagName === "DETAILS") group.push(el);
+        // a heading hides when everything under it, down to the next
+        // heading of its level or above, hid — deepest level first, so a
+        // surface heading (h2) sees its tool headings (h3) already decided
+        var kids = Array.prototype.slice.call(wrap.children);
+        [6, 5, 4, 3, 2].forEach(function (level) {
+          kids.forEach(function (el, i) {
+            if (el.tagName !== "H" + level) return;
+            var any = false;
+            for (var j = i + 1; j < kids.length; j++) {
+              var m = /^H([1-6])$/.exec(kids[j].tagName);
+              if (m && +m[1] <= level) break;
+              if (!kids[j].hidden) { any = true; break; }
+            }
+            el.hidden = terms.length > 0 && !any;
+          });
         });
-        flush(); return n;
+        return n;
       }), wrap.firstChild);
     });
   }

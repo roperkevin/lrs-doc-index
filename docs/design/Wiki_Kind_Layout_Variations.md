@@ -93,18 +93,24 @@ is roughly three times as tall as the table for the same rows, and
 there is no column sort (the edit-date order is fixed; product and
 release are in the facts line, not sortable columns).
 
-## 4. Variant B — a ledger, closed rows grouped by release
+## 4. Variant B — a ledger, closed rows grouped by surface, then tool
 
 The same header row, but the block is **closed** and there is no
 nested fold: opening a row shows the facts line and the summary text
-directly. Rows are grouped under a heading per target release
-(newest release first, newest edit first within it), each heading
-carrying its count and linking the release's catalog page.
+directly. Rows are grouped under a heading per surface (Pro,
+Experience Builder, REST, Server, Enterprise, in that order) and,
+inside it, a heading per tool — alphabetical, with the count beside
+it, each heading linking its catalog page. A plan is listed under
+**every** tool it names and in every surface it covers, so the page
+reads as a tag index; the heading's own pill is left off its rows,
+and the pills that remain show the *other* tools the plan touches.
 
 ```
-## [Release 3.8](../releases/3-8.md) <small>4 plans</small>
+## [Pro](../surfaces/pro.md) <small>12 plans</small>
 
-//// details | [Merge Events Test Plan](./4855-merge-plan.md) <span class="lrs-tags">…pills…</span> *2026-08-01*{ .lrs-when }
+### [Apply Event Behaviors](../tools/apply-event-behaviors.md) <small>2</small>
+
+//// details | [Merge Events Test Plan](./4855-merge-plan.md) <span class="lrs-tags">[Merge Events](../tools/merge-events.md){ .lrs-pill }</span> *2026-08-01*{ .lrs-when }
     attrs: {class: "lrs-plan lrs-plan--row"}
 
 <div class="lrs-plan__facts" markdown>…</div>
@@ -114,14 +120,14 @@ Covers merging line events across routes, with the lock conflict case. …
 ////
 ```
 
-Reads as: one line per plan, about as dense as the table, with the
-tools where the Product column used to be and the grouping doing the
-work the Release column did. A quiet grey rail until a row is open;
-open rows take the site's blue rail. The page-wide filter hides the
-release headings whose rows all fell out (the `filter-all` behaviour
-the case catalog already has, extended to details rows). The group key
-is a choice: release is the natural one for test plans; product or the
-edit year would suit other kinds, or a kind could keep the table.
+Reads as: the site's Tools catalog folded into the kind page, one
+line per plan under each tool. The page-wide filter hides a tool
+heading whose rows all fell out and a surface heading whose tools all
+hid. The cost is repetition: a plan with three tools is three rows,
+and a corpus where most tools have one plan is a long run of
+one-row groups (the 14-plan fixture makes 26 rows under 20 tools). A
+plan that names no tool sits under "No tool named" at the end of its
+surface.
 
 ## 5. The document page — the metadata table folded
 
@@ -267,11 +273,13 @@ python shoot.py                                                # screenshots, se
 ## 7. Open decisions
 
 1. **A or B for Test Plans** — A when the summaries are the thing
-   people scan; B when the list is long and the release is how people
-   think about it. Both keep the table reachable through All documents.
-2. **Which kinds** — the other kinds have fewer tools and shorter
-   lists; they can keep the table, take B with a different group key,
-   or take A.
+   people scan; B when the list is long and surface and tool are how
+   people think about it. Both keep the table reachable through All
+   documents.
+2. **Which kinds** — one composer writes every kind's index page, so
+   the chosen layout applies to all of them; surface → tool works for
+   every kind that names tools, and a kind that names none collapses
+   to surface alone.
 3. **The metadata fold on every page**, or only on kinds whose strip
    carries enough (a Doc Review has no tools to show).
 4. **The case card**: S1, S2, or the wired default. The checkboxes

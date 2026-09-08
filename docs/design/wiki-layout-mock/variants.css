@@ -60,6 +60,8 @@
 .md-typeset .lrs-plans--ledger details.lrs-plan > summary { padding-top: 0.35em; padding-bottom: 0.35em; font-weight: 500; }
 .md-typeset .lrs-plans--ledger details.lrs-plan > p { margin: 0.4em 0.9em 0.7em; }
 .md-typeset .lrs-plans--ledger h2 { margin-top: 1.4em; }
+.md-typeset .lrs-plans--ledger h3 { margin: 1.1em 0 0.5em; font-size: 0.8rem; font-weight: 600; }
+.md-typeset .lrs-plans--ledger h3 small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; }
 .md-typeset .lrs-plans--ledger h2 small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; }
 
 /* the document page: the facts strip up top, the full table folded */
