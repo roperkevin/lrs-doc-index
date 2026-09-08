@@ -101,7 +101,7 @@
 .md-typeset .lrs-s2 .lrs-group-head {
   margin: 1.6em 0 -0.9em;
   color: var(--md-default-fg-color--light);
-  font-size: 0.62rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: 0.7rem; font-weight: 600;
 }
 .md-typeset .lrs-s2 .lrs-group-head + h3[id^="tc-"] { margin-top: 1.2em; }
 .md-typeset .lrs-s2 .lrs-case .lrs-group { display: none; }
@@ -123,55 +123,51 @@
   .md-typeset .lrs-s2 .lrs-case > .admonition.success { margin: 0 -0.9em -0.5em; border-radius: 0 0 var(--lrs-radius) var(--lrs-radius); }
 }
 
-/* ---- R — the run sheet (mockup): the page full width, a sticky plan
-   sheet on the left, the cases a continuous runbook on the right ---- */
-.md-typeset .lrs-run { display: grid; grid-template-columns: 17rem minmax(0, 1fr); column-gap: 2.4rem; align-items: start; margin-top: 0.4rem; }
-.md-typeset .lrs-run__sheet { position: sticky; top: 4.6rem; font-size: 0.68rem; }
-.md-typeset .lrs-run__sheet > :first-child { margin-top: 0; }
-.md-typeset .lrs-run__sheet .lrs-tags { display: flex; flex-wrap: wrap; gap: 0.25em; margin: 0 0 0.9em; }
-.md-typeset .lrs-run__sheet dl { margin: 0 0 1em; }
-.md-typeset .lrs-run__sheet dl dt { margin-top: 0.55em; }
-.md-typeset .lrs-run__sheet .md-button { margin: 0 0 1.2em; font-size: 0.66rem; }
-.md-typeset .lrs-run__sheet h4 { margin: 1.2em 0 0.4em; padding-bottom: 0.25em; border-bottom: 1px solid var(--md-default-fg-color--lightest); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--md-default-fg-color--light); }
-.md-typeset .lrs-run__sheet .lrs-run__count { color: var(--md-default-fg-color--light); }
-.md-typeset .lrs-run__sheet ul.lrs-run__index { list-style: none; margin: 0 0 0.8em; padding: 0; }
-.md-typeset .lrs-run__sheet ul.lrs-run__index li { margin: 0; padding: 0.15em 0; display: flex; gap: 0.5em; align-items: baseline; }
-.md-typeset .lrs-run__sheet ul.lrs-run__index code { flex: 0 0 auto; padding: 0 0.35em; font-size: 0.6rem; }
-.md-typeset .lrs-run__sheet ul.lrs-run__index span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--md-default-fg-color--light); }
-.md-typeset .lrs-run__sheet .lrs-run__group { margin: 0.6em 0 0.2em; font-size: 0.62rem; font-weight: 600; color: var(--md-default-fg-color); }
-.md-typeset .lrs-run__sheet .admonition { margin: 0.6em 0 0; font-size: 0.66rem; }
 
-.md-typeset .lrs-run__main > h2:first-child { margin-top: 0; }
-.md-typeset .lrs-run__main .lrs-group-head {
-  margin: 1.8em 0 0.2em; padding: 0 0 0.3em;
-  border-bottom: 2px solid var(--md-primary-fg-color);
-  color: var(--md-primary-fg-color);
-  font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+/* ---- C — the checklist (mockup) ---- */
+.md-typeset .lrs-c .lrs-cases-count { margin: -0.6em 0 1em; color: var(--md-default-fg-color--light); font-size: 0.7rem; }
+.md-typeset .lrs-c .lrs-group-head {
+  margin: 1.8em 0 0.4em; padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  font-size: 0.82rem; font-weight: 600;
 }
-.md-typeset .lrs-run__main h3[id^="tc-"] {
-  margin: 0; padding: 0.7em 0 0.3em;
+.md-typeset .lrs-c .lrs-group-head small { margin-left: 0.5em; font-size: 0.66rem; font-weight: 400; color: var(--md-default-fg-color--light); }
+/* the heading: the id a badge in a 4.2rem gutter, the title beside it */
+.md-typeset .lrs-c h3[id^="tc-"] {
+  display: flex; align-items: baseline; gap: 0.7rem;
+  margin: 1em 0 0; padding: 0;
   border: 0; border-radius: 0; background: none;
-  font-size: 0.76rem; font-weight: 600;
+  font-size: 0.78rem; font-weight: 600;
 }
-.md-typeset .lrs-run__main .lrs-case {
-  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); column-gap: 1.4em;
-  margin: 0; padding: 0 0 0.9em;
-  border: 0; border-bottom: 1px solid var(--md-default-fg-color--lightest); border-radius: 0;
+.md-typeset .lrs-c h3[id^="tc-"] .headerlink { margin-left: 0.2rem; }
+.md-typeset .lrs-c .lrs-tc {
+  flex: 0 0 4.2rem; padding: 0.15em 0; text-align: center;
+  border-radius: 0.25rem;
+  font-family: var(--md-code-font-family); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.02em;
+  background: rgba(0, 200, 83, 0.14); color: #1b6b3a;
 }
-.md-typeset .lrs-run__main .lrs-case .lrs-group { display: none; }
-.md-typeset .lrs-run__main .lrs-case > dl { grid-column: 1 / -1; display: block; margin: 0 0 0.4em; }
-.md-typeset .lrs-run__main .lrs-case > dl dt { display: none; }
-.md-typeset .lrs-run__main .lrs-case > dl dd { margin: 0; color: var(--md-default-fg-color--light); }
-.md-typeset .lrs-run__main .lrs-case > .lrs-steps { grid-column: 1; margin: 0; }
-.md-typeset .lrs-run__main .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.25em; }
-.md-typeset .lrs-run__main .lrs-case > .admonition.success {
-  grid-column: 2; display: block; margin: 0; padding: 0.5em 0.8em;
+.md-typeset .lrs-c .lrs-tc--n { background: rgba(255, 145, 0, 0.16); color: #9a4a00; }
+[data-md-color-scheme="slate"] .md-typeset .lrs-c .lrs-tc { color: #7ee2a8; }
+[data-md-color-scheme="slate"] .md-typeset .lrs-c .lrs-tc--n { color: #ffc27a; }
+/* the body hangs under the title, no box; a hairline closes the case */
+.md-typeset .lrs-c .lrs-case {
+  margin: 0.3em 0 0 4.9rem; padding: 0 0 0.9em;
+  border: 0; border-radius: 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+.md-typeset .lrs-c .lrs-case .lrs-group { display: none; }
+.md-typeset .lrs-c .lrs-case > dl { display: block; margin: 0 0 0.5em; }
+.md-typeset .lrs-c .lrs-case > dl dt { display: none; }
+.md-typeset .lrs-c .lrs-case > dl dd { margin: 0; color: var(--md-default-fg-color--light); }
+.md-typeset .lrs-c .lrs-case .lrs-steps { margin: 0 0 0.5em; }
+.md-typeset .lrs-c .lrs-case .lrs-steps .task-list-item { margin: 0 0 0.2em; }
+.md-typeset .lrs-c .lrs-case > .admonition.success {
+  display: block; margin: 0.4em 0 0; padding: 0.45em 0.8em;
   border-radius: var(--lrs-radius);
 }
-.md-typeset .lrs-run__main .lrs-case > .admonition.success > .admonition-title { margin-bottom: 0.25em; }
-@media (max-width: 60em) {
-  .md-typeset .lrs-run { display: block; }
-  .md-typeset .lrs-run__sheet { position: static; margin-bottom: 1.5em; }
-  .md-typeset .lrs-run__main .lrs-case { display: block; }
-  .md-typeset .lrs-run__main .lrs-case > .admonition.success { margin-top: 0.5em; }
+.md-typeset .lrs-c .lrs-case > .admonition.success > .admonition-title { display: inline; margin: 0 0.4em 0 0; padding-left: 1.4em; }
+.md-typeset .lrs-c .lrs-case > .admonition.success > .admonition-title::after { content: ":"; }
+.md-typeset .lrs-c .lrs-case > .admonition.success > :not(.admonition-title) { display: inline; }
+@media (max-width: 44.9em) {
+  .md-typeset .lrs-c .lrs-case { margin-left: 0; }
 }

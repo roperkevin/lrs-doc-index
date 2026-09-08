@@ -32,7 +32,7 @@
  * "Steps" beside them. Each is written as a class-named Blocks html
  * block holding the content alone (`/// html | div.lrs-group`,
  * `/// html | div.lrs-steps`), which the wiki's stylesheet draws as
- * an eyebrow over the card and as the procedure, flush with the card.
+ * a quiet line over the card and as the procedure, flush with the card.
  * `FIELD_BARE` is the whole rule; `Case` and `Trace` stay a definition
  * list, and nothing on disk changes shape.
  *

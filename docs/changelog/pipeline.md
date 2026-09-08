@@ -9,9 +9,9 @@ block holding the content alone — `/// html | div.lrs-group`,
 `/// html | div.lrs-steps` — through the new `FIELD_BARE` rule, the
 sibling of `FIELD_ADMONITIONS`; `Case` and `Trace` stay a definition
 list, label and value, and the Expected result stays the green row.
-The wiki's stylesheet draws the group as an eyebrow over the card's
-content (the label vocabulary: small, uppercase, muted) and the steps
-as the procedure, flush with the card. Nothing on disk changes shape.
+The wiki's stylesheet draws the group as a quiet line over the card's
+content (small, muted, the source's own casing) and the steps as the
+procedure, flush with the card. Nothing on disk changes shape.
 
 Two further layouts for the card body and two for the long kind
 tables are mocked, not wired, in `docs/design/Wiki_Kind_Layout_Variations.md`.

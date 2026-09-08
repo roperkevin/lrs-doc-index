@@ -64,43 +64,33 @@ fs.writeFileSync(path.join(docs, "test-plans", p.stem + "-v.md"), D);
 
 
 
-// ---- R: the run sheet — full width, a sticky plan sheet, the cases a runbook
+
+// ---- C: the checklist — the folded head, group dividers with counts in
+// the source's casing, the case id a colour-coded badge in a gutter, the
+// body hanging under the title with no box
 {
   const src = fs.readFileSync(path.join(docs, "test-plans", p.stem + ".md"), "utf8");
+  const foldedHead = D.slice(0, D.indexOf("[:material-open-in-new:"));
   const at = src.indexOf("\n## Test Cases");
-  const head = src.slice(0, src.indexOf('<div class="doc-meta"')).replace("---\nsearch:", "---\nhide:\n  - navigation\n  - toc\nsearch:");
-  // the case index: id, title and group, read off the rendered cases
-  const cases = [];
-  const re = /^### (TC-[A-Z]\d+) — (.+?) \{ #([a-z0-9-]+) \}\n\n\/\/\/\/ html \| div\.lrs-case\n\n\/\/\/ html \| div\.lrs-group\n\n(.+)\n/gm;
-  let m; while ((m = re.exec(src)) !== null) cases.push({ id: m[1], title: m[2], anchor: m[3], group: m[4] });
-  const groups = [...new Set(cases.map((c) => c.group))];
-  const nPos = cases.filter((c) => /^TC-P/.test(c.id)).length, nNeg = cases.length - nPos;
-  const index = groups.flatMap((g) => [`<div class="lrs-run__group">${g}</div>`, '<ul class="lrs-run__index">',
-    ...cases.filter((c) => c.group === g).map((c) => `<li><code><a href="#${c.anchor}">${c.id}</a></code><span>${c.title}</span></li>`), "</ul>"]);
-  const sheet = [
-    `<div class="lrs-tags" markdown="span">${p.tools.map(pill).join(" ")}</div>`, "",
-    "Surface", `:   [${p.surface}](../surfaces/${kebab(p.surface)}.md)`, "",
-    "Product", `:   ${p.products.map((x) => `[${x}](../products/${kebab(x)}.md)`).join(" · ")}`, "",
-    "Release", `:   [${p.release}](../releases/${kebab(p.release)}.md)`, "",
-    "Product engineer", `:   [${p.pe}](../people/${kebab(p.pe)}.md)`, "",
-    "Edited", `:   ${p.edited} by ${p.author}`, "",
-    `[:material-open-in-new: Open the original](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/${encodeURIComponent(p.title)}.pptx>){ .md-button .md-button--primary }`, "",
-    `#### Cases <span class="lrs-run__count">${cases.length} · ${nPos} positive · ${nNeg} negative</span>`, "",
-    ...index, "",
-    "/// admonition | Summary", "    type: abstract", "", p.summary, "///",
-  ].join("\n");
-  // the runbook: the body with a divider where the group changes (as S2)
+  const between = src.slice(src.indexOf("[:material-open-in-new:"), at); // the Open button and the Summary
   const lines = src.slice(at).split("\n"); const out = []; let last = "";
+  const groupOf = (i) => /\/\/\/ html \| div\.lrs-group\n\n(.+)\n/.exec(lines.slice(i, i + 8).join("\n"))?.[1] || "";
+  const counts = new Map();
+  for (let i = 0; i < lines.length; i++) if (/^### TC-/.test(lines[i])) { const g = groupOf(i); counts.set(g, (counts.get(g) || 0) + 1); }
+  let total = 0, pos = 0;
   for (let i = 0; i < lines.length; i++) {
-    if (/^### TC-/.test(lines[i])) {
-      const g = /\/\/\/ html \| div\.lrs-group\n\n(.+)\n/.exec(lines.slice(i, i + 8).join("\n"))?.[1] || "";
-      if (g && g !== last) { out.push(`<div class="lrs-group-head">${g}</div>`, ""); last = g; }
+    const m = /^### (TC-([A-Z])\d+) — (.+?) (\{ #[a-z0-9-]+ \})$/.exec(lines[i]);
+    if (m) {
+      total++; if (m[2] === "P") pos++;
+      const g = groupOf(i);
+      if (g && g !== last) { out.push(`<div class="lrs-group-head">${g} <small>${counts.get(g)} case${counts.get(g) === 1 ? "" : "s"}</small></div>`, ""); last = g; }
+      out.push(`### <span class="lrs-tc lrs-tc--${m[2].toLowerCase()}">${m[1]}</span> ${m[3]} ${m[4]}`);
+      continue;
     }
     out.push(lines[i]);
   }
-  const page = head + ["////// html | div.lrs-run", "", "///// html | aside.lrs-run__sheet", "", sheet, "/////", "",
-    "///// html | div.lrs-run__main", "", out.join("\n").replace("## Test Cases", "## Run sheet"), "/////", "//////", ""].join("\n");
-  fs.writeFileSync(path.join(docs, "test-plans", p.stem + "-r.md"), page);
+  const body = out.join("\n").replace("## Test Cases\n", `## Test cases\n\n<p class="lrs-cases-count">${total} cases · ${pos} positive · ${total - pos} negative</p>\n`);
+  fs.writeFileSync(path.join(docs, "test-plans", p.stem + "-c.md"), foldedHead + between + "\n///// html | div.lrs-c\n" + body + "\n/////\n");
 }
 
 // ---- the case-card suggestions: the rendered page, its body wrapped in a
@@ -133,5 +123,5 @@ const yml = path.join(site, "work", "wiki", "mkdocs.yml");
 let y = fs.readFileSync(yml, "utf8");
 y = y.replace("  - markdown_captions\n", "").replace(/  - panzoom:\n(?:      .*\n)*/, "");
 y = y.replace("  - pymdownx.blocks.admonition\n", "  - pymdownx.blocks.admonition\n  - pymdownx.blocks.details\n");
-y = y.replace("          - test-plans/index.md\n", "          - test-plans/index.md\n          - \"Variant A\": test-plans/variant-a.md\n          - \"Variant B\": test-plans/variant-b.md\n          - \"Merge Events (folded meta)\": test-plans/4855-merge-plan-v.md\n          - \"Cases S1\": test-plans/4855-merge-plan-s1.md\n          - \"Cases S2\": test-plans/4855-merge-plan-s2.md\n          - \"Run sheet\": test-plans/4855-merge-plan-r.md\n");
+y = y.replace("          - test-plans/index.md\n", "          - test-plans/index.md\n          - \"Variant A\": test-plans/variant-a.md\n          - \"Variant B\": test-plans/variant-b.md\n          - \"Merge Events (folded meta)\": test-plans/4855-merge-plan-v.md\n          - \"Cases S1\": test-plans/4855-merge-plan-s1.md\n          - \"Cases S2\": test-plans/4855-merge-plan-s2.md\n          - \"Checklist\": test-plans/4855-merge-plan-c.md\n");
 fs.writeFileSync(yml, y);

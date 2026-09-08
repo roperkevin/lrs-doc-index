@@ -190,38 +190,40 @@ CSS scoped to it):
   structural change in `wrapCases()` — emit it where the group
   changes — where S1 is CSS alone.
 
-## 5b. The run sheet — a different page, not a different card
+## 5b. The checklist — the page as a spec, not a stack of boxes
 
-The test plan page rebuilt around the two things a plan is for:
-running it and reviewing its coverage. Material's `hide: [navigation,
-toc]` front matter gives the page the full width; a two-column grid
-(`////// html | div.lrs-run`) puts a **plan sheet** on the left and
-the **runbook** on the right.
+The rejected draft (a full-width "run sheet": a sticky plan sheet on
+the left, the cases beside it) is recorded here only so it is not
+proposed again; its uppercase section labels went with it, and the
+group line wired in v2.3 keeps the source's own casing now.
 
-- **The sheet** is sticky. Top to bottom: the tool pills; Surface,
-  Product, Release, Product engineer and Edited as a definition list
-  (the site's own label vocabulary, so nothing new to style); the
-  Open button; a **case index** — the count with its positive /
-  negative split, then every case id under its group, each linking
-  its section — which replaces Material's table of contents with one
-  that knows what a case is; and the Summary block last, since a
-  tester who has the plan open already knows what it is about.
-- **The runbook** is the S2 body without the cards: a group is a
-  section head with the site's blue rule, a case is a heading and a
-  hairline, the steps (checkboxes kept) sit beside the expected
-  result. No borders, no card backgrounds; the rhythm comes from the
-  rules.
+What replaced it keeps the reading order of the document page and
+changes what carries the hierarchy:
 
-What it costs: the kind's sidebar is gone from this page (the
-breadcrumb and the tab bar remain), the metadata table is not on the
-page at all (Status, Source revision, Extracted, Keywords would need
-a fold in the sheet), and below about 60 em the page stacks back to
-one column. What it gains: a plan reads as a plan, not as a document
-with a plan in it. Related documents and the Esri documentation
-blocks would sit in the sheet under the summary.
+- **The head** is the folded one (§5): the pills and the facts strip,
+  the full table under Details, the Open button, the Summary.
+- **`## Test cases`** opens with a count line: `5 cases · 3 positive ·
+  2 negative`. The positive/negative split is read off the ids.
+- **A group is a divider**, in the casing the source wrote it, with
+  its count in a lighter ink beside it — not a line on every card,
+  and never uppercase.
+- **The case id is a badge** in a gutter to the left of the title:
+  monospace, tinted green for a positive case and amber for a
+  negative one. The id already encodes the classification; the
+  badge makes it visible, and the same badge could mark the rows of
+  the cases catalog and the Test Cases list. The title runs beside
+  it in the heading, so the table of contents, search and the anchors
+  are unchanged.
+- **The body hangs under the title**, indented to the gutter, with
+  no border and no card background: the steps (checkboxes kept), the
+  expected result as one green line — `Expected result: …` — and a
+  hairline to close the case.
 
-Both keep the checkboxes: they are the tester's affordance on the
-page, and the step number beside them does no harm.
+Markdown: the heading gains an inline span — `### <span class="lrs-tc
+lrs-tc--p">TC-P01</span> Merge preserves measures { #tc-p01 }` —
+written by `wrapCases()`, which already owns the heading line; the
+divider and the count line are two more lines it writes. The rest is
+CSS (`wiki-layout-mock/variants.css`, the `.lrs-c` rules).
 
 ## 6. What the render would gain
 
@@ -272,6 +274,6 @@ python shoot.py                                                # screenshots, se
    carries enough (a Doc Review has no tools to show).
 4. **The case card**: S1, S2, or the wired default. The checkboxes
    stay.
-5. **The run sheet** as the test plan page — or as a second view
-   (`Run sheet` beside `Open the original`), the document page staying
-   as it is.
+5. **The checklist** as the test plan page, or the card default
+   with its pieces adopted one at a time (the badge, the dividers,
+   the count line each stand alone).

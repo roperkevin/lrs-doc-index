@@ -12,8 +12,8 @@ shots = [
   ("doc-folded-open", "test-plans/4855-merge-plan-v/", "openmeta", "default"),
   ("cases-s1",        "test-plans/4855-merge-plan-s1/", None, "default"),
   ("cases-s2",        "test-plans/4855-merge-plan-s2/", None, "default"),
-  ("run-sheet",       "test-plans/4855-merge-plan-r/", None, "default"),
-  ("run-sheet-dark",  "test-plans/4855-merge-plan-r/", None, "slate"),
+  ("checklist",       "test-plans/4855-merge-plan-c/", None, "default"),
+  ("checklist-dark",  "test-plans/4855-merge-plan-c/", None, "slate"),
 ]
 with sync_playwright() as p:
     kw = {}
