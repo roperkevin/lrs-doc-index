@@ -14,7 +14,10 @@ content (small, muted, the source's own casing) and the steps as the
 procedure, flush with the card. Nothing on disk changes shape. And no
 uppercase anywhere on the site: the metadata card's labels and the
 definition-list labels (v1.4, v1.8) keep their muted ink and weight
-and lose the transform and the letter-spacing.
+and lose the transform and the letter-spacing. The Figures catalog
+leaves the nav — the "Test cases & figures" tab is "Test cases", its
+section header opening the page — and stays a page, reached from the
+front page's Browse card and named on About.
 
 Two further layouts for the card body and two for the long kind
 tables are mocked, not wired, in `docs/design/Wiki_Kind_Layout_Variations.md`.

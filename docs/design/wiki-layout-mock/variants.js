@@ -34,18 +34,26 @@
         // a heading hides when everything under it, down to the next
         // heading of its level or above, hid — deepest level first, so a
         // surface heading (h2) sees its tool headings (h3) already decided
-        var kids = Array.prototype.slice.call(wrap.children);
-        [6, 5, 4, 3, 2].forEach(function (level) {
-          kids.forEach(function (el, i) {
-            if (el.tagName !== "H" + level) return;
-            var any = false;
-            for (var j = i + 1; j < kids.length; j++) {
-              var m = /^H([1-6])$/.exec(kids[j].tagName);
-              if (m && +m[1] <= level) break;
-              if (!kids[j].hidden) { any = true; break; }
-            }
-            el.hidden = terms.length > 0 && !any;
+        var scopes = [wrap].concat(Array.prototype.slice.call(wrap.querySelectorAll("details.lrs-surface")));
+        scopes.forEach(function (scope) {
+          var kids = Array.prototype.slice.call(scope.children);
+          [6, 5, 4, 3, 2].forEach(function (level) {
+            kids.forEach(function (el, i) {
+              if (el.tagName !== "H" + level) return;
+              var any = false;
+              for (var j = i + 1; j < kids.length; j++) {
+                var m = /^H([1-6])$/.exec(kids[j].tagName);
+                if (m && +m[1] <= level) break;
+                if (!kids[j].hidden) { any = true; break; }
+              }
+              el.hidden = terms.length > 0 && !any;
+            });
           });
+        });
+        // a surface group hides when every plan in it hid
+        scopes.slice(1).forEach(function (sf) {
+          var any = Array.prototype.some.call(sf.querySelectorAll("details.lrs-plan"), function (d) { return !d.hidden; });
+          sf.hidden = terms.length > 0 && !any;
         });
         return n;
       }), wrap.firstChild);

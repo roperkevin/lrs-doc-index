@@ -97,16 +97,19 @@ release are in the facts line, not sortable columns).
 
 The same header row, but the block is **closed** and there is no
 nested fold: opening a row shows the facts line and the summary text
-directly. Rows are grouped under a heading per surface (Pro,
-Experience Builder, REST, Server, Enterprise, in that order) and,
-inside it, a heading per tool — alphabetical, with the count beside
+directly. Rows are grouped under a **surface section** (Pro,
+Experience Builder, REST, Server, Enterprise, in that order) — itself
+a details block, open by default, so a reader folds away the surfaces
+that are not theirs — and, inside it, a heading per tool — alphabetical, with the count beside
 it, each heading linking its catalog page. A plan is listed under
 **every** tool it names and in every surface it covers, so the page
 reads as a tag index; the heading's own pill is left off its rows,
 and the pills that remain show the *other* tools the plan touches.
 
 ```
-## [Pro](../surfaces/pro.md) <small>12 plans</small>
+///// details | [Pro](../surfaces/pro.md) <small>12 plans</small>
+    open: true
+    attrs: {class: "lrs-surface"}
 
 ### [Apply Event Behaviors](../tools/apply-event-behaviors.md) <small>2</small>
 
@@ -118,11 +121,12 @@ and the pills that remain show the *other* tools the plan touches.
 Covers merging line events across routes, with the lock conflict case. …
 
 ////
+/////
 ```
 
 Reads as: the site's Tools catalog folded into the kind page, one
 line per plan under each tool. The page-wide filter hides a tool
-heading whose rows all fell out and a surface heading whose tools all
+heading whose rows all fell out and a surface section whose tools all
 hid. The cost is repetition: a plan with three tools is three rows,
 and a corpus where most tools have one plan is a long run of
 one-row groups (the 14-plan fixture makes 26 rows under 20 tools). A

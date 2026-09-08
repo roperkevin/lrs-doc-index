@@ -7,6 +7,7 @@ shots = [
   ("variant-a",       "test-plans/variant-a/",       None, "default"),
   ("variant-a-dark",  "test-plans/variant-a/",       None, "slate"),
   ("variant-b",       "test-plans/variant-b/",       "open3", "default"),
+  ("variant-b-folded", "test-plans/variant-b/",      "foldrest", "default"),
   ("doc-current",     "test-plans/4855-merge-plan/", None, "default"),
   ("doc-folded",      "test-plans/4855-merge-plan-v/", None, "default"),
   ("doc-folded-open", "test-plans/4855-merge-plan-v/", "openmeta", "default"),
@@ -31,6 +32,8 @@ with sync_playwright() as p:
             pg.evaluate(f"document.body.setAttribute('data-md-color-scheme','{scheme}')")
         if act == "open3":
             pg.evaluate("[...document.querySelectorAll('details.lrs-plan')].slice(2,3).forEach(d=>d.open=true)")
+        if act == "foldrest":
+            pg.evaluate("[...document.querySelectorAll('details.lrs-surface')].slice(1).forEach(d=>d.open=false)")
         if act == "openmeta":
             pg.evaluate("document.querySelector('details.lrs-doc-meta').open=true")
         pg.wait_for_timeout(300)

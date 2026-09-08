@@ -367,11 +367,13 @@ def main():
           and '      - "Design Spikes":\n          - design-spikes/index.md\n          - "Old Spike": design-spikes/old-spike-doc9.md' in ycfg
           and '      - Keywords:\n          - keywords/index.md\n          - "gantt chart": keywords/gantt-chart.md' in ycfg
           and '          - "ArcGISPro/ps-location-referencing#4855": issues/arcgispro-ps-location-referencing-4855.md' in ycfg
-          and "Test cases: cases/index.md" in ycfg and "Recent: recent.md" in ycfg, ycfg)
-    check("the nav is tabs: Home, Documents (landing on All documents), Browse (landing on the cards), Test cases & figures",
+          and "  - Test cases:\n      - cases/index.md" in ycfg and "Recent: recent.md" in ycfg, ycfg)
+    # v2.3: Figures is out of the nav (still a page, still a Browse card)
+    check("the nav is tabs: Home, Documents (landing on All documents), Browse (landing on the cards), Test cases — no Figures entry",
           "  - Home: index.md\n  - Documents:\n      - documents/index.md\n" in ycfg
           and "  - Browse:\n      - browse/index.md\n" in ycfg
-          and "  - Test cases & figures:\n      - Test cases: cases/index.md\n      - Figures: figures/index.md" in ycfg, ycfg)
+          and "  - Test cases:\n      - cases/index.md\n" in ycfg
+          and "figures/index.md" not in ycfg and "Test cases & figures" not in ycfg, ycfg)
     check("kinds follow reader order in the nav (Test Plans before User Stories before Design Spikes), not the alphabet",
           0 < ycfg.find('"Test Plans":') < ycfg.find('"User Stories":') < ycfg.find('"Design Spikes":'), ycfg)
     check("every page is in the nav — nothing is left to not_in_nav",
@@ -740,8 +742,8 @@ def main():
         # without the aggregate pages
         tabs = html.split('class="md-tabs"')[1].split("</nav>")[0] if 'class="md-tabs"' in html else ""
         chrome = html.split('class="md-content"')[0]
-        check("the built page has the tab bar (Documents, Browse, Test cases & figures) and lists itself in its kind's sidebar section",
-              "Documents" in tabs and "Browse" in tabs and "Test cases &amp; figures" in tabs
+        check("the built page has the tab bar (Documents, Browse, Test cases) and lists itself in its kind's sidebar section",
+              "Documents" in tabs and "Browse" in tabs and "Test cases" in tabs and "figures" not in tabs
               and "md-nav__link--active" in chrome and "Merge Events Test Plan" in chrome
               and "Conflict Prevention Story" not in chrome,  # pruned: the other kinds' pages are not rendered
               (tabs[:400], chrome[-1200:]))

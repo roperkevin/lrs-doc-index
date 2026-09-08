@@ -42,7 +42,10 @@ for (const p of plans) { if (!bySurface.has(p.surface)) bySurface.set(p.surface,
 const surfaces = [...bySurface.keys()].sort((a, b) => (SURFACES.indexOf(a) + 99) % 100 - (SURFACES.indexOf(b) + 99) % 100 || a.localeCompare(b));
 for (const sf of surfaces) {
   const ps = bySurface.get(sf);
-  B.push(`## [${sf}](../surfaces/${kebab(sf)}.md) <small>${ps.length} plan${ps.length === 1 ? "" : "s"}</small>`, "");
+  // the surface is a details block, open — five slashes, since the plan
+  // rows inside it are four-slash blocks
+  B.push(`///// details | [${sf}](../surfaces/${kebab(sf)}.md) <small>${ps.length} plan${ps.length === 1 ? "" : "s"}</small>`,
+    "    open: true", '    attrs: {class: "lrs-surface"}', "");
   const byTool = new Map();
   for (const p of ps) for (const t of (p.tools.length ? p.tools : ["No tool named"])) { if (!byTool.has(t)) byTool.set(t, []); byTool.get(t).push(p); }
   const tools = [...byTool.keys()].sort((a, b) => (a === "No tool named") - (b === "No tool named") || a.localeCompare(b, "en", { sensitivity: "base" }));
@@ -54,6 +57,7 @@ for (const sf of surfaces) {
         `<div class="lrs-plan__facts" markdown>${facts(p)}</div>`, "", p.summary, "", "////", "");
     }
   }
+  B.push("/////", "");
 }
 B.push("</div>", "");
 fs.writeFileSync(path.join(docs, "test-plans", "variant-b.md"), B.join("\n"));

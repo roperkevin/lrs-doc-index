@@ -184,3 +184,20 @@
 @media (max-width: 44.9em) {
   .md-typeset .lrs-c .lrs-case { margin-left: 0; }
 }
+
+/* the surface group (B): a collapsible section, open by default — the
+   summary reads as the section heading, the chevron is the only chrome */
+.md-typeset details.lrs-surface { margin: 1.4em 0 0; border: 0; border-radius: 0; box-shadow: none; background: none; font-size: inherit; }
+.md-typeset details.lrs-surface > summary {
+  margin: 0 0 0.6em; padding: 0.2em 2rem 0.3em 0;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  background: none;
+  font-size: 1.15rem; font-weight: 400; line-height: 1.4;
+  color: var(--md-default-fg-color);
+}
+.md-typeset details.lrs-surface > summary::before { display: none; }
+.md-typeset details.lrs-surface > summary::after { top: 0.55em; }
+.md-typeset details.lrs-surface > summary small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; }
+.md-typeset details.lrs-surface > :not(summary) { margin-left: 0; margin-right: 0; padding: 0; }
+.md-typeset details.lrs-surface > h3 { margin-top: 0.9em; }
+.md-typeset details.lrs-surface > h3:first-of-type { margin-top: 0.4em; }
