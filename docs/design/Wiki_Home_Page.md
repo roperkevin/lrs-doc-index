@@ -121,22 +121,39 @@ deprecated. The version the runner installs is whatever pip resolves
 | Third-party: minify | Passed: one more package on the runner for bytes an internal site does not count. |
 | Third-party: redirects | Noted: nothing records a document's previous slug yet. |
 
-## 5. The next pages
+## 5. The next pages — shipped as wiki v2.6
 
 "Start with the home page and build from there." The kind pages
 (the ledger) and the document page (the facts strip, the checklist)
-are v2.4; what the review suggests for them, in order:
+are v2.4; what the review suggested for them, in order, all wired in
+v2.6 (`docs/changelog/pipeline.md`):
 
-1. **Breadcrumbs from the theme** (`navigation.path`) and the render's
-   own crumb line retired — one line, Material's own styling.
+1. **Breadcrumbs from the theme** (`navigation.path`), the render's
+   own crumb line retired — one line, Material's own styling, every
+   crumb linking its index page. The front page hides them.
 2. **Content tabs on a document page** — Summary · Related · Esri
-   documentation as tabs over the body instead of three stacked
-   blocks, when a page has all three.
+   documentation as one tab set under the facts strip instead of
+   three stacked blocks, when a page has two or more; one keeps its
+   block. Blocks `tab` inside a Blocks `html` wrapper.
 3. **A glossary** from the official vocabulary (`abbr` + a snippets
-   `auto_append` file): every official term in a body gets a tooltip.
-4. **The catalog index pages** as facet bars rather than
-   two-column tables where the values are few (surfaces, products,
-   releases); the tables stay for keywords, tools, people, issues.
+   `auto_append` file the render writes, `check_paths: true`): every
+   tool, widget, multi-word term and acronym in a body, a pill or a
+   heading carries its definition as a tooltip; single ordinary-word
+   terms (Route, Event, Line, Measure) are on the Glossary page only —
+   an abbreviation matches every capitalised use of the word. The
+   Glossary page lists every entry by kind under a filter box that
+   now filters definition lists too. Cost: the strict build takes
+   about six times longer with a hundred abbreviations (a minute or
+   so on the corpus, nightly).
+4. **The small catalog index pages** as facet bars (surfaces,
+   products, releases); the tables stay for keywords, tools, people,
+   issues.
+
+What the review still leaves on the table, for a later pass: a
+`navigation.instant.preview` on the case-catalog links (hover shows the
+case), a tags-style `icon:` on the catalog VALUE pages (a person, a
+release), and the `mkdocs-redirects` plugin once the sweep records a
+document's previous slug.
 
 ## 6. How to see it
 

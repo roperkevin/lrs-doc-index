@@ -1,5 +1,58 @@
 # Local sweep — release notes
 
+## wiki v2.6 (2026-09-08 — the next pages: breadcrumbs, the head as tabs, the glossary, facet catalogs)
+
+The four pages `docs/design/Wiki_Home_Page.md` §5 named after the
+landing page, in that order.
+
+- **Breadcrumbs are the theme's** (`navigation.path`): Home › Documents
+  › Test Plans over a plan, Home › Browse › Keywords over a keyword,
+  each crumb linking its index page. The render's own crumb line
+  (v2.0) is gone from every page; the front page hides the theme's
+  with its sidebars.
+- **A document page's head is tabs.** Summary · Related (n) · Esri
+  documentation, each label with its icon, one tab set under the
+  facts strip instead of three stacked boxes — when the page has two
+  or more of them; a page with one keeps its block (the sweep's
+  no-summary warning stays a warning). pymdown's Blocks `tab` inside a
+  Blocks `html` wrapper, the nesting in the slash count.
+- **A glossary from the official vocabulary.** Every tool, ribbon
+  tool, widget, web app, REST operation, term and alias in
+  `pipeline/data/lrs_vocabulary.json` is a Markdown abbreviation the
+  render writes to `includes/glossary.md`; `pymdownx.snippets` appends
+  the file to every page (`check_paths: true` — a missing file fails
+  the build rather than silently dropping the glossary) and
+  python-markdown's `abbr` marks every whole-word use in the term's
+  own casing, so a tool named in a test step, a pill or a heading
+  carries its definition as a tooltip, drawn by `content.tooltips`. A
+  definition is cut at a sentence end past 220 characters. Single
+  ordinary-word terms (Route, Event, Line, Measure …) are on the
+  Glossary page but are not tooltips — they would underline half the
+  corpus; multi-word terms and acronyms (LRS, LRM) are. An entry the
+  vocabulary does not describe gets its kind's sentence ("One of the
+  Experience Builder widgets."). The Glossary page (`glossary.md`, the
+  eighth entry in the Browse tab, a card on Browse and on the front
+  page's More) lists every entry by kind — the term linking its Esri
+  page, the kind, the way to its documents when the corpus names it,
+  the definition — under one filter box: `tables.js` now filters a
+  definition list as it filters a table, folding a section whose list
+  emptied. A case heading's title sits in its own span, so an
+  abbreviation inside it is not a flex item of the badge row. The
+  strict build takes longer with the abbreviations (about six times
+  on the 14-plan fixture; a minute or so on the corpus).
+- **The small catalogs are facet bars.** Surfaces, Products and
+  Releases: every value on the index page as a bar scaled to the
+  largest count, most documents first; Keywords, Tools, People and
+  Issues keep their filterable tables.
+
+Gates: `check_wiki.py` — the tabs and their order, a one-block head,
+no crumb line anywhere, the theme's breadcrumbs and the built tab set
+on the plan page, the include file (a tool, a widget, an acronym, an
+alias, no single-word term, one line each), the Glossary page and its
+front matter, the nav entry and the cards, the facet catalogs and the
+table catalogs, the definition-list filter, the heading span: 139
+checks, strict build included.
+
 ## wiki v2.5 (2026-09-08 — the front page as a landing page)
 
 The Material for MkDocs reference and setup pages reviewed page by

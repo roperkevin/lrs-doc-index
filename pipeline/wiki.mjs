@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v2.5 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v2.6 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -35,6 +35,36 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v2.6 — the next pages (docs/design/Wiki_Home_Page.md §5):
+ *
+ *   - BREADCRUMBS are the theme's (`navigation.path`, free since
+ *     Material 9.7): "Documents › Test Plans" over a plan, "Browse ›
+ *     Keywords" over a keyword, each crumb linking its index page —
+ *     the render's own crumb line (v2.0) is gone. The front page
+ *     hides them with its sidebars.
+ *   - A DOCUMENT PAGE'S HEAD IS TABS: Summary · Related · Esri
+ *     documentation, one tab set under the facts strip instead of
+ *     three stacked boxes, when the page has two or more of them; a
+ *     page with one keeps its block. The sweep's no-summary warning
+ *     stays a warning inside the Summary tab.
+ *   - A GLOSSARY from the official vocabulary (pipeline/data/
+ *     lrs_vocabulary.json, the tools, widgets, ribbon tools, apps,
+ *     REST operations, terms and aliases doc_vocab.mjs keeps): every
+ *     entry with a definition is a Markdown abbreviation the render
+ *     writes to `includes/glossary.md` and `pymdownx.snippets`
+ *     appends to every page, so a term in a test step, a pill or a
+ *     heading carries its definition as a tooltip (`abbr`, drawn by
+ *     `content.tooltips`). Single ordinary-word terms (Route, Event,
+ *     Line, Measure …) are on the Glossary page but are not
+ *     tooltips — they would underline half the corpus. The Glossary
+ *     page (`glossary.md`, in the Browse tab) lists every entry by
+ *     kind with its Esri link and, for a tool the corpus names, the
+ *     way to its documents; the filter box now filters a definition
+ *     list as it filters a table.
+ *   - The SMALL CATALOGS — Surfaces, Products, Releases — are facet
+ *     bars on their index pages, every value; Keywords, Tools,
+ *     People and Issues keep their filterable tables.
  *
  * v2.5 — the front page as a landing page (docs/design/
  * Wiki_Home_Page.md: the Material reference and setup pages reviewed
@@ -405,8 +435,9 @@ import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
 import { toMkDocs, normalize, splitAnchor, admonition, defList, block } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
+import { loadVocabulary, TOOL_KINDS } from "./lib/vocabulary.mjs";
 
-export const WIKI_VERSION = "v2.5";
+export const WIKI_VERSION = "v2.6";
 
 /** Days after its last edit a document counts as new (v2.1): the
  *  `new` badge in the sidebar. */
@@ -655,7 +686,7 @@ function draftPage(d, model) {
   ];
   // v2.0: damped in search — an unreviewed draft must never outrank
   // the plan or the story it was generated from
-  const out = [...pageMeta({ boost: 0.5, status: "draft" }), ...crumbs(d.page, [["drafts/index.md", "Test-plan drafts"]]),
+  const out = [...pageMeta({ boost: 0.5, status: "draft" }),
     `# ${mdEscape(m.title || d.stem)}`, "", META_OPEN, "", "| Field | Value |", "| --- | --- |"];
   for (const [k, v] of rows) out.push(`| **${k}** | ${v} |`);
   out.push("", META_CLOSE, "");
@@ -798,6 +829,9 @@ export function buildModel(docs, kw, opts = {}) {
     // (devtopia, not github.com) with nothing to configure
     issueHost: issueHostOf(issueUrls),
     keywordKinds: kw.kinds,
+    // v2.6: the official vocabulary's glossary entries (none without
+    // the file — the About and Browse cards then say so by their count)
+    glossary: opts.glossary || [],
   };
 }
 
@@ -896,15 +930,18 @@ const CASE_HEAD = /^### (TC-[A-Za-z]?\d[\w.-]*)[ \t]+(?:—|–|-)[ \t]+(.*?)([ 
 const caseClass = (id) => { const m = /^TC-([A-Za-z])/.exec(id); return m ? m[1].toUpperCase() : ""; };
 
 /** The heading with its id as a badge (v2.4): `### <span class="lrs-tc
- *  lrs-tc--p">TC-P01</span> Title { #tc-p01 }`. The heading's text is
- *  the same words, so the toc, search and a derived id are unchanged;
- *  a heading not in the id — title shape is left alone. */
+ *  lrs-tc--p">TC-P01</span> <span class="lrs-tc-title">Title</span>
+ *  { #tc-p01 }`. The heading's text is the same words, so the toc,
+ *  search and a derived id are unchanged; a heading not in the id —
+ *  title shape is left alone. v2.6 wraps the title: the heading is a
+ *  flex row, and a glossary abbreviation inside a bare title would be
+ *  a flex item of its own, with the row's gap either side of it. */
 export function badgeHeading(line) {
   const m = CASE_HEAD.exec(line);
   if (!m) return line;
   const c = caseClass(m[1]);
   const mod = c === "P" ? " lrs-tc--p" : c === "N" ? " lrs-tc--n" : "";
-  return `### <span class="lrs-tc${mod}">${m[1]}</span> ${m[2]}${m[3] || ""}`;
+  return `### <span class="lrs-tc${mod}">${m[1]}</span> <span class="lrs-tc-title">${m[2]}</span>${m[3] || ""}`;
 }
 
 /** Wrap each test case's content — everything under a `### TC-…`
@@ -1033,15 +1070,6 @@ const pageMeta = ({ boost, exclude, status, title, icon } = {}) => {
  *  keeps the browser title and the search entry to the words. */
 const h1 = (icon, text) => `# :material-${icon}: ${mdEscape(text)}`;
 
-/** The breadcrumb line above a page's title (v2.0): `Home › Test
- *  Plans`. Markdown links inside an md_in_html div, so MkDocs rewrites
- *  them like any other link; on a phone, where the sidebar is hidden,
- *  it is the one thing that says where the page sits. */
-const crumbs = (fromPage, trail) =>
-  ['<div class="lrs-crumbs" markdown>', "",
-    [link(fromPage, "index.md", "Home"), ...trail.map(([page, text]) => link(fromPage, page, text))].join(" › "),
-    "", "</div>", ""];
-
 function docRow(fromPage, d, { kind = false } = {}) {
   const title = d.meta.title || d.stem;
   const kindCol = kind ? ` ${link(fromPage, `${d.kindDir}/index.md`, d.kind)} |` : "";
@@ -1075,17 +1103,38 @@ function summaryBlock(summary) {
   return (/^(!!!|\?\?\?)/.test(md) ? md : admonition("abstract", md, { title: "Summary" })).trimEnd();
 }
 
-/** The related list as a foldable `related` block (v2.1, a custom
- *  type with the link icon; open by default): each bullet links the
- *  sibling page, with the sweep's reason after the dash. */
-function relatedBlock(d) {
-  const items = d.related.map((r) => {
+/** The related list (v2.1): each bullet links the sibling page, with
+ *  the sweep's reason after the dash. */
+function relatedList(d) {
+  return d.related.map((r) => {
     const target = r.target ? link(d.page, r.target.page, r.target.meta.title || r.title) : mdEscape(r.title);
     return `- ${target}${r.text ? ` — ${r.text}` : ""}`;
-  });
-  return admonition("related", items.join("\n"), {
+  }).join("\n");
+}
+
+/** The related list as a foldable `related` block (v2.1, a custom
+ *  type with the link icon; open by default) — a page whose head has
+ *  nothing else keeps it. */
+function relatedBlock(d) {
+  return admonition("related", relatedList(d), {
     title: `Related documents (${d.related.length})`, collapse: "open",
   }).trimEnd();
+}
+
+/** The sweep's Esri-documentation region minus its own heading. */
+function docsList(region) {
+  const md = normalize(toMkDocs(stripComments(region)));
+  const m = /^#{1,6}[ \t]+(.+?)[ \t]*\n/.exec(md);
+  return (m ? md.slice(m[0].length) : md).trim();
+}
+
+/** The head as one tab set (v2.6): Summary · Related · Esri
+ *  documentation, each label with its icon. `//// html | div.lrs-head`
+ *  around the `/// tab` blocks, so the stylesheet knows these tabs
+ *  from the front page's. */
+function headTabs(head) {
+  const tabs = head.map((h) => block("tab", h.md, { title: `:material-${h.icon}: ${h.tab}` })).join("\n");
+  return block("html", tabs, { title: "div.lrs-head", depth: 4 });
 }
 
 /** The sweep's Esri-documentation region as a `docs` block (v2.1, a
@@ -1166,8 +1215,9 @@ function docPage(d, model) {
     if (!always && (v === "" || v === "—")) continue;
     table.push(`| **${k}** | ${v === "" ? "—" : v} |`);
   }
+  // v2.6: the theme's breadcrumbs (navigation.path) say where the
+  // page sits — the v2.0 crumb line is gone
   const out = [...pageMeta({ boost: 2, status: pageStatus(m.last_edited) }),
-    ...crumbs(p, [[`${d.kindDir}/index.md`, model.kindFolders[d.kind] || d.kind]]),
     `# ${mdEscape(m.title || d.stem)}`, "",
     '<div class="lrs-doc-facts" markdown>', "",
     ...(strip1 ? [strip1, ""] : []),
@@ -1176,10 +1226,15 @@ function docPage(d, model) {
     block("details", block("html", table.join("\n"), { title: "div.doc-meta", depth: 4 }),
       { title: "Details", depth: 5, options: { attrs: "{class: lrs-doc-meta}" } }), ""];
   // v2.1: the head of the page by content type — summary, related,
-  // documentation — each in the block that says what it is
-  if (d.summary) out.push(summaryBlock(d.summary), "");
-  if (d.related.length) out.push(relatedBlock(d), "");
-  if (d.docsRegion) out.push(docsBlock(d.docsRegion), "");
+  // documentation — each in the block that says what it is. v2.6:
+  // two or more of them are one tab set (Blocks tab inside a Blocks
+  // html wrapper, the nesting in the slash count); one stays a block
+  const head = [];
+  if (d.summary) head.push({ tab: "Summary", icon: "text-box-outline", md: normalize(toMkDocs(d.summary)), block: summaryBlock(d.summary) });
+  if (d.related.length) head.push({ tab: `Related (${d.related.length})`, icon: "link-variant", md: relatedList(d), block: relatedBlock(d) });
+  if (d.docsRegion) head.push({ tab: "Esri documentation", icon: "book-open-variant", md: docsList(d.docsRegion), block: docsBlock(d.docsRegion) });
+  if (head.length >= 2) out.push(headTabs(head), "");
+  else for (const h of head) out.push(h.block, "");
   const body = normalize(wrapCases(toMkDocs(stripComments(dropMissingMedia(d.body, d.mediaMissing)))));
   if (body) out.push("---", "", body, "");
   return out.join("\n");
@@ -1187,8 +1242,14 @@ function docPage(d, model) {
 
 function catalogIndex({ section, title, intro, label, icon }, groups, model) {
   const p = `${section}/index.md`;
+  const n = `${groups.size} ${groups.size === 1 ? label.toLowerCase() : title.toLowerCase()}`;
+  if (FACET_CATALOGS.has(section)) {
+    return [...pageMeta({ exclude: true, title, icon }), h1(icon, title), "", intro, "",
+      `${n}, most documents first; the bar is the share of the largest.`, "",
+      facetRows(p, section, groups, model, Infinity), ""].join("\n");
+  }
   const out = [...pageMeta({ exclude: true, title, icon }), h1(icon, title), "", intro, "",
-    `${groups.size} ${groups.size === 1 ? label.toLowerCase() : title.toLowerCase()}. ${TABLE_HELP}`, "",
+    `${n}. ${TABLE_HELP}`, "",
     ...sortable([
       "| " + label + " | Documents |", "|---|---:|",
       ...[...groups].map(([value, docs]) => {
@@ -1218,7 +1279,7 @@ function catalogValuePage({ section, title }, value, docs, model) {
   facts.push(link(p, `${section}/index.md`, "all " + title.toLowerCase()));
   // v2.1: the facts in a strip under the title (md_in_html, see
   // extra.css), the tracker link and the co-tags with them
-  const out = [...pageMeta({ boost: 1 }), ...crumbs(p, [[`${section}/index.md`, title]]),
+  const out = [...pageMeta({ boost: 1 }),
     `# ${mdEscape(value)}`, "", '<div class="lrs-facts" markdown>', "", facts.join(" · "), ""];
   if (section === "issues" && model.issueUrls.get(value)) out.push(`Issue: <${model.issueUrls.get(value)}>`, "");
   if (section === "keywords") {
@@ -1327,6 +1388,121 @@ function kindIndex(kind, docs, model, kindFolders, opts = {}) {
     ledger(p, docs), ""].join("\n");
 }
 
+// ---------------------------------------------------------------- glossary (v2.6)
+
+/** The kind labels a glossary entry wears: TOOL_KINDS' short names. */
+const GLOSSARY_KIND = {
+  tool: "geoprocessing tool", ribbon: "ribbon tool", widget: "Experience Builder widget",
+  app: "web app", rest: "REST operation", term: "term", alias: "alias",
+};
+/** The sentence an entry gets when the vocabulary describes it by
+ *  kind alone (the hand-kept widgets, ribbon tools, apps and REST
+ *  operations carry no description). */
+const GLOSSARY_SENTENCE = {
+  ribbon: "A tool on the Location Referencing tab of the ArcGIS Pro ribbon.",
+  widget: "One of the Location Referencing widgets in Experience Builder.",
+  app: "A Location Referencing web app.",
+  rest: "An operation of the Linear Referencing Service (REST).",
+};
+/** How much of a definition a tooltip carries: cut at a sentence end
+ *  past this many characters. */
+const TOOLTIP_CHARS = 220;
+
+/** The glossary's entries from the official vocabulary: [{name, kind,
+ *  text, url, tooltip}], tools, then the hand-kept kinds in TOOL_KINDS
+ *  order, then the terms, then the aliases; a name seen twice keeps
+ *  its first entry. `tooltip` is false for a single ordinary-word
+ *  term (Route, Event, Line, Measure …): an abbreviation matches every
+ *  capitalised use of the word, and half the corpus would be
+ *  underlined. Multi-word terms and acronyms (LRS, LRM) are tooltips. */
+export function glossaryEntries(vocab) {
+  const out = [];
+  const seen = new Set();
+  const add = (name, kind, text, url, tooltip = true) => {
+    const key = String(name || "").trim();
+    if (!key || seen.has(key.toLowerCase())) return;
+    seen.add(key.toLowerCase());
+    out.push({ name: key, kind, text: cell(text), url: String(url || "").trim(), tooltip: tooltip && !!cell(text) });
+  };
+  for (const t of vocab.tools) add(t.name, "tool", t.description, t.url);
+  for (const k of TOOL_KINDS) {
+    if (k.kind === "tool") continue;
+    for (const w of vocab.widgets) {
+      if ((vocab.kindOf.get(String(w.name)) || "widget") !== k.kind) continue;
+      // no description in the vocabulary: the kind's own sentence
+      add(w.name, k.kind, w.description || GLOSSARY_SENTENCE[k.kind] || `${k.label}.`, w.url);
+    }
+  }
+  for (const t of vocab.terms) {
+    const single = !/[\s-]/.test(String(t.term).trim());
+    const acronym = /^[A-Z0-9]{2,}$/.test(String(t.term).trim());
+    add(t.term, "term", t.definition, t.url, !single || acronym);
+  }
+  for (const [alias, name] of Object.entries(vocab.aliases || {})) {
+    const target = out.find((e) => e.name.toLowerCase() === String(name).toLowerCase());
+    add(alias, "alias", `${name}${target?.text ? ` — ${target.text}` : ""}`, target?.url || "");
+  }
+  return out;
+}
+
+/** A definition cut to the tooltip's length at a sentence end. */
+export function tooltipText(text, max = TOOLTIP_CHARS) {
+  const t = cell(text);
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1);
+  const end = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("; "));
+  return end > max / 2 ? cut.slice(0, end + 1) : cut.slice(0, max).replace(/\s+\S*$/, "") + "…";
+}
+
+/** includes/glossary.md: one Markdown abbreviation per tooltip entry
+ *  (`*[Merge Events]: Merges …`), appended to every page by
+ *  pymdownx.snippets, matched by python-markdown's `abbr` — whole
+ *  words, the term's own casing, the longest term first. */
+export function glossaryAbbreviations(entries) {
+  const lines = ["<!-- generated by pipeline/wiki.mjs — the official vocabulary as abbreviations; overwritten on every render -->", ""];
+  for (const e of entries) {
+    if (!e.tooltip) continue;
+    lines.push(`*[${e.name.replace(/[\[\]]/g, "")}]: ${tooltipText(e.text)}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+/** The Glossary page (v2.6): every entry by kind as a definition list
+ *  — the term linking its Esri page, its kind, the way to its documents
+ *  when the corpus names it — under one filter box. */
+function glossaryPage(entries, model, vocab) {
+  const p = "glossary.md";
+  const n = entries.length;
+  const out = [...pageMeta({ exclude: true, title: "Glossary", icon: "book-alphabet" }), h1("book-alphabet", "Glossary"), "",
+    `The official vocabulary — ${n} entr${n === 1 ? "y" : "ies"}: the tools, widgets, ribbon tools, web apps and REST operations, the terms and the team's aliases, from the Esri documentation` +
+    (vocab.generated ? ` (read ${String(vocab.generated).slice(0, 10)})` : "") + ". " +
+    "Wherever a page uses one of these names, hovering it shows the definition. Type in the box to filter the list.", ""];
+  if (!n) {
+    out.push(admonition("info", "No vocabulary file was found (`pipeline/data/lrs_vocabulary.json`) — run `doc_vocab.mjs` to build one.", { title: "Empty" }), "");
+    return out.join("\n");
+  }
+  const groups = [["tool", "Geoprocessing tools"], ["ribbon", "Ribbon tools"], ["widget", "Experience Builder widgets"],
+    ["app", "Web apps"], ["rest", "REST operations"], ["term", "Terms"], ["alias", "Aliases"]];
+  out.push('<div class="filterable lrs-glossary" markdown>', "");
+  for (const [kind, heading] of groups) {
+    const es = entries.filter((e) => e.kind === kind);
+    if (!es.length) continue;
+    out.push(`## ${heading} <small>${es.length}</small>`, "");
+    const pairs = es.map((e) => {
+      const name = e.url ? `[${linkText(e.name)}](<${e.url}>)` : mdEscape(e.name);
+      const docs = model.tools.get(e.name);
+      const tail = [
+        `*${GLOSSARY_KIND[e.kind] || e.kind}*{ .lrs-glossary__kind }`,
+        docs ? link(p, catalogPage("tools", e.name), `${docs.length} document${docs.length === 1 ? "" : "s"}`) : "",
+      ].filter(Boolean).join(" · ");
+      return [`${name} <small>${tail}</small>`, e.text ? mdEscape(e.text).replace(/\\([`*_])/g, "$1") : "—"];
+    });
+    out.push(defList(pairs), "");
+  }
+  out.push("</div>", "");
+  return out.join("\n");
+}
+
 /** Every document in one table (v2.0): the Documents tab's own page. */
 function allDocumentsPage(model) {
   const p = "documents/index.md";
@@ -1351,8 +1527,10 @@ const catalogCards = (fromPage, model) =>
 function browsePage(model) {
   const p = "browse/index.md";
   return [...pageMeta({ exclude: true, title: "Browse", icon: "compass-outline" }), h1("compass-outline", "Browse"), "",
-    "Seven ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here.", "",
-    '<div class="grid cards" markdown>', "", ...catalogCards(p, model), "</div>", ""].join("\n");
+    "Seven ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here. The Glossary is the official vocabulary behind the tools.", "",
+    '<div class="grid cards" markdown>', "", ...catalogCards(p, model),
+    ...card(p, "book-alphabet", "glossary.md", "Glossary", model.glossary.length || null, "The official vocabulary — tools, widgets, terms — with the definitions the tooltips show."),
+    "</div>", ""].join("\n");
 }
 
 function casesPage(model) {
@@ -1428,7 +1606,7 @@ const FRONT_FACETS = 8;
 function facetRows(fromPage, section, groups, model, max = FRONT_FACETS) {
   const rows = [...groups].map(([value, ds]) => ({ value, n: ds.length }))
     .sort((a, b) => b.n - a.n || a.value.localeCompare(b.value, "en", { numeric: true, sensitivity: "base" }));
-  const top = rows.slice(0, max);
+  const top = max === Infinity ? rows : rows.slice(0, max);
   const most = top[0]?.n || 1;
   const out = ['<div class="lrs-facets" markdown>', ""];
   for (const r of top) {
@@ -1436,11 +1614,18 @@ function facetRows(fromPage, section, groups, model, max = FRONT_FACETS) {
     out.push(`- ${link(fromPage, catalogPage(section, r.value), r.value)} <i class="lrs-facets__bar" style="--lrs-w: ${w}%"></i> <b>${r.n}</b>`);
   }
   out.push("");
-  const c = CATALOGS.find((x) => x.section === section);
-  const more = rows.length > top.length ? `${rows.length - top.length} more — ` : "";
-  out.push(`${more}${link(fromPage, `${section}/index.md`, `all ${rows.length} ${rows.length === 1 ? c.label.toLowerCase() : c.title.toLowerCase()}`)}`, "", "</div>");
+  if (max !== Infinity) {
+    const c = CATALOGS.find((x) => x.section === section);
+    const more = rows.length > top.length ? `${rows.length - top.length} more — ` : "";
+    out.push(`${more}${link(fromPage, `${section}/index.md`, `all ${rows.length} ${rows.length === 1 ? c.label.toLowerCase() : c.title.toLowerCase()}`)}`, "");
+  }
+  out.push("</div>");
   return out.join("\n");
 }
+
+/** The catalogs whose index page is facet bars rather than a table
+ *  (v2.6): few values, and the counts are the point. */
+const FACET_CATALOGS = new Set(["surfaces", "products", "releases"]);
 
 /** The recent-edits feed (v2.5): a row per document — the kind's icon,
  *  the title, the kind and product in a lighter ink, the date at the
@@ -1492,7 +1677,7 @@ function frontPage(model, kindFolders, opts, drafts = []) {
   const kindsNamed = kindOrder(model.kinds, kindFolders).slice(0, 3).map((k) => (kindFolders[k] || k).toLowerCase());
   const front = ["---",
     "template: home.html",
-    "hide: [navigation, toc]",
+    "hide: [navigation, toc, path]",
     "search:", "  exclude: true",
     "hero:",
     `  eyebrow: ${y(`Rendered ${fmtDate(new Date().toISOString())} from the LRS Doc Index catalog`)}`,
@@ -1534,6 +1719,7 @@ function frontPage(model, kindFolders, opts, drafts = []) {
     "## More", "", '<div class="grid cards" markdown>', "",
     ...card(p, "clipboard-check", "cases/index.md", "Test cases", nCases || null, "Every test case the test plans carry, by plan, linking its section."),
     ...card(p, "image-multiple", "figures/index.md", "Figures", nFigures || null, "Every figure the bodies carry, by document."),
+    ...card(p, "book-alphabet", "glossary.md", "Glossary", model.glossary.length || null, "The official vocabulary — tools, widgets, terms — with the definitions the tooltips show."),
     ...card(p, "history", "recent.md", "Recent", null, "The most recently edited source documents."),
     ...(drafts.length ? card(p, "file-document-edit", "drafts/index.md", "Test-plan drafts", drafts.length, "Machine-generated, **unreviewed** — not catalog documents.") : []),
     ...card(p, "information", "about.md", "About", null, "What this site is, what it is not, and where each page's content comes from."),
@@ -1548,9 +1734,10 @@ function aboutPage(model, opts) {
       ["The front page", "The corpus in numbers — every tile links the page it counts — a Search button (or `/`), the documents by kind, surface, product and release in tabs, the latest edits, and the catalogs as cards."],
       ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's ledger: its documents by surface, then by the tools they name, each row opening to the facts and the summary. A document page links its original file, its catalog values and its related documents."],
       // v2.1: what the blocks on a document page are, and the badges
-      ["A document page", "The facts strip — the tools as pills, the Open link, kind · surface · product · release · edited — with the full metadata table folded under Details; the summary; the related documents (fold them away with the chevron); the Esri documentation links; then, under the rule, the extracted text — the test cases as a checklist: the id a badge (green positive, amber negative) beside the title, the steps, the Expected result the green line, a group a divider over its cases."],
+      ["A document page", "The breadcrumbs, then the facts strip — the tools as pills, the Open link, kind · surface · product · release · edited — with the full metadata table folded under Details; the summary, the related documents and the Esri documentation links as tabs; then, under the rule, the extracted text — the test cases as a checklist: the id a badge (green positive, amber negative) beside the title, the steps, the Expected result the green line, a group a divider over its cases."],
       ["Badges", `A page edited in the last ${NEW_DAYS} days carries a New badge in the sidebar; a draft carries the pencil.`],
-      ["Browse", "The seven catalogs: keywords, tools, products, surfaces, releases, people and issues. Every value is a page listing the documents that carry it."],
+      ["Browse", "The seven catalogs: keywords, tools, products, surfaces, releases, people and issues. Every value is a page listing the documents that carry it. Surfaces, products and releases are facet bars; the others are tables."],
+      ["Glossary", "The official vocabulary from the Esri documentation. Wherever a page names a tool, a widget or a multi-word term, hovering it shows the definition; the Glossary page lists them all."],
       ["Test cases", "Every case the sweep read out of the test plans, each entry linking the section it came from. The Figures catalog is its sibling, reached from the Browse card below."],
       ["Search, filter, sort", "Search (`/`) indexes the document pages and catalog values, not the tables that repeat them. Every large table filters as you type and sorts on a header click."],
     ]), { title: "How the site is organised", collapse: "open" }), "",
@@ -1597,6 +1784,8 @@ export function navFor(model, kindFolders, drafts = []) {
     nav.push(`      - ${c.title}:`, `          - ${c.section}/index.md`);
     for (const [value] of model[c.key]) nav.push(`          - ${y(value)}: ${catalogPage(c.section, value)}`);
   }
+  // v2.6: the glossary, the eighth way in, under Browse
+  nav.push("      - Glossary: glossary.md");
   // v2.3: the Figures catalog leaves the nav (it stays a page, reached
   // from the front page's Browse card and from About); the tab is the
   // Test cases page, its section header opening it
@@ -1662,7 +1851,7 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // file:// page cannot be fetched — and Material's tooltips.
     // v2.5: prefetch on hover and footnote tooltips — Insiders features
     // until Material 9.7 made every one of them free
-    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, navigation.instant.prefetch, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, content.footnote.tooltips, toc.follow]`,
+    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.path, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, navigation.instant.prefetch, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, content.footnote.tooltips, toc.follow]`,
     // v2.1: the site's own colours (extra.css defines the variables
     // `primary: custom` leaves to the site, for both schemes)
     "  palette:",
@@ -1711,6 +1900,16 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     "      full_screen: true",
     "markdown_extensions:",
     "  - tables",
+    // v2.6: the glossary as tooltips — python-markdown's abbreviations,
+    // one per official term, in a file snippets appends to every page
+    // (checked: a missing file fails the build rather than silently
+    // dropping the glossary). The snippet syntax (`--8<--`) is thereby
+    // live in bodies too; nothing extracted from an Office document
+    // writes a scissors line.
+    "  - abbr",
+    "  - pymdownx.snippets:",
+    "      auto_append: [includes/glossary.md]",
+    "      check_paths: true",
     "  - markdown_captions",
     "  - attr_list",
     "  - md_in_html",
@@ -1879,9 +2078,46 @@ const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every re
     return box;
   }
 
+  /* v2.6: a definition list filters like a table — a term and its
+     definition are one row; a heading whose list emptied folds away */
+  function dlRows(wrap) {
+    var rows = [];
+    Array.prototype.forEach.call(wrap.querySelectorAll("dl > dt"), function (dt) {
+      var els = [dt];
+      for (var el = dt.nextElementSibling; el && el.tagName === "DD"; el = el.nextElementSibling) els.push(el);
+      rows.push(els);
+    });
+    return rows;
+  }
+
+  function filterDl(wrap, rows, terms) {
+    var shown = 0;
+    rows.forEach(function (els) {
+      var text = els.map(function (el) { return el.textContent || ""; }).join(" ").toLowerCase();
+      var hit = terms.every(function (t) { return text.indexOf(t) >= 0; });
+      els.forEach(function (el) { el.hidden = !hit; });
+      if (hit) shown++;
+    });
+    Array.prototype.forEach.call(wrap.querySelectorAll("h2, h3"), function (h) {
+      var any = false;
+      for (var el = h.nextElementSibling; el && !/^H[1-6]$/.test(el.tagName); el = el.nextElementSibling) {
+        if (Array.prototype.some.call(el.querySelectorAll("dt"), function (dt) { return !dt.hidden; })) { any = true; break; }
+      }
+      h.hidden = terms.length > 0 && !any;
+    });
+    return shown;
+  }
+
   function makeFilterable(wrap) {
+    if (wrap.dataset.lrsFilter) return;
     var table = wrap.querySelector("table");
-    if (!table || wrap.dataset.lrsFilter) return;
+    if (!table) {
+      var rows = dlRows(wrap);
+      if (rows.length < FILTER_MIN_ROWS) return;
+      wrap.dataset.lrsFilter = "1";
+      wrap.insertBefore(filterBox(rows.length, function (terms) { return filterDl(wrap, rows, terms); }), wrap.firstChild);
+      return;
+    }
     var total = rowsOf(table).length;
     if (total < FILTER_MIN_ROWS) return;
     wrap.dataset.lrsFilter = "1";
@@ -2096,6 +2332,7 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   font-size: 0.78rem;
   font-weight: 600;
 }
+.md-typeset h3[id^="tc-"] .lrs-tc-title { flex: 0 1 auto; min-width: 0; }
 .md-typeset h3[id^="tc-"] .headerlink { margin-left: 0.2rem; font-weight: 400; }
 .md-typeset .lrs-tc {
   flex: 0 0 4.2rem;
@@ -2302,12 +2539,43 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   box-shadow: 0 0 0 0.1rem var(--md-accent-fg-color--transparent);
 }
 .lrs-filter__count { color: var(--md-default-fg-color--light); font-size: 0.64rem; white-space: nowrap; }
-.md-typeset tr[hidden], .filter-all > [hidden] { display: none !important; }
+.md-typeset tr[hidden], .filter-all > [hidden], .md-typeset .filterable [hidden] { display: none !important; }
 
-/* the breadcrumb line above a page's title (v2.0) */
-.md-typeset .lrs-crumbs { margin: 0 0 -0.6em; color: var(--md-default-fg-color--light); font-size: 0.64rem; }
-.md-typeset .lrs-crumbs a { color: inherit; }
-.md-typeset .lrs-crumbs a:hover { color: var(--md-accent-fg-color); }
+/* the theme's breadcrumbs (v2.6, navigation.path): quieter, and the
+   home crumb is the icon Material draws */
+.md-path { margin-bottom: -0.2rem; font-size: 0.64rem; }
+
+/* a document page's head as tabs (v2.6): Summary · Related · Esri
+   documentation — the labels wear their icons; the related and docs
+   lists are lists of links, the sweep's reason in a lighter ink */
+.md-typeset .lrs-head { margin: 0 0 1em; }
+.md-typeset .lrs-head .tabbed-set { margin: 0; }
+.md-typeset .lrs-head .tabbed-labels > label { font-size: 0.7rem; font-weight: 600; }
+.md-typeset .lrs-head .tabbed-labels > label .twemoji { margin-right: 0.15em; vertical-align: -0.15em; }
+.md-typeset .lrs-head .tabbed-content { padding: 0.6em 0.2em 0.2em; font-size: 0.74rem; }
+.md-typeset .lrs-head .tabbed-block > :first-child { margin-top: 0; }
+.md-typeset .lrs-head .tabbed-block > :last-child { margin-bottom: 0; }
+.md-typeset .lrs-head .tabbed-block > ul { list-style: none; margin-left: 0; }
+.md-typeset .lrs-head .tabbed-block > ul > li {
+  margin: 0 0 0.4em;
+  padding: 0.3em 0.7em;
+  border-left: 0.15rem solid var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .lrs-head .admonition { margin: 0; }
+
+/* the glossary (v2.6): abbreviations everywhere carry the definition
+   as a tooltip; the dotted line is for running text — a link, a pill
+   or a heading already looks like something */
+.md-typeset abbr { border-bottom: 1px dotted var(--md-default-fg-color--lighter); }
+.md-typeset a abbr, .md-typeset h1 abbr, .md-typeset h2 abbr, .md-typeset h3 abbr, .md-typeset h4 abbr,
+.md-typeset summary abbr, .md-typeset .md-button abbr { border-bottom: 0; }
+.md-typeset .lrs-glossary h2 small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.66rem; font-weight: 400; }
+.md-typeset .lrs-glossary dl dt { font-size: 0.78rem; font-weight: 600; color: var(--md-default-fg-color); }
+.md-typeset .lrs-glossary dl dt small { margin-left: 0.4em; color: var(--md-default-fg-color--light); font-size: 0.64rem; font-weight: 400; }
+.md-typeset .lrs-glossary dl dt .lrs-glossary__kind { font-style: normal; }
+.md-typeset .lrs-glossary dl dt abbr { border-bottom: 0; }
+.md-typeset .lrs-glossary dl dd { margin: 0.2em 0 0; font-size: 0.74rem; }
 
 /* a document page's head (v2.4): the facts strip — the pills and the
    Open link on its first row, the facts on its second — and the
@@ -2806,12 +3074,15 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   const readPhase = prog.phase("read");
   const docs = readLibrary(libDir, kindFolders);
   const kw = readKeywordMap(workDir);
-  const model = buildModel(docs, kw, { kindFolders, libDir });
+  const vocab = loadVocabulary();
+  const glossary = glossaryEntries(vocab);
+  const model = buildModel(docs, kw, { kindFolders, libDir, glossary });
   const drafts = readDrafts(opts.draftsDir);
   readPhase.done(
     `${docs.length} sidecar(s) from ${libDir}, ${model.kinds.size} kind(s), ` +
     `${model.keywords.size} keyword(s)` +
     (kw.file ? `, list backup ${path.basename(kw.file)} (${kw.canonical.size} alias(es) merged)` : ", no list backup") +
+    `, ${glossary.length} glossary entr${glossary.length === 1 ? "y" : "ies"}` +
     (opts.draftsDir ? `, ${drafts.length} draft(s) from ${opts.draftsDir}` : "")
   );
 
@@ -2871,6 +3142,8 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   put("cases/index.md", casesPage(model));
   put("figures/index.md", figuresPage(model));
   put("recent.md", recentPage(model, opts.recent));
+  put("glossary.md", glossaryPage(glossary, model, vocab));
+  write(outDir, "includes/glossary.md", glossaryAbbreviations(glossary));
   put("about.md", aboutPage(model, opts));
   put("index.md", frontPage(model, kindFolders, opts, drafts));
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
@@ -2884,7 +3157,8 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   return {
     docs: docs.length, drafts: drafts.length,
     kinds: model.kinds.size, keywords: model.keywords.size,
-    keyword_aliases_merged: kw.canonical.size, pages, media_files: mediaFiles, media_missing: mediaMissing,
+    keyword_aliases_merged: kw.canonical.size, glossary: glossary.length,
+    pages, media_files: mediaFiles, media_missing: mediaMissing,
     list_backup: kw.file ? path.basename(kw.file) : "",
   };
 }

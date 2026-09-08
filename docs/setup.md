@@ -1429,6 +1429,20 @@ pymdown's Blocks syntax (`//// html | div.lrs-case` around a
 `/// admonition` — nesting by slash count); the sidecars on disk are
 unchanged.
 
+**The next pages (wiki v2.6).** Breadcrumbs are the theme's
+(`navigation.path`), each crumb linking its index page. A document
+page's summary, related documents and Esri documentation links are one
+tab set under the facts strip (a page with one of them keeps the
+block). The official vocabulary (`pipeline/data/lrs_vocabulary.json`)
+is a glossary: every tool, widget, term and alias with a definition is
+a Markdown abbreviation the render writes to `includes/glossary.md`
+and appends to every page, so hovering a tool's name anywhere shows
+its definition; single ordinary-word terms (Route, Event …) are
+listed but not tooltips. The Glossary page, in the Browse tab, lists
+every entry by kind with its Esri link and its documents, under a
+filter box. Surfaces, Products and Releases show their index pages as
+facet bars; the other catalogs keep their tables.
+
 **The front page (wiki v2.5).** A landing page, not a document: a
 hero under the tab bar with the site's name, a Search button (`/`
 does the same), an Every-document button and the corpus in numbers —
