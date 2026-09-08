@@ -138,6 +138,7 @@ cut off at the first line break.
 ### TC-N01 — Lock conflict refuses { #tc-n01 }
 <!-- lrs:case det=S1 conf=high src="slide 4" -->
 - **Group:** Conflicts
+- **Case:** The merge is refused while another user holds the lock
 ![Figure 2 — Lock dialog](../media/4855-merge-plan/fig-02-slide-04-lock.png)
 - **Steps:**
   - [ ] 1. Set <RouteID> on the network
@@ -366,11 +367,13 @@ def main():
           and '      - "Design Spikes":\n          - design-spikes/index.md\n          - "Old Spike": design-spikes/old-spike-doc9.md' in ycfg
           and '      - Keywords:\n          - keywords/index.md\n          - "gantt chart": keywords/gantt-chart.md' in ycfg
           and '          - "ArcGISPro/ps-location-referencing#4855": issues/arcgispro-ps-location-referencing-4855.md' in ycfg
-          and "Test cases: cases/index.md" in ycfg and "Recent: recent.md" in ycfg, ycfg)
-    check("the nav is tabs: Home, Documents (landing on All documents), Browse (landing on the cards), Test cases & figures",
+          and "  - Test cases:\n      - cases/index.md" in ycfg and "Recent: recent.md" in ycfg, ycfg)
+    # v2.3: Figures is out of the nav (still a page, still a Browse card)
+    check("the nav is tabs: Home, Documents (landing on All documents), Browse (landing on the cards), Test cases — no Figures entry",
           "  - Home: index.md\n  - Documents:\n      - documents/index.md\n" in ycfg
           and "  - Browse:\n      - browse/index.md\n" in ycfg
-          and "  - Test cases & figures:\n      - Test cases: cases/index.md\n      - Figures: figures/index.md" in ycfg, ycfg)
+          and "  - Test cases:\n      - cases/index.md\n" in ycfg
+          and "figures/index.md" not in ycfg and "Test cases & figures" not in ycfg, ycfg)
     check("kinds follow reader order in the nav (Test Plans before User Stories before Design Spikes), not the alphabet",
           0 < ycfg.find('"Test Plans":') < ycfg.find('"User Stories":') < ycfg.find('"Design Spikes":'), ycfg)
     check("every page is in the nav — nothing is left to not_in_nav",
@@ -486,9 +489,9 @@ def main():
     # def list after an image line starts its own block
     check("each TC case's content is wrapped for the card in a four-slash Blocks html block, up to the next heading",
           plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 3
-          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\nGroup\n:   Normal Routes" in plan
+          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\n/// html | div.lrs-group\n\nNormal Routes\n///" in plan
           and "////\n\n## Notes | pipes" in plan and "lrs-case\" markdown" not in plan
-          and "*(missing figure: Figure 2 — Lock dialog)*\n\nSteps\n:" in plan, plan[-1800:])
+          and "*(missing figure: Figure 2 — Lock dialog)*\n\n/// html | div.lrs-steps\n\n- [ ] 1." in plan, plan[-1800:])
     dblocks = page("drafts/4855-conflict-story-draft-20260906-2300.md")
     check("the Expected result nests in the card as a three-slash admonition block, body unindented",
           dblocks.count("//// html | div.lrs-case") == 1
@@ -632,20 +635,24 @@ def main():
     # ---- 2f. lists (v1.8) ------------------------------------------
     check("mkdocs.yml enables def_list",
           "- def_list" in ycfg and "clickable_checkbox" not in ycfg, ycfg)
-    check("a case's field bullets become a definition list",
-          "Group\n:   Normal Routes" in plan
-          and "Group\n:   Conflicts" in plan
-          and "- **Group:**" not in plan, plan[-1600:])
-    check("the task list travels into the Steps definition, still escaped",
-          "Steps\n:   - [ ] 1. Set &lt;RouteID> on the network" in plan
-          and "    - [ ] 2. Read the value in \\{measure}" in plan, plan[-1600:])
+    # v2.3 (mdlayout v1.5): Group and Steps lose their labels — the
+    # content alone in a class-named html block; Case (and Trace) stay
+    # a definition list, label and value
+    check("a case's Case field becomes a definition; Group and Steps stand alone in class-named blocks, no label",
+          "Case\n:   The merge is refused while another user holds the lock" in plan
+          and "/// html | div.lrs-group\n\nNormal Routes\n///" in plan
+          and "/// html | div.lrs-group\n\nConflicts\n///" in plan
+          and "Group\n:" not in plan and "Steps\n:" not in plan
+          and "- **Group:**" not in plan and "- **Case:**" not in plan, plan[-1600:])
+    check("the task list travels into the Steps block, still escaped",
+          "/// html | div.lrs-steps\n\n- [ ] 1. Set &lt;RouteID> on the network\n- [ ] 2. Read the value in \\{measure}\n///" in plan, plan[-1600:])
     check("a plain bullet list is not a definition list",
           "- [Conflict Prevention Story](../user-stories/4855-conflict-story.md) — shared issue" in plan, plan[:2000])
     # v2.1 (mdlayout v1.3): Expected Result is the pass criterion, a
     # success block; the other fields stay a definition list
     check("the draft's own field bullets are translated too — Expected Result as a success block",
           "/// admonition | Expected result\n    type: success\n\nA lock is held.\n///" in dpage
-          and "Steps\n:   - [ ] 1. Create route &lt;R100>." in dpage
+          and "/// html | div.lrs-steps\n\n- [ ] 1. Create route &lt;R100>.\n///" in dpage
           and "Expected Result\n:" not in dpage and "- **Expected Result:**" not in dpage, dpage)
     check("About's provenance list is a definition list, and says why nothing ticks",
           "    Doc ids\n    :   Doc Index list row ids" in about
@@ -735,8 +742,8 @@ def main():
         # without the aggregate pages
         tabs = html.split('class="md-tabs"')[1].split("</nav>")[0] if 'class="md-tabs"' in html else ""
         chrome = html.split('class="md-content"')[0]
-        check("the built page has the tab bar (Documents, Browse, Test cases & figures) and lists itself in its kind's sidebar section",
-              "Documents" in tabs and "Browse" in tabs and "Test cases &amp; figures" in tabs
+        check("the built page has the tab bar (Documents, Browse, Test cases) and lists itself in its kind's sidebar section",
+              "Documents" in tabs and "Browse" in tabs and "Test cases" in tabs and "figures" not in tabs
               and "md-nav__link--active" in chrome and "Merge Events Test Plan" in chrome
               and "Conflict Prevention Story" not in chrome,  # pruned: the other kinds' pages are not rendered
               (tabs[:400], chrome[-1200:]))
@@ -878,7 +885,8 @@ def main():
           and "--md-admonition-icon--docs" in css and ".md-typeset .admonition.docs" in css
           and ".md-typeset figcaption" in css and "tbody tr:nth-child(even)" in css
           and ".md-typeset .lrs-facts" in css and ".md-typeset .lrs-figures" in css
-          and ".md-typeset .lrs-case dl {\n  display: grid;" in css and ".md-typeset .lrs-case .admonition.success" in css, css[:300])
+          and ".md-typeset .lrs-case dl {\n  display: grid;" in css and ".md-typeset .lrs-case .admonition.success" in css
+          and ".md-typeset .lrs-case .lrs-group {" in css and ".md-typeset .lrs-case .lrs-steps {" in css, css[:300])
     # the Blocks composer's own rule: more slashes outside than inside
     blk = subprocess.run(["node", "--input-type=module", "-e",
         'import { block } from "./pipeline/lib/mdlayout.mjs";'

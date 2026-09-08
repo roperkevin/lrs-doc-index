@@ -1,5 +1,31 @@
 # Local sweep — release notes
 
+## wiki v2.3 (2026-09-08 — the case card without its two loudest labels; mdlayout v1.5)
+
+"Group" and "Steps" said nothing a reader of a case card did not
+already see: the group is a category, the steps are the case.
+`lib/mdlayout.mjs` v1.5 writes each as a class-named Blocks html
+block holding the content alone — `/// html | div.lrs-group`,
+`/// html | div.lrs-steps` — through the new `FIELD_BARE` rule, the
+sibling of `FIELD_ADMONITIONS`; `Case` and `Trace` stay a definition
+list, label and value, and the Expected result stays the green row.
+The wiki's stylesheet draws the group as a quiet line over the card's
+content (small, muted, the source's own casing) and the steps as the
+procedure, flush with the card. Nothing on disk changes shape. And no
+uppercase anywhere on the site: the metadata card's labels and the
+definition-list labels (v1.4, v1.8) keep their muted ink and weight
+and lose the transform and the letter-spacing. The Figures catalog
+leaves the nav — the "Test cases & figures" tab is "Test cases", its
+section header opening the page — and stays a page, reached from the
+front page's Browse card and named on About.
+
+Two further layouts for the card body and two for the long kind
+tables are mocked, not wired, in `docs/design/Wiki_Kind_Layout_Variations.md`.
+
+Gates: `check_wiki.py` — the Group and Steps blocks with no label,
+a Case field still a definition, the translated draft page, the two
+new stylesheet rules; 119 checks, the strict build included.
+
 ## sweep v1.66 (2026-09-08 — the classification reads the evidence: folder, surfaces, products, tools; wiki v2.2; RegexExtract v1.6; vocabulary v1.1)
 
 Four complaints, one cause: the classifier decided alone. Most
