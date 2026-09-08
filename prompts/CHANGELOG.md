@@ -5,6 +5,13 @@ front-matter format (2026-09-06) are the ones the old file headers
 carried; their per-round notes are in `docs/history/patches-README.md`,
 `docs/changelog/testplangen.md` and `docs/changelog/pipeline.md`.
 
+- 2026-09-08 — keyword_curation **2.2.1**: `max_tokens` 16384 → 32000.
+  A 700-line vocabulary chunk asking for up to 100 proposals with a
+  reason each can run past 16k output tokens, and a truncated
+  schema-pinned reply is a failed call, not a shorter list. Ported
+  from the sweep machine's own hotfix (branch `machine-fixes`, made
+  on 2.1.0), which is why the machine stopped fast-forwarding from
+  `deploy`. Text unchanged.
 - 2026-09-08 — docindex_classify **4.0.0**: the classification
   reads the pipeline's own evidence and says more. Two new inputs —
   `Folder` (the source-library folder the file sits in) and `Signals`

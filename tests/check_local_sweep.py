@@ -1978,7 +1978,7 @@ def main():
     check("digest lists the proposal and the pending carryover",
           "- 'centerlines' → 'centerline' — plural of centerline" in digest
           and "(pending) 'sld'" in digest
-          and "CurationPromptVersion: v2.2.0" in digest, digest[:400])
+          and "CurationPromptVersion: v2.2.1" in digest, digest[:400])
     # week 2: librarian approves both; model proposes nothing
     kwrows[CUR["centerlines"]]["CanonicalRefLookupId"] = int(CUR["centerline"])
     kwrows[CUR["sld"]]["CanonicalRefLookupId"] = 1
