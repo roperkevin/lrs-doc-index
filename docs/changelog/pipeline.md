@@ -136,11 +136,18 @@ make the proposal is the right one to check it.
   hands-off; `unmerge --ids-file` is the undo.
 - `writeDigest()` factored out; a written proposal is now reflected
   in memory so a pass in the same run sees it.
+- **`--drain` with the reader converges.** A pair the reader withdrew
+  is blocked from re-proposal for the rest of the drain (the model
+  would otherwise propose it again every pass, and the reader
+  withdraw it again, to the pass limit), and a row it held is not
+  asked about again. Prompt 2.2.0 allows 100 proposals per call (was
+  50): the reader checks every one, so a smaller cap only added
+  passes. `curate --live --drain` is the whole list in one run.
 
-Gates: `check_local_sweep.py` **386/386** (was 378: the review turn's
+Gates: `check_local_sweep.py` **387/387** (was 378: the review turn's
 shape, guard-decided and chained pairs never reaching the model, dry
 vs live, approve / withdraw / hold / no-verdict outcomes, the digest,
-the enabled weekly run), `test_lrsdoc.py` 56/56 (seven prompts; the
+the enabled weekly run, a drain that ends at pass 2 with the withdrawn pair blocked), `test_lrsdoc.py` 56/56 (seven prompts; the
 review task's coercions).
 
 Rollout: `git pull`; add `"review": {"enabled": true}` to the

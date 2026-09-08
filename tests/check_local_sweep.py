@@ -1919,7 +1919,7 @@ def main():
     check("digest lists the proposal and the pending carryover",
           "- 'centerlines' → 'centerline' — plural of centerline" in digest
           and "(pending) 'sld'" in digest
-          and "CurationPromptVersion: v2.1.0" in digest, digest[:400])
+          and "CurationPromptVersion: v2.2.0" in digest, digest[:400])
     # week 2: librarian approves both; model proposes nothing
     kwrows[CUR["centerlines"]]["CanonicalRefLookupId"] = int(CUR["centerline"])
     kwrows[CUR["sld"]]["CanonicalRefLookupId"] = 1
@@ -2307,6 +2307,23 @@ def main():
           and not kwrows[CUR["rv_hold"]].get("CurationStatus")
           and "APPROVED (review) 'network types' → 'network type'" in (state.digest or ""),
           str(out) + str(kwrows[CUR["rv_w"]]) + (state.digest or "")[:400])
+    # --drain with the reader: a pair the reader withdraws is blocked for
+    # the rest of the drain (the mock proposes the SAME pair every pass),
+    # so the drain ends at pass 2 instead of running to the pass limit
+    CUR["rv_d"] = state.seed(LISTS["keywords"], {"Title": "drain alias", "Kind": "topic"})
+    CUR["rv_d_c"] = state.seed(LISTS["keywords"], {"Title": "drain canon", "Kind": "topic"})
+    state.cur_response = {"proposals": [{"alias": "drain alias", "canonical": "drain canon", "why": "A2 typo"}]}
+    state.review_response = {"verdicts": [{"id": int(CUR["rv_d"]), "verdict": "withdraw", "why": "different words"}]}
+    state.cur_calls = 0
+    state.review_calls = 0
+    proc = run_curate(cfg_path, ["--live", "--drain", "--progress"])
+    check("drain + reader: a withdrawn pair is blocked for the rest of the drain, so the drain ends at pass 2",
+          proc.returncode == 0 and "drain pass 2" in proc.stdout and "drain pass 3" not in proc.stdout
+          and state.cur_calls == 2 and state.review_calls == 1
+          and "withdrawn by the second reader earlier in this drain" in proc.stderr
+          and "drain alias" in mock.user_text(state.cur_last_request or {}).split("Titles that must NEVER")[1]
+          and not kwrows[CUR["rv_d"]].get("CurationStatus") and not kwrows[CUR["rv_d"]].get("CanonicalRefLookupId"),
+          f"cur={state.cur_calls} review={state.review_calls} " + proc.stdout[-300:] + proc.stderr[-500:])
     cfg["curation"] = {}
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)

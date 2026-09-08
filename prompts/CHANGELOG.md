@@ -5,6 +5,10 @@ front-matter format (2026-09-06) are the ones the old file headers
 carried; their per-round notes are in `docs/history/patches-README.md`,
 `docs/changelog/testplangen.md` and `docs/changelog/pipeline.md`.
 
+- 2026-09-08 — keyword_curation **2.2.0**: at most 100 proposals per
+  call (was 50) — the second reader checks every one and `--drain`
+  passes see whatever was left out, so a smaller cap only added
+  passes.
 - 2026-09-08 — keyword_review **1.0.0** (new): the second reader of
   keyword merge proposals. Input: the pending queue as
   `<id> | <alias> [kind] -> <canonical> [kind] | <reason>` lines plus

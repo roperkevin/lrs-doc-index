@@ -1,6 +1,6 @@
 ---
 name: keyword_curation
-version: 2.1.0
+version: 2.2.0
 model: claude-opus-5
 effort: high
 max_tokens: 16384
@@ -124,9 +124,10 @@ discarded unread.
 
 When in doubt, omit the pair — a missed merge costs nothing and the
 next run sees the pair again; a wrong merge silently corrupts every
-document's keywords and is expensive to undo. At most 50 proposals,
-highest-certainty only. Most of the vocabulary should survive
-untouched.
+document's keywords and is expensive to undo. At most 100 proposals,
+highest-certainty first — a second reader checks every one, and the
+next pass sees whatever you left out. Most of the vocabulary should
+survive untouched.
 
 JSON RULES
 - Valid JSON only. Escape any internal double quotes and backslashes.
