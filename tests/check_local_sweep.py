@@ -2159,6 +2159,17 @@ def main():
           proc.returncode == 0 and "written=1 dropped=1" in out.get("line", "")
           and "the alias is the official Esri term" in proc.stderr
           and kwrows[CUR["cpt"]].get("CurationStatus") == "Proposed", str(out) + proc.stderr[-400:])
+    # an official canonical wins over the plural rule: 'Reassign Routes'
+    # is the tool's name, so its singular folds INTO the plural
+    CUR["rr1"] = state.seed(LISTS["keywords"], {"Title": "reassign route", "Kind": "tool"})
+    state.cur_response = {"proposals": [
+        {"alias": "reassign route", "canonical": "reassign routes", "why": "A1 the official name is the plural"},
+    ]}
+    proc = run_curate(cfg_path, ["--live", "--progress"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("guard: an official canonical is the right side even when it is the plural",
+          proc.returncode == 0 and "written=1 dropped=0" in out.get("line", "")
+          and kwrows[CUR["rr1"]].get("CurationStatus") == "Proposed", str(out) + proc.stderr[-400:])
     kw_before = len(kwrows)
     proc = run_curate(cfg_path, ["--seed-vocabulary"])
     out = json.loads(proc.stdout.splitlines()[0])
