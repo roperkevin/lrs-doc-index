@@ -55,6 +55,13 @@
  *     the content under a `### TC-…` heading in a `.lrs-case` div, so
  *     the stylesheet draws the heading as the card's head and the
  *     fields as a label/value grid, the expected result a green row.
+ *     The card is written in pymdown's Blocks syntax
+ *     (https://facelessuser.github.io/pymdown-extensions/extensions/blocks/#nesting):
+ *     `//// html | div.lrs-case` around the case, `/// admonition |
+ *     Expected result` inside it — an outer block takes more slashes
+ *     than what it nests, so the nesting is visible in the margin
+ *     rather than in indentation. `pymdownx.blocks.html` and
+ *     `pymdownx.blocks.admonition` join mkdocs.yml for it.
  *   - Page status (Material's `status:` front matter): a document
  *     edited in the last NEW_DAYS days carries `new`, a badge beside
  *     it in the sidebar; every draft carries `draft`, the pencil.
@@ -65,8 +72,9 @@
  *     or a catalog looks the same on a card and at the top of its
  *     page. The figure catalog is a card grid per document instead of
  *     a bullet list of thumbnails; a catalog value's facts line is a
- *     strip under the title; the Summary column of every table reads
- *     the no-summary alert as its sentence, not as `> [!WARNING] >`.
+ *     strip under the title; the document tables lose their Summary
+ *     column (a 160-character cell per row made them a wall of text —
+ *     the summary is on the document's own page).
  *   - The theme: the site's own palette (`primary: custom` — a deep
  *     blue and a teal, defined in extra.css for both schemes, with
  *     readable link colours on slate), instant navigation with its
@@ -311,7 +319,7 @@ import { createProgress, resolveProgress, secs, noProgress } from "./lib/progres
 import { bodySeamEnd } from "./lib/doclinks.mjs";
 import { caseSpans } from "./lib/caseindex.mjs";
 import { kebab, stemOf, mediaLinksOf } from "./lib/slug.mjs";
-import { toMkDocs, normalize, splitAnchor, admonition, defList } from "./lib/mdlayout.mjs";
+import { toMkDocs, normalize, splitAnchor, admonition, defList, block } from "./lib/mdlayout.mjs";
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
@@ -419,9 +427,6 @@ const cell = (s) => String(s ?? "").replace(/\r?\n/g, " ").replace(/\|/g, "\\|")
  *  catalog's raw-HTML thumbnails). */
 const attr = (s) => cell(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const mdEscape = (s) => String(s ?? "").replace(/([\\`*_[\]<>])/g, "\\$1");
-/** A summary as one table cell (v2.1): the sweep's no-summary alert
- *  reads as its sentence, not as `> [!WARNING] > No AI summary…`. */
-const summaryText = (s) => cell(String(s ?? "").replace(/^>\s*\[![A-Za-z]+\][-+]?[^\n]*\n?/m, "").replace(/^>[ \t]?/gm, ""));
 const linkText = (s) => mdEscape(cell(s)).replace(/\\\|/g, "|");
 const pageName = (s) => kebab(s) || "untitled";
 
@@ -771,13 +776,15 @@ export function dropMissingMedia(body, missing) {
 }
 
 /** Wrap each test case's content — everything under a `### TC-…`
- *  heading up to the next heading — in `<div class="lrs-case"
- *  markdown>` (v2.1), so the stylesheet can draw the heading and its
- *  fields as ONE card. The spans come from the case grammar's own
- *  reader (`caseSpans`, the one that fills the Test Cases list); the
- *  heading line, with its anchor, stays where it is. Runs on the
- *  TRANSLATED body (after `toMkDocs`, whose escape would otherwise
- *  turn the div into text); deck-shaped `## Slide N` cases are left
+ *  heading up to the next heading — in a `//// html | div.lrs-case`
+ *  block (v2.1, pymdown Blocks), so the stylesheet can draw the
+ *  heading and its fields as ONE card. Four slashes, because the
+ *  Expected result admonition inside it is a three-slash block: the
+ *  nesting is in the margin. The spans come from the case grammar's
+ *  own reader (`caseSpans`, the one that fills the Test Cases list);
+ *  the heading line, with its anchor, stays where it is. Runs on the
+ *  TRANSLATED body (after `toMkDocs`, so a body's own text cannot be
+ *  read as the wrapper); deck-shaped `## Slide N` cases are left
  *  alone — they are sections, not cards. */
 export function wrapCases(body) {
   const { lines, spans } = caseSpans(body);
@@ -786,8 +793,8 @@ export function wrapCases(body) {
   const out = [];
   let at = 0;
   for (const s of cases) {
-    out.push(...lines.slice(at, s.start + 1), "", '<div class="lrs-case" markdown>', "",
-      ...lines.slice(s.start + 1, s.end), "", "</div>", "");
+    out.push(...lines.slice(at, s.start + 1), "",
+      block("html", lines.slice(s.start + 1, s.end).join("\n"), { title: "div.lrs-case", depth: 4 }), "");
     at = s.end;
   }
   out.push(...lines.slice(at));
@@ -873,10 +880,12 @@ const crumbs = (fromPage, trail) =>
 function docRow(fromPage, d, { kind = false } = {}) {
   const title = d.meta.title || d.stem;
   const kindCol = kind ? ` ${link(fromPage, `${d.kindDir}/index.md`, d.kind)} |` : "";
-  return `| ${link(fromPage, d.page, title)} |${kindCol} ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} | ${summaryText(d.summary).slice(0, 160) || "—"} |`;
+  return `| ${link(fromPage, d.page, title)} |${kindCol} ${cell(d.meta.products.join(" · ")) || "—"} | ${cell(d.meta.target_release) || "—"} | ${cell(d.meta.last_edited).slice(0, 10) || "—"} |`;
 }
-const DOC_TABLE_HEAD = "| Document | Product | Release | Edited | Summary |\n|---|---|---|---|---|";
-const DOC_TABLE_HEAD_KIND = "| Document | Kind | Product | Release | Edited | Summary |\n|---|---|---|---|---|---|";
+// v2.1: no Summary column — a 160-character cell per row made every
+// table a wall of text; the summary is on the document's own page
+const DOC_TABLE_HEAD = "| Document | Product | Release | Edited |\n|---|---|---|---|";
+const DOC_TABLE_HEAD_KIND = "| Document | Kind | Product | Release | Edited |\n|---|---|---|---|---|";
 const byEdited = (a, b) => String(b.meta.last_edited).localeCompare(String(a.meta.last_edited));
 
 /** The document table. `kind` adds a Kind column (for a table that
@@ -1341,6 +1350,11 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     "  - def_list",
     // v2.1: GFM footnotes (`[^1]`), the dialect's last gap
     "  - footnotes",
+    // v2.1: pymdown's Blocks — the case card (`//// html |
+    // div.lrs-case`) and the Expected result admonition nested in it;
+    // the `!!!` form stays for the flat blocks
+    "  - pymdownx.blocks.html",
+    "  - pymdownx.blocks.admonition",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
     "  - pymdownx.emoji:",
@@ -1797,14 +1811,11 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 .doc-table th[aria-sort="ascending"]::after, .sortable th[aria-sort="ascending"]::after { border-bottom-color: currentColor; }
 .doc-table th[aria-sort="descending"]::after, .sortable th[aria-sort="descending"]::after { border-top-color: currentColor; }
 
-/* catalog tables: the short columns stay on one line, the summary is
-   quiet (v2.0: every middle column, since a Kind column may be
-   present); v2.1: striped rows, and the title and summary columns
-   keep a readable width — a narrow column scrolls the table rather
-   than squeezing the summary to one word a line */
-.doc-table td:not(:first-child):not(:last-child) { white-space: nowrap; }
+/* catalog tables: the short columns stay on one line (v2.0: every
+   column after the title, since a Kind column may be present);
+   v2.1: striped rows, the title column keeps a readable width */
+.doc-table td:not(:first-child) { white-space: nowrap; }
 .doc-table td:first-child { min-width: 11rem; }
-.doc-table td:last-child { min-width: 16rem; color: var(--md-default-fg-color--light); }
 .doc-table tbody tr:nth-child(even), .sortable tbody tr:nth-child(even) { background: var(--md-code-bg-color); }
 
 /* the type-to-filter box (v2.0), in Material's own vocabulary */

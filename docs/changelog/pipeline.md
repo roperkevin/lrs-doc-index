@@ -28,16 +28,23 @@ links are unchanged — the format 3.1 contract the gate pins holds.
   split around it. `FIELD_ADMONITIONS` is the whole rule; the files on
   disk keep the bold-label bullet GitHub and the SharePoint preview
   read. And **every case is one card**: `wrapCases` puts the content
-  under a `### TC-…` heading in a `.lrs-case` div (after the
-  translation, whose escape would otherwise turn the div into text;
-  deck-shaped `## Slide N` cases stay sections), and the stylesheet
+  under a `### TC-…` heading in a `.lrs-case` wrapper (after the
+  translation; deck-shaped `## Slide N` cases stay sections), and the stylesheet
   draws the heading as the card's head, the fields as a label/value
   grid with a shared label column, and the Expected result as a green
   row of that grid rather than a boxed admonition inside a box. A
   definition list or an admonition the translator emits now always
   starts after a blank line — python-markdown read an image line just
   above the fields as the first term, and a `!!!` line glued to a
-  paragraph as more of it.
+  paragraph as more of it. The card is written in pymdown's **Blocks
+  syntax** (https://facelessuser.github.io/pymdown-extensions/extensions/blocks/#nesting):
+  `//// html | div.lrs-case` around the case, `/// admonition |
+  Expected result` with `type: success` inside it — an outer block
+  takes more slashes than what it nests, so the nesting is in the
+  margin instead of in indentation, and the body is not indented.
+  `mdlayout` v1.4 gains `block()`, the composer; `pymdownx.blocks.html`
+  and `pymdownx.blocks.admonition` join mkdocs.yml (the `!!!` form
+  stays for the flat blocks).
 - **One draft box, not two.** A draft page carried the render's own
   "Unreviewed draft" block and, under the rule, the generator's own
   `> [!WARNING]` banner saying the same thing. The banner is now
@@ -56,11 +63,10 @@ links are unchanged — the format 3.1 contract the gate pins holds.
   browser tab and the breadcrumbs stay plain). The figure catalog is
   a card grid per document instead of a bullet list of thumbnails; a
   catalog value's facts line (count, kind, roles, co-tags, tracker
-  link) is a strip under the title. A table's Summary column reads
-  the no-summary alert as its sentence, not as `> [!WARNING] >`; the
-  title and summary columns keep a readable width (a narrow column
-  scrolls the table rather than squeezing the summary to one word a
-  line).
+  link) is a strip under the title. The document tables lose their
+  Summary column — a 160-character cell per row made every table a
+  wall of text, and the summary is on the document's own page — and
+  the title column keeps a readable width.
 - **The theme.** The site's own palette — `primary: custom` /
   `accent: custom`, a deep blue and a teal defined in `extra.css` for
   both schemes, with lighter link and accent inks on slate (Material

@@ -474,17 +474,23 @@ def main():
           and "test-plans/4855-merge-plan.md\t../media/4855-merge-plan/fig-02-slide-04-lock.png" in open(report, encoding="utf-8").read()
           and "media link(s) have no file in the library" in r.stderr, r.stderr[-400:])
     check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
-    # v2.1: every TC case's content sits in a .lrs-case wrapper under
-    # its heading (one card), deck sections do not; a def list after an
-    # image line starts its own block
-    check("each TC case's content is wrapped for the card, up to the next heading",
-          plan.count('<div class="lrs-case" markdown>') == 3 and plan.count("</div>") == plan.count("<div")
-          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n<div class=\"lrs-case\" markdown>\n\nGroup\n:   Normal Routes" in plan
-          and "</div>\n\n## Notes | pipes" in plan
-          and "*(missing figure: Figure 2 — Lock dialog)*\n\nSteps\n:" in plan
-          and page("drafts/4855-conflict-story-draft-20260906-2300.md").count('<div class="lrs-case" markdown>') == 1
-          and '\n\n!!! success "Expected result"' in page("drafts/4855-conflict-story-draft-20260906-2300.md")
-          and "</div>\n\n## Issue Trace" in page("drafts/4855-conflict-story-draft-20260906-2300.md"), plan[-1800:])
+    # v2.1: every TC case's content sits in a `//// html | div.lrs-case`
+    # Blocks wrapper under its heading (one card), deck sections do
+    # not; the Expected result is a three-slash block nested in it; a
+    # def list after an image line starts its own block
+    check("each TC case's content is wrapped for the card in a four-slash Blocks html block, up to the next heading",
+          plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 3
+          and "### TC-P01 — Merge preserves measures { #tc-p01 }\n\n//// html | div.lrs-case\n\nGroup\n:   Normal Routes" in plan
+          and "////\n\n## Notes | pipes" in plan and "lrs-case\" markdown" not in plan
+          and "*(missing figure: Figure 2 — Lock dialog)*\n\nSteps\n:" in plan, plan[-1800:])
+    dblocks = page("drafts/4855-conflict-story-draft-20260906-2300.md")
+    check("the Expected result nests in the card as a three-slash admonition block, body unindented",
+          dblocks.count("//// html | div.lrs-case") == 1
+          and "\n\n/// admonition | Expected result\n    type: success\n\nA lock is held.\n///\n" in dblocks
+          and dblocks.find("//// html | div.lrs-case") < dblocks.find("/// admonition | Expected result") < dblocks.find("\n////\n")
+          and "////\n\n## Issue Trace" in dblocks and "!!! success" not in dblocks, dblocks)
+    check("mkdocs.yml enables the Blocks extensions the card uses",
+          "\n  - pymdownx.blocks.html\n  - pymdownx.blocks.admonition\n" in ycfg, ycfg)
     check("a case's own attr_list anchor survives the body escape",
           "### TC-P01 — Merge preserves measures { #tc-p01 }" in plan
           and "\\{ #tc-p01 }" not in plan, plan[-900:])
@@ -632,7 +638,7 @@ def main():
     # v2.1 (mdlayout v1.3): Expected Result is the pass criterion, a
     # success block; the other fields stay a definition list
     check("the draft's own field bullets are translated too — Expected Result as a success block",
-          '!!! success "Expected result"\n\n    A lock is held.' in dpage
+          "/// admonition | Expected result\n    type: success\n\nA lock is held.\n///" in dpage
           and "Steps\n:   - [ ] 1. Create route &lt;R100>." in dpage
           and "Expected Result\n:" not in dpage and "- **Expected Result:**" not in dpage, dpage)
     check("About's provenance list is a definition list, and says why nothing ticks",
@@ -663,7 +669,7 @@ def main():
     # the whole set), not one table per kind
     check("alias docs land on the canonical page, in one table with a Kind column",
           "## Test Plan" not in route
-          and "| Document | Kind | Product | Release | Edited | Summary |" in route
+          and "| Document | Kind | Product | Release | Edited |\n|---|---|---|---|---|" in route
           and "| [Old Spike](../design-spikes/old-spike-doc9.md) | [Design Spike](../design-spikes/index.md) |" in route
           and "| [Merge Events Test Plan](../test-plans/4855-merge-plan.md) | [Test Plan](../test-plans/index.md) |" in route
           and "3 documents · a topic keyword · [all keywords](./index.md)" in route, route)
@@ -801,7 +807,7 @@ def main():
     check("All documents: every document in one filterable table with a Kind column, kinds in reader order",
           alldocs.startswith("# :material-file-document-multiple-outline: All documents") and "3 documents of every kind" in alldocs
           and "By kind: [Test Plans](../test-plans/index.md) (1) · [User Stories](../user-stories/index.md) (1) · [Design Spikes](../design-spikes/index.md) (1)." in alldocs
-          and "| Document | Kind | Product | Release | Edited | Summary |" in alldocs
+          and "| Document | Kind | Product | Release | Edited |" in alldocs
           and len(re.findall(r"^\| \[", alldocs, re.M)) == 3, alldocs)
     browse = page("browse/index.md")
     check("Browse: the six catalogs as cards with counts",
@@ -825,8 +831,9 @@ def main():
     check("the sweep's no-summary alert stays a warning block, never a summary box",
           "!!! warning\n\n    No AI summary was generated for this document." in spike
           and "!!! abstract" not in spike, spike)
-    check("a table's Summary column reads the no-summary alert as its sentence",
-          "| No AI summary was generated for this document. |" in recent
+    check("the document tables carry no Summary column (title, kind, product, release, edited)",
+          "Summary" not in recent and "| Document | Product | Release | Edited |\n|---|---|---|---|" in page("test-plans/index.md")
+          and "| [Old Spike](./design-spikes/old-spike-doc9.md) | [Design Spike](./design-spikes/index.md) | — | — | 2026-07-01 |" in recent
           and "[!WARNING]" not in recent, recent)
     check("the front page's kinds are cards with an icon, the count and the newest edit, in reader order",
           '<div class="grid cards lrs-kinds" markdown>' in front
@@ -865,6 +872,13 @@ def main():
           and ".md-typeset figcaption" in css and "tbody tr:nth-child(even)" in css
           and ".md-typeset .lrs-facts" in css and ".md-typeset .lrs-figures" in css
           and ".md-typeset .lrs-case dl {\n  display: grid;" in css and ".md-typeset .lrs-case .admonition.success" in css, css[:300])
+    # the Blocks composer's own rule: more slashes outside than inside
+    blk = subprocess.run(["node", "--input-type=module", "-e",
+        'import { block } from "./pipeline/lib/mdlayout.mjs";'
+        'process.stdout.write(block("html", block("admonition", "Body.", { title: "T", options: { type: "success" } }), { title: "div.c", depth: 4 }));'],
+        capture_output=True, text=True, cwd=REPO).stdout
+    check("block() composes the Blocks form, nesting by slash count",
+          blk == "//// html | div.c\n\n/// admonition | T\n    type: success\n\nBody.\n///\n////", repr(blk))
     # the model's own rules, through the module: natural order for the
     # catalogs, the issue host, a person's roles, a keyword's neighbours
     unit = subprocess.run(

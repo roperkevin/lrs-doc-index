@@ -1392,8 +1392,12 @@ cards with an icon and the newest edit; index pages wear the same
 icon in their title; the figure catalog is a card grid. The palette
 is the site's own (a deep blue and a teal, in `extra.css` — both
 schemes), navigation is instant (off under `wiki.offline`), and GFM
-footnotes render. `lib/mdlayout.mjs` v1.3 carries the one field rule
-(`FIELD_ADMONITIONS`); the sidecars on disk are unchanged.
+footnotes render. The document tables carry no summary column (the
+summary is on the page). `lib/mdlayout.mjs` v1.4 carries the one
+field rule (`FIELD_ADMONITIONS`) and the case card is written in
+pymdown's Blocks syntax (`//// html | div.lrs-case` around a
+`/// admonition` — nesting by slash count); the sidecars on disk are
+unchanged.
 
 The tree is a rendering: nothing in it is edited by hand, the next
 run overwrites every page. Change a document's classification,

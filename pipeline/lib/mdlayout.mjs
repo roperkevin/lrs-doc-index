@@ -1,5 +1,5 @@
 /**
- * mdlayout.mjs v1.3 — the markdown layout kernel
+ * mdlayout.mjs v1.4 — the markdown layout kernel
  * (docs/design/Markdown_Layout_Plan.md §4.1, phase 2's inhabitant).
  *
  * The project writes ONE markdown dialect — GitHub-flavored: ATX
@@ -25,6 +25,16 @@
  *
  * Code spans and fenced blocks are never touched: `<` renders itself
  * there, and escaping would show the entity.
+ *
+ * v1.4 — Blocks syntax where blocks NEST
+ * (https://facelessuser.github.io/pymdown-extensions/extensions/blocks/).
+ * The `!!!` admonition form nests by indentation, which a reader of
+ * the generated markdown cannot see; the Blocks form nests by slash
+ * count — an outer block takes MORE slashes than the blocks inside
+ * it, and the nesting is in the margin. `block()` composes one, and
+ * the Expected Result admonition is written in that form, because it
+ * sits inside the wiki's case card (`//// html | div.lrs-case`).
+ * Flat blocks keep the `!!!` form.
  *
  * v1.3 — a field that IS a verdict. Of the case grammar's fields,
  * `Expected Result` is not one more definition: it is the pass
@@ -171,6 +181,30 @@ export function admonition(type, body = "", opts = {}) {
 }
 
 /**
+ * One Blocks-syntax block (pymdownx.blocks, v1.4):
+ *
+ *   block("admonition", "Body.", { title: "Expected result", options: { type: "success" } })
+ *     -> /// admonition | Expected result
+ *            type: success
+ *
+ *        Body.
+ *        ///
+ *
+ * `depth` is the number of slashes (3 or more): an outer block takes
+ * more slashes than the blocks it nests — `//// html | div.card`
+ * around a `/// admonition` — which is the extension's nesting rule.
+ * The body is NOT indented (unlike `!!!`), so what nests is visible
+ * in the margin, not in the whitespace.
+ */
+export function block(name, body = "", opts = {}) {
+  const { title, options = {}, depth = 3 } = opts;
+  const bar = "/".repeat(Math.max(3, depth));
+  const head = `${bar} ${name}${title ? ` | ${String(title).replace(/\n/g, " ")}` : ""}`;
+  const lines = Object.entries(options).map(([k, v]) => `    ${k}: ${v}`);
+  return [head, ...lines, "", String(body ?? "").trim(), bar].join("\n");
+}
+
+/**
  * GFM alerts -> admonition blocks. The top-level form the emitters
  * write (`> [!TYPE]` on its own line, then `> ` body lines), plus the
  * two things Material can say and GFM's own marker cannot: text after
@@ -277,7 +311,9 @@ export function fieldsToDefList(text) {
       if (!adm) { pending.push([term, body]); continue; }
       flush();
       sep();
-      out.push(admonition(adm[0], body.join("\n"), { title: adm[1] }));
+      // Blocks form (v1.4): it sits inside the wiki's case card, an
+      // outer block, so its nesting shows in the slash count
+      out.push(block("admonition", body.join("\n"), { title: adm[1], options: { type: adm[0] } }), "");
     }
     flush();
   }
