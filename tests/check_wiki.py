@@ -253,6 +253,18 @@ related: []
 ---
 
 Spike body.
+
+## Open Questions
+
+- Does the lock survive a reconnect?
+
+### Notes on the questions
+
+Asked at the 3.8 review.
+
+## Findings
+
+Answered elsewhere.
 """
 
 
@@ -335,6 +347,7 @@ def main():
     print("== render")
     r = run_job(cfg_path, [])
     check("render exit 0", r.returncode == 0, r.stderr[-600:])
+    check("the render says on stderr that wiki.siteUrl is empty (v2.7)", "wiki.siteUrl is empty" in r.stderr, r.stderr[-400:])
     summ = json.loads(r.stdout.splitlines()[0]) if r.stdout.strip() else {}
     check("summary JSON: 3 docs, aliases merged from the list backup, one media file, one missing",
           summ.get("docs") == 3 and summ.get("keyword_aliases_merged") == 2 and summ.get("media_files") == 1
@@ -404,7 +417,10 @@ def main():
     # the GHES shape: self-hosted runner, no setup-python, gh-pages branch deploy
     cfg2 = json.loads(json.dumps(cfg))
     cfg2["wiki"].update({"runsOn": "self-hosted", "setupPython": False, "deploy": "branch",
-                         "offline": True, "kindLayout": "table", "outDir": os.path.join(work, "wiki-ghes")})
+                         "offline": True, "kindLayout": "table", "outDir": os.path.join(work, "wiki-ghes"),
+                         # v2.7: a web remote (the History link), a site URL (no hint), a 30-day clock
+                         "repoUrl": "https://devtopia.example.com/kev/lrs-docs.git",
+                         "siteUrl": "https://pages.example.com/lrs-docs/", "staleDays": 30})
     cfg2_path = os.path.join(tmp, "config-ghes.json")
     with open(cfg2_path, "w") as f:
         json.dump(cfg2, f)
@@ -412,6 +428,21 @@ def main():
     check("render exit 0 (GHES shape)", r2.returncode == 0, r2.stderr[-600:])
     ycfg2 = open(os.path.join(work, "wiki-ghes", "mkdocs.yml"), encoding="utf-8").read()
     check("wiki.offline enables Material's offline plugin (v2.0)", "\n  - offline\n" in ycfg2, ycfg2)
+    ghes = lambda rel: re.sub(r"\A---\n(?:[^\n]*\n)*?---\n\n?", "", open(os.path.join(work, "wiki-ghes", "docs", rel), encoding="utf-8").read())
+    ghes_raw = lambda rel: open(os.path.join(work, "wiki-ghes", "docs", rel), encoding="utf-8").read()
+    check("v2.7, the GHES render: the History link beside Open (the web remote's commit history of the page), site_url, no site-URL hint",
+          "[:material-open-in-new: Open the .pptx](<https://esriis.sharepoint.com/sites/LocationReferencing/Shared%20Documents/General/Merge%20Plan.pptx>){ .md-button .lrs-open } "
+          "[:material-history: History](<https://devtopia.example.com/kev/lrs-docs/commits/wiki-main/docs/test-plans/4855-merge-plan.md>){ .md-button .lrs-open }" in ghes("test-plans/4855-merge-plan.md")
+          and 'site_url: "https://pages.example.com/lrs-docs/"' in ycfg2 and "wiki.siteUrl is empty" not in r2.stderr
+          and "History](<" not in raw("test-plans/4855-merge-plan.md"), (ghes("test-plans/4855-merge-plan.md")[:900], r2.stderr[-300:]))
+    check("v2.7, the GHES render: a 30-day clock makes every fixture document stale — the badge, the Recent page's section, the front page's line, the tooltip",
+          "status: stale" in ghes_raw("test-plans/4855-merge-plan.md").split("\n---\n")[0]
+          and "## Not edited in 30 days" in ghes("recent.md")
+          and "3 documents whose last edit is more than 30 days ago, oldest first" in ghes("recent.md")
+          and ghes("recent.md").split("## Not edited in 30 days")[1].find("[Old Spike]") < ghes("recent.md").split("## Not edited in 30 days")[1].find("[Conflict Prevention Story]")
+          and "3 documents have not been edited in 30 days — [see them](./recent.md#not-edited-in-30-days)." in ghes("index.md")
+          and '    stale: "Not edited in 30 days"' in ycfg2 and "      stale: material/clock-alert-outline" in ycfg2
+          and "navigation.instant.preview" not in ycfg2, ghes("recent.md")[-800:])
     # v2.4: wiki.kindLayout = table keeps the v2.0 kind table
     check("wiki.kindLayout = table keeps the sortable, filterable kind table",
           '<div class="doc-table filterable" markdown>' in open(os.path.join(work, "wiki-ghes", "docs", "test-plans", "index.md"), encoding="utf-8").read()
@@ -496,7 +527,11 @@ def main():
           os.path.isfile(report)
           and "test-plans/4855-merge-plan.md\t../media/4855-merge-plan/fig-02-slide-04-lock.png" in open(report, encoding="utf-8").read()
           and "media link(s) have no file in the library" in r.stderr, r.stderr[-400:])
-    check("a pipe in a body heading survives (escaped only inside table cells)", "## Notes | pipes" in plan, plan[-300:])
+    # v2.7: the Notes section is a note block titled with the heading,
+    # keeping the heading's id; the pipe survives in the title
+    check("a Notes section becomes a note block titled with the heading, its id kept (the pipe survives)",
+          "///// admonition | Notes | pipes\n    type: note\n    attrs: {id: notes-pipes}\n\n!!! danger\n" in plan
+          and "## Notes | pipes" not in plan and plan.rstrip().endswith("at ~5 minutes.\n/////"), plan[-900:])
     # v2.1: every TC case's content sits in a `//// html | div.lrs-case`
     # Blocks wrapper under its heading (one card), deck sections do
     # not; the Expected result is a three-slash block nested in it; a
@@ -506,7 +541,7 @@ def main():
     check("each TC case's content is wrapped for the card in a four-slash Blocks html block, up to the next heading",
           plan.count("//// html | div.lrs-case") == 3 and plan.count("\n////\n") == 5  # 3 cards + the folded metadata card + the head tabs
           and '### <span class="lrs-tc lrs-tc--p">TC-P01</span> <span class="lrs-tc-title">Merge preserves measures</span> { #tc-p01 }\n\n//// html | div.lrs-case\n\n/// html | div.lrs-group\n\nNormal Routes\n///' in plan
-          and "////\n\n## Notes | pipes" in plan and "lrs-case\" markdown" not in plan
+          and "////\n\n///// admonition | Notes | pipes" in plan and "lrs-case\" markdown" not in plan
           and "*(missing figure: Figure 2 — Lock dialog)*\n\n/// html | div.lrs-steps\n\n- [ ] 1." in plan, plan[-1800:])
     check("the checklist: a count line before the first case, a divider with its count where the group changes, the negative case's badge",
           '## Test Cases\n\n<p class="lrs-cases-count">3 cases · 2 positive · 1 negative</p>\n\n<div class="lrs-group-head">Normal Routes <small>1 case</small></div>\n\n### <span class="lrs-tc lrs-tc--p">TC-P01</span>' in plan
@@ -757,9 +792,9 @@ def main():
     cases = page("cases/index.md")
     check("case catalog: an anchored case links its own id, an unanchored one the slug",
           "3 cases." in cases
-          and "| 1 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01) |" in cases
-          and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures) |" in cases
-          and "#tc-n01) |" in cases, cases)
+          and "| 1 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01){ data-preview } |" in cases
+          and "| 2 | [TC-P01 — Merge preserves measures](../test-plans/4855-merge-plan.md#tc-p01-merge-preserves-measures){ data-preview } |" in cases
+          and "#tc-n01){ data-preview } |" in cases, cases)
     figs = page("figures/index.md")
     # v1.5: raw HTML, not markdown — markdown_captions would turn a
     # markdown image into a <figure>, emptying the anchor around it and
@@ -874,7 +909,8 @@ def main():
             json.dump(cfg_nomk, f)
         r = run_job(os.path.join(tmp, "config-nomk.json"), ["--build"])
         check("--build through an interpreter without mkdocs fails naming the pip install",
-              r.returncode != 0 and "-m pip install mkdocs-material" in r.stderr and "wiki.python" in r.stderr,
+              r.returncode != 0 and '-m pip install "mkdocs-material>=9.7,<10" "mkdocs<2"' in r.stderr
+              and "mkdocs-redirects" in r.stderr and "wiki.python" in r.stderr,
               r.stderr[-400:])
     else:
         print("  (mkdocs not installed for this interpreter — the strict-build legs are skipped here; CI runs them)")
@@ -894,6 +930,9 @@ def main():
           "| **Doc** | 9 · [Design Spike](./index.md) · [Pro](../surfaces/pro.md) |" in spike
           and "author [Someone Else](../people/someone-else.md)" in spike
           and "[route](../keywords/route.md)" in spike and "Spike body." in spike, spike)
+    check("a Questions section becomes a question block up to the next heading of its level, a nested Notes heading inside it",
+          "\n///// admonition | Open Questions\n    type: question\n    attrs: {id: open-questions}\n\n- Does the lock survive a reconnect?\n\n### Notes on the questions\n\nAsked at the 3.8 review.\n/////\n\n## Findings\n\nAnswered elsewhere." in spike
+          and "## Open Questions" not in spike, spike[-700:])
     recent = page("recent.md")
     # the row's FIRST link is the document (v2.0 added a Kind link after it)
     order = [m for m in re.findall(r"^\| \[([^\]]+)\]\(", recent, re.M)]
@@ -1084,7 +1123,7 @@ def main():
     # catalogs, the issue host, a person's roles, a keyword's neighbours
     unit = subprocess.run(
         ["node", "--input-type=module", "-e", """
-import { buildModel, issueHostOf, personRoles, coKeywords, pageStatus, NEW_DAYS } from "./pipeline/wiki.mjs";
+import { buildModel, issueHostOf, personRoles, coKeywords, pageStatus, NEW_DAYS, repoWebUrl, redirectsFor } from "./pipeline/wiki.mjs";
 const doc = (title, release, kw, extra = {}) => ({
   stem: title, content: "", kind: "Test Plan",
   meta: { title, keywords: kw, tools: [], products: [], target_release: release, author: "", pe: "", dev: "", ...extra },
@@ -1100,6 +1139,16 @@ const out = {
     pageStatus("2026-08-01 10:00", Date.parse("2026-08-01T10:00:00Z") + (NEW_DAYS + 1) * 86400000),
     pageStatus("2026-07-31T18:22:04Z", Date.parse("2026-08-14T00:00:00Z")),
     pageStatus("", Date.now()), pageStatus("not a date", Date.now())],
+  stale: [pageStatus("2026-08-01 10:00", Date.parse("2027-09-01T00:00:00Z")),
+    pageStatus("2026-08-01 10:00", Date.parse("2026-09-15T00:00:00Z"), 30),
+    pageStatus("2026-08-01 10:00", Date.parse("2026-09-15T00:00:00Z"))],
+  web: [repoWebUrl("https://devtopia.esri.com/kev/lrs-docs.git"), repoWebUrl("https://x.y/a/b/"), repoWebUrl("/tmp/remote.git"), repoWebUrl("")],
+  redirects: (() => {
+    const r = redirectsFor(
+      [{ page: "a/x.md", meta: { doc_id: 1 } }, { page: "a/y.md", meta: { doc_id: 2 } }, { page: "a/z.md", meta: {} }],
+      { "1": { page: "a/old.md", previous: ["a/older.md"] }, "2": { page: "a/x.md" }, "9": { page: "gone.md" } });
+    return { slugs: r.slugs, redirects: [...r.redirects] };
+  })(),
 };
 console.log(JSON.stringify(out));
 """], capture_output=True, text=True, cwd=REPO)
@@ -1109,9 +1158,47 @@ console.log(JSON.stringify(out));
           and u.get("host") == "https://devtopia.esri.com" and u.get("none") == ""
           and u.get("roles") == "author of 1 · PE of 1 · developer of 1"
           and u.get("co") == [{"value": "b", "n": 2}, {"value": "c", "n": 1}]
-          and u.get("status") == ["new", "", "new", "", ""],
+          and u.get("status") == ["new", "", "new", "", ""]
+          and u.get("stale") == ["stale", "stale", ""]
+          and u.get("web") == ["https://devtopia.esri.com/kev/lrs-docs", "https://x.y/a/b", "", ""]
+          and u.get("redirects") == {"slugs": {"1": {"page": "a/x.md", "previous": ["a/older.md", "a/old.md"]}, "2": {"page": "a/y.md"}},
+                                     "redirects": [["a/older.md", "a/x.md"], ["a/old.md", "a/x.md"]]},
           unit.stderr[-400:] or unit.stdout[-400:])
     issue = page("issues/arcgispro-ps-location-referencing-4855.md")
+    # ---- v2.7: coverage, cases by tool, previews, the pins -----------
+    print("== v2.7")
+    cov = page("coverage.md")
+    check("Coverage: the story with the plan that cites its issue, under its release, with the count line",
+          cov.startswith("# :material-shield-check: Coverage\n\nEvery user story with the test plans that cite one of its issues")
+          and '1 user story · 1 with a test plan · <span class="lrs-gap">0 without</span>. Type in the box' in cov
+          and re.search(r"^## (Release \[[^\]]+\]\(\./releases/[^)]+\)|No release) <small>1 story</small>$", cov, re.M)
+          and "| [Conflict Prevention Story](./user-stories/4855-conflict-story.md) | [ArcGISPro/ps-location-referencing#4855](./issues/arcgispro-ps-location-referencing-4855.md) | [Merge Events Test Plan](./test-plans/4855-merge-plan.md) |" in cov
+          and '<div class="filter-all" markdown>' in cov and "| Story | Issues | Test plans |" in cov
+          and raw("coverage.md").startswith('---\ntitle: "Coverage"\nicon: material/shield-check\nsearch:\n  exclude: true\n---\n'), cov)
+    bt = page("cases/by-tool.md")
+    check("Cases by tool: the page, its filter, and every tool either a section of cases or in the unmatched line",
+          bt.startswith("# :material-hammer-wrench: Cases by tool") and '<div class="filter-all" markdown>' in bt
+          and ("## [Merge Events](../tools/merge-events.md) <small>" in bt
+               or "Named by a document but by none of the cases: [Merge Events](../tools/merge-events.md)." in bt)
+          and ("{ data-preview } |" in bt or "0 cases under 0 tools" in bt)
+          and "[By plan](./index.md)" in bt, bt[:900])
+    check("the Test cases tab holds By tool and Coverage; the cases page links both; the front page and About name Coverage",
+          '  - Test cases:\n      - cases/index.md\n      - "By tool": cases/by-tool.md\n      - Coverage: coverage.md\n' in ycfg
+          and "[the same cases by the tool they exercise](./by-tool.md)" in cases and "[which stories have a plan](../coverage.md)" in cases
+          and ":material-shield-check:{ .lg .middle } [Coverage](./coverage.md)" in front
+          and "    Coverage\n    :   Every user story with the test plans" in about
+          and "the clock" in about, ycfg[-600:])
+    pages_yml = open(os.path.join(out, ".github", "workflows", "pages.yml"), encoding="utf-8").read()
+    wiki_readme = open(os.path.join(out, "README.md"), encoding="utf-8").read()
+    check("the toolchain is pinned in the workflow and the README: Material below 10, MkDocs below 2, the redirects plugin",
+          'python -m pip install "mkdocs-material>=9.7,<10" "mkdocs<2" mkdocs-glightbox mkdocs-panzoom-plugin markdown-captions mkdocs-redirects\n' in pages_yml
+          and '"mkdocs-material>=9.7,<10" "mkdocs<2"' in wiki_readme and "mkdocs-redirects" in wiki_readme, pages_yml)
+    check("mkdocs.yml: hover previews on, the stale badge with its tooltip, no redirects before any rename; extra.css prints the run sheet",
+          "navigation.instant.prefetch, navigation.instant.preview," in ycfg
+          and "      stale: material/clock-alert-outline" in ycfg and '    stale: "Not edited in a year"' in ycfg
+          and "redirect_maps" not in ycfg
+          and "@media print {" in css and ".md-typeset .lrs-case { page-break-inside: avoid; break-inside: avoid; }" in css
+          and ".md-typeset .lrs-gap {" in css and ".lrs-open ~ .lrs-open" in css, ycfg[-800:])
     check("issue page names the devtopia URL and both documents",
           "Issue: <https://devtopia.esri.com/ArcGISPro/ps-location-referencing/issues/4855>" in issue
           and "2 documents" in issue, issue)
@@ -1144,6 +1231,28 @@ console.log(JSON.stringify(out));
     r = run_job(cfg_path, ["--push"])
     log3 = subprocess.run(["git", "--git-dir", bare, "log", "--oneline", "wiki-main"], capture_output=True, text=True).stdout
     check("a changed sidecar makes one new commit", r.returncode == 0 and log3.count("\n") == 2 and "committed\":true" in r.stdout, log3)
+    # v2.7: a renamed source moves its page; slugs.json remembers the
+    # old page and mkdocs.yml redirects from it, run after run
+    os.rename(os.path.join(lib, "User Stories", "4855-conflict-story.md"),
+              os.path.join(lib, "User Stories", "4855-conflict-story-renamed.md"))
+    r = run_job(cfg_path, ["--build"] if have_mkdocs else [], {"LRSDOC_PYTHON": sys.executable})
+    slugs = json.load(open(os.path.join(out, "slugs.json"), encoding="utf-8")) if os.path.isfile(os.path.join(out, "slugs.json")) else {}
+    ycfg_r = open(os.path.join(out, "mkdocs.yml"), encoding="utf-8").read()
+    check("a renamed document keeps its old page as a redirect: slugs.json, mkdocs.yml, the summary",
+          r.returncode == 0 and '"redirects":1' in r.stdout
+          and slugs.get("42") == {"page": "user-stories/4855-conflict-story-renamed.md", "previous": ["user-stories/4855-conflict-story.md"]}
+          and slugs.get("17") == {"page": "test-plans/4855-merge-plan.md"}
+          and '  - redirects:\n      redirect_maps:\n        "user-stories/4855-conflict-story.md": "user-stories/4855-conflict-story-renamed.md"\n' in ycfg_r
+          and "[Conflict Prevention Story](../user-stories/4855-conflict-story-renamed.md)" in page("test-plans/4855-merge-plan.md"),
+          (r.stderr[-400:], slugs, ycfg_r[-500:]))
+    if have_mkdocs:
+        red_path = os.path.join(out, "site", "user-stories", "4855-conflict-story", "index.html")
+        red = open(red_path, encoding="utf-8").read() if os.path.isfile(red_path) else ""
+        check("the built site serves the old page as a redirect to the new one",
+              "4855-conflict-story-renamed" in red and ("refresh" in red.lower() or "location" in red.lower()), red[:600])
+    r = run_job(cfg_path, [])
+    slugs2 = json.load(open(os.path.join(out, "slugs.json"), encoding="utf-8"))
+    check("the redirect survives the next run", r.returncode == 0 and '"redirects":1' in r.stdout and slugs2 == slugs, r.stdout[:300])
     cfg["paths"]["sidecarLibrary"] = os.path.join(tmp, "nope")
     with open(cfg_path, "w") as f:
         json.dump(cfg, f)
