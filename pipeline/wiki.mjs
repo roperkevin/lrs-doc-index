@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * wiki.mjs v2.4 — the catalog as a wiki: every sidecar rendered into
+ * wiki.mjs v2.5 — the catalog as a wiki: every sidecar rendered into
  * an MkDocs site (one page per document, catalogs by kind / product /
  * release / person / keyword / issue, the test cases and figures,
  * what changed recently) and pushed to a git repository whose Pages
@@ -35,6 +35,47 @@
  * and media is copied under docs/media); the metadata table's values
  * become links into the catalogs; the related list links the pages;
  * every HTML comment (rel markers, src provenance) is dropped.
+ *
+ * v2.5 — the front page as a landing page (docs/design/
+ * Wiki_Home_Page.md: the Material reference and setup pages reviewed
+ * page by page, what was adopted and what was passed over). The page
+ * was a document — a paragraph, a tip box, one card, a table, eleven
+ * cards — and read like one. Now:
+ *
+ *   - A HERO between the tab bar and the article: the site's name,
+ *     what it is, a Search button that opens Material's own search
+ *     (`/` works too), an Every-document button, the search hint, and
+ *     the corpus in numbers — documents, test cases, figures, tools,
+ *     keywords, people — as tiles that link the pages they count. It
+ *     is a template override, `overrides/home.html`, the pattern
+ *     Material's own landing page uses (`custom_dir`, `extends
+ *     "main.html"`, the `tabs` block), chosen by `template: home.html`
+ *     in the page's front matter and fed by its `hero:` front matter;
+ *     the `content` block prints the body alone, so no "Home" H1. The
+ *     nav and the table of contents are hidden (`hide:`), so the
+ *     sections take the column.
+ *   - The corpus in CONTENT TABS (pymdown's Blocks `tab`, Material's
+ *     alternate style): by kind, the cards; by surface, product and
+ *     release, FACET BARS — a value, a bar scaled to the largest count,
+ *     the count — the corpus's shape at a glance, the top eight and
+ *     the way to the whole catalog.
+ *   - The recent edits as a FEED, not a table: the kind's icon, the
+ *     title, the kind and product in a lighter ink, the date at the
+ *     right. Eight rows need no header to sort.
+ *   - Browse (the seven catalogs) and More (test cases, figures,
+ *     recent, drafts, about) as two card grids, the counts on the
+ *     cards.
+ *   - Site-wide, from the same review: every index page carries
+ *     Material's `icon:` front matter, so the tab bar and the sidebar
+ *     wear the kind's and the catalog's icons; `theme.font: false`
+ *     with the system faces named in extra.css — an internal site
+ *     must not block on a Google Fonts request; instant prefetch and
+ *     footnote tooltips, free since Material 9.7 made every Insiders
+ *     feature public. Passed over, with the reasons in the design
+ *     note: social cards and optimize (Cairo and pngquant on a
+ *     self-hosted Windows runner), typeset and projects (deprecated),
+ *     privacy (build-time fetches under --strict), tags (Keywords
+ *     already is one), the blog.
  *
  * v2.4 — the ledger and the checklist (docs/design/
  * Wiki_Kind_Layout_Variations.md, the variations chosen). pymdown's
@@ -365,7 +406,7 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList, block } from "./
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v2.4";
+export const WIKI_VERSION = "v2.5";
 
 /** Days after its last edit a document counts as new (v2.1): the
  *  `new` badge in the sidebar. */
@@ -643,7 +684,7 @@ function draftPage(d, model) {
 
 function draftsIndex(drafts) {
   const p = "drafts/index.md";
-  const out = [...pageMeta({ exclude: true, title: "Test-plan drafts" }), h1("file-document-edit", "Test-plan drafts"), "",
+  const out = [...pageMeta({ exclude: true, title: "Test-plan drafts", icon: "file-document-edit" }), h1("file-document-edit", "Test-plan drafts"), "",
     `Machine-generated test-plan drafts, newest first. ${TABLE_HELP}`, "",
     admonition("draft",
       "Every draft here is **unreviewed**: every case and every [VERIFY] item still " +
@@ -975,9 +1016,12 @@ const sortable = (lines, { filter = false } = {}) =>
  *  query and pushed the documents down. `status` is Material's page
  *  status (`new`, `draft`), a badge beside the page in the nav;
  *  `title` pins the page title when the H1 wears an icon. */
-const pageMeta = ({ boost, exclude, status, title } = {}) => {
+const pageMeta = ({ boost, exclude, status, title, icon } = {}) => {
   const lines = [];
   if (title) lines.push(`title: ${JSON.stringify(String(title))}`);
+  // v2.5: Material's `icon:` front matter — the same icon the H1
+  // wears, beside the page in the sidebar and on its tab
+  if (icon) lines.push(`icon: material/${icon}`);
   if (exclude) lines.push("search:", "  exclude: true");
   else if (boost !== undefined) lines.push("search:", `  boost: ${boost}`);
   if (status) lines.push(`status: ${status}`);
@@ -1143,7 +1187,7 @@ function docPage(d, model) {
 
 function catalogIndex({ section, title, intro, label, icon }, groups, model) {
   const p = `${section}/index.md`;
-  const out = [...pageMeta({ exclude: true, title }), h1(icon, title), "", intro, "",
+  const out = [...pageMeta({ exclude: true, title, icon }), h1(icon, title), "", intro, "",
     `${groups.size} ${groups.size === 1 ? label.toLowerCase() : title.toLowerCase()}. ${TABLE_HELP}`, "",
     ...sortable([
       "| " + label + " | Documents |", "|---|---:|",
@@ -1268,7 +1312,7 @@ function kindIndex(kind, docs, model, kindFolders, opts = {}) {
   const dir = pageName(kindFolders[kind] || kind);
   const p = `${dir}/index.md`;
   const n = `${docs.length} document${docs.length === 1 ? "" : "s"}`;
-  const head = [...pageMeta({ exclude: true, title: kindFolders[kind] || kind }), h1(kindIcon(kind), kindFolders[kind] || kind), ""];
+  const head = [...pageMeta({ exclude: true, title: kindFolders[kind] || kind, icon: kindIcon(kind) }), h1(kindIcon(kind), kindFolders[kind] || kind), ""];
   if (opts.kindLayout === "table") {
     return [...head,
       `${n}, newest edit first. ${TABLE_HELP} ` +
@@ -1288,7 +1332,7 @@ function allDocumentsPage(model) {
   const p = "documents/index.md";
   const kinds = kindOrder(model.kinds, model.kindFolders)
     .map((k) => `${link(p, `${pageName(model.kindFolders[k] || k)}/index.md`, model.kindFolders[k] || k)} (${model.kinds.get(k).length})`);
-  return [...pageMeta({ exclude: true, title: "All documents" }), h1("file-document-multiple-outline", "All documents"), "",
+  return [...pageMeta({ exclude: true, title: "All documents", icon: "file-document-multiple-outline" }), h1("file-document-multiple-outline", "All documents"), "",
     `${model.docs.length} documents of every kind, newest edit first. ${TABLE_HELP}`, "",
     `By kind: ${kinds.join(" · ")}.`, "",
     docTable(p, model.docs, { kind: true, filter: true }), ""].join("\n");
@@ -1306,14 +1350,14 @@ const catalogCards = (fromPage, model) =>
 /** The Browse tab's own page (v2.0): the seven catalogs as cards. */
 function browsePage(model) {
   const p = "browse/index.md";
-  return [...pageMeta({ exclude: true, title: "Browse" }), h1("compass-outline", "Browse"), "",
+  return [...pageMeta({ exclude: true, title: "Browse", icon: "compass-outline" }), h1("compass-outline", "Browse"), "",
     "Seven ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here.", "",
     '<div class="grid cards" markdown>', "", ...catalogCards(p, model), "</div>", ""].join("\n");
 }
 
 function casesPage(model) {
   const p = "cases/index.md";
-  const out = [...pageMeta({ exclude: true, title: "Test cases" }), h1("clipboard-check", "Test cases"), "",
+  const out = [...pageMeta({ exclude: true, title: "Test cases", icon: "clipboard-check" }), h1("clipboard-check", "Test cases"), "",
     "Every test case the catalog's test plans carry, by plan (newest edit first); each row links the case's section on the plan's page.", ""];
   const at = out.length;
   // v2.0: one filter box for the whole page — a plan whose cases all
@@ -1338,7 +1382,7 @@ function casesPage(model) {
 
 function figuresPage(model) {
   const p = "figures/index.md";
-  const out = [...pageMeta({ exclude: true, title: "Figures" }), h1("image-multiple", "Figures"), "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
+  const out = [...pageMeta({ exclude: true, title: "Figures", icon: "image-multiple" }), h1("image-multiple", "Figures"), "", "Every image a sidecar body links, by document (newest edit first); each links the section it sits in.", ""];
   const at = out.length; // the count line goes here, once known
   let total = 0;
   for (const d of model.docs.slice().sort(byEdited)) {
@@ -1367,29 +1411,103 @@ function figuresPage(model) {
 function recentPage(model, n) {
   const p = "recent.md";
   const docs = model.docs.slice().sort(byEdited).slice(0, n);
-  return [...pageMeta({ exclude: true, title: "Recent" }), h1("history", "Recent"), "",
+  return [...pageMeta({ exclude: true, title: "Recent", icon: "history" }), h1("history", "Recent"), "",
     `The ${docs.length} most recently edited source documents. ${TABLE_HELP}`, "",
     docTable(p, docs, { kind: true, filter: true }), ""].join("\n");
 }
 
 const FRONT_RECENT = 8;
+/** Facet rows on the front page's By surface / product / release tabs. */
+const FRONT_FACETS = 8;
 
-/** The front page (v2.0 order): what the site is, how to find things,
- *  the kinds with the All-documents link, the latest edits inline, and
- *  the Browse cards. */
-function frontPage(model, kindFolders, opts, draftCount = 0) {
+/** A catalog as facet bars (v2.5): each value a row — the link, a bar
+ *  proportional to the largest count, the count — most documents
+ *  first, at most `max` rows, then the way to the whole catalog. The
+ *  bar's width rides on a CSS variable attr_list writes onto the
+ *  element, so the stylesheet draws it with no script. */
+function facetRows(fromPage, section, groups, model, max = FRONT_FACETS) {
+  const rows = [...groups].map(([value, ds]) => ({ value, n: ds.length }))
+    .sort((a, b) => b.n - a.n || a.value.localeCompare(b.value, "en", { numeric: true, sensitivity: "base" }));
+  const top = rows.slice(0, max);
+  const most = top[0]?.n || 1;
+  const out = ['<div class="lrs-facets" markdown>', ""];
+  for (const r of top) {
+    const w = Math.max(4, Math.round((r.n / most) * 100));
+    out.push(`- ${link(fromPage, catalogPage(section, r.value), r.value)} <i class="lrs-facets__bar" style="--lrs-w: ${w}%"></i> <b>${r.n}</b>`);
+  }
+  out.push("");
+  const c = CATALOGS.find((x) => x.section === section);
+  const more = rows.length > top.length ? `${rows.length - top.length} more — ` : "";
+  out.push(`${more}${link(fromPage, `${section}/index.md`, `all ${rows.length} ${rows.length === 1 ? c.label.toLowerCase() : c.title.toLowerCase()}`)}`, "", "</div>");
+  return out.join("\n");
+}
+
+/** The recent-edits feed (v2.5): a row per document — the kind's icon,
+ *  the title, the kind and product in a lighter ink, the date at the
+ *  right. A list, not a table: eight rows need no header to sort. */
+function recentFeed(fromPage, docs, model) {
+  const out = ['<div class="lrs-feed" markdown>', ""];
+  for (const d of docs) {
+    const m = d.meta;
+    const facts = [
+      link(fromPage, `${d.kindDir}/index.md`, d.kind),
+      m.products.length ? cell(m.products.join(" · ")) : "",
+      m.target_release ? `release ${cell(m.target_release)}` : "",
+    ].filter(Boolean).join(" · ");
+    const when = cell(m.last_edited).slice(0, 10);
+    out.push(`- :material-${kindIcon(d.kind)}:{ .lrs-feed__icon } ${link(fromPage, d.page, m.title || d.stem)} <small>${facts}</small>${when ? ` *${when}*{ .lrs-when }` : ""}`);
+  }
+  out.push("", "</div>");
+  return out.join("\n");
+}
+
+/** The front page (v2.5): a landing page, not a document. The hero —
+ *  the title, what the site is, the search button, the corpus in
+ *  numbers — is `overrides/home.html` (Material's template override,
+ *  `template: home.html` in the front matter), fed by the `hero:`
+ *  front matter this function writes; the nav and the table of
+ *  contents are hidden so the page spans the column. Under it, in
+ *  markdown: the corpus by kind (cards), by surface, product and
+ *  release (facet bars) in content tabs; the latest edits as a feed;
+ *  the catalogs and the site's other pages as cards. */
+function frontPage(model, kindFolders, opts, drafts = []) {
   const p = "index.md";
-  const out = [...pageMeta({ exclude: true }), `# ${mdEscape(opts.siteName)}`, "",
-    `${model.docs.length} documents from the team library, one page each, rendered ${fmtDate(new Date().toISOString())} from the catalog's sidecars. Every page carries the document's metadata, its summary, its related documents and the extracted text; the Source row links the original file.`, "",
-    admonition("tip",
-      "Search (press `/`) splits an id into its parts, so `TC-P01`, " +
-      "`ps-location-referencing#4855` and `merge-events` each find the pages that carry them. " +
-      "Every large table on the site filters as you type and sorts on a header click; " +
-      "the tabs across the top are the site's map, and the sidebar lists the pages of the tab you are in.",
-      { title: "Finding a document" }), "",
+  const y = (s) => JSON.stringify(String(s));
+  const plans = model.kinds.get("Test Plan") || [];
+  const nCases = plans.reduce((n, d) => n + planCases(d.body).length, 0);
+  const nFigures = model.docs.reduce((n, d) => n + bodyFigures(d.body).filter((f) => !d.mediaMissing?.has(f.link)).length, 0);
+  // the hero's links are final URLs, not markdown links: the template
+  // passes them through MkDocs' `url` filter, which makes them
+  // relative to the page — `.html` under `offline` (use_directory_urls off)
+  const href = (dir) => (opts.offline ? `${dir}/index.html` : `${dir}/`);
+  // a count of nothing is not a fact worth a tile
+  const stats = [
+    ["documents", model.docs.length, href("documents")],
+    ["test cases", nCases, href("cases")],
+    ["figures", nFigures, href("figures")],
+    ["tools", model.tools.size, href("tools")],
+    ["keywords", model.keywords.size, href("keywords")],
+    ["people", model.people.size, href("people")],
+  ].filter(([, n]) => n > 0);
+  const kindsNamed = kindOrder(model.kinds, kindFolders).slice(0, 3).map((k) => (kindFolders[k] || k).toLowerCase());
+  const front = ["---",
+    "template: home.html",
+    "hide: [navigation, toc]",
+    "search:", "  exclude: true",
+    "hero:",
+    `  eyebrow: ${y(`Rendered ${fmtDate(new Date().toISOString())} from the LRS Doc Index catalog`)}`,
+    `  lead: ${y(`${model.docs.length} documents from the team library — ${kindsNamed.join(", ")}${model.kinds.size > 3 ? " and more" : ""} — one page each. Every page carries the document's facts, its summary, its related documents and the extracted text, and links the original file.`)}`,
+    `  hint: ${y("An id is found by its parts: TC-P01, ps-location-referencing#4855 and merge-events each find the pages that carry them.")}`,
+    `  documents: ${y(href("documents"))}`,
+    "  stats:",
+    ...stats.map(([label, n, h]) => `    - { label: ${y(label)}, n: ${n}, href: ${y(h)} }`),
+    "---", ""];
+  const out = [...front,
     "## Documents", "",
     `By kind — or ${link(p, "documents/index.md", "every document in one table")}.`, "",
-    // v2.1: a card per kind (icon, count, newest edit), like Browse
+    // v2.1: a card per kind (icon, count, newest edit), like Browse;
+    // v2.5: in the first of four content tabs (pymdown's Blocks tab)
+    "/// tab | By kind", "",
     '<div class="grid cards lrs-kinds" markdown>', ""];
   for (const kind of kindOrder(model.kinds, kindFolders)) {
     const ds = model.kinds.get(kind);
@@ -1397,28 +1515,37 @@ function frontPage(model, kindFolders, opts, draftCount = 0) {
     out.push(...card(p, kindIcon(kind), `${pageName(kindFolders[kind] || kind)}/index.md`, kindFolders[kind] || kind, ds.length,
       `${ds.length} document${ds.length === 1 ? "" : "s"}${newest ? `, newest edit ${newest}` : ""}.`));
   }
-  out.push("</div>");
+  out.push("</div>", "", "///", "");
+  for (const [section, key, title] of [["surfaces", "surfaces", "By surface"], ["products", "products", "By product"], ["releases", "releases", "By release"]]) {
+    if (!model[key].size) continue;
+    out.push(`/// tab | ${title}`, "", facetRows(p, section, model[key], model), "", "///", "");
+  }
   const recent = model.docs.slice().sort(byEdited).slice(0, FRONT_RECENT);
   if (recent.length) {
-    out.push("", "## Recently edited", "",
+    out.push("## Recently edited", "",
       `The ${recent.length} most recently edited source documents; ${link(p, "recent.md", "the Recent page")} goes further back.`, "",
-      docTable(p, recent, { kind: true }));
+      recentFeed(p, recent, model), "");
   }
-  out.push("", "## Browse", "", '<div class="grid cards" markdown>', "",
+  out.push("## Browse", "",
+    "Seven catalogs over the same documents — every value is a page listing the documents that carry it.", "",
+    '<div class="grid cards" markdown>', "",
     ...catalogCards(p, model),
-    ...card(p, "clipboard-check", "cases/index.md", "Test cases", null, "Every test case the test plans carry, by plan, linking its section."),
-    ...card(p, "image-multiple", "figures/index.md", "Figures", null, "Every figure the bodies carry, by document."),
+    "</div>", "",
+    "## More", "", '<div class="grid cards" markdown>', "",
+    ...card(p, "clipboard-check", "cases/index.md", "Test cases", nCases || null, "Every test case the test plans carry, by plan, linking its section."),
+    ...card(p, "image-multiple", "figures/index.md", "Figures", nFigures || null, "Every figure the bodies carry, by document."),
     ...card(p, "history", "recent.md", "Recent", null, "The most recently edited source documents."),
-    ...(draftCount ? card(p, "file-document-edit", "drafts/index.md", "Test-plan drafts", draftCount, "Machine-generated, **unreviewed** — not catalog documents.") : []),
+    ...(drafts.length ? card(p, "file-document-edit", "drafts/index.md", "Test-plan drafts", drafts.length, "Machine-generated, **unreviewed** — not catalog documents.") : []),
     ...card(p, "information", "about.md", "About", null, "What this site is, what it is not, and where each page's content comes from."),
     "</div>", "");
   return out.join("\n");
 }
 
 function aboutPage(model, opts) {
-  return [...pageMeta({ title: "About this wiki" }), h1("information", "About this wiki"), "",
+  return [...pageMeta({ title: "About this wiki", icon: "information" }), h1("information", "About this wiki"), "",
     // v2.0: the site's map, for the reader who wants it spelled out
     admonition("note", defList([
+      ["The front page", "The corpus in numbers — every tile links the page it counts — a Search button (or `/`), the documents by kind, surface, product and release in tabs, the latest edits, and the catalogs as cards."],
       ["Documents", "One tab, one table of everything, and a section per kind — the section's header opens the kind's ledger: its documents by surface, then by the tools they name, each row opening to the facts and the summary. A document page links its original file, its catalog values and its related documents."],
       // v2.1: what the blocks on a document page are, and the badges
       ["A document page", "The facts strip — the tools as pills, the Open link, kind · surface · product · release · edited — with the full metadata table folded under Details; the summary; the related documents (fold them away with the chevron); the Esri documentation links; then, under the rule, the extracted text — the test cases as a checklist: the id a badge (green positive, amber negative) beside the title, the steps, the Expected result the green line, a group a divider over its cases."],
@@ -1512,6 +1639,15 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     "docs_dir: docs",
     "theme:",
     "  name: material",
+    // v2.5: the front page's hero is a template override
+    // (overrides/home.html, `template: home.html` in its front matter)
+    "  custom_dir: overrides",
+    // v2.5: no Google Fonts. The site is served on the internal
+    // network, where the fonts stylesheet is a render-blocking request
+    // to a host the reader may have no route to; extra.css names the
+    // system faces instead (Segoe UI on the Windows machines that read
+    // this site)
+    "  font: false",
     "  icon:",
     "    logo: material/book-open-page-variant",
     // v2.1: the page-status badges (Material's `status:` front
@@ -1523,8 +1659,10 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // heading); the rest as v1.4. v2.1: instant navigation (the site
     // behaves like one page; `tables.js` already re-runs on Material's
     // document$) with its progress bar — not under `offline`, where a
-    // file:// page cannot be fetched — and Material's tooltips
-    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, toc.follow]`,
+    // file:// page cannot be fetched — and Material's tooltips.
+    // v2.5: prefetch on hover and footnote tooltips — Insiders features
+    // until Material 9.7 made every one of them free
+    `  features: [navigation.tabs, navigation.tabs.sticky, navigation.indexes, navigation.prune, navigation.top, navigation.tracking, navigation.footer, ${opts.offline ? "" : "navigation.instant, navigation.instant.progress, navigation.instant.prefetch, "}search.suggest, search.highlight, search.share, content.tabs.link, content.code.copy, content.tooltips, content.footnote.tooltips, toc.follow]`,
     // v2.1: the site's own colours (extra.css defines the variables
     // `primary: custom` leaves to the site, for both schemes)
     "  palette:",
@@ -1596,6 +1734,10 @@ function mkdocsYml(model, kindFolders, opts, drafts = []) {
     // v2.4: the ledger's sections and rows, the document page's folded
     // metadata table
     "  - pymdownx.blocks.details",
+    // v2.5: the front page's content tabs (Material's alternate style,
+    // the one its content-tabs reference documents)
+    "  - pymdownx.blocks.tab:",
+    "      alternate_style: true",
     "  - pymdownx.tasklist:",
     "      custom_checkbox: true",
     "  - pymdownx.emoji:",
@@ -1825,7 +1967,25 @@ const TABLES_JS = `/* generated by pipeline/wiki.mjs — overwritten on every re
     });
   }
 
+  /* ---- v2.5: the front page's hero -----------------------------------
+     The Search button opens the theme's own search: check its toggle
+     (the drawer on a phone) and focus the input (the overlay on a
+     desktop), the same two things the header's icon does. */
+  function heroSearch() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-lrs-search]"), function (btn) {
+      if (btn.dataset.lrsBound) return;
+      btn.dataset.lrsBound = "1";
+      btn.addEventListener("click", function () {
+        var toggle = document.querySelector('[data-md-toggle="search"]');
+        var input = document.querySelector(".md-search__input");
+        if (toggle) toggle.checked = true;
+        if (input) { input.focus(); input.select(); }
+      });
+    });
+  }
+
   function scan() {
+    heroSearch();
     document.querySelectorAll(SELECTOR).forEach(makeSortable);
     document.querySelectorAll(".filterable").forEach(makeFilterable);
     document.querySelectorAll(".filter-all").forEach(makeFilterAll);
@@ -1861,6 +2021,10 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   --md-accent-bg-color: #ffffff;
   --md-accent-bg-color--light: #ffffffb3;
   --lrs-radius: 0.4rem;
+  /* v2.5: the system faces (theme.font is off — no Google Fonts request
+     on an internal network); Material's own fallback stack follows */
+  --md-text-font: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, Helvetica, Arial, sans-serif;
+  --md-code-font: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", Menlo, "Roboto Mono", monospace;
   --lrs-draft: #d97706;
   --lrs-related: #5b6b7f;
   --lrs-docs: #6d4fc2;
@@ -2256,6 +2420,161 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
 }
 .md-typeset .lrs-facts p { margin: 0.2em 0; }
 
+/* the front page (v2.5): a landing page. The hero spans the viewport
+   under the tab bar — the site's blue, deepening to the right — with
+   the corpus in numbers as tiles beside the words; the nav and the
+   table of contents are hidden (front matter), so the sections under
+   it take the whole column. */
+.lrs-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 2.6rem 0 2.2rem;
+  color: #fff;
+  background:
+    radial-gradient(60rem 22rem at 100% 0%, color-mix(in srgb, var(--md-accent-fg-color) 55%, transparent), transparent 60%),
+    linear-gradient(120deg, var(--md-primary-fg-color--dark), var(--md-primary-fg-color) 70%);
+}
+.lrs-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.14) 1px, transparent 1px);
+  background-size: 1.4rem 1.4rem;
+  mask-image: linear-gradient(90deg, transparent 35%, #000);
+  -webkit-mask-image: linear-gradient(90deg, transparent 35%, #000);
+}
+.lrs-hero__grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: 2rem 3rem;
+  align-items: center;
+  padding: 0 1.2rem;
+}
+.lrs-hero__eyebrow { margin: 0 0 0.6em; color: rgba(255, 255, 255, 0.72); font-size: 0.64rem; letter-spacing: 0.02em; }
+.lrs-hero__title { margin: 0 0 0.4em; color: #fff; font-size: 2.2rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; }
+.lrs-hero__lead { margin: 0 0 1.2em; max-width: 34rem; color: rgba(255, 255, 255, 0.88); font-size: 0.82rem; line-height: 1.55; }
+.lrs-hero__actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.lrs-hero .md-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  padding: 0.55em 1.1em;
+  border-color: rgba(255, 255, 255, 0.55);
+  border-radius: var(--lrs-radius);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.lrs-hero .md-button svg { width: 1.1em; height: 1.1em; fill: currentColor; }
+.lrs-hero .md-button--primary { background: #fff; border-color: #fff; color: var(--md-primary-fg-color--dark); }
+.lrs-hero .md-button--primary:hover { background: var(--md-accent-fg-color); border-color: var(--md-accent-fg-color); color: #fff; }
+.lrs-hero .md-button:not(.md-button--primary):hover { background: rgba(255, 255, 255, 0.14); border-color: #fff; color: #fff; }
+.lrs-hero kbd {
+  margin-left: 0.2em;
+  padding: 0.05em 0.4em;
+  border: 1px solid currentColor;
+  border-radius: 0.25em;
+  font: inherit;
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+.lrs-hero__hint { margin: 1.2em 0 0; max-width: 34rem; color: rgba(255, 255, 255, 0.7); font-size: 0.64rem; line-height: 1.5; }
+.lrs-hero__stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.lrs-hero__stats li { margin: 0; }
+.lrs-hero__stats a {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1em;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: var(--lrs-radius);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lrs-hero__stats a:hover { background: rgba(255, 255, 255, 0.2); border-color: rgba(255, 255, 255, 0.5); color: #fff; }
+.lrs-hero__stats strong { font-size: 1.3rem; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.lrs-hero__stats span { color: rgba(255, 255, 255, 0.75); font-size: 0.62rem; }
+[data-md-color-scheme="slate"] .lrs-hero {
+  background:
+    radial-gradient(60rem 22rem at 100% 0%, color-mix(in srgb, var(--md-accent-fg-color) 30%, transparent), transparent 60%),
+    linear-gradient(120deg, #0f1f33, #1a3a5c 70%);
+}
+@media screen and (max-width: 59.9em) {
+  .lrs-hero { padding: 1.8rem 0 1.6rem; }
+  .lrs-hero__grid { grid-template-columns: minmax(0, 1fr); gap: 1.4rem; }
+  .lrs-hero__title { font-size: 1.7rem; }
+}
+@media screen and (max-width: 44.9em) {
+  .lrs-hero__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* the sections under the hero: wider gaps, the H2 a section title
+   without the rule the document pages use */
+.lrs-home > h2 { margin-top: 2em; border-bottom: 0; font-weight: 600; }
+.lrs-home > h2:first-child { margin-top: 0.6em; }
+.md-typeset .lrs-home .grid.cards > ul > li > p:first-child .twemoji { font-size: 1.4em; }
+
+/* content tabs (v2.5, Material's alternate style): the labels in the
+   site's ink, the panel flush with the page */
+.md-typeset .lrs-home .tabbed-set { margin: 0.6em 0 1.4em; }
+.md-typeset .lrs-home .tabbed-labels > label { font-size: 0.7rem; font-weight: 600; }
+.md-typeset .lrs-home .tabbed-content { padding-top: 0.6em; }
+
+/* facet bars (v2.5): a value, a bar scaled to the largest count, the
+   count — the corpus's shape at a glance */
+.md-typeset .lrs-facets > ul { margin: 0; padding: 0; list-style: none; }
+.md-typeset .lrs-facets > ul > li {
+  display: grid;
+  grid-template-columns: minmax(8rem, 16rem) minmax(0, 1fr) 3rem;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 0 0 0.35em;
+  padding: 0;
+  font-size: 0.74rem;
+}
+.md-typeset .lrs-facets__bar {
+  display: block;
+  height: 0.55rem;
+  border-radius: 0.3rem;
+  background: linear-gradient(90deg, var(--md-primary-fg-color), var(--md-accent-fg-color));
+  width: var(--lrs-w, 0%);
+  opacity: 0.85;
+}
+.md-typeset .lrs-facets > ul > li > b { text-align: right; font-variant-numeric: tabular-nums; }
+.md-typeset .lrs-facets > p { margin: 0.6em 0 0; color: var(--md-default-fg-color--light); font-size: 0.68rem; }
+
+/* the recent-edits feed (v2.5): a row per document — the kind's icon,
+   the title, the facts in a lighter ink, the date at the right */
+.md-typeset .lrs-feed > ul { margin: 0; padding: 0; list-style: none; }
+.md-typeset .lrs-feed > ul > li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2em 0.6em;
+  margin: 0;
+  padding: 0.5em 0.2em;
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+  font-size: 0.76rem;
+}
+.md-typeset .lrs-feed > ul > li:first-child { border-top: 1px solid var(--md-default-fg-color--lightest); }
+.md-typeset .lrs-feed__icon { color: var(--md-primary-fg-color); font-size: 1.25em; vertical-align: -0.2em; }
+.md-typeset .lrs-feed > ul > li > a { font-weight: 500; }
+.md-typeset .lrs-feed > ul > li > small { flex: 1 1 auto; color: var(--md-default-fg-color--light); font-size: 0.66rem; }
+.md-typeset .lrs-feed > ul > li > .lrs-when { margin-left: auto; font-size: 0.66rem; }
+
 /* the cards (the front page, Browse, the figure catalog) */
 .md-typeset .grid.cards > ul > li {
   border-radius: var(--lrs-radius);
@@ -2275,6 +2594,58 @@ const EXTRA_CSS = `/* generated by pipeline/wiki.mjs — overwritten on every re
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: var(--lrs-radius);
 }
+`;
+
+/** overrides/home.html (v2.5): the front page's hero, as a Material
+ *  template override — https://squidfunk.github.io/mkdocs-material/customization/
+ *  (`custom_dir`, `extends "main.html"`, the `tabs` and `content`
+ *  blocks — the pattern Material's own landing page uses). The hero
+ *  sits between the tab bar and the article: the site's name, what it
+ *  is, a button that opens the theme's own search, the corpus in
+ *  numbers; everything it says comes from the page's `hero:` front
+ *  matter, which `frontPage` writes. The `content` block prints the
+ *  page body alone — Material would otherwise add an H1 of the nav
+ *  title ("Home") above it. */
+const HOME_HTML = `{#- generated by pipeline/wiki.mjs — overwritten on every render -#}
+{% extends "main.html" %}
+
+{% block tabs %}
+  {{ super() }}
+  {% set hero = page.meta.hero or {} %}
+  <section class="lrs-hero">
+    <div class="md-grid lrs-hero__grid">
+      <div class="lrs-hero__body">
+        {% if hero.eyebrow %}<p class="lrs-hero__eyebrow">{{ hero.eyebrow }}</p>{% endif %}
+        <h1 class="lrs-hero__title">{{ config.site_name }}</h1>
+        {% if hero.lead %}<p class="lrs-hero__lead">{{ hero.lead }}</p>{% endif %}
+        <div class="lrs-hero__actions">
+          <button type="button" class="md-button md-button--primary lrs-hero__search" data-lrs-search>
+            {% include ".icons/material/magnify.svg" %} Search the catalog <kbd>/</kbd>
+          </button>
+          {% if hero.documents %}
+          <a class="md-button lrs-hero__all" href="{{ hero.documents | url }}">
+            {% include ".icons/material/file-document-multiple-outline.svg" %} Every document
+          </a>
+          {% endif %}
+        </div>
+        {% if hero.hint %}<p class="lrs-hero__hint">{{ hero.hint }}</p>{% endif %}
+      </div>
+      {% if hero.stats %}
+      <ul class="lrs-hero__stats">
+        {% for s in hero.stats %}
+        <li><a href="{{ s.href | url }}"><strong>{{ s.n }}</strong><span>{{ s.label }}</span></a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+  </section>
+{% endblock %}
+
+{% block content %}
+  <div class="lrs-home">
+    {{ page.content }}
+  </div>
+{% endblock %}
 `;
 
 /* The workflow the wiki repository carries. BRANCH and RUNS_ON are
@@ -2501,8 +2872,9 @@ export function renderSite(cfg, libDir, workDir, outDir, prog = noProgress) {
   put("figures/index.md", figuresPage(model));
   put("recent.md", recentPage(model, opts.recent));
   put("about.md", aboutPage(model, opts));
-  put("index.md", frontPage(model, kindFolders, opts, drafts.length));
+  put("index.md", frontPage(model, kindFolders, opts, drafts));
   write(docsDir, "stylesheets/extra.css", EXTRA_CSS);
+  write(outDir, "overrides/home.html", HOME_HTML);
   write(docsDir, "javascripts/tables.js", TABLES_JS);
   write(outDir, "mkdocs.yml", mkdocsYml(model, kindFolders, opts, drafts));
   write(outDir, ".github/workflows/pages.yml", pagesWorkflow(opts));

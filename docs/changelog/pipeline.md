@@ -1,5 +1,52 @@
 # Local sweep — release notes
 
+## wiki v2.5 (2026-09-08 — the front page as a landing page)
+
+The Material for MkDocs reference and setup pages reviewed page by
+page (`docs/design/Wiki_Home_Page.md` — every page, what it offers,
+adopted or passed over and why). The front page was a document: a
+paragraph, a tip box, one card, a table, eleven cards. Now:
+
+- **A hero** between the tab bar and the article — the site's name,
+  what it is, a Search button that opens Material's own search (`/`
+  works too), an Every-document button, the search hint, and the
+  corpus in numbers (documents, test cases, figures, tools, keywords,
+  people; a count of nothing gets no tile), each tile linking the
+  page it counts. It is a template override, `overrides/home.html`,
+  the pattern Material's own landing page uses (`theme.custom_dir`,
+  `extends "main.html"`, the `tabs` block), chosen by `template:
+  home.html` in the page's front matter and fed by its `hero:` front
+  matter; the `content` block prints the body alone (no "Home" H1);
+  `hide: [navigation, toc]` gives the sections the whole column. The
+  hero's links are final URLs through MkDocs' `url` filter — `.html`
+  under `wiki.offline`.
+- **The corpus in content tabs** (pymdown's Blocks `tab`, Material's
+  alternate style): by kind, the cards; by surface, by product, by
+  release, facet bars — a value, a bar scaled to the largest count,
+  the count; the top eight and the way to the whole catalog.
+- **The recent edits as a feed**, not a table: the kind's icon, the
+  title, the kind and product in a lighter ink, the date at the right.
+- **Browse and More** as two card grids — the seven catalogs, then
+  test cases (with its count), figures, recent, drafts, about.
+- **Site-wide, from the same review:** every index page carries
+  Material's `icon:` front matter, so the tab bar and the sidebar wear
+  the kinds' and the catalogs' icons; `theme.font: false` with the
+  system faces named in extra.css (Segoe UI, Cascadia) — an internal
+  site must not block on a Google Fonts request; instant prefetch and
+  footnote tooltips, free since Material 9.7 made every Insiders
+  feature public. Passed over: social cards and optimize (Cairo and
+  pngquant on a self-hosted Windows runner), typeset and projects
+  (deprecated in 9.7), privacy (build-time fetches under `--strict`),
+  tags (Keywords already is one), the blog, git-date plugins (the
+  dates are the sidecars').
+
+Gates: `check_wiki.py` — the hero front matter, the template file
+and its wiring, the tabs and the facet bars, the feed, the icon front
+matter, the theme knobs, and — built — the hero between the tab bar
+and the article with its stats as links, no Home H1, the hidden
+sidebars, the tab icons, no Google Fonts: 131 checks, strict build
+included.
+
 ## wiki v2.4 (2026-09-08 — the ledger and the checklist; mdlayout v1.6)
 
 The two layouts chosen from `docs/design/Wiki_Kind_Layout_Variations.md`,
