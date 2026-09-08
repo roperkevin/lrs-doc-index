@@ -10,6 +10,18 @@
     "surface": {
       "type": "string"
     },
+    "surfaces": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "summary": {
       "type": "string"
     },
@@ -39,6 +51,8 @@
     "title",
     "docKind",
     "surface",
+    "surfaces",
+    "products",
     "summary",
     "pe",
     "dev",

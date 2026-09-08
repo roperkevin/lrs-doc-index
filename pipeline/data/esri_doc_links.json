@@ -1,5 +1,5 @@
 {
-  "$comment": "Esri documentation links rendered into each sidecar's 'Product documentation' section. Three parts: products (keyed by the EXACT canonical Products names) render product-level links; tools (keyed by tool name, case-insensitive) render DIRECT deep links for a doc's detected tools; searchTemplate renders a search link for any detected tool NOT in the tools map ({q} = URL-encoded tool name) — so coverage is complete on day one and any frequently-hit tool can be upgraded to a direct link by adding one line here. Edit freely: git pull deploys, and a sweep --rerank refreshes every existing sidecar. The doc.esri.com URLs were supplied/verified by the owner 2026-08-15; the esri.com overview URLs remain unverified.",
+  "$comment": "Esri documentation links rendered into each sidecar's 'Product documentation' section. Three parts: products (keyed by the EXACT canonical Products names: Roads & Highways, Pipeline Referencing, Utility Network, Address Data Management) render product-level links; tools (keyed by tool name, case-insensitive) render DIRECT deep links for a doc's detected tools; searchTemplate renders a search link for any detected tool NOT in the tools map ({q} = URL-encoded tool name) — so coverage is complete on day one and any frequently-hit tool can be upgraded to a direct link by adding one line here. Edit freely: git pull deploys, and a sweep --rerank refreshes every existing sidecar. The doc.esri.com URLs were supplied/verified by the owner 2026-08-15; the esri.com overview URLs remain unverified.",
   "searchTemplate": "https://www.google.com/search?q=%22{q}%22+site%3Adoc.esri.com",
   "$probeComment": "probeTemplates: candidate URL patterns for tool deep links ({slug} = kebab-cased tool name). At index/rerank time the sweep fetches candidates — product-matched folders first — and keeps the first HTTP 200 as a DIRECT link; hits and all-404 misses cache in workDir/doc-links-cache.json (misses re-probe after 30 days). Disable with sweep.probeDocLinks: false.",
   "probeTemplates": [
@@ -21,6 +21,10 @@
     ],
     "Utility Network": [
       { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-utility-network/overview" }
+    ],
+    "Address Data Management": [
+      { "title": "Address Data Management help", "url": "https://doc.esri.com/en/arcgis-pro/latest/help/production/address-data-management/" },
+      { "title": "Product overview", "url": "https://www.esri.com/en-us/arcgis/products/arcgis-address-data-management/overview" }
     ]
   },
   "tools": {

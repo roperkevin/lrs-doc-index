@@ -37,6 +37,7 @@ const KIND_WORDS = {
 const PRODUCT_ACRONYM = {
   "roads & highways": "rh", "roads and highways": "rh",
   "pipeline referencing": "apr", "utility network": "un",
+  "address data management": "adm",
 };
 
 let defaultAbbr = null;
@@ -141,7 +142,7 @@ export function primaryIssue(ids, fileName) {
   return rest.length ? Number(rest[0].number) : 0;
 }
 
-/** Product acronym qualifier ("rh", "apr", "rh-apr"), "" when none. */
+/** Product acronym qualifier ("rh", "apr", "adm", "rh-apr"), "" when none. */
 export function productTag(products) {
   const tags = [];
   for (const p of products || []) {

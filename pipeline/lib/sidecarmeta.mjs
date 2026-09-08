@@ -24,9 +24,17 @@
  * `Status` (what 3.0 said in prose, or not at all) and `Generated`,
  * which carries a machine-authored file's provenance.
  *
+ * Sweep v1.66 adds one optional row, `Surfaces`, right after `Doc`:
+ * every surface the document covers (primary first — the same value
+ * the Doc row carries), printed only when there is more than one, so a
+ * plan that drives a Pro tool and verifies through REST reads
+ * `Pro · REST`. `readMeta().surfaces` is that list, or `[surface]`
+ * when the row is absent, so a consumer can always filter by it.
+ *
  *   | Field | Value |
  *   | --- | --- |
  *   | **Doc** | 564 · Test Plan · Pro |
+ *   | **Surfaces** | Pro · REST |
  *   | **Status** | Indexed |
  *   | **Product** | Pipeline Referencing |
  *   | **Issues** | [repo#4975](https://…) |
@@ -51,7 +59,7 @@ export const EMPTY = "—";
 /** Field order — the one shape every sidecar carries. A row that is
  *  not in ALWAYS_ROWS is printed only when it has a value (3.1). */
 export const META_ROWS = [
-  "Doc", "Status", "Product", "Release", "Issues", "Source", "People",
+  "Doc", "Surfaces", "Status", "Product", "Release", "Issues", "Source", "People",
   "Edited", "Extracted", "Generated", "Keywords", "Tools",
 ];
 
@@ -109,8 +117,16 @@ export function renderMetaTable(p) {
         p.promptVersion ? `prompt ${cell(p.promptVersion)}` : "",
       ].filter(Boolean).join(SEP)
     : "";
+  // every surface, primary first; the row says something only when
+  // there is more than the Doc row already says
+  const surfaces = [];
+  for (const x of [p.surface, ...(p.surfaces || [])]) {
+    const c = item(x);
+    if (c && c !== EMPTY && c !== "Other" && !surfaces.includes(c)) surfaces.push(c);
+  }
   const rows = {
     Doc: `${p.rowId}${SEP}${or(p.docKind, "Other")}${SEP}${or(p.surface, "Other")}`,
+    Surfaces: surfaces.length > 1 ? surfaces.join(SEP) : "",
     Status: or(p.status, "Indexed"),
     Product: list(p.products),
     Release: cell(p.targetRelease),
@@ -195,11 +211,14 @@ export function readMeta(content) {
     const srcParts = splitList(src);
     const rev = (srcParts.slice(1).map((x) => /^rev (.*)$/.exec(x)).find(Boolean) || [])[1] || "";
     const orEmpty = (k) => (t.get(k) === EMPTY ? "" : (t.get(k) || ""));
+    const surfaces = splitList(t.get("Surfaces"));
+    if (!surfaces.length && surface && surface !== EMPTY && surface !== "Other") surfaces.push(surface);
     return {
       format: ex.format || SIDECAR_FORMAT,
       title,
       doc_id: Number(id) || null,
       doc_kind: kind || "", surface: surface || "",
+      surfaces,
       status: orEmpty("Status"), generated: orEmpty("Generated"),
       products: splitList(t.get("Product")),
       target_release: t.get("Release") === EMPTY ? "" : (t.get("Release") || ""),
@@ -219,11 +238,13 @@ export function readMeta(content) {
   }
   // legacy yaml frames (format < 3.0)
   const last = yamlVal(s, "last_edited");
+  const ysurface = yamlVal(s, "surface");
   return {
     format: "2",
     title,
     doc_id: Number(yamlVal(s, "doc_id")) || null,
-    doc_kind: yamlVal(s, "doc_kind"), surface: yamlVal(s, "surface"),
+    doc_kind: yamlVal(s, "doc_kind"), surface: ysurface,
+    surfaces: ysurface && ysurface !== "Other" ? [ysurface] : [],
     status: "", generated: "",
     products: yamlList(s, "products"),
     target_release: yamlVal(s, "target_release"),
@@ -247,7 +268,7 @@ export function readMeta(content) {
 export function metaList(content, label) {
   const t = metaTable(content);
   if (t.has("Doc")) return splitList(t.get(label));
-  const key = { Keywords: "keywords", Tools: "tools", Product: "products", Issues: "issues" }[label] || label;
+  const key = { Keywords: "keywords", Tools: "tools", Product: "products", Issues: "issues", Surfaces: "surfaces" }[label] || label;
   return yamlList(content, key);
 }
 

@@ -1,5 +1,78 @@
 # Local sweep — release notes
 
+## sweep v1.66 (2026-09-08 — the classification reads the evidence: folder, surfaces, products, tools; wiki v2.2; RegexExtract v1.6; vocabulary v1.1)
+
+Four complaints, one cause: the classifier decided alone. Most
+documentation reviews came back `Other` although every one sits in the
+source library's "Doc Reviews" folder; a plan driven through the REST
+API had nowhere to go but `Server` or `Other`; a product the text never
+abbreviated was missed by the acronym scan; a tool the document names
+in its title was left off the row once the model had returned its six.
+Each has evidence a regex can see. `pipeline/lib/docsignals.mjs` reads
+it BEFORE the model call (the prompt gets it as `Signals`) and applies
+it AFTER (`reconcile`), so the row is right even when the model
+ignores it. `docs/setup.md` §18.
+
+- **The folder is a kind.** The document's library folder reaches the
+  classifier (`Folder`), `sweep.folderKinds` maps a folder segment to
+  a kind (default: the doc-review spellings → `Doc Review`), and the
+  folder's kind replaces the model's (`folderKindWins`, default true;
+  false = only `Other`). Summary: `kind_from_folder`.
+- **REST, and more than one surface.** `Surface` gains REST (the
+  Linear Referencing Service operations, paths, request/response
+  JSON) — add the choice value to the live list. `Surfaces` is new:
+  every surface the document covers, primary first — a Doc Index
+  column (`; `-joined, written through the v1.56 column dropper until
+  the tenant has it: `doc_fields_dropped`), a sidecar row right after
+  `Doc` when there is more than one (`sidecarmeta` `META_ROWS`,
+  `readMeta().surfaces`), and the wiki's seventh catalog (v2.2:
+  `surfaces/`, the Doc row's surface linked, a Surfaces row on the
+  page). The text's evidence is scored (`detectSurfaces`: the product
+  names, `ExB`, `/rest/services`, `LRServer`, `f=json`, an operation
+  name, the widgets and GP tools it names, the file name); a strong
+  surface the model left out is appended, and stands in when the
+  model said Other (`surface_from_signals`).
+- **Products.** `RegexExtract` v1.6 adds **Address Data Management**
+  (full name, `ADM`; `ADMRH` now claims ADM + RH) as the fourth
+  canonical line — `slug.mjs` qualifies with `adm`, `esri_doc_links`
+  carries its pages; the classifier returns `products` from the
+  closed list for what the text implies without naming, and the row
+  carries the union in canonical order (`products_from_model`).
+- **Tools.** `vocabulary.mjs` v1.1: the hand-kept entries carry a
+  `kind` (`widget`, `ribbon`, `app`, `rest` — the LRS REST operations
+  join the file) and an `aliases` map (`SLD`, `DynSeg`, `RCE`, `Carto
+  Realign`, `G2M`, `M2G`); the KnownTools block is grouped by kind
+  with the surface each implies; `normalizeTools` resolves aliases and
+  strips "widget" / "operation" / "pane" / "app" as it stripped
+  "tool"; `toolsNamedIn` scans the text for the official names
+  (longest first, official casing or any casing + the noun, REST
+  operations case-sensitive, the English verb "translate" never a
+  hit) and the sweep unions them with the model's (`tools_from_text`).
+  `doc_vocab.mjs` v1.1 carries `aliases` over.
+- **Classifier 4.0.0** (`prompts/CHANGELOG.md`): the two inputs, the
+  two outputs, the REST rules, the Doc Review signs, tools 0–10. The
+  regex op now runs before the model (its inputs never depended on
+  the title), so the prompt can list the products the text names.
+- The narration shows each document's signals and what they changed;
+  the summary JSON carries the four counters.
+
+Gates: `check_docsignals.py` (new, 16) — folder kinds by segment,
+the scored surfaces, the Signals block, every reconcile rule;
+`check_local_sweep.py` **394/394** — a review filed in "Doc Reviews"
+that the mock calls Other/Other lands as `Doc Review / REST` with the
+widget and operation its text names, Alpha's `Surfaces` = `Pro; REST`
+and `Products` = the regex's RH plus the model's APR, the grouped
+KnownTools block and the folder + signals in the classify turn;
+`check_wiki.py` 110 — the `surfaces/` catalog, the linked Doc row, the
+Surfaces row; `check_vocabulary.py` 14; `check_regex.py` (ADM, the
+compound); `check_slug.py` (`-rh-adm`); `test_lrsdoc.py` 57.
+
+Rollout: on the live Doc Index list add **REST** to the `Surface`
+choices and the `Surfaces` column (`schemas/SPList_DocIndex.csv`);
+`git pull`; the `v4.0.0` stamp re-classifies the corpus at
+`maxDocsPerRun` a night (pin `sweep.promptVersion` to defer). Re-paste
+the Q&A agent instructions v1.6.
+
 ## wiki v2.1 (2026-09-08 — the pages dressed by content type; mdlayout v1.4)
 
 The v2.0 site was organised for readers but every block on a page

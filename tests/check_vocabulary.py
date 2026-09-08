@@ -3,8 +3,12 @@
 doc_vocab.mjs): the docfx page parsers on synthetic pages shaped like the
 Esri help (a toolbox overview with a tool table and a toolset table, a
 toolset overview, an essential-vocabulary page), the --from-dir run that
-writes the JSON, the hand-kept widgets carried over, and normalizeTools:
-official casing restored, variants folded, unknown names reported.
+writes the JSON, the hand-kept widgets and aliases carried over, normalizeTools
+(official casing restored, variants and aliases folded, the tool / widget /
+operation nouns stripped, unknown names reported), the KnownTools block
+grouped by kind with its surface, and toolsNamedIn — the literal scan of a
+document's text for official names (longest first, REST operations
+case-sensitive, the English verb "translate" never a hit).
 Pure stdlib + Node 22+, no network.
 """
 import json
@@ -72,7 +76,10 @@ def main():
     out = os.path.join(tmp, "lrs_vocabulary.json")
     # a previous file with a hand-kept widget: it must survive the rewrite
     with open(out, "w") as f:
-        json.dump({"widgets": [{"name": "Straight Line Diagram", "url": VBASE + "sld.html"}]}, f)
+        json.dump({"widgets": [{"name": "Straight Line Diagram", "url": VBASE + "sld.html"},
+                               {"name": "applyEdits", "kind": "rest", "url": ""},
+                               {"name": "translate", "kind": "rest", "url": ""}],
+                   "aliases": {"SLD": "Straight Line Diagram"}}, f)
     print("== doc_vocab --from-dir")
     r = subprocess.run(["node", "--experimental-strip-types", SCRIPT, "--from-dir", pages, "--out", out,
                         "--toolbox", BASE + "an-overview-of-the-location-referencing-toolbox.html",
@@ -80,7 +87,7 @@ def main():
                         "--vocab", VBASE + "essential-missing-vocabulary.html"],
                        capture_output=True, text=True, cwd=REPO)
     check("run exit 0", r.returncode == 0, r.stderr[-600:])
-    check("stdout line reports the counts", "tools=3 terms=3 widgets=1" in r.stdout, r.stdout)
+    check("stdout line reports the counts", "tools=3 terms=3 widgets=3 aliases=1" in r.stdout, r.stdout)
     check("a page missing from the directory is named with the curl to save it",
           "essential-missing-vocabulary.html" in r.stderr and "curl.exe" in r.stderr, r.stderr[-400:])
     d = json.load(open(out, encoding="utf-8"))
@@ -99,8 +106,10 @@ def main():
           and terms["Event"]["definition"] == "Data located by route and measure."
           and terms["Calibration point"]["url"] == VBASE + "essential-roads-and-highways-vocabulary.html#B6F"
           and "Related topics" not in terms, json.dumps(d["terms"])[:500])
-    check("the hand-kept widgets are carried over; sources and generated recorded",
-          d["widgets"] == [{"name": "Straight Line Diagram", "url": VBASE + "sld.html"}]
+    check("the hand-kept widgets and aliases are carried over; sources and generated recorded",
+          d["widgets"][0] == {"name": "Straight Line Diagram", "url": VBASE + "sld.html"}
+          and d["widgets"][1] == {"name": "applyEdits", "kind": "rest", "url": ""}
+          and d["aliases"] == {"SLD": "Straight Line Diagram"}
           and len(d["sources"]) == 3 and d["generated"], json.dumps(d)[:300])
     r2 = subprocess.run(["node", "--experimental-strip-types", SCRIPT, "--from-dir", pages, "--out", out, "--dry-run",
                          "--toolbox", BASE + "nope.html", "--vocab", VBASE + "nope.html"],
@@ -114,26 +123,38 @@ def main():
 
     print("== loadVocabulary + normalizeTools")
     js = f"""
-import {{ loadVocabulary, normalizeTools }} from {json.dumps(LIB)};
+import {{ loadVocabulary, normalizeTools, toolsNamedIn }} from {json.dumps(LIB)};
 const v = loadVocabulary({json.dumps(out)});
 const r = normalizeTools(["append route", "the Update Measures from LRS tool", "Append Routes", "Merge Centerlines",
-  "straight line diagram", "update-measures-from-lrs", ""], v);
-console.log(JSON.stringify({{ known: v.knownTools, terms: [...v.termSet], r }}));
+  "straight line diagram", "update-measures-from-lrs", "", "SLD", "Straight Line Diagram widget", "the applyEdits operation"], v);
+console.log(JSON.stringify({{ known: v.knownTools, terms: [...v.termSet], r, kinds: [...v.kindOf] }}));
 console.log(JSON.stringify(normalizeTools(["Whatever Tool"], loadVocabulary("/no/such/file.json"))));
+const text = "Run the Create LRS tool, then append routes GP tool; the SLD shows it. We create lrs by hand, " +
+  "then translate the text. POST .../networks/1/applyEdits and GET .../translate?f=json; applyEditsX is not it.";
+console.log(JSON.stringify([toolsNamedIn(text, v), toolsNamedIn("Update Measures From LRS", loadVocabulary("/no/such/file.json"))]));
 """
     r4 = subprocess.run(["node", "--experimental-strip-types", "--input-type=module", "-e", js],
                         capture_output=True, text=True, cwd=REPO)
     check("node run exit 0", r4.returncode == 0, r4.stderr[-400:])
     lines = r4.stdout.strip().splitlines()
     got = json.loads(lines[0]) if lines else {}
-    check("knownTools block: tools then widgets, one per line; termSet lowercase",
-          got.get("known") == "Append Routes\nCreate LRS\nUpdate Measures From LRS\nStraight Line Diagram"
-          and got.get("terms") == ["calibration point", "event", "event behavior"], got)
-    check("normalizeTools: casing restored, 'the … tool' and plural folded, duplicates collapsed, unknown reported",
-          got.get("r", {}).get("tools") == ["Append Routes", "Update Measures From LRS", "Merge Centerlines", "Straight Line Diagram"]
+    check("knownTools block: a heading per kind with its surface, tools first, one name per line; termSet lowercase",
+          got.get("known") == ("Geoprocessing tools of the Location Referencing toolbox — surface Pro:\n"
+                               "Append Routes\nCreate LRS\nUpdate Measures From LRS\n"
+                               "Experience Builder widgets — surface Experience Builder:\nStraight Line Diagram\n"
+                               "REST operations of the Linear Referencing Service — surface REST:\napplyEdits\ntranslate")
+          and got.get("terms") == ["calibration point", "event", "event behavior"]
+          and dict(got.get("kinds", [])) == {"Append Routes": "tool", "Create LRS": "tool", "Update Measures From LRS": "tool",
+                                              "Straight Line Diagram": "widget", "applyEdits": "rest", "translate": "rest"}, got)
+    check("normalizeTools: casing restored, 'the … tool' / 'widget' / 'operation' and plural folded, aliases resolved, duplicates collapsed, unknown reported",
+          got.get("r", {}).get("tools") == ["Append Routes", "Update Measures From LRS", "Merge Centerlines", "Straight Line Diagram", "applyEdits"]
           and got.get("r", {}).get("unknown") == ["Merge Centerlines"], got.get("r"))
     check("an empty vocabulary passes names through and reports none unknown",
           json.loads(lines[1]) == {"tools": ["Whatever Tool"], "unknown": []} if len(lines) > 1 else False, lines[1:])
+    named = json.loads(lines[2]) if len(lines) > 2 else []
+    check("toolsNamedIn: official casing, any casing + tool noun, an alias, a REST path segment; never the English verb, "
+          "never a lowercase phrase without the noun, never a camelCase superstring; empty vocabulary = []",
+          named == [["Create LRS", "Append Routes", "Straight Line Diagram", "applyEdits", "translate"], []], named)
 
     print(f"\n{PASSED} passed, {len(FAILED)} failed")
     if FAILED:

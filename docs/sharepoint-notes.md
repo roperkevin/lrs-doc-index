@@ -136,6 +136,20 @@ patching all FOUR frames during the transition. Known residual: a
 metadata value containing a literal `-->` would end the hidden
 region early — display-only, no parser impact.
 
+*Sweep v1.66 addendum (2026-09-08):* the Doc Index list's `Surface`
+choice gains **REST** (the Linear Referencing Service API — its own
+surface beside Pro and Experience Builder), and the list gains a
+`Surfaces` single-line-text column: every surface the document covers,
+primary first, `; `-joined like `Products` (`Pro; REST`). Add the
+choice value first — a row whose primary surface is REST cannot be
+written until it exists — then the column; the sweep writes rows
+without `Surfaces` (counted as `doc_fields_dropped`, one stderr note
+per run) until it does, and the classifier 4.0.0 backfill fills it in.
+`Products` gains a fourth canonical name, **Address Data Management**
+(ADM; `ADMRH` in a dataset name is ADM + Roads & Highways). The sidecar
+table gains the matching `Surfaces` row right after `Doc`, printed only
+when there is more than one surface (`lib/sidecarmeta.mjs`).
+
 *Curation v1.0 addendum:* the Keywords list gains two flow-owned
 columns, `CurationStatus` (Choice: Proposed/Rejected) and
 `ProposedCanonical` (single line) — see `schemas/SPList_Keywords.csv`.

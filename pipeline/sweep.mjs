@@ -88,7 +88,11 @@ import { renderStoryBody } from "./lib/storyprofile.mjs";
 import { BodyIndex } from "./lib/bodyindex.mjs";
 import { writeStatusPage } from "./lib/statuspage.mjs";
 import { createProgress, resolveProgress, secs, noProgress } from "./lib/progress.mjs";
-import { loadVocabulary, normalizeTools, VOCABULARY_FILE } from "./lib/vocabulary.mjs";
+import { loadVocabulary, normalizeTools, toolsNamedIn, VOCABULARY_FILE } from "./lib/vocabulary.mjs";
+import {
+  folderKind, folderOf as libraryFolderOf, detectSurfaces, signalsBlock, reconcile,
+  DEFAULT_FOLDER_KINDS,
+} from "./lib/docsignals.mjs";
 
 // ---- flow v2.8 Config defaults (override via config.sweep) ----------
 
@@ -156,6 +160,14 @@ const FLOW_DEFAULTS = {
     "Doc Review": "Doc Reviews",
     Other: "Other",
   },
+  // v1.66 (lib/docsignals.mjs): the SOURCE library's folders as a
+  // kind signal — a segment of the document's folder path that matches
+  // a key (case, spacing and depth insensitive) implies the kind. The
+  // config value REPLACES this map. folderKindWins: the folder's kind
+  // replaces whatever the classifier said (the team's own filing
+  // outranks a reading of the text); false = it replaces only Other.
+  folderKinds: { ...DEFAULT_FOLDER_KINDS },
+  folderKindWins: true,
   maxCellsWorkbookDump: 60000,
   // v1.10: 50 MB. The flow's 3.5 MB cap was a Power Automate/Office
   // Scripts payload limit; locally it's only a memory/time guard, so
@@ -164,11 +176,10 @@ const FLOW_DEFAULTS = {
   oversizeBytes: 52428800,
 };
 
-const DOC_KINDS = [
-  "Test Plan", "User Story", "Design Spike", "Data Template",
-  "Schedule", "Doc Review", "Other",
-];
-const SURFACES = ["Pro", "Experience Builder", "Server", "Enterprise", "Other"];
+// the kinds (Test Plan … Doc Review, Other) and the surfaces (Pro,
+// Experience Builder, REST, Server, Enterprise, Other) are
+// docsignals.mjs's DOC_KINDS / SURFACES — one source for the prompt,
+// the reconciliation and the schema notes in schemas/SPList_DocIndex.csv
 const KNOWN_EXT = ["pptx", "docx", "xlsx", "pdf", "msg", "txt", "html"];
 const IMAGE_EXT = ["png", "jpg", "jpeg", "tif", "tiff", "gif", "bmp"];
 
@@ -1116,6 +1127,15 @@ async function main() {
     schemaHint: "schemas/SPList_Figures.csv",
     backfillFlag: "--refigure", counter: "figure_fields_dropped", missing: missingFigureColumns,
   });
+  // v1.66: the Doc Index row gains `Surfaces` (every surface the
+  // document covers, "; "-joined like Products); a tenant that has not
+  // added the column yet keeps indexing without it
+  const missingDocIndexColumns = new Set();
+  const docIndexColumns = columnDropper({
+    listLabel: "Doc Index", rowsLabel: "document rows",
+    schemaHint: "schemas/SPList_DocIndex.csv (Surfaces; the REST choice on Surface)",
+    backfillFlag: "the nightly sweep (a PromptVersion bump re-stamps every row)", counter: "doc_fields_dropped", missing: missingDocIndexColumns,
+  });
 
   // Replace one document's case-row set with what its body states now.
   // An empty/off-kind fresh side deletes the document's rows (archived,
@@ -1938,6 +1958,12 @@ async function main() {
     graph_downloads: 0,
     unreadable_local: 0,
     tools_unknown: 0,
+    // v1.66: what the deterministic signals changed after the model
+    kind_from_folder: 0,
+    surface_from_signals: 0,
+    tools_from_text: 0,
+    products_from_model: 0,
+    doc_fields_dropped: 0,
     cases_upserted: 0,
     cases_removed: 0,
     case_errors: 0,
@@ -1998,6 +2024,10 @@ async function main() {
       ? libRel.slice(synced.length + 1) : libRel;
     const localPath = path.join(cfg.paths.sourceLibrary, ...localRel.split("/"));
     const sourceLink = item.webUrl || "";
+    // v1.66: the library folder the file sits in (under the root
+    // segment) — the classifier reads it, and lib/docsignals.mjs maps a
+    // "Doc Reviews" folder to its kind
+    const folder = libraryFolderOf(libRel);
 
     // --reformat: re-extract and rewrite ONLY the sidecar body, so
     // presentation improvements (tidyBody, caseHeadings) reach the corpus
@@ -2084,6 +2114,7 @@ async function main() {
           rowId: existing.ID, fileName: name, sourceLink,
           status: existing.IndexStatus || "Indexed",
           docKind: existing.DocKind || "", surface: existing.Surface || "",
+          surfaces: oldMeta.surfaces || [],
           targetRelease: existing.TargetRelease || "", pe: existing.PE || "", dev: existing.Dev || "",
           srcAuthor, srcEditor, srcEditedText: fmtDate(srcEdited, true),
           lane: rfLane || oldMeta.extraction_lane,
@@ -2214,8 +2245,8 @@ async function main() {
       stepAt("extract");
       await indexDoc({
         cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures,
-        item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope },
-        existing, existingKeywords, kwSnapshot, vocab,
+        item: { name, fileRef, modified, srcItemId, sourceLink, localPath: effPath, ext, fileTypeSafe, docKey, inScope, folder },
+        existing, existingKeywords, kwSnapshot, vocab, docIndexColumns,
         caches: { byDocKey, kwByTitle, idKeys, linkKeys, kwKeys, docIndexRows, keywordRows, docIdRows, docLinkRows, docKwRows },
         setStep: stepAt,
         progress: prog,
@@ -2519,7 +2550,11 @@ async function main() {
 
 async function indexDoc(ctx) {
   const { cfg, sw, sp, op, writer, summary, pdfTool, ocrTools, bodyIndex, docLinks, linkResolver, syncCases, syncFigures, item, existing, existingKeywords, kwSnapshot, vocab, caches, setStep } = ctx;
-  const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope } = item;
+  const { name, modified, srcItemId, sourceLink, localPath, ext, fileTypeSafe, docKey, inScope, folder = "" } = item;
+  // the Doc Index row writer that drops a column the tenant lacks
+  // (v1.66: Surfaces); a caller without one writes the fields as given
+  const docIndexColumns = ctx.docIndexColumns
+    || (async (fields, write) => ({ result: await write(fields), fields }));
   // the run's narrator, or a no-op for a caller that passes none
   const prog = ctx.progress || noProgress;
   const detail = (d) => prog(`   ${name} — ${d}`);
@@ -2597,6 +2632,31 @@ async function indexDoc(ctx) {
     return;
   }
 
+  // (a0) the deterministic signals (v1.66, lib/docsignals.mjs): the
+  // regex products, the official tool names the text carries, the
+  // scored surface evidence and the folder's kind — read before the
+  // model so the prompt sees them, applied after so the row is right
+  // even when the model ignores them. The regex op runs here (it was
+  // step b): ids, revision and products depend on the text and the
+  // file name, not on the title the model returns.
+  setStep("regex");
+  const rx = op({
+    op: "regex", fileName: name,
+    content: docText + "\n" + relsText,
+    defaultRepo: sw.defaultRepo, title: "",
+  });
+  const ids = rx.ids || [];
+  const namedTools = vocab?.official?.size ? toolsNamedIn(docText, vocab) : [];
+  const signals = {
+    folder,
+    folderKind: folderKind(folder, sw.folderKinds),
+    products: rx.products || [],
+    namedTools,
+    surfaces: detectSurfaces(docText, name, vocab, namedTools),
+  };
+  const signalsText = signalsBlock(signals);
+  if (signalsText !== "(none)") detail(`signals — ${signalsText.replace(/\n/g, " | ")}`);
+
   // (a) LLM classify (AI Builder replacement)
   setStep("llm");
   const capped = cut(docText, sw.textCap);
@@ -2607,6 +2667,7 @@ async function indexDoc(ctx) {
   try {
     ai = await classifyDoc(cfg.llm, {
       fileName: name, docText: capped, existingKeywords, knownTools: vocab?.knownTools || "",
+      folder, signals: signalsText,
     });
   } finally {
     stopLlm();
@@ -2629,23 +2690,30 @@ async function indexDoc(ctx) {
       } catch { /* best effort */ }
     }
   }
-  const docKind = DOC_KINDS.includes(ai.docKind) ? ai.docKind : "Other";
-  const surface = SURFACES.includes(ai.surface) ? ai.surface : "Other";
+  // (a1) reconcile the reply with the signals (docsignals.reconcile):
+  // the folder's kind, the model's surfaces plus the strong evidence,
+  // the model's tools plus the text's, the regex products plus the
+  // model's — each change counted in the summary
+  const rec = reconcile(ai, signals, { folderKindWins: sw.folderKindWins !== false });
+  const { docKind, surface, surfaces, products } = rec;
+  ai.tools = rec.tools;
+  summary.kind_from_folder += rec.notes.kindFromFolder;
+  summary.surface_from_signals += rec.notes.surfaceFromSignals;
+  summary.tools_from_text += rec.notes.toolsFromText;
+  summary.products_from_model += rec.notes.productsFromModel;
   const title = cut(ai.title && ai.title !== "" ? ai.title : name, 255);
+  const changes = [
+    rec.notes.kindFromFolder ? "kind from the folder" : "",
+    rec.notes.surfaceFromSignals ? `${rec.notes.surfaceFromSignals} surface(s) from the text` : "",
+    rec.notes.toolsFromText ? `${rec.notes.toolsFromText} tool(s) from the text` : "",
+    rec.notes.productsFromModel ? `${rec.notes.productsFromModel} product(s) from the model` : "",
+  ].filter(Boolean);
   detail(
-    `classified in ${secs(Date.now() - llmT0)} — ${docKind} / ${surface}, ` +
-    `${(ai.keywords || []).length} keyword(s)`
+    `classified in ${secs(Date.now() - llmT0)} — ${docKind} / ${surfaces.join(" + ") || surface}` +
+    (products.length ? ` / ${products.join("; ")}` : "") +
+    `, ${(ai.keywords || []).length} keyword(s), ${(ai.tools || []).length} tool(s)` +
+    (changes.length ? ` (${changes.join(", ")})` : "")
   );
-
-  // (b) regex/ids
-  setStep("regex");
-  const rx = op({
-    op: "regex", fileName: name,
-    content: docText + "\n" + relsText,
-    defaultRepo: sw.defaultRepo, title,
-  });
-  const ids = rx.ids || [];
-  const products = rx.products || [];
 
   // (c) Doc Index upsert (PromptVersion/TextFileUrl deliberately NOT here)
   setStep("upsert-row");
@@ -2660,13 +2728,18 @@ async function indexDoc(ctx) {
     DocRevision: rx.docRevision || "",
     TargetRelease: ai.targetRelease || "", PE: ai.pe || "", Dev: ai.dev || "",
     Products: products.join("; "),
+    Surfaces: surfaces.join("; "),
   };
   let rowId;
   if (!existing) {
-    rowId = (await writer.createRow("docIndex", rowFields)).id;
+    const { result } = await docIndexColumns(
+      rowFields, (f) => writer.createRow("docIndex", f), summary,
+      (id, f) => writer.patchRow("docIndex", id, f)
+    );
+    rowId = result.id;
   } else {
     rowId = existing.ID;
-    await writer.patchRow("docIndex", rowId, rowFields);
+    await docIndexColumns(rowFields, (f) => writer.patchRow("docIndex", rowId, f), summary);
   }
 
   // (d) sidecar naming (phase 1b): <issue>-<slug>[-qualifier].md — a
@@ -2702,7 +2775,7 @@ async function indexDoc(ctx) {
   const header = sidecarHeader({
     h1Title: title === name ? name.replace(/\.[^.]*$/, "") : title,
     title, fileName: name, sourceLink, rowId, status: "Indexed",
-    docKind, surface, targetRelease: ai.targetRelease || "",
+    docKind, surface, surfaces, targetRelease: ai.targetRelease || "",
     pe: ai.pe || "", dev: ai.dev || "",
     srcAuthor, srcEditor, srcEdited, srcEditedText: fmtDate(srcEdited, true), lane,
     extractedOn: fmtDate(new Date().toISOString(), false),
@@ -2754,9 +2827,9 @@ async function indexDoc(ctx) {
     ID: rowId, Title: title, FileName: name, DocKey: docKey,
     IndexStatus: "Indexed", SourceModified: modified,
     PromptVersion: sw.promptVersion, TextFileUrl: textFileUrl,
-    DocKind: docKind, Surface: surface,
+    DocKind: docKind, Surface: surface, Surfaces: surfaces.join("; "),
     TargetRelease: ai.targetRelease || "", PE: ai.pe || "", Dev: ai.dev || "",
-    Summary: ai.summary || "",
+    Summary: ai.summary || "", Products: products.join("; "),
   });
   if (!existing) {
     caches.byDocKey.set(docKey, cachedRow);

@@ -323,7 +323,7 @@ import { toMkDocs, normalize, splitAnchor, admonition, defList, block } from "./
 import { assertNodeVersion } from "./lib/config.mjs";
 import { fmtDate } from "./lib/util.mjs";
 
-export const WIKI_VERSION = "v2.1";
+export const WIKI_VERSION = "v2.2";
 
 /** Days after its last edit a document counts as new (v2.1): the
  *  `new` badge in the sidebar. */
@@ -355,9 +355,12 @@ const KIND_ICONS = {
 };
 const kindIcon = (kind) => KIND_ICONS[kind] || "file-document-outline";
 
-/** The six catalogs, in the order the nav and the Browse page show
+/** The seven catalogs, in the order the nav and the Browse page show
  *  them: section (the folder), title, the model key, the index page's
- *  intro, the column label, the card icon and the card blurb. */
+ *  intro, the column label, the card icon and the card blurb.
+ *  Surfaces (sweep v1.66) is the seventh: every surface a document
+ *  covers — its Doc row's primary plus the sidecar's Surfaces row — so
+ *  a reader filters the corpus by Pro, Experience Builder or REST. */
 const CATALOGS = [
   { section: "keywords", title: "Keywords", key: "keywords", label: "Keyword", icon: "tag-multiple",
     intro: "The catalog's vocabulary, canonical terms only, with the documents each one tags.",
@@ -368,6 +371,9 @@ const CATALOGS = [
   { section: "products", title: "Products", key: "products", label: "Product", icon: "package-variant",
     intro: "Product lines, as detected from names and text.",
     blurb: "Product lines, as detected from names and text." },
+  { section: "surfaces", title: "Surfaces", key: "surfaces", label: "Surface", icon: "monitor-cellphone",
+    intro: "Where the work runs — Pro, Experience Builder, REST, Server, Enterprise. A document is listed under every surface it covers.",
+    blurb: "Pro, Experience Builder, REST, Server, Enterprise — every surface a document covers." },
   { section: "releases", title: "Releases", key: "releases", label: "Release", icon: "rocket-launch",
     intro: "Target releases the documents state.",
     blurb: "Target releases the documents state." },
@@ -687,6 +693,10 @@ export function buildModel(docs, kw, opts = {}) {
     keywords: group((d) => [...new Set(d.keywords)]),
     tools: group((d) => d.meta.tools),
     products: group((d) => d.meta.products),
+    // v2.2: the Surfaces row when the sidecar has one, else the Doc
+    // row's primary (never Other — a document with no surface is not
+    // filed under one)
+    surfaces: group((d) => surfacesOf(d.meta)),
     releases: group((d) => [d.meta.target_release]),
     people: group((d) => [...new Set([d.meta.author, d.meta.pe, d.meta.dev].filter(Boolean))]),
     issues: group((d) => d.issues.map((i) => i.ref)),
@@ -697,6 +707,17 @@ export function buildModel(docs, kw, opts = {}) {
     issueHost: issueHostOf(issueUrls),
     keywordKinds: kw.kinds,
   };
+}
+
+/** Every surface a document covers, primary first: the sidecar's
+ *  Surfaces row, or its Doc row's surface alone; Other is no surface. */
+export function surfacesOf(meta) {
+  const out = [];
+  for (const x of [meta?.surface, ...(meta?.surfaces || [])]) {
+    const v = String(x || "").trim();
+    if (v && v !== "Other" && v !== "—" && !out.includes(v)) out.push(v);
+  }
+  return out;
 }
 
 /** `https://devtopia.esri.com` from the first `https://devtopia.esri.com/Org/repo/issues/N`
@@ -953,8 +974,13 @@ function docPage(d, model) {
     m.pe && `PE ${person(m.pe)}`,
     m.dev && `dev ${person(m.dev)}`,
   ].filter(Boolean).join(" · ");
+  // v2.2: the surface links its catalog page; a document on more than
+  // one surface says so in its own row, each linked
+  const surfaces = surfacesOf(m);
+  const surfaceLink = m.surface && m.surface !== "Other" ? link(p, catalogPage("surfaces", m.surface), m.surface) : (cell(m.surface) || "—");
   const rows = [
-    ["Doc", `${m.doc_id ?? "—"} · ${kindLink} · ${cell(m.surface) || "—"}`, true],
+    ["Doc", `${m.doc_id ?? "—"} · ${kindLink} · ${surfaceLink}`, true],
+    ["Surfaces", surfaces.length > 1 ? cat("surfaces", surfaces) : ""],
     ["Status", cell(m.status), true],
     ["Product", m.products.length ? cat("products", m.products) : ""],
     ["Release", m.target_release ? link(p, catalogPage("releases", m.target_release), m.target_release) : ""],
@@ -1068,11 +1094,11 @@ const card = (fromPage, icon, target, title, count, blurb) => [
 const catalogCards = (fromPage, model) =>
   CATALOGS.flatMap((c) => card(fromPage, c.icon, `${c.section}/index.md`, c.title, model[c.key].size, c.blurb));
 
-/** The Browse tab's own page (v2.0): the six catalogs as cards. */
+/** The Browse tab's own page (v2.0): the seven catalogs as cards. */
 function browsePage(model) {
   const p = "browse/index.md";
   return [...pageMeta({ exclude: true, title: "Browse" }), h1("compass-outline", "Browse"), "",
-    "Six ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here.", "",
+    "Seven ways into the same documents: every value below is a page that lists the documents carrying it, and a document's metadata card links back here.", "",
     '<div class="grid cards" markdown>', "", ...catalogCards(p, model), "</div>", ""].join("\n");
 }
 
@@ -1188,7 +1214,7 @@ function aboutPage(model, opts) {
       // v2.1: what the blocks on a document page are, and the badges
       ["A document page", "The metadata card and the Open button; the summary; the related documents (fold them away with the chevron); the Esri documentation links; then, under the rule, the extracted text — every test case one card: its fields as label and value, the Expected result the green row."],
       ["Badges", `A page edited in the last ${NEW_DAYS} days carries a New badge in the sidebar; a draft carries the pencil.`],
-      ["Browse", "The six catalogs: keywords, tools, products, releases, people and issues. Every value is a page listing the documents that carry it."],
+      ["Browse", "The seven catalogs: keywords, tools, products, surfaces, releases, people and issues. Every value is a page listing the documents that carry it."],
       ["Test cases & figures", "What the sweep extracted from the bodies, each entry linking the section it came from."],
       ["Search, filter, sort", "Search (`/`) indexes the document pages and catalog values, not the tables that repeat them. Every large table filters as you type and sorts on a header click."],
     ]), { title: "How the site is organised", collapse: "open" }), "",

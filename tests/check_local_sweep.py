@@ -279,6 +279,7 @@ class MockState:
         self.llm_files = []
         self.llm_last_headers = {}
         self.llm_last_request = {}
+        self.llm_requests = []       # every classify request body (v1.66: the signals leg)
         self.devicecode_hits = 0
         self.authorize_hits = 0
         self.code_grants = 0
@@ -425,6 +426,7 @@ def make_handler(state, lib_guid, src_files):
                 # the classify prompt: File name: <name> in the user turn
                 state.llm_calls += 1
                 state.llm_last_request = body
+                state.llm_requests.append(body)
                 fm = re.search(r"^File name: (.*)$", user, re.M)
                 fname_in = fm.group(1).strip() if fm else ""
                 state.llm_files.append(fname_in)
@@ -896,6 +898,17 @@ def main():
     # call), not Error
     with open(os.path.join(src_dir, "filtered.txt"), "w") as f:
         f.write("Model instructions the moderation endpoint refuses to read.")
+    # v1.66: a documentation review filed in the source library's "Doc
+    # Reviews" folder. The mock classifier calls it Other / Other with
+    # no tools (the live failure this release fixes): the folder must
+    # make it a Doc Review, the REST evidence in its text (an operation
+    # name, the LRServer path, f=json) must make REST its surface, and
+    # the widget it names must land on the row without the model
+    os.makedirs(os.path.join(src_dir, "Doc Reviews"), exist_ok=True)
+    with open(os.path.join(src_dir, "Doc Reviews", "Help Review.txt"), "w") as f:
+        f.write("Review of the applyEdits help topic. The LRS Identify widget section should say "
+                "POST /rest/services/RH/LRServer/networks/1/applyEdits with f=json. Comment: the response JSON "
+                "sample is outdated. Status: open.")
 
     # stub pdftotext: text for spec.pdf, nothing for anything else
     # (argv: -layout -enc UTF-8 <file> - ; also handles -v detection)
@@ -943,6 +956,7 @@ def main():
         src_item(19, "guide.html", "2026-08-04T10:00:00Z"),
         src_item(20, "filtered.txt", "2026-08-03T10:00:00Z"),
         src_item(21, "locked.pptx", "2026-08-02T10:00:00Z"),
+        src_item(22, "Help Review.txt", "2026-08-01T10:00:00Z", seg="Shared Documents/General/Doc Reviews"),
     ]
 
     state = MockState()
@@ -994,6 +1008,7 @@ def main():
     state.llm_by_file = {
         "Alpha Plan.pptx": {
             "title": "Alpha Plan", "docKind": "Test Plan", "surface": "Pro",
+            "surfaces": ["Pro", "REST"], "products": ["Pipeline Referencing"],
             "summary": "Covers lock acquisition.", "pe": "Claire Wang", "dev": "",
             "targetRelease": "3.8",
             "tools": ["Reassign Routes", "Add Point Events", "Realign Route", "extend route tool"],
@@ -1028,6 +1043,10 @@ def main():
             "title": "Onboarding Guide", "docKind": "Other", "surface": "Other",
             "summary": "Onboarding guide.", "pe": "", "dev": "",
             "targetRelease": "", "tools": [], "keywords": ["onboarding"]},
+        "Help Review.txt": {
+            "title": "applyEdits help review", "docKind": "Other", "surface": "Other",
+            "summary": "Comments on the applyEdits topic.", "pe": "", "dev": "",
+            "targetRelease": "", "tools": [], "keywords": ["help review"]},
     }
 
     server = ThreadingHTTPServer(
@@ -1075,7 +1094,9 @@ def main():
                    "tools": [{"name": "Extend Route", "toolset": "", "url": base + "/docsec/extend-a-route.html", "description": "x"},
                              {"name": "Reassign Routes", "toolset": "", "url": base + "/docsec/reassign-routes.html", "description": "x"},
                              {"name": "Append Routes", "toolset": "", "url": base + "/docsec/append-routes.html", "description": "x"}],
-                   "widgets": [{"name": "Add Point Events", "url": ""}],
+                   "widgets": [{"name": "Add Point Events", "url": ""},
+                               {"name": "LRS Identify", "kind": "widget", "url": ""},
+                               {"name": "applyEdits", "kind": "rest", "url": ""}],
                    "terms": [{"term": "Calibration point", "definition": "d", "url": base + "/vocab.html#a"},
                              # a term no fixture text contains: seeding it must not re-tag cases
                              {"term": "Project stationing", "definition": "d", "url": base + "/vocab.html#b"}]}, f)
@@ -1120,8 +1141,8 @@ def main():
     proc = run_sweep(cfg_path, [])
     check("dry run exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0]) if proc.returncode == 0 else {}
-    check("dry run processed 11 (incl. the PDF-rescued spec.pdf)",
-          out.get("processed") == 12, str(out))
+    check("dry run processed 13 (incl. the PDF-rescued spec.pdf and the doc review)",
+          out.get("processed") == 13, str(out))
     check("dry run flagged as dry", out.get("dry_run") is True)
     check("dry run planned the ghost archive without executing",
           out.get("archived") == 1
@@ -1237,7 +1258,7 @@ def main():
     proc = run_sweep(cfg_path, ["--live"])
     check("live exit 0", proc.returncode == 0, proc.stderr[-600:])
     out = json.loads(proc.stdout.splitlines()[0])
-    check("live processed 12", out.get("processed") == 12, str(out))
+    check("live processed 13", out.get("processed") == 13, str(out))
     check("one tool name the vocabulary does not know is counted and written for review",
           out.get("tools_unknown") == 1
           and "Realign Route\tAlpha Plan.pptx" in open(os.path.join(work_dir, "unknown-tools.txt"), encoding="utf-8").read(),
@@ -1249,7 +1270,7 @@ def main():
     by_name = {}
     for iid, fields in rows.items():
         by_name[fields.get("FileName")] = (iid, fields)
-    check("doc index rows for all 12 docs + the ghost", len(by_name) == 13, str(sorted(by_name)))
+    check("doc index rows for all 13 docs + the ghost", len(by_name) == 14, str(sorted(by_name)))
 
     _, html = by_name.get("guide.html", (None, {}))
     check("html indexed via the htmltotext lane",
@@ -1339,7 +1360,7 @@ def main():
     md_files = {f: os.path.join(r, f)
                 for r, _, fs_ in os.walk(sidecar_dir) for f in fs_
                 if f.endswith(".md") and not f.startswith("_")}
-    check("five sidecars written (incl. rescued pdf + html)", len(md_files) == 5, str(sorted(md_files)))
+    check("six sidecars written (incl. rescued pdf, html and the doc review)", len(md_files) == 6, str(sorted(md_files)))
 
     # browse index pages (v1.35): root catalog + per-kind indexes,
     # rebuilt by every live run from the run's own rows
@@ -1375,7 +1396,7 @@ def main():
     status_path = os.path.join(sidecar_dir, "_Sweep Status.md")
     status = open(status_path).read() if os.path.exists(status_path) else ""
     check("status page written on live run",
-          "12 processed, 3 errors" in status and "corrupt.pptx" in status,
+          "13 processed, 3 errors" in status and "corrupt.pptx" in status,
           status[:300])
     check("status page names the error lane",
           "ziptext-pptx:" in status, status[:300])
@@ -1400,12 +1421,13 @@ def main():
     # format 3.1: a FIXED row order, and only the rows with something
     # to say. Alpha is a rich fixture, so every row but Generated is
     # present; spec.pdf below is the sparse one.
-    CANON_ROWS = ["Doc", "Status", "Product", "Release", "Issues", "Source",
+    CANON_ROWS = ["Doc", "Surfaces", "Status", "Product", "Release", "Issues", "Source",
                   "People", "Edited", "Extracted", "Generated", "Keywords", "Tools"]
     rows_alpha = re.findall(r"(?m)^\| \*\*([A-Za-z]+)\*\* \|", sc)
-    check("sidecar table rows keep the canonical order",
+    check("sidecar table rows keep the canonical order; Surfaces (v1.66) sits right after Doc when there is more than one",
           rows_alpha == [k for k in CANON_ROWS if k in rows_alpha]
-          and rows_alpha[:2] == ["Doc", "Status"], str(rows_alpha))
+          and rows_alpha[:3] == ["Doc", "Surfaces", "Status"]
+          and "| **Surfaces** | Pro · REST |" in sc, str(rows_alpha))
     check("no metadata row is printed as an em dash",
           re.search(r"(?m)^\| \*\*[A-Za-z]+\*\* \| — \|$", sc) is None, sc[:600])
     check("Generated rides a machine-authored file only, never a sidecar",
@@ -1418,8 +1440,30 @@ def main():
           and "Release" not in rows_spec and "Tools" not in rows_spec,
           str(rows_spec) + spec_sc[:400])
     check("sidecar body appended", "Alpha test plan covering lock acquisition" in sc)
-    check("product detected on the row",
-          alpha.get("Products") == "Roads & Highways", str(alpha.get("Products")))
+    check("products on the row: the regex's Roads & Highways plus the model's Pipeline Referencing, canonical order",
+          alpha.get("Products") == "Roads & Highways; Pipeline Referencing", str(alpha.get("Products")))
+    check("Surfaces on the row: every surface the model named, primary first; Surface stays the primary",
+          alpha.get("Surfaces") == "Pro; REST" and alpha.get("Surface") == "Pro", str(alpha)[:300])
+    check("the summary counts what the signals changed (products from the model, tools from the text, the folder kind, the surface)",
+          out.get("products_from_model") == 1 and out.get("kind_from_folder") == 1
+          and out.get("surface_from_signals") == 2 and out.get("tools_from_text") >= 1
+          and out.get("doc_fields_dropped") == 0, str(out))
+    # v1.66: the doc review — Other/Other from the model, the folder and
+    # the text decide
+    _, review = by_name.get("Help Review.txt", (None, {}))
+    check("a document in the Doc Reviews folder is a Doc Review although the model said Other",
+          review.get("IndexStatus") == "Indexed" and review.get("DocKind") == "Doc Review", str(review)[:300])
+    check("the REST evidence in the text makes REST its surface although the model said Other; the widget it names makes Experience Builder a secondary",
+          review.get("Surface") == "REST" and review.get("Surfaces") == "REST; Experience Builder", str(review)[:400])
+    check("the doc review's tools come from the text: the operation and the widget it names, in order of appearance",
+          re.search(r"(?m)^\| \*\*Tools\*\* \| applyEdits · LRS Identify \|$",
+                    open(next(p_ for p_ in md_files.values() if os.sep + "Doc Reviews" + os.sep in p_)).read()) is not None,
+          str(md_files))
+    check("the doc review's sidecar lands in the Doc Reviews kind folder with the folder's kind in its Doc row",
+          any(os.sep + "Doc Reviews" + os.sep in p_ for p_ in md_files.values())
+          and re.search(r"(?m)^\| \*\*Doc\*\* \| \d+ · Doc Review · REST \|$",
+                        open(next(p_ for p_ in md_files.values() if os.sep + "Doc Reviews" + os.sep in p_)).read()) is not None,
+          str(md_files))
     check("sidecar carries the documentation block",
           "## Esri documentation" in sc
           and "<!-- docs:begin -->" in sc and "<!-- docs:end -->" in sc,
@@ -1579,11 +1623,26 @@ def main():
           and set((fmt.get("schema") or {}).get("required") or []) >= {"title", "docKind", "keywords"},
           str(state.llm_last_request.get("output_config"))[:300])
     user_last = mock.user_text(state.llm_last_request)
-    check("classify user turn carries the file name, the established keywords, the known tools and the fenced text",
+    check("classify user turn carries the file name, the folder, the signals, the established keywords, the grouped known tools and the fenced text",
           re.search(r"^File name: \S", user_last, re.M) is not None
+          and re.search(r"^Library folder: ", user_last, re.M) is not None
+          and "Signals (evidence the pipeline extracted — not answers):\n" in user_last
           and "Established keywords" in user_last
-          and "Known tools (the official names — copy exactly):\nExtend Route\nReassign Routes\nAppend Routes\nAdd Point Events" in user_last
-          and "<<<DOCUMENT TEXT BEGIN>>>" in user_last, user_last[:600])
+          and ("Known tools (the official names, grouped by kind — copy exactly):\n"
+               "Geoprocessing tools of the Location Referencing toolbox — surface Pro:\nExtend Route\nReassign Routes\nAppend Routes\n"
+               "Experience Builder widgets — surface Experience Builder:\nAdd Point Events\nLRS Identify\n"
+               "REST operations of the Linear Referencing Service — surface REST:\napplyEdits\n") in user_last
+          and "<<<DOCUMENT TEXT BEGIN>>>" in user_last, user_last[:900])
+    # v1.66: the doc review's own request carried the folder rule and
+    # the evidence the text holds
+    review_req = next((r for r in state.llm_requests if "File name: Help Review.txt" in mock.user_text(r)), None)
+    rtxt = mock.user_text(review_req) if review_req is not None else "<no classify request for Help Review.txt>"
+    if True:
+        check("the doc review's request: the folder, its rule, the REST evidence and the named tools as signals",
+              "Library folder: Doc Reviews\n" in rtxt
+              and "is the team's Doc Review folder" in rtxt
+              and "Known tools named in the text: applyEdits; LRS Identify" in rtxt
+              and "Surface evidence in the text (strongest first): REST (" in rtxt, rtxt[:700])
 
     # ---- case-index leg (Case_Index_Plan phase 2) ------------------
     # alpha (Test Plan) carries one case slide; beta (User Story)
@@ -2183,13 +2242,13 @@ def main():
     out = json.loads(proc.stdout.splitlines()[0])
     check("seed-vocabulary dry run plans the missing rows and writes nothing",
           proc.returncode == 0 and out.get("dry_run") is True
-          and "mode=seed-vocabulary official=6 created=2 present=4" in out.get("line", "")
+          and "mode=seed-vocabulary official=8 created=2 present=6" in out.get("line", "")
           and len(kwrows) == kw_before, str(out))
     proc = run_curate(cfg_path, ["--seed-vocabulary", "--live"])
     out = json.loads(proc.stdout.splitlines()[0])
     seeded = {r.get("Title"): r for r in kwrows.values() if str(r.get("Notes", "")).startswith("Esri documentation")}
     check("seed-vocabulary --live creates the missing term and tool with the documentation page in Notes (the sweep's own rows count as present)",
-          proc.returncode == 0 and "created=2 present=4" in out.get("line", "")
+          proc.returncode == 0 and "created=2 present=6" in out.get("line", "")
           and set(seeded) == {"project stationing", "append routes"}
           and seeded["append routes"].get("Kind") == "tool"
           and seeded["append routes"].get("Notes") == "Esri documentation tool: " + base + "/docsec/append-routes.html"
@@ -2197,7 +2256,7 @@ def main():
           and seeded["project stationing"].get("Notes") == "Esri documentation term: " + base + "/vocab.html#b",
           str(out) + str(seeded))
     proc = run_curate(cfg_path, ["--seed-vocabulary", "--live"])
-    check("a second seed run creates nothing", "created=0 present=6" in proc.stdout, proc.stdout[-200:])
+    check("a second seed run creates nothing", "created=0 present=8" in proc.stdout, proc.stdout[-200:])
 
     # ---- leg 3d1e: the second reader (--review, curation.review) ----
     # the pending queue judged by prompts/keyword_review.md after the
@@ -2378,11 +2437,12 @@ def main():
     proc = run_sweep(cfg_path, ["--live", "--rerank"])
     check("rerank exit 0", proc.returncode == 0, proc.stderr[-400:])
     out = json.loads(proc.stdout.splitlines()[0])
-    # 6 = the Indexed docs at this point (alpha, beta, notes, html,
-    # outside.txt, outside.pdf); spec.pdf sits re-Skipped since the
-    # no-tool leg, so rerank rightly leaves it (and its sidecar) alone
+    # 7 = the Indexed docs at this point (alpha, beta, notes, html,
+    # outside.txt, outside.pdf, the doc review); spec.pdf sits
+    # re-Skipped since the no-tool leg, so rerank rightly leaves it (and
+    # its sidecar) alone
     check("rerank covered every indexed doc with a sidecar",
-          out.get("mode") == "rerank" and out.get("reranked") == 6
+          out.get("mode") == "rerank" and out.get("reranked") == 7
           and out.get("no_sidecar") == 0 and out.get("errors") == 0, str(out))
     check("rerank made zero AI calls",
           state.llm_calls == llm_before_rr and state.cur_calls == cur_before_rr,

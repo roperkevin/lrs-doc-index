@@ -1,16 +1,27 @@
 /**
- * RegexExtract v1.5 (v1.4 + the bare-UN prose guard) — deterministic ID + doc revision extraction,
+ * RegexExtract v1.6 (v1.5 + Address Data Management) — deterministic ID + doc revision extraction,
  * sidecar filename slug, and product-line detection
  * ------------------------------------------------------------------
- * r6 batch (flow v2.8 sidecar format) — gated by check_batch_r6.py.
- * TENANT PASTE PENDING — paste with the flow v2.8 window.
+ * v1.6 delta: a fourth product line, Address Data Management (ADM —
+ * the address management solution that shares the Roads & Highways
+ * deployment: the "ADMRH" dataset name is exactly that pairing, so the
+ * compound token now claims BOTH products where it used to claim RH
+ * alone). Full name "address data management" (case-insensitive) and
+ * the standalone token ADM (case-sensitive, no camelCase, no date
+ * guard needed — ADM is not a month). The product-domain words a
+ * document uses without ever naming the product ("site address",
+ * "address point") are the classifier's job (docindex_classify 4.0.0
+ * `products`), not this file's: this stays the deterministic floor.
+ * Canonical order gains a fourth slot: RH, APR, UN, ADM.
+ * ------------------------------------------------------------------
  * v1.4 delta (PD-1): `products` / `productCount` — the LRS product
  * lines a document belongs to, detected deterministically from the
  * file name, AI title and extracted text:
  *
- *   Roads & Highways      full name (roads &/and highways), RH, ADMRH
- *   Pipeline Referencing  full name, APR, UNAPR
- *   Utility Network       full name, UN, UNAPR
+ *   Roads & Highways         full name (roads &/and highways), RH, ADMRH
+ *   Pipeline Referencing     full name, APR, UNAPR
+ *   Utility Network          full name, UN, UNAPR
+ *   Address Data Management  full name, ADM, ADMRH            (v1.6)
  *
  * Full names match case-insensitively anywhere; acronyms match
  * case-sensitively as standalone tokens only (\bRH\b — ADMRH/UNAPR
@@ -18,7 +29,7 @@
  * false-fires, and camelCase-embedded acronyms like "RHLabels" are
  * deliberately NOT matched). APR additionally skips date-shaped
  * context ("12-APR-2026") — a digit-and-separator neighbor kills the
- * hit. Canonical order is fixed (RH, APR, UN) so the output is
+ * hit. Canonical order is fixed (RH, APR, UN, ADM) so the output is
  * stable for row writes and yaml lines. The return shape only GAINS
  * fields, so existing flow bindings are untouched (the v1.2 slug
  * precedent).
@@ -127,6 +138,7 @@ function detectProducts(raw: string): string[] {
   const RH = "Roads & Highways";
   const APR = "Pipeline Referencing";
   const UN = "Utility Network";
+  const ADM = "Address Data Management";
   const found: { [p: string]: boolean } = {};
   // '_' is a \w character, so \bRH\b would miss "RH_Roundabouts_..." —
   // filenames are exactly where the acronyms live. Normalize first.
@@ -135,17 +147,22 @@ function detectProducts(raw: string): string[] {
   if (/roads\s*(?:&|and)\s*highways/i.test(scan)) found[RH] = true;
   if (/pipeline\s+referencing/i.test(scan)) found[APR] = true;
   if (/utility\s+network/i.test(scan)) found[UN] = true;
+  if (/address\s+data\s+management/i.test(scan)) found[ADM] = true;
   // compound dataset tokens first, then the bare acronyms
   if (acronymHit(scan, "UNAPR", false)) {
     found[UN] = true;
     found[APR] = true;
   }
-  if (acronymHit(scan, "ADMRH", false)) found[RH] = true;
+  if (acronymHit(scan, "ADMRH", false)) {
+    found[ADM] = true;
+    found[RH] = true;
+  }
   if (acronymHit(scan, "RH", false)) found[RH] = true;
   if (acronymHit(scan, "APR", true)) found[APR] = true;
+  if (acronymHit(scan, "ADM", false)) found[ADM] = true;
   if (bareUnHit(scan)) found[UN] = true;
   const out: string[] = [];
-  for (const p of [RH, APR, UN]) {
+  for (const p of [RH, APR, UN, ADM]) {
     if (found[p]) out.push(p);
   }
   return out;
