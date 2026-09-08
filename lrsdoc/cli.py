@@ -54,7 +54,7 @@ def _read_payload(spec: str) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="lrsdoc", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("task", choices=["classify", "curate", "generate", "prompts"])
+    ap.add_argument("task", choices=["classify", "curate", "review", "generate", "prompts"])
     ap.add_argument("--input", "-i", default="-", help="JSON file with inputs/options, or - for stdin")
     ap.add_argument("--output", "-o", default=None, help="write the result object here instead of stdout")
     ap.add_argument("--stream", action="store_true", help="emit a delta line per streamed chunk")

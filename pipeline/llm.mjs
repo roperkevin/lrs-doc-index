@@ -225,3 +225,20 @@ export async function curateChunk(cfg, { vocabulary, doNotPropose }) {
   });
   return res.data;
 }
+
+/**
+ * The second reader (prompts/keyword_review.md): the pending proposals
+ * → `{verdicts: [{id, verdict: approve|withdraw|hold, why}]}`.
+ * `reviewCfg` overrides model / effort / maxTokens for this call only
+ * (curation.review in config); everything else comes from llm.*.
+ */
+export async function reviewProposals(cfg, { proposals, officialVocabulary }, reviewCfg = {}) {
+  const merged = { ...cfg };
+  if (reviewCfg.model) merged.model = reviewCfg.model;
+  if (reviewCfg.effort) merged.effort = reviewCfg.effort;
+  const res = await runTask(cfg, "review", {
+    inputs: { Proposals: proposals, OfficialVocabulary: officialVocabulary || "(none)" },
+    options: bridgeOptions(merged, reviewCfg.maxTokens !== undefined ? { maxTokens: reviewCfg.maxTokens } : {}),
+  });
+  return res.data;
+}

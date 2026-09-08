@@ -5,6 +5,15 @@ front-matter format (2026-09-06) are the ones the old file headers
 carried; their per-round notes are in `docs/history/patches-README.md`,
 `docs/changelog/testplangen.md` and `docs/changelog/pipeline.md`.
 
+- 2026-09-08 — keyword_review **1.0.0** (new): the second reader of
+  keyword merge proposals. Input: the pending queue as
+  `<id> | <alias> [kind] -> <canonical> [kind] | <reason>` lines plus
+  the official vocabulary; output one verdict per id —
+  approve / withdraw / hold — under the same WORD TEST as
+  keyword_curation, with the official title always the canonical.
+  `curate.mjs --review`, or every weekly run when
+  `curation.review.enabled`; the deterministic guard runs first and
+  the approvals apply like `--approve`.
 - 2026-09-06 — testplan_draft **1.14.0**: one case block, shared with
   the document catalog (`docs/design/Markdown_Layout_Plan.md` phase
   3). Case ids are two digits per lane (`TC-P01`, not `TC-P1`); the

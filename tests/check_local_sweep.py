@@ -287,6 +287,9 @@ class MockState:
         self.refresh_grants = 0
         self.digest = None
         self.cur_last_request = None
+        self.review_calls = 0
+        self.review_last_request = None
+        self.review_response = {"verdicts": []}
         self.cur_response = {"proposals": []}
         self.cur_calls = 0
         self.probe_paths = []
@@ -408,8 +411,13 @@ def make_handler(state, lib_guid, src_files):
                     self.wfile.write(payload)
                     return
                 # the curation prompt is schema-pinned on {proposals}
-                # (prompts/schemas/keyword_curation.json) — route by it
+                # (prompts/schemas/keyword_curation.json) — route by it;
+                # the second reader on {verdicts} (keyword_review.json)
                 schema = ((body.get("output_config") or {}).get("format") or {}).get("schema") or {}
+                if "verdicts" in (schema.get("properties") or {}):
+                    state.review_calls += 1
+                    state.review_last_request = body
+                    return self._json(mock.message_json(json.dumps(state.review_response)))
                 if "proposals" in (schema.get("properties") or {}):
                     state.cur_calls += 1
                     state.cur_last_request = body
@@ -2190,6 +2198,125 @@ def main():
           str(out) + str(seeded))
     proc = run_curate(cfg_path, ["--seed-vocabulary", "--live"])
     check("a second seed run creates nothing", "created=0 present=6" in proc.stdout, proc.stdout[-200:])
+
+    # ---- leg 3d1e: the second reader (--review, curation.review) ----
+    # the pending queue judged by prompts/keyword_review.md after the
+    # deterministic guard: guard-failing pairs are withdrawn without a
+    # model call, chains are held, the model's verdicts apply like
+    # --approve / --withdraw, a missing verdict is a hold
+    print("== review leg")
+    CUR["rv_ok"] = state.seed(LISTS["keywords"], {"Title": "summary layers", "Kind": "topic",
+                                                  "CurationStatus": "Proposed",
+                                                  "ProposedCanonical": "summary layer — A1 plural of summary layer"})
+    CUR["rv_ok_c"] = state.seed(LISTS["keywords"], {"Title": "summary layer", "Kind": "topic"})
+    CUR["rv_bad"] = state.seed(LISTS["keywords"], {"Title": "ui testing", "Kind": "topic",
+                                                   "CurationStatus": "Proposed",
+                                                   "ProposedCanonical": "user interface — A2 same subject"})
+    CUR["rv_bad_c"] = state.seed(LISTS["keywords"], {"Title": "user interface", "Kind": "topic"})
+    CUR["rv_hold"] = state.seed(LISTS["keywords"], {"Title": "rodes", "Kind": "topic",
+                                                    "CurationStatus": "Proposed",
+                                                    "ProposedCanonical": "roads — A2 typo"})
+    CUR["rv_hold_c"] = state.seed(LISTS["keywords"], {"Title": "roads", "Kind": "topic"})
+    CUR["rv_flip"] = state.seed(LISTS["keywords"], {"Title": "event gap", "Kind": "topic",
+                                                    "CurationStatus": "Proposed",
+                                                    "ProposedCanonical": "event gaps — A1 singular vs plural"})
+    CUR["rv_flip_c"] = state.seed(LISTS["keywords"], {"Title": "event gaps", "Kind": "topic"})
+    CUR["rv_silent"] = state.seed(LISTS["keywords"], {"Title": "route locks", "Kind": "topic",
+                                                      "CurationStatus": "Proposed",
+                                                      "ProposedCanonical": "route lock — A1 plural"})
+    CUR["rv_silent_c"] = state.seed(LISTS["keywords"], {"Title": "route lock", "Kind": "topic"})
+    # the chain: 'chain near' -> 'chain far' while 'chain far' is itself pending
+    CUR["rv_near"] = state.seed(LISTS["keywords"], {"Title": "chain near", "Kind": "topic",
+                                                    "CurationStatus": "Proposed",
+                                                    "ProposedCanonical": "chain far — A2"})
+    CUR["rv_far"] = state.seed(LISTS["keywords"], {"Title": "chain far", "Kind": "topic",
+                                                   "CurationStatus": "Proposed",
+                                                   "ProposedCanonical": "chain end — A2"})
+    CUR["rv_end"] = state.seed(LISTS["keywords"], {"Title": "chain end", "Kind": "topic"})
+    state.review_response = {"verdicts": [
+        {"id": int(CUR["rv_ok"]), "verdict": "approve", "why": "A1 plural into singular"},
+        {"id": int(CUR["rv_bad"]), "verdict": "withdraw", "why": "a word replaced"},
+        {"id": int(CUR["rv_hold"]), "verdict": "hold", "why": "typo pair, side unclear"},
+        {"id": int(CUR["rv_far"]), "verdict": "approve", "why": "A2"},
+        {"id": int(CUR["rv_flip"]), "verdict": "approve", "why": "never reaches the model"},
+    ]}
+    # the pending rows left over from earlier legs (sldx, cpt, rr1, …)
+    # get no verdict — they must be held, not touched
+    state.review_calls = 0
+    proc = run_curate(cfg_path, ["--review", "--progress"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("review dry run: one model call, verdicts planned, nothing written",
+          proc.returncode == 0 and out.get("dry_run") is True and state.review_calls == 1
+          and "mode=review" in out.get("line", "") and "approved=2 " in out.get("line", "")
+          and kwrows[CUR["rv_ok"]].get("CurationStatus") == "Proposed"
+          and not kwrows[CUR["rv_ok"]].get("CanonicalRefLookupId"), str(out) + proc.stderr[-600:])
+    rv_user = mock.user_text(state.review_last_request or {})
+    check("the review turn carries id | alias [kind] -> canonical [kind] | reason lines and the official vocabulary",
+          f"{CUR['rv_ok']} | summary layers [topic] -> summary layer [topic] | A1 plural of summary layer" in rv_user
+          and "Official vocabulary" in rv_user and "Extend Route" in rv_user and "Calibration point" in rv_user
+          and f"{CUR['rv_flip']} |" not in rv_user and f"{CUR['rv_near']} |" not in rv_user, rv_user[:800])
+    check("guard-failing and chained pairs never reach the model",
+          "guard: the canonical is the plural side" in proc.stderr and "a chain" in proc.stderr, proc.stderr[-800:])
+    state.review_calls = 0
+    proc = run_curate(cfg_path, ["--review", "--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    log = json.load(open(out["logFile"], encoding="utf-8"))
+    verdicts = {v["alias"]: v for v in log.get("verdicts", [])}
+    check("review --live applies the verdicts: approve merges, withdraw clears, hold leaves pending",
+          proc.returncode == 0
+          and kwrows[CUR["rv_ok"]].get("CanonicalRefLookupId") == int(CUR["rv_ok_c"])
+          and not kwrows[CUR["rv_ok"]].get("CurationStatus") and not kwrows[CUR["rv_ok"]].get("ProposedCanonical")
+          and not kwrows[CUR["rv_bad"]].get("CurationStatus") and not kwrows[CUR["rv_bad"]].get("ProposedCanonical")
+          and not kwrows[CUR["rv_bad"]].get("CanonicalRefLookupId")
+          and kwrows[CUR["rv_hold"]].get("CurationStatus") == "Proposed"
+          and kwrows[CUR["rv_hold"]].get("ProposedCanonical") == "roads — A2 typo",
+          str(out) + str(kwrows[CUR["rv_ok"]]) + str(kwrows[CUR["rv_bad"]]) + str(kwrows[CUR["rv_hold"]]))
+    check("the guard's withdrawal needs no verdict; the chain's far end merges and the near end is held",
+          not kwrows[CUR["rv_flip"]].get("CurationStatus") and not kwrows[CUR["rv_flip"]].get("CanonicalRefLookupId")
+          and kwrows[CUR["rv_far"]].get("CanonicalRefLookupId") == int(CUR["rv_end"])
+          and kwrows[CUR["rv_near"]].get("CurationStatus") == "Proposed"
+          and verdicts.get("chain near", {}).get("outcome") == "hold",
+          str(kwrows[CUR["rv_flip"]]) + str(kwrows[CUR["rv_far"]]) + str(kwrows[CUR["rv_near"]]) + str(verdicts.get("chain near")))
+    check("a proposal the reader returned no verdict for is held, and the run log records every outcome",
+          kwrows[CUR["rv_silent"]].get("CurationStatus") == "Proposed"
+          and verdicts.get("route locks", {}).get("outcome") == "hold"
+          and "no verdict" in verdicts.get("route locks", {}).get("note", "")
+          and verdicts.get("summary layers", {}).get("outcome") == "approve", str(verdicts)[:600])
+    check("the digest lists approved, withdrawn and held rows with the reader's reason and the repoint hint follows",
+          "APPROVED (review) 'summary layers' → 'summary layer'" in (state.digest or "")
+          and "WITHDRAWN (review) 'ui testing' → 'user interface' — a word replaced" in (state.digest or "")
+          and "(pending, held for a librarian) 'rodes' → roads — A2 typo · reviewer: typo pair" in (state.digest or "")
+          and "second reader" in (state.digest or "") and "--repoint" in proc.stdout, (state.digest or "")[:900])
+    # curation.review.enabled: the weekly run proposes, then the reader
+    # judges this run's proposals together with the carryover
+    cfg["curation"] = {"review": {"enabled": True, "chunk": 50}}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    CUR["rv_w"] = state.seed(LISTS["keywords"], {"Title": "network types", "Kind": "topic"})
+    CUR["rv_w_c"] = state.seed(LISTS["keywords"], {"Title": "network type", "Kind": "topic"})
+    state.cur_response = {"proposals": [{"alias": "network types", "canonical": "network type", "why": "A1 plural of network type"}]}
+    state.review_response = {"verdicts": [{"id": int(CUR["rv_w"]), "verdict": "approve", "why": "A1"},
+                                          {"id": int(CUR["rv_hold"]), "verdict": "withdraw", "why": "no correct spelling either way"}]}
+    state.review_calls = 0
+    proc = run_curate(cfg_path, ["--live"])
+    out = json.loads(proc.stdout.splitlines()[0])
+    check("weekly run with curation.review.enabled: this run's proposal is written, then approved by the reader; the carryover judged too",
+          proc.returncode == 0 and "written=1" in out.get("line", "") and "review_approved=1" in out.get("line", "")
+          and "review_withdrawn=2" in out.get("line", "") and state.review_calls == 1
+          and kwrows[CUR["rv_w"]].get("CanonicalRefLookupId") == int(CUR["rv_w_c"])
+          and not kwrows[CUR["rv_hold"]].get("CurationStatus")
+          and "APPROVED (review) 'network types' → 'network type'" in (state.digest or ""),
+          str(out) + str(kwrows[CUR["rv_w"]]) + (state.digest or "")[:400])
+    cfg["curation"] = {}
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f)
+    # the rows this leg seeded leave the vocabulary again: a later leg
+    # (reformat) asserts the case and figure tags do not churn, and a
+    # fresh keyword that happens to occur in the fixture text would
+    # re-tag them at the next run-start snapshot
+    for k in [k for k in CUR if k.startswith("rv_")]:
+        kwrows.pop(CUR[k], None)
+    kwrows[CUR["gantts"]]["CanonicalRefLookupId"] = int(CUR["gantt"])
 
     # ---- leg 3d2: --repoint (the librarian junction backfill) ------
     # 'gantt charts' -> 'gantt chart' merged above; seed the historical
